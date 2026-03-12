@@ -1,0 +1,1131 @@
+// Initial Mock Data
+let eventsData = [
+    {
+        ID: "ev_001",
+        Date: "2026-06-20",
+        Title: "みずほ小学校 実験教室",
+        Location: "みずほ小学校 体育館",
+        Target: "小学1~6年生 30名",
+        Category: "normal", // normal, admin, general, other
+        Event_Time: "10:00 - 12:00",
+        Meeting_Logistics: "9:00 正門前集合\n9:15 搬入開始\n12:30 撤収完了",
+        Experiments: "空気砲、ダイラタンシー、超撥水",
+        Presenters: "空気砲：井上\nダイラタンシー：田中\n超撥水：佐藤",
+        Admin_Kyoka: "鈴木",
+        Admin_Houkoku: "田中",
+        Kyoka_Deadline: "2026-06-10",
+        Houkoku_Deadline: "2026-06-27",
+        Belongings: "スリッパ、名札、ポロシャツ",
+        Remarks: "駐車場は北側を利用すること。\n教頭先生に挨拶必須。",
+        Files: "https://drive.google.com/file/d/example1/view,https://drive.google.com/file/d/example2/view"
+    },
+    {
+        ID: "ev_002",
+        Date: "2026-07-05",
+        Title: "サイエンスフェスタ出展",
+        Location: "市民文化センター",
+        Target: "一般来場者",
+        Category: "normal",
+        Event_Time: "13:00 - 16:00",
+        Meeting_Logistics: "12:00 現地集合",
+        Experiments: "スライム作り",
+        Presenters: "全員交代制",
+        Admin_Kyoka: "山田",
+        Admin_Houkoku: "山田",
+        Kyoka_Deadline: "2026-06-25",
+        Houkoku_Deadline: "2026-07-12",
+        Belongings: "昼食持参",
+        Remarks: "",
+        Files: ""
+    }
+];
+
+let holidaysData = {};
+
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const res = await fetch('https://holidays-jp.github.io/api/v1/date.json');
+        holidaysData = await res.json();
+    } catch (e) {
+        console.warn('Failed to fetch holidays jp API');
+    }
+
+    if (document.getElementById('calendar-grid')) {
+        initCalendar();
+    } else if (document.getElementById('calendar')) {
+        initFullCalendar();
+    }
+    renderEvents();
+});
+
+function refreshCalendar() {
+    if (document.getElementById('calendar-grid')) {
+        renderCalendar(currentMonth);
+    } else if (window.globalCalendar) {
+        // FullCalendar
+        window.globalCalendar.refetchEvents();
+    }
+}
+
+function initFullCalendar() {
+    const calendarEl = document.getElementById('calendar');
+    if (!calendarEl) return;
+
+    // Custom Jump UI
+    const jumpHtml = `
+        <div style="display:flex; align-items:center; gap:5px; margin-left:10px;">
+            <input type="month" id="fc-month-jump" class="e1-input" style="padding: 2px 5px; height:auto; width:auto;">
+        </div>
+    `;
+
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        locale: 'ja',
+        selectable: true,
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: ''
+        },
+        buttonText: {
+            today: '今日'
+        },
+        dayCellClassNames: function (arg) {
+            // Adjust to robust local date string
+            const d = new Date(arg.date.getTime() - arg.date.getTimezoneOffset() * 60000);
+            const dateStr = d.toISOString().split('T')[0];
+            if (holidaysData[dateStr]) {
+                return ['holiday'];
+            }
+            return [];
+        },
+        select: function (info) {
+            // info.endStr is exclusive. Convert to inclusive Date_End.
+            const endObj = new Date(info.endStr);
+            endObj.setDate(endObj.getDate() - 1);
+            const endDateStr = endObj.toISOString().split('T')[0];
+
+            // Open modal with pre-filled dates
+            document.getElementById('category-selection-modal').classList.remove('hidden');
+            document.getElementById('new-event-edit-modal').classList.add('hidden');
+            document.getElementById('modal-overlay').classList.remove('hidden');
+
+            // Set global temp dates
+            window.tempStart = info.startStr;
+            window.tempEnd = endDateStr !== info.startStr ? endDateStr : "";
+
+            calendar.unselect();
+        },
+        events: function (fetchInfo, successCallback, failureCallback) {
+            const fcEvents = eventsData.map(e => {
+                let displayTitle = e.Title;
+                if ((e.Category === 'admin' || e.Category === 'general') && e.Meeting_Number) {
+                    displayTitle = `第${e.Meeting_Number}回 ${e.Title}`;
+                }
+
+                let bgColor = '#f8b4b4'; // normal = soft red
+                let textColor = '#7c2d2d';
+                if (e.Category === 'other') { bgColor = '#86efac'; textColor = '#14532d'; }
+                if (e.Category === 'general') { bgColor = '#93c5fd'; textColor = '#1e3a5f'; }
+                if (e.Category === 'admin') { bgColor = '#fde68a'; textColor = '#78350f'; }
+
+                let endDate = null;
+                if (e.Date_End) {
+                    const d = new Date(e.Date_End);
+                    d.setDate(d.getDate() + 1); // exclusive end logic for fullcalendar
+                    endDate = d.toISOString().split('T')[0];
+                }
+
+                return {
+                    id: e.ID,
+                    title: displayTitle,
+                    start: e.Date,
+                    end: endDate,
+                    backgroundColor: bgColor,
+                    borderColor: bgColor,
+                    textColor: textColor,
+                    display: 'block'
+                };
+            });
+            successCallback(fcEvents);
+        },
+        eventClick: function (info) {
+            viewEventInModal(info.event.id);
+        }
+    });
+    calendar.render();
+    window.globalCalendar = calendar;
+
+    // Inject Custom Month Jump Input after the toolbar
+    const toolbar = calendarEl.querySelector('.fc-header-toolbar');
+    if (toolbar) {
+        const jumpWrapper = document.createElement('div');
+        jumpWrapper.style.cssText = 'margin-top: 6px; margin-bottom: 4px;';
+        jumpWrapper.innerHTML = jumpHtml;
+        toolbar.parentNode.insertBefore(jumpWrapper, toolbar.nextSibling);
+
+        const jumpInput = jumpWrapper.querySelector('#fc-month-jump');
+        if (jumpInput) {
+            // Sync with current month
+            const currentDate = calendar.getDate();
+            jumpInput.value = currentDate.toISOString().slice(0, 7);
+
+            jumpInput.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    calendar.gotoDate(e.target.value + '-01');
+                }
+            });
+
+            // Keep input synced when navigating with prev/next
+            calendar.on('datesSet', (info) => {
+                jumpInput.value = info.start.toISOString().slice(0, 7);
+            });
+        }
+    }
+}
+
+// --- Calendar Logic ---
+let currentMonth = new Date();
+
+function initCalendar() {
+    const yPicker = document.getElementById('calendar-year');
+    const mPicker = document.getElementById('calendar-month');
+
+    // populate years (e.g., -2 to +3)
+    const currentY = new Date().getFullYear();
+    for (let i = currentY - 2; i <= currentY + 3; i++) {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = i;
+        yPicker.appendChild(opt);
+    }
+
+    // populate months
+    for (let i = 1; i <= 12; i++) {
+        const opt = document.createElement('option');
+        opt.value = i - 1; // 0-indexed
+        opt.textContent = i;
+        mPicker.appendChild(opt);
+    }
+
+    renderCalendar(currentMonth);
+}
+
+function renderCalendar(date) {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+
+    document.getElementById('calendar-year').value = year;
+    document.getElementById('calendar-month').value = month;
+
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+
+    // Start from the Sunday before the 1st
+    const startDate = new Date(firstDay);
+    startDate.setDate(firstDay.getDate() - firstDay.getDay());
+
+    // End on the Saturday after the last day
+    const endDate = new Date(lastDay);
+    endDate.setDate(lastDay.getDate() + (6 - lastDay.getDay()));
+
+    const grid = document.getElementById('calendar-grid');
+    grid.innerHTML = '';
+
+    let loopDate = new Date(startDate);
+    while (loopDate <= endDate) {
+        const cell = document.createElement('div');
+        cell.className = 'calendar-day';
+        if (loopDate.getMonth() !== month) {
+            cell.classList.add('other-month');
+        }
+
+        const dateStrCurrent = formatDate(loopDate);
+        if (holidaysData[dateStrCurrent]) {
+            cell.classList.add('holiday');
+            cell.title = holidaysData[dateStrCurrent];
+        }
+
+        // Click on cell to start new event
+        cell.onclick = () => {
+            window.tempStart = dateStrCurrent;
+            window.tempEnd = ""; // Custom calendar only selects 1 day for now
+            openNewEventModal();
+        };
+
+        // Check for "today"
+        const today = new Date();
+        if (loopDate.toDateString() === today.toDateString()) {
+            cell.classList.add('today');
+        }
+
+        // Date Number
+        const dayNum = document.createElement('span');
+        dayNum.className = 'day-number';
+        dayNum.textContent = loopDate.getDate();
+        cell.appendChild(dayNum);
+
+        // Find events for this day traversing Date_End
+        const dateStr = formatDate(loopDate);
+        const dayEvents = eventsData.filter(e => {
+            if (!e.Date_End || e.Date_End === e.Date) {
+                return e.Date === dateStr;
+            }
+            return dateStr >= e.Date && dateStr <= e.Date_End;
+        });
+
+        dayEvents.forEach(ev => {
+            const evChip = document.createElement('div');
+            evChip.className = `cal-event cat-${ev.Category || 'normal'}`;
+
+            let displayTitle = ev.Title;
+            if ((ev.Category === 'admin' || ev.Category === 'general') && ev.Meeting_Number) {
+                displayTitle = `第${ev.Meeting_Number}回 ${ev.Title}`;
+            }
+            evChip.textContent = displayTitle;
+
+            evChip.title = displayTitle; // Tooltip
+            evChip.onclick = (e) => {
+                e.stopPropagation();
+                viewEventInModal(ev.ID);
+            };
+            cell.appendChild(evChip);
+        });
+
+        grid.appendChild(cell);
+
+        // Next day
+        loopDate.setDate(loopDate.getDate() + 1);
+    }
+}
+
+function prevMonth() {
+    currentMonth.setMonth(currentMonth.getMonth() - 1);
+    renderCalendar(currentMonth);
+}
+
+function nextMonth() {
+    currentMonth.setMonth(currentMonth.getMonth() + 1);
+    renderCalendar(currentMonth);
+}
+
+function jumpToMonthSelect() {
+    const y = parseInt(document.getElementById('calendar-year').value);
+    const m = parseInt(document.getElementById('calendar-month').value);
+    currentMonth = new Date(y, m, 1);
+    renderCalendar(currentMonth);
+}
+
+function viewEventInModal(id) {
+    const eventData = eventsData.find(e => e.ID === id);
+    if (!eventData) return;
+
+    document.getElementById('modal-overlay').classList.remove('hidden');
+    const catModal = document.getElementById('category-selection-modal');
+    if (catModal) catModal.classList.add('hidden');
+    document.getElementById('new-event-edit-modal').classList.remove('hidden');
+
+    const headerTitle = document.querySelector('#new-event-edit-modal h2');
+    if (headerTitle) headerTitle.textContent = "📝 イベント詳細";
+
+    const actionButtons = document.getElementById('modal-action-buttons');
+    if (actionButtons) {
+        actionButtons.innerHTML = `
+            <button class="btn btn-text" onclick="closeModal()">閉じる</button>
+            <button class="btn btn-secondary display-mode-btn" onclick="enableModalEdit()">✏️ 編集</button>
+            <button class="btn btn-danger hidden edit-mode-btn" onclick="deleteModalEvent()">🗑️ 削除</button>
+            <button class="btn btn-primary hidden edit-mode-btn" onclick="saveEventFromModal()">💾 保存</button>
+            <button class="btn btn-text hidden edit-mode-btn" onclick="cancelModalEdit('${id}')">キャンセル</button>
+        `;
+    }
+
+    renderModalForm(eventData, false);
+}
+
+// Render all events
+function renderEvents() {
+    const listContainer = document.getElementById('event-list');
+    const template = document.getElementById('event-template');
+
+    listContainer.innerHTML = ''; // Clear current
+
+    // Header for top 5 events
+    const topLimitHeading = document.createElement('h3');
+    topLimitHeading.style.marginBottom = '1rem';
+    topLimitHeading.textContent = '🌟 直近のイベント';
+    listContainer.appendChild(topLimitHeading);
+
+    // Filter or sort events if needed, but we'll assume they are ordered and take 5
+    const isFullCalendarMode = !!document.getElementById('calendar');
+    const topEvents = eventsData.slice(0, 5);
+
+    topEvents.forEach(event => {
+        const clone = template.content.cloneNode(true);
+        const card = clone.querySelector('.event-card');
+        card.setAttribute('data-id', event.ID);
+
+        // Populate Summary
+        const dateObj = new Date(event.Date);
+        const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][dateObj.getDay()];
+        clone.querySelector('.event-date-badge').textContent = `${event.Date} (${dayOfWeek})`;
+
+        // Display Time instead of Target
+        const timeDisplay = clone.querySelector('.event-time-display');
+        if (timeDisplay) timeDisplay.textContent = event.Event_Time || '--:--';
+
+        let displayTitle = event.Title;
+        if ((event.Category === 'admin' || event.Category === 'general') && event.Meeting_Number) {
+            displayTitle = `第${event.Meeting_Number}回 ${event.Title}`;
+        }
+        clone.querySelector('.event-title').textContent = displayTitle;
+
+        // Populate Fields
+        populateFields(card, event);
+
+        // Make whole summary clickable to view modal
+        const summary = clone.querySelector('.event-summary');
+        if (summary) {
+            summary.onclick = (e) => {
+                e.stopPropagation();
+                viewEventInModal(event.ID);
+            };
+        }
+
+        listContainer.appendChild(clone);
+    });
+}
+
+// Populate fields within a card element
+function populateFields(cardElement, eventData) {
+    // Determine category to toggle sections
+    const cat = eventData.Category || 'normal';
+    const isMeeting = cat === 'general' || cat === 'admin';
+
+    // Hide/Show event specific sections
+    cardElement.querySelectorAll('.event-only-section').forEach(sec => {
+        if (isMeeting) {
+            sec.style.display = 'none';
+        } else {
+            sec.style.display = ''; // default
+        }
+    });
+
+    // Hide/Show meeting only sections
+    cardElement.querySelectorAll('.meeting-only-section').forEach(sec => {
+        sec.style.display = isMeeting ? '' : 'none';
+    });
+
+    const remarksLabel = cardElement.querySelector('.remarks-label');
+    if (remarksLabel) {
+        remarksLabel.textContent = isMeeting ? '📝 議題 / 備考' : '📝 備考';
+    }
+
+    const fields = ['Title', 'Location', 'Audience', 'Meeting_Number', 'Date', 'Date_End', 'Event_Time', 'Meeting_Logistics', 'Remarks'];
+
+    fields.forEach(field => {
+        // Display elements
+        let val = eventData[field] || '---';
+        if (field === 'Date') return; // Skip basic Date, we handle it specially below
+        if (field === 'Date_End') return; // Handled specially
+
+        const displayEl = cardElement.querySelector(`.display-mode[data-field="${field}"]`);
+        if (displayEl) {
+            if (displayEl.classList.contains('text-area-view')) {
+                displayEl.innerHTML = val.split('\n').map(line => line.trim()).join('\n');
+            } else {
+                displayEl.textContent = val;
+            }
+        }
+
+        // Input elements
+        const inputEls = cardElement.querySelectorAll(`.edit-mode[data-field="${field}"]`);
+        inputEls.forEach(el => {
+            el.value = eventData[field] || '';
+        });
+    });
+
+    // Special Date Display Logic
+    const dateDisplayEl = cardElement.querySelector('.display-mode[data-field="Date_Display"]');
+    if (dateDisplayEl) {
+        if (eventData.Date_End && eventData.Date_End !== eventData.Date) {
+            dateDisplayEl.textContent = `${eventData.Date} 〜 ${eventData.Date_End}`;
+        } else {
+            dateDisplayEl.textContent = eventData.Date || '---';
+        }
+    }
+
+    // Special Date Inputs
+    ['Date', 'Date_End'].forEach(df => {
+        cardElement.querySelectorAll(`.edit-mode[data-field="${df}"]`).forEach(el => {
+            el.value = eventData[df] || '';
+        });
+    });
+
+    // Deadlines & Admins Special Handling
+    const adminFields = ['Admin_Kyoka', 'Admin_Houkoku', 'Kyoka_Deadline', 'Houkoku_Deadline'];
+    adminFields.forEach(field => {
+        const val = eventData[field] || '---';
+        const displayEls = cardElement.querySelectorAll(`[data-field="${field}"]`);
+        displayEls.forEach(el => {
+            if (el.tagName === 'INPUT') {
+                el.value = eventData[field] || '';
+            } else {
+                el.textContent = val;
+            }
+        });
+    });
+
+    // Time Selects in Edit mode
+    if (eventData.Event_Time) {
+        let [s, e] = eventData.Event_Time.split(' - ');
+        const selStart = cardElement.querySelector('select[data-field="Time_Start"]');
+        const selEnd = cardElement.querySelector('select[data-field="Time_End"]');
+        if (selStart && s) selStart.value = s.trim();
+        if (selEnd && e) selEnd.value = e.trim();
+    }
+
+    // Dynamic List for Experiments & Presenters (Parts Based)
+    const expDisplay = cardElement.querySelector('.display-mode[data-field="Experiments_Display"]');
+    const partsContainer = cardElement.querySelector('.parts-container');
+
+    // Data parsing assumption: JSON string of parts or simple string
+    // For now we map legacy "Experiments" to "一部"
+    let partsData = [];
+    try {
+        if (eventData.PartsList) {
+            partsData = JSON.parse(eventData.PartsList);
+        } else if (eventData.Experiments) {
+            // Legacy fallack
+            const expArray = eventData.Experiments.split(',');
+            const preArray = (eventData.Presenters || "").split(',');
+            const exps = expArray.map((e, i) => ({ name: e.trim(), presenter: (preArray[i] || '').trim() }));
+            partsData = [{ partName: "一部", items: exps }];
+        } else {
+            partsData = [{ partName: "一部", items: [{ name: "", presenter: "" }] }];
+        }
+    } catch (e) {
+        partsData = [{ partName: "一部", items: [{ name: "", presenter: "" }] }];
+    }
+
+    if (expDisplay && partsContainer) {
+        // Render Display Mode (Tabular format groups tags by Part)
+        let displayHtml = '';
+        partsData.forEach(p => {
+            if (p.items.length === 0 || (p.items.length === 1 && !p.items[0].name && !p.items[0].presenter)) return;
+            displayHtml += `<div class="part-title">【${p.partName || '部なし'}】</div><div style="margin-bottom: 10px;">`;
+            p.items.forEach(item => {
+                if (!item.name && !item.presenter) return;
+                displayHtml += `<span class="tag tag-exp">${item.name || '(未定)'} (${item.presenter || '未定'})</span>`;
+            });
+            displayHtml += `</div>`;
+        });
+        expDisplay.innerHTML = displayHtml || '---';
+
+        // Render Edit Mode Inputs
+        partsContainer.innerHTML = '';
+        partsData.forEach(p => {
+            const block = document.createElement('div');
+            block.className = 'part-block';
+            let html = `
+                <div class="part-header">
+                    <div>
+                        <input type="text" class="e1-input part-name-input" value="${p.partName}" placeholder="部の名前 (例: 一部)">
+                    </div>
+                    <div class="part-actions">
+                        <button class="btn btn-secondary btn-sm" onclick="copyDynamicPart(this)" type="button">📑 部のコピー</button>
+                        <button class="btn btn-danger-text btn-sm" onclick="removeDynamicPart(this)" type="button">🗑️ 部の削除</button>
+                    </div>
+                </div>
+                <div class="dynamic-wrapper">
+            `;
+            p.items.forEach(item => {
+                html += `
+                    <div class="dynamic-row">
+                        <input type="text" class="e1-input experiment-name" style="flex:5" value="${item.name}" placeholder="実験名">
+                        <input type="text" class="e1-input presenter-name" style="flex:3" value="${item.presenter}" placeholder="担当者">
+                        <button class="btn-del" onclick="removeDynamicItem(this)" type="button">✖</button>
+                    </div>
+                `;
+            });
+            if (p.items.length === 0) {
+                html += `
+                    <div class="dynamic-row">
+                        <input type="text" class="e1-input experiment-name" style="flex:5" value="" placeholder="実験名">
+                        <input type="text" class="e1-input presenter-name" style="flex:3" value="" placeholder="担当者">
+                        <button class="btn-del" onclick="removeDynamicItem(this)" type="button">✖</button>
+                    </div>
+                `;
+            }
+            html += `</div><button class="btn-add-exp" onclick="addDynamicItem(this)" type="button">＋ 実験を追加</button>`;
+            block.innerHTML = html;
+            partsContainer.appendChild(block);
+        });
+    }
+
+    // Title mapping overrides for Meeting Mode
+    const titleDisplay = cardElement.querySelector('.display-mode[data-field="Title_Display"]');
+    if (titleDisplay) {
+        if (isMeeting) {
+            titleDisplay.innerHTML = `<span style="font-size: 1.25rem; font-weight: bold; color: #464775;">回数：[ ${eventData.Meeting_Number || '?'} ] [ ${eventData.Title || ''} ]</span>`;
+        } else {
+            titleDisplay.innerHTML = `<span style="font-size: 1.25rem; font-weight: bold; color: #464775;">${eventData.Title || ''}</span>`;
+        }
+    }
+    const meetingNumInput = cardElement.querySelector('#meeting-num-input');
+    if (meetingNumInput && isMeeting) {
+        meetingNumInput.value = eventData.Meeting_Number || '';
+    }
+    const meetingTitleInput = cardElement.querySelector('#meeting-name-input');
+    if (meetingTitleInput && isMeeting) {
+        meetingTitleInput.value = eventData.Title || '';
+    }
+
+    // File processing
+    const fileContainer = cardElement.querySelector(`.display-mode[data-field="Files_Display"]`);
+    const fileInput = cardElement.querySelector(`input[data-field="Files"]`);
+    if (fileContainer && fileInput) {
+        if (eventData.Files) {
+            fileInput.value = eventData.Files;
+            const urls = eventData.Files.split(',');
+            fileContainer.innerHTML = urls.map((url, i) =>
+                `<a href="${url.trim()}" target="_blank" class="file-link">📄 関連ファイル ${i + 1}</a>`
+            ).join('');
+        } else {
+            fileContainer.innerHTML = '<span style="color:#999;font-size:0.9rem;">なし</span>';
+            fileInput.value = "";
+        }
+    }
+}
+
+// Accordion Toggle
+function toggleAccordion(summaryElement) {
+    const card = summaryElement.closest('.event-card');
+    const details = card.querySelector('.event-details');
+    const icon = card.querySelector('.expand-icon');
+
+    // Check if currently editing
+    if (card.classList.contains('editing')) {
+        return; // Disable collapse while editing
+    }
+
+    if (details.classList.contains('collapsed')) {
+        details.classList.remove('collapsed');
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        details.classList.add('collapsed');
+        icon.style.transform = 'rotate(0deg)';
+    }
+}
+
+// Enter Edit Mode
+function enableEdit(btn) {
+    const card = btn.closest('.event-card');
+    card.classList.add('editing');
+
+    // Toggle visiblity
+    card.querySelectorAll('.display-mode').forEach(el => el.classList.add('hidden'));
+    card.querySelectorAll('.edit-mode').forEach(el => el.classList.remove('hidden'));
+}
+
+// Cancel Edit Mode
+function cancelEdit(btn) {
+    const card = btn.closest('.event-card');
+    const id = card.getAttribute('data-id');
+    const originalData = eventsData.find(e => e.ID === id);
+
+    // Re-populate original data to inputs
+    populateFields(card, originalData);
+
+    card.classList.remove('editing');
+    card.querySelectorAll('.display-mode').forEach(el => el.classList.remove('hidden'));
+    card.querySelectorAll('.edit-mode').forEach(el => el.classList.add('hidden'));
+}
+
+// Delete Event
+function deleteEvent(btn) {
+    if (!confirm('本当にこのイベントを削除しますか？')) return;
+
+    const card = btn.closest('.event-card');
+    const id = card.getAttribute('data-id');
+    const eventIndex = eventsData.findIndex(e => e.ID === id);
+
+    if (eventIndex > -1) {
+        eventsData.splice(eventIndex, 1);
+        renderEvents();
+        refreshCalendar(); // カレンダーからも消去
+    }
+}
+
+// Dynamic List Actions
+function addDynamicPart(btn) {
+    const container = btn.parentElement.querySelector('.parts-container');
+    const block = document.createElement('div');
+    block.className = 'part-block';
+    block.innerHTML = `
+        <div class="part-header">
+            <div>
+                <input type="text" class="e1-input part-name-input" value="新規の部" placeholder="部の名前 (例: 一部)">
+            </div>
+            <div class="part-actions">
+                <button class="btn btn-secondary btn-sm" onclick="copyDynamicPart(this)" type="button">📑 部のコピー</button>
+                <button class="btn btn-danger-text btn-sm" onclick="removeDynamicPart(this)" type="button">🗑️ 部の削除</button>
+            </div>
+        </div>
+        <div class="dynamic-wrapper">
+            <div class="dynamic-row">
+                <input type="text" class="e1-input experiment-name" style="flex:5" value="" placeholder="実験名">
+                <input type="text" class="e1-input presenter-name" style="flex:3" value="" placeholder="担当者">
+                <button class="btn-del" onclick="removeDynamicItem(this)" type="button">✖</button>
+            </div>
+        </div>
+        <button class="btn-add-exp" onclick="addDynamicItem(this)" type="button">＋ 実験を追加</button>
+    `;
+    container.appendChild(block);
+}
+
+function removeDynamicPart(btn) {
+    const block = btn.closest('.part-block');
+    if (block) {
+        block.remove();
+    }
+}
+
+function copyDynamicPart(btn) {
+    const original = btn.closest('.part-block');
+    const clone = original.cloneNode(true);
+    // Append clone after original
+    original.parentNode.insertBefore(clone, original.nextSibling);
+
+    // Increment the part name
+    const nameInput = clone.querySelector('.part-name-input');
+    if (nameInput) {
+        const kanjiList = ['一部', '二部', '三部', '四部', '五部', '六部', '七部', '八部', '九部', '十部'];
+        let currentVal = nameInput.value.replace(/\s*\(コピー\)$/, '');
+        let idx = kanjiList.indexOf(currentVal);
+        if (idx !== -1 && idx < kanjiList.length - 1) {
+            nameInput.value = kanjiList[idx + 1];
+        } else {
+            nameInput.value = currentVal + " (コピー)";
+        }
+    }
+}
+
+function addDynamicItem(btn) {
+    const wrapper = btn.closest('.part-block').querySelector('.dynamic-wrapper');
+    const div = document.createElement('div');
+    div.className = 'dynamic-row';
+    div.innerHTML = `
+        <input type="text" class="e1-input experiment-name" style="flex:5" placeholder="実験名" value="">
+        <input type="text" class="e1-input presenter-name" style="flex:3" placeholder="担当者" value="">
+        <button class="btn-del" onclick="removeDynamicItem(this)" type="button">✖</button>
+    `;
+    wrapper.appendChild(div);
+}
+
+function removeDynamicItem(btn) {
+    const item = btn.closest('.dynamic-row');
+    const wrapper = item.parentElement;
+    item.remove();
+    // Ensure at least one remains
+    if (wrapper.children.length === 0) {
+        addDynamicItem(wrapper.parentElement.querySelector('.btn-add-exp'));
+    }
+}
+
+// Save Event
+function saveEvent(btn) {
+    const card = btn.closest('.event-card');
+    const id = card.getAttribute('data-id');
+    const eventIndex = eventsData.findIndex(e => e.ID === id);
+
+    // Collect data from inputs
+    const inputs = card.querySelectorAll('.edit-mode:not(.dynamic-item input)'); // Exclude dynamic ones here
+    let newData = { ...eventsData[eventIndex] };
+
+    inputs.forEach(input => {
+        const field = input.getAttribute('data-field');
+        if (field) {
+            newData[field] = input.value;
+        }
+    });
+
+    // Collect time from explicit selects
+    const startSel = card.querySelector('.time-start-select');
+    const endSel = card.querySelector('.time-end-select');
+    if (startSel && endSel) {
+        newData.Event_Time = `${startSel.value} - ${endSel.value}`;
+    }
+
+    // Special meeting title handling
+    if (newData.Category === 'admin' || newData.Category === 'general') {
+        const metNum = card.querySelector('#meeting-num-input');
+        const metName = card.querySelector('#meeting-name-input');
+        if (metNum) newData.Meeting_Number = metNum.value;
+        if (metName) newData.Title = metName.value;
+    }
+
+    // Collect dynamic lists (Parts structure)
+    const partsContainer = card.querySelector('.parts-container');
+    if (partsContainer) {
+        const blocks = partsContainer.querySelectorAll('.part-block');
+        const partsList = [];
+
+        // For backwards compat / quick access
+        const flatExps = [];
+        const flatPres = [];
+
+        blocks.forEach(block => {
+            const partName = block.querySelector('.part-name-input').value;
+            const rows = block.querySelectorAll('.dynamic-row');
+            const items = [];
+            rows.forEach(row => {
+                const exp = row.querySelector('.experiment-name').value.trim();
+                const pre = row.querySelector('.presenter-name').value.trim();
+                if (exp || pre) {
+                    items.push({ name: exp, presenter: pre });
+                    flatExps.push(exp);
+                    flatPres.push(pre);
+                }
+            });
+            partsList.push({ partName: partName, items: items });
+        });
+
+        newData.PartsList = JSON.stringify(partsList);
+        newData.Experiments = flatExps.join(',');
+        newData.Presenters = flatPres.join(',');
+    }
+
+    // Recalculate deadlines explicitly (just in case input change didn't trigger)
+    const deadLines = calculateDeadlines(newData.Date);
+    newData.Kyoka_Deadline = deadLines.kyoka;
+    newData.Houkoku_Deadline = deadLines.houkoku;
+
+    // Update state
+    eventsData[eventIndex] = newData;
+
+    // Re-render this specific card (or part of it) to show read-only view
+    // For simplicity, just updating fields and toggling class
+    populateFields(card, newData);
+
+    // Update header info as well
+    const dateObj = new Date(newData.Date);
+    const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][dateObj.getDay()];
+    card.querySelector('.event-date-badge').textContent = `${newData.Date} (${dayOfWeek})`;
+    card.querySelector('.event-title').textContent = newData.Title;
+
+    // Display Time
+    const timeDisplay = card.querySelector('.event-time-display');
+    if (timeDisplay) timeDisplay.textContent = newData.Event_Time || '--:--';
+
+    card.classList.remove('editing');
+    card.querySelectorAll('.display-mode').forEach(el => el.classList.remove('hidden'));
+    card.querySelectorAll('.edit-mode').forEach(el => el.classList.add('hidden'));
+
+    alert('保存しました（モック）');
+}
+
+// --- Modal & New Event Logic ---
+
+function openNewEventModal() {
+    document.getElementById('modal-overlay').classList.remove('hidden');
+    document.getElementById('category-selection-modal').classList.remove('hidden');
+    document.getElementById('new-event-edit-modal').classList.add('hidden');
+}
+
+function closeModal() {
+    document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+function startNewEvent(category) {
+    // Hide category selection, show edit form
+    document.getElementById('category-selection-modal').classList.add('hidden');
+    document.getElementById('new-event-edit-modal').classList.remove('hidden');
+
+    const newId = "ev_" + Date.now();
+    const today = new Date().toISOString().split('T')[0];
+
+    // Use globally set temp dates from calendar selection if available
+    const startDate = window.tempStart || today;
+    const endDate = window.tempEnd || "";
+
+    // Clear them out for next time
+    window.tempStart = null;
+    window.tempEnd = null;
+
+    // Default titles based on category
+    const titleMap = {
+        'normal': '新規通常イベント',
+        'other': '新規学内イベント',
+        'general': '全体ミーティング',
+        'admin': '幹部ミーティング'
+    };
+
+    const newEvent = {
+        ID: newId,
+        Date: startDate,
+        Date_End: endDate,
+        Title: titleMap[category],
+        Location: "",
+        Meeting_Number: "",
+        Category: category,
+        Event_Time: "",
+        Meeting_Logistics: "",
+        Experiments: "",
+        Presenters: "",
+        Admin_Kyoka: "",
+        Admin_Houkoku: "",
+        Kyoka_Deadline: "",
+        Houkoku_Deadline: "",
+        Remarks: "",
+        Files: ""
+    };
+
+    // Auto calc initial deadlines
+    const dHands = calculateDeadlines(startDate);
+    newEvent.Kyoka_Deadline = dHands.kyoka;
+    newEvent.Houkoku_Deadline = dHands.houkoku;
+
+    const headerTitle = document.querySelector('#new-event-edit-modal h2');
+    if (headerTitle) headerTitle.textContent = "✨ 新規イベント作成";
+
+    const actionButtons = document.getElementById('modal-action-buttons');
+    if (actionButtons) {
+        actionButtons.innerHTML = `
+            <button class="btn btn-text" onclick="closeModal()">キャンセル</button>
+            <button class="btn btn-primary" onclick="saveEventFromModal()">保存</button>
+        `;
+    }
+
+    // We don't push to eventsData yet. We keep it temporary until "Save".
+    // Render the form inside the modal using the template, force edit mode
+    renderModalForm(newEvent, true);
+}
+
+// Temporary storage for the event currently being created or edited in the modal
+let tempNewEvent = null;
+
+function renderModalForm(eventData, isEditMode = true) {
+    tempNewEvent = { ...eventData };
+    const container = document.getElementById('new-event-form-container');
+    container.innerHTML = ''; // clear
+
+    const template = document.getElementById('event-template');
+    const clone = template.content.cloneNode(true);
+    const card = clone.querySelector('.event-card');
+    card.setAttribute('data-id', eventData.ID);
+
+    // We only need the details section, not the accordion header
+    const summary = card.querySelector('.event-summary');
+    summary.style.display = 'none';
+
+    const details = card.querySelector('.event-details');
+    details.classList.remove('collapsed');
+
+    // Hide purely action buttons from the template and drag drop (keep simple for now)
+    card.querySelector('.action-buttons').style.display = 'none';
+
+    // Populate and force Edit Mode
+    populateFields(card, eventData);
+
+    // Title input is missing in details (it was in summary). Add it dynamically.
+    const detailsContainer = card.querySelector('.detail-section.top-section') || card.querySelector('.event-details');
+    // If it's pure Event mode, inject the standard title at the top if it got removed, else it's in template. 
+    // Wait, with the new template Title input is already there for both modes. So we don't need programmatic injection
+    container.appendChild(card);
+
+    if (isEditMode) {
+        card.classList.add('editing');
+        card.querySelectorAll('.display-mode').forEach(el => el.classList.add('hidden'));
+        card.querySelectorAll('.edit-mode').forEach(el => el.classList.remove('hidden'));
+    } else {
+        card.classList.remove('editing');
+        card.querySelectorAll('.display-mode').forEach(el => el.classList.remove('hidden'));
+        card.querySelectorAll('.edit-mode').forEach(el => el.classList.add('hidden'));
+    }
+}
+
+function enableModalEdit() {
+    const card = document.getElementById('new-event-form-container').querySelector('.event-card');
+    card.classList.add('editing');
+    card.querySelectorAll('.display-mode').forEach(el => el.classList.add('hidden'));
+    card.querySelectorAll('.edit-mode').forEach(el => el.classList.remove('hidden'));
+
+    document.querySelectorAll('.display-mode-btn').forEach(b => b.classList.add('hidden'));
+    document.querySelectorAll('.edit-mode-btn').forEach(b => b.classList.remove('hidden'));
+}
+
+function cancelModalEdit(originalId) {
+    viewEventInModal(originalId); // reset view to original state
+}
+
+function deleteModalEvent() {
+    if (!confirm('本当に削除しますか？')) return;
+    const eventIndex = eventsData.findIndex(e => e.ID === tempNewEvent.ID);
+    if (eventIndex > -1) {
+        eventsData.splice(eventIndex, 1);
+        renderEvents();
+        refreshCalendar();
+    }
+    closeModal();
+    alert('イベントを削除しました');
+}
+
+function saveEventFromModal() {
+    const eventIndex = eventsData.findIndex(e => e.ID === tempNewEvent.ID);
+    const container = document.getElementById('new-event-form-container');
+    const card = container.querySelector('.event-card');
+
+    // Collect data from inputs
+    const inputs = card.querySelectorAll('.edit-mode:not(.dynamic-item input)');
+
+    inputs.forEach(input => {
+        const field = input.getAttribute('data-field');
+        if (field) {
+            tempNewEvent[field] = input.value;
+        }
+    });
+
+    // Collect time from explicit selects
+    const startSel = card.querySelector('.time-start-select');
+    const endSel = card.querySelector('.time-end-select');
+    if (startSel && endSel) {
+        tempNewEvent.Event_Time = `${startSel.value} - ${endSel.value}`;
+    }
+
+    // Special meeting title handling
+    if (tempNewEvent.Category === 'admin' || tempNewEvent.Category === 'general') {
+        const metNum = card.querySelector('#meeting-num-input');
+        const metName = card.querySelector('#meeting-name-input');
+        if (metNum) tempNewEvent.Meeting_Number = metNum.value;
+        if (metName) tempNewEvent.Title = metName.value;
+    }
+
+    // Collect dynamic lists (Parts structure)
+    const partsContainer = card.querySelector('.parts-container');
+    if (partsContainer) {
+        const blocks = partsContainer.querySelectorAll('.part-block');
+        const partsList = [];
+
+        const flatExps = [];
+        const flatPres = [];
+
+        blocks.forEach(block => {
+            const partName = block.querySelector('.part-name-input').value;
+            const rows = block.querySelectorAll('.dynamic-row');
+            const items = [];
+            rows.forEach(row => {
+                const exp = row.querySelector('.experiment-name').value.trim();
+                const pre = row.querySelector('.presenter-name').value.trim();
+                if (exp || pre) {
+                    items.push({ name: exp, presenter: pre });
+                    flatExps.push(exp);
+                    flatPres.push(pre);
+                }
+            });
+            partsList.push({ partName: partName, items: items });
+        });
+
+        tempNewEvent.PartsList = JSON.stringify(partsList);
+        tempNewEvent.Experiments = flatExps.join(',');
+        tempNewEvent.Presenters = flatPres.join(',');
+    }
+
+    // Recalculate deadlines explicitly
+    const deadLines = calculateDeadlines(tempNewEvent.Date);
+    tempNewEvent.Kyoka_Deadline = deadLines.kyoka;
+    tempNewEvent.Houkoku_Deadline = deadLines.houkoku;
+
+    // Push to main state
+    if (eventIndex > -1) {
+        eventsData[eventIndex] = { ...tempNewEvent };
+    } else {
+        eventsData.unshift(tempNewEvent);
+    }
+
+    // Re-render main views
+    renderEvents();
+    refreshCalendar();
+
+    // Close Modal
+    closeModal();
+    tempNewEvent = null;
+    alert('保存しました');
+}
+
+// Update Deadlines on Date Change
+function updateDeadlines(dateInput) {
+    const card = dateInput.closest('.event-card');
+    const newDate = dateInput.value;
+
+    if (!newDate) return;
+
+    const calculations = calculateDeadlines(newDate);
+
+    // Update the READ ONLY display span next to the input (if we were displaying it there)
+    // But since we are in edit mode, we might want to update invisible inputs or just displayed text?
+    // In this UI, deadlines are Auto-calculated. Users might manually override?
+    // The requirement says "Auto set on Date input. Manual override possible."
+    // So we need inputs for deadlines too? 
+    // Wait, requirement: "Behavior: Auto-set on Event_Date input. Manual overwrite also possible."
+    // My HTML currently doesn't have INPUTS for deadlines, only display spans.
+    // Let's add Inputs for deadlines or just rely on display for now?
+    // "UI Requirement: Center Left: Timeline... Center Right: Experiments... and Deadlines"
+    // "Logic: Auto calculate... manual overwrite possible."
+
+    // I should add hidden inputs for deadlines or make the deadline display editable.
+    // For now, I'll just update the display logic in the object context.
+    // Actually, let's just update the display spans directly for feedback.
+
+    const kyokaDisplay = card.querySelector('[data-field="Kyoka_Deadline"]');
+    const houkokuDisplay = card.querySelector('[data-field="Houkoku_Deadline"]');
+
+    if (kyokaDisplay) kyokaDisplay.textContent = calculations.kyoka;
+    if (houkokuDisplay) houkokuDisplay.textContent = calculations.houkoku;
+}
+
+function calculateDeadlines(dateStr) {
+    if (!dateStr) return { kyoka: '', houkoku: '' };
+
+    const eventDate = new Date(dateStr);
+
+    // Kyoka: -10 days
+    const kyokaDate = new Date(eventDate);
+    kyokaDate.setDate(eventDate.getDate() - 10);
+
+    // Houkoku: +7 days
+    const houkokuDate = new Date(eventDate);
+    houkokuDate.setDate(eventDate.getDate() + 7);
+
+    return {
+        kyoka: formatDate(kyokaDate),
+        houkoku: formatDate(houkokuDate)
+    };
+}
+
+function formatDate(date) {
+    const y = date.getFullYear();
+    const m = ('0' + (date.getMonth() + 1)).slice(-2);
+    const d = ('0' + date.getDate()).slice(-2);
+    return `${y}-${m}-${d}`;
+}
+
+// File Drag & Drop (Visual only)
+function allowDrop(ev) {
+    ev.preventDefault();
+}
+
+function handleDrop(ev, element) {
+    ev.preventDefault();
+
+    if (ev.dataTransfer.items) {
+        // Use DataTransferItemList interface to access the file(s)
+        [...ev.dataTransfer.items].forEach((item, i) => {
+            // If dropped items aren't files, reject them
+            if (item.kind === 'file') {
+                const file = item.getAsFile();
+                console.log(`... file[${i}].name = ${file.name}`);
+                alert(`ファイル "${file.name}" を受け付けました（保存機能は未実装）`);
+            }
+        });
+    }
+}
