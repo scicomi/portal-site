@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>イベント | SciComi Portal</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <script defer src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js'></script>
+</head>
+
+<body>
+    <header class="app-header"><!-- Filled by app.js renderHeader('events') --></header>
+
+    <main class="container">
+        <div class="page-section-actions">
+            <h1 class="page-title" style="margin: 0; flex: 1;">📅 イベント管理</h1>
+            <input id="event-search" class="search-input" type="text" placeholder="🔍 タイトル・場所・担当者で検索" oninput="onSearchChange()">
+            <button class="btn btn-primary" onclick="openNewEventModal()" style="background: #464775; color: white; border: 1px solid #464775;">＋ 新規イベント</button>
+        </div>
+        <div class="page-section-actions">
+            <button class="filter-chip active" data-cat="all" onclick="onCategoryFilter('all')">全部</button>
+            <button class="filter-chip" data-cat="normal" onclick="onCategoryFilter('normal')">通常</button>
+            <button class="filter-chip" data-cat="other" onclick="onCategoryFilter('other')">学内</button>
+            <button class="filter-chip" data-cat="general" onclick="onCategoryFilter('general')">全体MTG</button>
+            <button class="filter-chip" data-cat="admin" onclick="onCategoryFilter('admin')">幹部MTG</button>
+            <span style="margin-left: auto;">
+                <button class="filter-chip active" data-period="upcoming" onclick="onPeriodFilter('upcoming')">今後</button>
+                <button class="filter-chip" data-period="past" onclick="onPeriodFilter('past')">過去</button>
+                <button class="filter-chip" data-period="all" onclick="onPeriodFilter('all')">全部</button>
+            </span>
+        </div>
+
+        <!-- Calendar Section -->
+        <section id="calendar-wrapper" class="calendar-section"
+            style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 30px;">
+            <div id="calendar"></div>
+        </section>
+
+        <div id="event-list" class="event-list">
+            <!-- Events will be rendered here by JS -->
+        </div>
+    </main>
+
+    <!-- Template for Event Item (Used by JS) -->
+    <template id="event-template">
+        <div class="event-card" data-id="">
+            <div class="event-summary" onclick="toggleAccordion(this)">
+                <div class="summary-left">
+                    <span class="event-date-badge"></span>
+                    <h3 class="event-title display-mode"></h3>
+                    <input type="text" class="edit-mode hidden title-edit sm-input" data-field="Title"
+                        onclick="event.stopPropagation()">
+                </div>
+                <div class="summary-right">
+                    <span class="event-time-display display-mode"></span>
+                    <span class="expand-icon" style="font-size: 1.2rem; transform: none !important;">↗</span>
+                </div>
+            </div>
+
+            <div class="event-details collapsed">
+                <div class="details-content">
+
+                    <!-- Top Section: Basic Info -->
+                    <section class="detail-section top-section">
+                        <!-- Meeting Mode Only (Title is fully dynamic) -->
+                        <div class="field-group full-width meeting-only-section">
+                            <label>🏷️ ミーティング名</label>
+                            <div class="field-value display-mode" data-field="Title_Display"></div>
+                            <div class="edit-mode hidden title-input-wrapper"
+                                style="display:flex; align-items:center; gap: 10px;">
+                                <span style="font-weight:bold; color:#464775; white-space:nowrap;">回数：</span>
+                                <input type="number" class="e1-input edit-mode" id="meeting-num-input"
+                                    data-field="Meeting_Number" style="width:70px; flex:none;" placeholder="3">
+                                <span style="font-weight:bold; color:#464775; white-space:nowrap;">ミーティング名：</span>
+                                <input type="text" class="e1-input edit-mode" id="meeting-name-input" data-field="Title"
+                                    style="flex:1;" placeholder="イベント振り返りなど">
+                            </div>
+                        </div>
+
+                        <!-- General Layout (Event / Meeting) -->
+                        <!-- Meeting has hidden the old Event_Time logic but we implement new fixed dropdowns -->
+                        <table class="d1-table display-mode-table display-mode">
+                            <tr class="event-only-section">
+                                <th style="width: 140px;">🏷️ イベント名</th>
+                                <td>
+                                    <div class="field-value display-mode" data-field="Title"
+                                        style="font-size: 1.25rem; font-weight: bold; color: #464775;"></div>
+                                </td>
+                            </tr>
+                            <tr class="event-only-section">
+                                <th>👥 対象・人数</th>
+                                <td>
+                                    <div class="field-value display-mode" data-field="Audience"></div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th style="width: 140px;">📍 場所</th>
+                                <td>
+                                    <div class="field-value display-mode" data-field="Location"></div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>📅 日時</th>
+                                <td>
+                                    <div class="field-value display-mode" data-field="Date_Display"></div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>⏰ 時間</th>
+                                <td>
+                                    <div class="field-value display-mode" data-field="Event_Time"></div>
+                                </td>
+                            </tr>
+
+                            <!-- Display block for Experiments and Parts -->
+                            <tr class="event-only-section">
+                                <th>🧪 実験・担当</th>
+                                <td>
+                                    <div class="field-value display-mode" data-field="Experiments_Display"></div>
+                                </td>
+                            </tr>
+
+                            <!-- Display block for Deadlines -->
+                            <tr class="event-only-section">
+                                <th>⚠️ 書類期限</th>
+                                <td>
+                                    <ul style="margin:0; padding-left: 20px;">
+                                        <li>許可願: 担当 <strong data-field="Admin_Kyoka"></strong> <span
+                                                style="margin-left: 10px;">期限: <span class="tag-deadline"
+                                                    data-field="Kyoka_Deadline"></span></span></li>
+                                        <li style="margin-top: 5px;">報告書: 担当 <strong
+                                                data-field="Admin_Houkoku"></strong> <span
+                                                style="margin-left: 10px;">期限: <span class="tag-deadline"
+                                                    data-field="Houkoku_Deadline"></span></span></li>
+                                    </ul>
+                                </td>
+                            </tr>
+
+                            <tr class="event-only-section">
+                                <th>📋 スケジュール<br>　 運搬</th>
+                                <td>
+                                    <div class="field-value display-mode text-area-view" data-field="Meeting_Logistics"
+                                        style="white-space: pre-wrap;"></div>
+                                </td>
+                            </tr>
+
+                            <tr>
+                                <th><span class="remarks-label-view">📝 備考</span></th>
+                                <td>
+                                    <div class="field-value display-mode text-area-view" data-field="Remarks"
+                                        style="white-space: pre-wrap;"></div>
+                                </td>
+                            </tr>
+
+                            <tr class="event-only-section">
+                                <th>📁 関連ファイル</th>
+                                <td>
+                                    <div class="file-list display-mode" data-field="Files_Display"></div>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <!-- Editor UI Forms -->
+                        <div class="edit-mode hidden edit-form-wrapper">
+
+                            <div class="e1-group event-only-section">
+                                <label class="e1-label">🏷️ イベント名</label>
+                                <input type="text" class="e1-input edit-mode" data-field="Title">
+                            </div>
+
+                            <div class="flex-row">
+                                <div class="e1-group" style="flex:2;">
+                                    <label class="e1-label">📍 場所</label>
+                                    <input type="text" class="e1-input edit-mode" data-field="Location">
+                                </div>
+                                <div class="e1-group event-only-section" style="flex:2;">
+                                    <label class="e1-label">👥 対象者・人数</label>
+                                    <input type="text" class="e1-input edit-mode" data-field="Audience"
+                                        placeholder="例: 小学1〜3年生 40名">
+                                </div>
+                            </div>
+
+                            <div class="flex-row">
+                                <div class="e1-group" style="flex:1;">
+                                    <label class="e1-label">📅 開始日</label>
+                                    <input type="date" class="e1-input edit-mode" data-field="Date"
+                                        onchange="updateDeadlines(this)">
+                                </div>
+                                <div class="e1-group" style="flex:1;">
+                                    <label class="e1-label">🏁 終了日</label>
+                                    <input type="date" class="e1-input edit-mode" data-field="Date_End">
+                                </div>
+                                <div class="e1-group" style="flex:1;">
+                                    <label class="e1-label">⏰ 時間</label>
+                                    <div class="time-select-group">
+                                        <select class="e1-input time-start-select" data-field="Time_Start">
+                                            <option>09:00</option>
+                                            <option>09:30</option>
+                                            <option>10:00</option>
+                                            <option>10:30</option>
+                                            <option>11:00</option>
+                                            <option>11:30</option>
+                                            <option>12:00</option>
+                                            <option>12:30</option>
+                                            <option selected>13:00</option>
+                                            <option>13:30</option>
+                                            <option>14:00</option>
+                                            <option>14:30</option>
+                                            <option>15:00</option>
+                                            <option>15:30</option>
+                                            <option>16:00</option>
+                                            <option>16:30</option>
+                                            <option>17:00</option>
+                                            <option>17:30</option>
+                                            <option>18:00</option>
+                                            <option>18:30</option>
+                                            <option>19:00</option>
+                                            <option>19:30</option>
+                                            <option>20:00</option>
+                                            <option>20:30</option>
+                                            <option>21:00</option>
+                                        </select>
+                                        <span>〜</span>
+                                        <select class="e1-input time-end-select" data-field="Time_End">
+                                            <option>09:30</option>
+                                            <option>10:00</option>
+                                            <option>10:30</option>
+                                            <option>11:00</option>
+                                            <option>11:30</option>
+                                            <option>12:00</option>
+                                            <option>12:30</option>
+                                            <option>13:00</option>
+                                            <option>13:30</option>
+                                            <option>14:00</option>
+                                            <option>14:30</option>
+                                            <option>15:00</option>
+                                            <option>15:30</option>
+                                            <option selected>16:00</option>
+                                            <option>16:30</option>
+                                            <option>17:00</option>
+                                            <option>17:30</option>
+                                            <option>18:00</option>
+                                            <option>18:30</option>
+                                            <option>19:00</option>
+                                            <option>19:30</option>
+                                            <option>20:00</option>
+                                            <option>20:30</option>
+                                            <option>21:00</option>
+                                        </select>
+                                    </div>
+                                    <input type="hidden" data-field="Event_Time">
+                                </div>
+                            </div>
+
+                            <hr class="event-only-section"
+                                style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+
+                            <div class="e1-group event-only-section">
+                                <label class="e1-label">🧪 実験・担当者</label>
+                                <div class="parts-container" data-field="PartsList">
+                                    <!-- Dynamic parts will be inserted here -->
+                                </div>
+                                <button class="btn-add-part" type="button" onclick="addDynamicPart(this)">＋
+                                    新しい部を追加</button>
+                            </div>
+
+                            <hr class="event-only-section"
+                                style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+
+                            <div class="e1-group event-only-section">
+                                <label class="e1-label">⚠️ 書類期限（日付は自動計算されます）</label>
+                                <div class="deadline-grid">
+                                    <div>
+                                        <label
+                                            style="font-size:0.85rem; color:#666; display:block; margin-bottom:4px;">許可願
+                                            (担当)</label>
+                                        <input type="text" class="e1-input edit-mode" data-field="Admin_Kyoka"
+                                            placeholder="担当者">
+                                    </div>
+                                    <div>
+                                        <label
+                                            style="font-size:0.85rem; color:#666; display:block; margin-bottom:4px;">報告書
+                                            (担当)</label>
+                                        <input type="text" class="e1-input edit-mode" data-field="Admin_Houkoku"
+                                            placeholder="担当者">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="e1-group event-only-section">
+                                <label class="e1-label">📋 スケジュール・運搬</label>
+                                <textarea class="e1-input edit-mode" data-field="Meeting_Logistics" rows="5"></textarea>
+                            </div>
+
+                            <div class="e1-group">
+                                <label class="e1-label remarks-label-edit">📝 備考</label>
+                                <textarea class="e1-input edit-mode" data-field="Remarks" rows="4"></textarea>
+                            </div>
+
+                            <div class="e1-group event-only-section">
+                                <label class="e1-label">📁 関連ファイル</label>
+                                <div class="file-drop-zone" ondrop="handleDrop(event, this)"
+                                    ondragover="allowDrop(event)">
+                                    <p style="margin:0; font-weight:bold;">ファイルをここにドラッグ＆ドロップ</p>
+                                    <p style="margin:5px 0 0 0; font-size:0.85rem;">またはクリックして選択</p>
+                                </div>
+                                <input type="hidden" class="edit-mode" data-field="Files">
+                            </div>
+
+                        </div>
+                    </section>
+
+                    <!-- Action Buttons -->
+                    <div class="action-buttons form-actions">
+                        <button class="btn btn-secondary display-mode" onclick="enableEdit(this)">✏️ 編集</button>
+                        <button class="btn btn-danger-text edit-mode hidden" onclick="deleteEvent(this)"
+                            style="margin-right:auto;">🗑️ 削除</button>
+                        <button class="btn btn-secondary edit-mode hidden" onclick="cancelEdit(this)">キャンセル</button>
+                        <button class="btn btn-primary edit-mode hidden" onclick="saveEvent(this)">💾 保存</button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Modal Overlay -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div class="modal-content" id="category-selection-modal">
+            <h2>新規イベント作成</h2>
+            <p>イベントの種類を選択してください。</p>
+            <div class="category-buttons">
+                <button class="btn btn-category cat-normal-btn" onclick="startNewEvent('normal')">通常イベント</button>
+                <button class="btn btn-category cat-other-btn" onclick="startNewEvent('other')">学内イベント</button>
+                <button class="btn btn-category cat-general-btn" onclick="startNewEvent('general')">全体ミーティング</button>
+                <button class="btn btn-category cat-admin-btn" onclick="startNewEvent('admin')">幹部ミーティング</button>
+            </div>
+            <button class="btn btn-text mt-2" onclick="closeModal()">キャンセル</button>
+        </div>
+
+        <div class="modal-content event-card hidden large-modal" id="new-event-edit-modal">
+            <div class="modal-header">
+                <h2>📝 イベント詳細</h2>
+                <div class="action-buttons-top" id="modal-action-buttons">
+                    <button class="btn btn-text" onclick="closeModal()">閉じる</button>
+                </div>
+            </div>
+
+            <div class="modal-body">
+                <!-- The inner form will be populated by JS using the template -->
+                <div id="new-event-form-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="app.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>

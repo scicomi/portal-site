@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>メンバー | SciComi Portal</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="app-header"></header>
+
+    <main class="container">
+        <div class="page-section-actions">
+            <h1 class="page-title" style="margin:0; flex:1;">👥 メンバーリスト</h1>
+            <input id="member-search" class="search-input" type="text" placeholder="🔍 名前・役職で検索" oninput="onMemberSearch()">
+            <button class="btn-primary-solid" style="width: auto; padding: 8px 16px;" onclick="openMemberModal()">＋ メンバー追加</button>
+        </div>
+
+        <section id="adviser-section" class="member-category">
+            <h2 class="member-category-title">
+                🎓 アドバイザー
+                <span class="member-category-count" id="adviser-count">0名</span>
+            </h2>
+            <div class="member-grid" id="adviser-grid"></div>
+        </section>
+
+        <section id="coordinator-section" class="member-category">
+            <h2 class="member-category-title">
+                🤝 コーディネーター
+                <span class="member-category-count" id="coordinator-count">0名</span>
+            </h2>
+            <div class="member-grid" id="coordinator-grid"></div>
+        </section>
+
+        <section id="member-section" class="member-category">
+            <h2 class="member-category-title">
+                👨‍🎓 メンバー
+                <span class="member-category-count" id="member-count">0名</span>
+            </h2>
+            <div class="member-grid" id="member-grid"></div>
+        </section>
+
+        <!-- 編集モーダル -->
+        <div id="member-modal" class="modal-overlay hidden">
+            <div class="modal-content" style="max-width: 500px;">
+                <h2 id="member-modal-title">メンバー追加</h2>
+                <div class="e1-group">
+                    <label class="e1-label">名前 *</label>
+                    <input id="mb-name" class="e1-input" type="text" placeholder="例: 山田 太郎">
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">カテゴリ *</label>
+                    <select id="mb-category" class="e1-input">
+                        <option value="member">メンバー</option>
+                        <option value="coordinator">コーディネーター</option>
+                        <option value="adviser">アドバイザー</option>
+                    </select>
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">役職・担当</label>
+                    <input id="mb-role" class="e1-input" type="text" placeholder="例: プロジェクトリーダー">
+                </div>
+                <div class="flex-row">
+                    <div class="e1-group" style="flex:2;">
+                        <label class="e1-label">学生証番号 / 教職員番号</label>
+                        <input id="mb-student-id" class="e1-input" type="text" placeholder="例: 4CSC1234">
+                    </div>
+                    <div class="e1-group" style="flex:1;">
+                        <label class="e1-label">学年</label>
+                        <input id="mb-year" class="e1-input" type="text" placeholder="例: 4">
+                    </div>
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">所属</label>
+                    <input id="mb-affiliation" class="e1-input" type="text" placeholder="例: 理系教育センター">
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">メモ</label>
+                    <textarea id="mb-note" class="e1-input" rows="2"></textarea>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-text" onclick="closeMemberModal()">キャンセル</button>
+                    <button class="btn btn-primary-solid" style="width:auto;" onclick="saveMember()">💾 保存</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="api.js"></script>
+    <script src="app.js"></script>
+    <script src="members.js"></script>
+</body>
+</html>
