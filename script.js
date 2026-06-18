@@ -1,53 +1,81 @@
-// Initial Mock Data
-let eventsData = [
-    {
-        ID: "ev_001",
-        Date: "2026-06-20",
-        Title: "みずほ小学校 実験教室",
-        Location: "みずほ小学校 体育館",
-        Target: "小学1~6年生 30名",
-        Category: "normal", // normal, admin, general, other
-        Event_Time: "10:00 - 12:00",
-        Meeting_Logistics: "9:00 正門前集合\n9:15 搬入開始\n12:30 撤収完了",
-        Experiments: "空気砲、ダイラタンシー、超撥水",
-        Presenters: "空気砲：井上\nダイラタンシー：田中\n超撥水：佐藤",
-        Admin_Kyoka: "鈴木",
-        Admin_Houkoku: "田中",
-        Kyoka_Deadline: "2026-06-10",
-        Houkoku_Deadline: "2026-06-27",
-        Belongings: "スリッパ、名札、ポロシャツ",
-        Remarks: "駐車場は北側を利用すること。\n教頭先生に挨拶必須。",
-        Files: "https://drive.google.com/file/d/example1/view,https://drive.google.com/file/d/example2/view"
-    },
-    {
-        ID: "ev_002",
-        Date: "2026-07-05",
-        Title: "サイエンスフェスタ出展",
-        Location: "市民文化センター",
-        Target: "一般来場者",
-        Category: "normal",
-        Event_Time: "13:00 - 16:00",
-        Meeting_Logistics: "12:00 現地集合",
-        Experiments: "スライム作り",
-        Presenters: "全員交代制",
-        Admin_Kyoka: "山田",
-        Admin_Houkoku: "山田",
-        Kyoka_Deadline: "2026-06-25",
-        Houkoku_Deadline: "2026-07-12",
-        Belongings: "昼食持参",
-        Remarks: "",
-        Files: ""
-    }
-];
+// イベントデータ（GASから取得してここに保持）
+let eventsData = [];
 
 let holidaysData = {};
 
+// ---- スキーマ変換: GAS(新スキーマ) ⇔ UI(旧スキーマ) ----
+// GAS側: Date, DateEnd, TimeStart, TimeEnd, PartsList(配列), Files(配列), Logistics, AdminKyoka 等
+// UI側:  Date, Date_End, Event_Time, PartsList(JSON文字列), Files(カンマ区切り), Meeting_Logistics, Admin_Kyoka 等
+function gasToUi(g) {
+    const u = { ...g };
+    u.Date_End = g.DateEnd || '';
+    u.Event_Time = (g.TimeStart && g.TimeEnd) ? `${g.TimeStart} - ${g.TimeEnd}` : '';
+    u.Meeting_Logistics = g.Logistics || '';
+    u.Admin_Kyoka = g.AdminKyoka || '';
+    u.Admin_Houkoku = g.AdminHoukoku || '';
+    u.Kyoka_Deadline = g.KyokaDeadline || '';
+    u.Houkoku_Deadline = g.HoukokuDeadline || '';
+    u.Meeting_Number = g.MeetingNumber || '';
+    u.PartsList = Array.isArray(g.PartsList) ? JSON.stringify(g.PartsList) : (g.PartsList || '');
+    u.Files = Array.isArray(g.Files) ? g.Files.map(f => f.url || f).join(',') : (g.Files || '');
+    return u;
+}
+
+function uiToGas(u) {
+    const time = (u.Event_Time || '').split(' - ');
+    return {
+        ID: u.ID || '',
+        Date: u.Date || '',
+        DateEnd: u.Date_End || '',
+        Title: u.Title || '',
+        Category: u.Category || 'normal',
+        Location: u.Location || '',
+        Audience: u.Audience || '',
+        TimeStart: (time[0] || '').trim(),
+        TimeEnd: (time[1] || '').trim(),
+        MeetingNumber: u.Meeting_Number || '',
+        PartsList: u.PartsList ? (typeof u.PartsList === 'string' ? JSON.parse(u.PartsList) : u.PartsList) : [],
+        AdminKyoka: u.Admin_Kyoka || '',
+        AdminHoukoku: u.Admin_Houkoku || '',
+        KyokaDeadline: u.Kyoka_Deadline || '',
+        HoukokuDeadline: u.Houkoku_Deadline || '',
+        Logistics: u.Meeting_Logistics || '',
+        Remarks: u.Remarks || '',
+        Files: (u.Files || '').split(',').filter(s => s.trim()).map(url => ({ name: '', url: url.trim() })),
+        UpdatedBy: u.UpdatedBy || ''
+    };
+}
+
+// ---- 起動 ----
 document.addEventListener('DOMContentLoaded', async () => {
+    // 1. 認証チェック
+    if (!api.getToken()) {
+        showPasswordModal();
+        return; // ログイン後に init() が呼ばれる
+    }
+    await init();
+});
+
+async function init() {
+    // 祝日API
     try {
         const res = await fetch('https://holidays-jp.github.io/api/v1/date.json');
         holidaysData = await res.json();
     } catch (e) {
         console.warn('Failed to fetch holidays jp API');
+    }
+
+    // GASからイベント取得
+    try {
+        const list = await api.list();
+        eventsData = list.map(gasToUi);
+    } catch (e) {
+        if (String(e).includes('unauthorized')) {
+            api.clearToken();
+            showPasswordModal();
+            return;
+        }
+        alert('データ取得に失敗しました: ' + e.message);
     }
 
     if (document.getElementById('calendar-grid')) {
@@ -56,7 +84,62 @@ document.addEventListener('DOMContentLoaded', async () => {
         initFullCalendar();
     }
     renderEvents();
-});
+}
+
+// ---- パスワード認証モーダル ----
+function showPasswordModal() {
+    const modal = document.createElement('div');
+    modal.id = 'pw-modal';
+    modal.innerHTML = `
+        <div style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:99999;">
+            <div style="background:white; padding:30px 40px; border-radius:8px; min-width:320px; box-shadow:0 4px 20px rgba(0,0,0,0.2);">
+                <h2 style="margin-top:0; color:#464775;">🔒 ログイン</h2>
+                <p style="color:#666; font-size:0.9rem;">サークルメンバー共通パスワードを入力してください。</p>
+                <input id="pw-input" type="password" placeholder="パスワード"
+                    style="width:100%; padding:10px; border:1px solid #ced4da; border-radius:6px; font-size:1rem; margin:10px 0; box-sizing:border-box;">
+                <div id="pw-error" style="color:#c92a2a; font-size:0.85rem; min-height:1.2em; margin-bottom:10px;"></div>
+                <button id="pw-submit" style="width:100%; padding:10px; background:#464775; color:white; border:none; border-radius:6px; cursor:pointer; font-size:1rem; font-weight:600;">ログイン</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const input = modal.querySelector('#pw-input');
+    const errEl = modal.querySelector('#pw-error');
+    const submitBtn = modal.querySelector('#pw-submit');
+    input.focus();
+
+    const tryLogin = async () => {
+        errEl.textContent = '';
+        submitBtn.disabled = true;
+        submitBtn.textContent = '認証中...';
+        try {
+            const ok = await api.auth(input.value);
+            if (ok) {
+                modal.remove();
+                await init();
+            } else {
+                errEl.textContent = 'パスワードが違います';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'ログイン';
+                input.select();
+            }
+        } catch (e) {
+            errEl.textContent = '通信エラー: ' + e.message;
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'ログイン';
+        }
+    };
+
+    submitBtn.addEventListener('click', tryLogin);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryLogin(); });
+}
+
+// ログアウト（コンソールから呼ぶか、後でボタン追加）
+function logout() {
+    api.clearToken();
+    location.reload();
+}
 
 function refreshCalendar() {
     if (document.getElementById('calendar-grid')) {
@@ -642,17 +725,22 @@ function cancelEdit(btn) {
 }
 
 // Delete Event
-function deleteEvent(btn) {
+async function deleteEvent(btn) {
     if (!confirm('本当にこのイベントを削除しますか？')) return;
 
     const card = btn.closest('.event-card');
     const id = card.getAttribute('data-id');
     const eventIndex = eventsData.findIndex(e => e.ID === id);
 
-    if (eventIndex > -1) {
-        eventsData.splice(eventIndex, 1);
-        renderEvents();
-        refreshCalendar(); // カレンダーからも消去
+    try {
+        await api.delete(id);
+        if (eventIndex > -1) {
+            eventsData.splice(eventIndex, 1);
+            renderEvents();
+            refreshCalendar();
+        }
+    } catch (e) {
+        alert('削除に失敗しました: ' + e.message);
     }
 }
 
@@ -733,7 +821,7 @@ function removeDynamicItem(btn) {
 }
 
 // Save Event
-function saveEvent(btn) {
+async function saveEvent(btn) {
     const card = btn.closest('.event-card');
     const id = card.getAttribute('data-id');
     const eventIndex = eventsData.findIndex(e => e.ID === id);
@@ -800,11 +888,19 @@ function saveEvent(btn) {
     newData.Kyoka_Deadline = deadLines.kyoka;
     newData.Houkoku_Deadline = deadLines.houkoku;
 
+    // GASに保存
+    try {
+        const savedGas = await api.save(uiToGas(newData));
+        newData = gasToUi(savedGas);
+    } catch (e) {
+        alert('保存に失敗しました: ' + e.message);
+        return;
+    }
+
     // Update state
     eventsData[eventIndex] = newData;
 
     // Re-render this specific card (or part of it) to show read-only view
-    // For simplicity, just updating fields and toggling class
     populateFields(card, newData);
 
     // Update header info as well
@@ -821,7 +917,7 @@ function saveEvent(btn) {
     card.querySelectorAll('.display-mode').forEach(el => el.classList.remove('hidden'));
     card.querySelectorAll('.edit-mode').forEach(el => el.classList.add('hidden'));
 
-    alert('保存しました（モック）');
+    alert('保存しました');
 }
 
 // --- Modal & New Event Logic ---
@@ -958,9 +1054,16 @@ function cancelModalEdit(originalId) {
     viewEventInModal(originalId); // reset view to original state
 }
 
-function deleteModalEvent() {
+async function deleteModalEvent() {
     if (!confirm('本当に削除しますか？')) return;
-    const eventIndex = eventsData.findIndex(e => e.ID === tempNewEvent.ID);
+    const id = tempNewEvent.ID;
+    try {
+        await api.delete(id);
+    } catch (e) {
+        alert('削除に失敗しました: ' + e.message);
+        return;
+    }
+    const eventIndex = eventsData.findIndex(e => e.ID === id);
     if (eventIndex > -1) {
         eventsData.splice(eventIndex, 1);
         renderEvents();
@@ -970,7 +1073,7 @@ function deleteModalEvent() {
     alert('イベントを削除しました');
 }
 
-function saveEventFromModal() {
+async function saveEventFromModal() {
     const eventIndex = eventsData.findIndex(e => e.ID === tempNewEvent.ID);
     const container = document.getElementById('new-event-form-container');
     const card = container.querySelector('.event-card');
@@ -1035,11 +1138,21 @@ function saveEventFromModal() {
     tempNewEvent.Kyoka_Deadline = deadLines.kyoka;
     tempNewEvent.Houkoku_Deadline = deadLines.houkoku;
 
+    // GASに保存
+    let savedEvent;
+    try {
+        const savedGas = await api.save(uiToGas(tempNewEvent));
+        savedEvent = gasToUi(savedGas);
+    } catch (e) {
+        alert('保存に失敗しました: ' + e.message);
+        return;
+    }
+
     // Push to main state
     if (eventIndex > -1) {
-        eventsData[eventIndex] = { ...tempNewEvent };
+        eventsData[eventIndex] = savedEvent;
     } else {
-        eventsData.unshift(tempNewEvent);
+        eventsData.unshift(savedEvent);
     }
 
     // Re-render main views
