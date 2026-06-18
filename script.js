@@ -46,36 +46,25 @@ function uiToGas(u) {
     };
 }
 
+// ---- フィルタ状態 ----
+let filterState = {
+    keyword: '',
+    category: 'all',
+    period: 'upcoming'
+};
+
 // ---- 起動 ----
-document.addEventListener('DOMContentLoaded', async () => {
-    // 1. 認証チェック
-    if (!api.getToken()) {
-        showPasswordModal();
-        return; // ログイン後に init() が呼ばれる
-    }
-    await init();
+document.addEventListener('DOMContentLoaded', () => {
+    bootPage('events', init);
 });
 
 async function init() {
-    // 祝日API
-    try {
-        const res = await fetch('https://holidays-jp.github.io/api/v1/date.json');
-        holidaysData = await res.json();
-    } catch (e) {
-        console.warn('Failed to fetch holidays jp API');
-    }
+    holidaysData = await api.loadHolidaysCached();
 
-    // GASからイベント取得
-    try {
-        const list = await api.list();
-        eventsData = list.map(gasToUi);
-    } catch (e) {
-        if (String(e).includes('unauthorized')) {
-            api.clearToken();
-            showPasswordModal();
-            return;
-        }
-        alert('データ取得に失敗しました: ' + e.message);
+    // キャッシュ即表示
+    const cached = api.loadCache('events');
+    if (cached && cached.items && cached.items.length > 0) {
+        eventsData = cached.items;
     }
 
     if (document.getElementById('calendar-grid')) {
@@ -84,61 +73,66 @@ async function init() {
         initFullCalendar();
     }
     renderEvents();
+
+    if (cached) updateSyncStatus('cached', cached.timestamp);
+    else updateSyncStatus('initial-loading');
+
+    refreshData();
 }
 
-// ---- パスワード認証モーダル ----
-function showPasswordModal() {
-    const modal = document.createElement('div');
-    modal.id = 'pw-modal';
-    modal.innerHTML = `
-        <div style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:99999;">
-            <div style="background:white; padding:30px 40px; border-radius:8px; min-width:320px; box-shadow:0 4px 20px rgba(0,0,0,0.2);">
-                <h2 style="margin-top:0; color:#464775;">🔒 ログイン</h2>
-                <p style="color:#666; font-size:0.9rem;">サークルメンバー共通パスワードを入力してください。</p>
-                <input id="pw-input" type="password" placeholder="パスワード"
-                    style="width:100%; padding:10px; border:1px solid #ced4da; border-radius:6px; font-size:1rem; margin:10px 0; box-sizing:border-box;">
-                <div id="pw-error" style="color:#c92a2a; font-size:0.85rem; min-height:1.2em; margin-bottom:10px;"></div>
-                <button id="pw-submit" style="width:100%; padding:10px; background:#464775; color:white; border:none; border-radius:6px; cursor:pointer; font-size:1rem; font-weight:600;">ログイン</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(modal);
-
-    const input = modal.querySelector('#pw-input');
-    const errEl = modal.querySelector('#pw-error');
-    const submitBtn = modal.querySelector('#pw-submit');
-    input.focus();
-
-    const tryLogin = async () => {
-        errEl.textContent = '';
-        submitBtn.disabled = true;
-        submitBtn.textContent = '認証中...';
-        try {
-            const ok = await api.auth(input.value);
-            if (ok) {
-                modal.remove();
-                await init();
-            } else {
-                errEl.textContent = 'パスワードが違います';
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'ログイン';
-                input.select();
-            }
-        } catch (e) {
-            errEl.textContent = '通信エラー: ' + e.message;
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'ログイン';
+async function refreshData(isManual = false) {
+    updateSyncStatus(isManual ? 'syncing' : 'syncing-bg');
+    try {
+        const list = await api.list('events');
+        eventsData = list.map(gasToUi);
+        api.saveCache('events', eventsData);
+        renderEvents();
+        refreshCalendar();
+        updateSyncStatus('fresh', Date.now());
+    } catch (e) {
+        if (String(e).includes('unauthorized')) {
+            api.clearToken();
+            api.clearAllCache();
+            location.reload();
+            return;
         }
-    };
-
-    submitBtn.addEventListener('click', tryLogin);
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryLogin(); });
+        updateSyncStatus('error', null, e.message);
+    }
 }
 
-// ログアウト（コンソールから呼ぶか、後でボタン追加）
-function logout() {
-    api.clearToken();
-    location.reload();
+// ---- 検索・フィルタ ----
+function onSearchChange() {
+    filterState.keyword = (document.getElementById('event-search').value || '').toLowerCase();
+    renderEvents();
+}
+function onCategoryFilter(cat) {
+    filterState.category = cat;
+    document.querySelectorAll('.filter-chip[data-cat]').forEach(c => c.classList.toggle('active', c.dataset.cat === cat));
+    renderEvents();
+    refreshCalendar();
+}
+function onPeriodFilter(period) {
+    filterState.period = period;
+    document.querySelectorAll('.filter-chip[data-period]').forEach(c => c.classList.toggle('active', c.dataset.period === period));
+    renderEvents();
+}
+function applyFilters(events) {
+    const today = formatDate(new Date());
+    return events.filter(e => {
+        // カテゴリ
+        if (filterState.category !== 'all' && (e.Category || 'normal') !== filterState.category) return false;
+        // 期間
+        const endDate = e.Date_End || e.Date;
+        if (filterState.period === 'upcoming' && endDate < today) return false;
+        if (filterState.period === 'past' && e.Date >= today) return false;
+        // キーワード
+        if (filterState.keyword) {
+            const haystack = [e.Title, e.Location, e.Audience, e.Remarks, e.Experiments, e.Presenters, e.Admin_Kyoka, e.Admin_Houkoku]
+                .filter(Boolean).join(' ').toLowerCase();
+            if (!haystack.includes(filterState.keyword)) return false;
+        }
+        return true;
+    });
 }
 
 function refreshCalendar() {
@@ -200,7 +194,11 @@ function initFullCalendar() {
             calendar.unselect();
         },
         events: function (fetchInfo, successCallback, failureCallback) {
-            const fcEvents = eventsData.map(e => {
+            // カテゴリフィルタを反映（期間は無視。カレンダーは月表示なので）
+            const source = (filterState.category === 'all')
+                ? eventsData
+                : eventsData.filter(e => (e.Category || 'normal') === filterState.category);
+            const fcEvents = source.map(e => {
                 let displayTitle = e.Title;
                 if ((e.Category === 'admin' || e.Category === 'general') && e.Meeting_Number) {
                     displayTitle = `第${e.Meeting_Number}回 ${e.Title}`;
@@ -432,17 +430,28 @@ function renderEvents() {
 
     listContainer.innerHTML = ''; // Clear current
 
-    // Header for top 5 events
-    const topLimitHeading = document.createElement('h3');
-    topLimitHeading.style.marginBottom = '1rem';
-    topLimitHeading.textContent = '🌟 直近のイベント';
-    listContainer.appendChild(topLimitHeading);
+    // フィルタ＆ソート（今後＝昇順、過去＝降順、全部＝昇順）
+    const filtered = applyFilters(eventsData);
+    const sorted = filtered.slice().sort((a, b) => {
+        if (filterState.period === 'past') return (b.Date || '').localeCompare(a.Date || '');
+        return (a.Date || '').localeCompare(b.Date || '');
+    });
 
-    // Filter or sort events if needed, but we'll assume they are ordered and take 5
-    const isFullCalendarMode = !!document.getElementById('calendar');
-    const topEvents = eventsData.slice(0, 5);
+    const heading = document.createElement('h3');
+    heading.style.marginBottom = '1rem';
+    const periodLabel = { upcoming: '🌟 今後のイベント', past: '📜 過去のイベント', all: '📋 全てのイベント' };
+    heading.textContent = `${periodLabel[filterState.period]} (${sorted.length}件)`;
+    listContainer.appendChild(heading);
 
-    topEvents.forEach(event => {
+    if (sorted.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.innerHTML = '<div class="empty-icon">📭</div>該当するイベントはありません';
+        listContainer.appendChild(empty);
+        return;
+    }
+
+    sorted.forEach(event => {
         const clone = template.content.cloneNode(true);
         const card = clone.querySelector('.event-card');
         card.setAttribute('data-id', event.ID);
@@ -724,24 +733,37 @@ function cancelEdit(btn) {
     card.querySelectorAll('.edit-mode').forEach(el => el.classList.add('hidden'));
 }
 
-// Delete Event
-async function deleteEvent(btn) {
-    if (!confirm('本当にこのイベントを削除しますか？')) return;
-
+// Delete Event (with UNDO)
+function deleteEvent(btn) {
     const card = btn.closest('.event-card');
     const id = card.getAttribute('data-id');
     const eventIndex = eventsData.findIndex(e => e.ID === id);
+    if (eventIndex < 0) return;
 
-    try {
-        await api.delete(id);
-        if (eventIndex > -1) {
-            eventsData.splice(eventIndex, 1);
+    const backup = eventsData[eventIndex];
+
+    // UIから即削除
+    eventsData.splice(eventIndex, 1);
+    api.saveCache('events', eventsData);
+    renderEvents();
+    refreshCalendar();
+
+    toastUndo(
+        `「${backup.Title}」を削除しました`,
+        () => {
+            // UNDO: 復元
+            eventsData.splice(eventIndex, 0, backup);
+            api.saveCache('events', eventsData);
             renderEvents();
             refreshCalendar();
-        }
-    } catch (e) {
-        alert('削除に失敗しました: ' + e.message);
-    }
+        },
+        async () => {
+            // 確定: GASに削除リクエスト
+            await api.delete('events', id);
+            toast('削除を確定しました', 'success', 2000);
+        },
+        5000
+    );
 }
 
 // Dynamic List Actions
@@ -890,15 +912,16 @@ async function saveEvent(btn) {
 
     // GASに保存
     try {
-        const savedGas = await api.save(uiToGas(newData));
+        const savedGas = await api.save('events', uiToGas(newData));
         newData = gasToUi(savedGas);
     } catch (e) {
-        alert('保存に失敗しました: ' + e.message);
+        toast('保存失敗: ' + e.message, 'error');
         return;
     }
 
     // Update state
     eventsData[eventIndex] = newData;
+    api.saveCache('events', eventsData);
 
     // Re-render this specific card (or part of it) to show read-only view
     populateFields(card, newData);
@@ -917,7 +940,7 @@ async function saveEvent(btn) {
     card.querySelectorAll('.display-mode').forEach(el => el.classList.remove('hidden'));
     card.querySelectorAll('.edit-mode').forEach(el => el.classList.add('hidden'));
 
-    alert('保存しました');
+    toast('保存しました', 'success');
 }
 
 // --- Modal & New Event Logic ---
@@ -1054,23 +1077,33 @@ function cancelModalEdit(originalId) {
     viewEventInModal(originalId); // reset view to original state
 }
 
-async function deleteModalEvent() {
-    if (!confirm('本当に削除しますか？')) return;
+function deleteModalEvent() {
     const id = tempNewEvent.ID;
-    try {
-        await api.delete(id);
-    } catch (e) {
-        alert('削除に失敗しました: ' + e.message);
-        return;
-    }
     const eventIndex = eventsData.findIndex(e => e.ID === id);
-    if (eventIndex > -1) {
-        eventsData.splice(eventIndex, 1);
-        renderEvents();
-        refreshCalendar();
-    }
+    if (eventIndex < 0) return;
+    const backup = eventsData[eventIndex];
+
+    // UIから即削除
+    eventsData.splice(eventIndex, 1);
+    api.saveCache('events', eventsData);
+    renderEvents();
+    refreshCalendar();
     closeModal();
-    alert('イベントを削除しました');
+
+    toastUndo(
+        `「${backup.Title}」を削除しました`,
+        () => {
+            eventsData.splice(eventIndex, 0, backup);
+            api.saveCache('events', eventsData);
+            renderEvents();
+            refreshCalendar();
+        },
+        async () => {
+            await api.delete('events', id);
+            toast('削除を確定しました', 'success', 2000);
+        },
+        5000
+    );
 }
 
 async function saveEventFromModal() {
@@ -1141,28 +1174,26 @@ async function saveEventFromModal() {
     // GASに保存
     let savedEvent;
     try {
-        const savedGas = await api.save(uiToGas(tempNewEvent));
+        const savedGas = await api.save('events', uiToGas(tempNewEvent));
         savedEvent = gasToUi(savedGas);
     } catch (e) {
-        alert('保存に失敗しました: ' + e.message);
+        toast('保存失敗: ' + e.message, 'error');
         return;
     }
 
-    // Push to main state
     if (eventIndex > -1) {
         eventsData[eventIndex] = savedEvent;
     } else {
         eventsData.unshift(savedEvent);
     }
+    api.saveCache('events', eventsData);
 
-    // Re-render main views
     renderEvents();
     refreshCalendar();
 
-    // Close Modal
     closeModal();
     tempNewEvent = null;
-    alert('保存しました');
+    toast('保存しました', 'success');
 }
 
 // Update Deadlines on Date Change
