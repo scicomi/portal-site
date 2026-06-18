@@ -50,17 +50,37 @@ function doGet(e) {
  */
 function doPost(e) {
   try {
-    const body = JSON.parse(e.postData.contents || '{}');
-    const action = body.action;
+    // 1. body のパース（リダイレクト等で消えていた場合に備えてフォールバック）
+    let body = {};
+    if (e && e.postData && e.postData.contents) {
+      try { body = JSON.parse(e.postData.contents); } catch (_) {}
+    }
+    // URLパラメータからもトークン等を受け取れるようにする（フォールバック）
+    const params = (e && e.parameter) || {};
+    const token = body.token || params.token || '';
+    const action = body.action || params.action || '';
+
+    // デバッグ情報（GASのログで確認可能）
+    Logger.log('doPost: action=' + action + ', hasBody=' + !!e.postData);
 
     // 認証アクションだけはトークンチェック前
     if (action === 'auth') {
-      const ok = (body.password || '') === getConfig('password');
-      return jsonResponse({ success: ok, token: ok ? getConfig('password') : '' });
+      const inputPw = (body.password || params.password || '').trim();
+      const realPw = getConfig('password').trim();
+      const ok = inputPw === realPw && inputPw !== '';
+      return jsonResponse({
+        success: ok,
+        token: ok ? realPw : '',
+        debug: { inputLen: inputPw.length, realLen: realPw.length }
+      });
     }
 
-    if (!checkAuth(body.token)) {
-      return jsonResponse({ success: false, error: 'unauthorized' });
+    if (!checkAuth(token)) {
+      return jsonResponse({
+        success: false,
+        error: 'unauthorized',
+        debug: { gotToken: token ? '(' + token.length + ' chars)' : 'EMPTY', action: action }
+      });
     }
 
     if (action === 'save') {
@@ -69,22 +89,24 @@ function doPost(e) {
     }
 
     if (action === 'delete') {
-      const deleted = deleteEvent(body.id);
+      const deleted = deleteEvent(body.id || params.id);
       return jsonResponse({ success: deleted });
     }
 
     return jsonResponse({ success: false, error: 'unknown action: ' + action });
   } catch (err) {
-    return jsonResponse({ success: false, error: String(err) });
+    return jsonResponse({ success: false, error: String(err), stack: err.stack });
   }
 }
 
 // ====== ヘルパー ======
 
 function jsonResponse(obj) {
+  // GASはJSONレスポンスに自動でAccess-Control-Allow-Origin: *を付ける
+  // ただしMimeType.JSONではなくTEXTにしないとリダイレクト時にCORSが壊れるケースがある
   return ContentService
     .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
+    .setMimeType(ContentService.MimeType.TEXT);
 }
 
 function checkAuth(token) {

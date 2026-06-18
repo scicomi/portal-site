@@ -49,7 +49,10 @@ const api = {
       token: this.getToken(),
       event: eventObj
     });
-    if (!res.success) throw new Error(res.error || 'save failed');
+    if (!res.success) {
+      console.error('save failed, response:', res);
+      throw new Error((res.error || 'save failed') + (res.debug ? ' | debug: ' + JSON.stringify(res.debug) : ''));
+    }
     return res.event;
   },
 
@@ -59,18 +62,28 @@ const api = {
       token: this.getToken(),
       id
     });
-    if (!res.success) throw new Error(res.error || 'delete failed');
+    if (!res.success) {
+      console.error('delete failed, response:', res);
+      throw new Error((res.error || 'delete failed') + (res.debug ? ' | debug: ' + JSON.stringify(res.debug) : ''));
+    }
     return true;
   },
 
   // ---- 内部: text/plain POST（CORS preflight 回避）----
   async _post(payload) {
+    // text/plain（charsetなし）でpreflightを確実に回避
+    // GASはリダイレクト後にCORSヘッダーを付けるので redirect:'follow' が必須
     const res = await fetch(API_URL, {
       method: 'POST',
-      // 重要: text/plain を使うことで preflight (OPTIONS) を回避する
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(payload)
     });
-    return await res.json();
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      throw new Error('GASレスポンスのパース失敗: ' + text.slice(0, 200));
+    }
   }
 };
