@@ -18,10 +18,19 @@ async function init() {
     if (cached && cached.items) {
         expData = cached.items;
         render();
+    } else {
+        renderSkeleton();
     }
     updateSyncStatus(cached ? 'cached' : 'initial-loading', cached ? cached.timestamp : null);
 
     await refreshData();
+}
+
+function renderSkeleton() {
+    const grid = document.getElementById('exp-grid');
+    if (grid) {
+        grid.innerHTML = Array(6).fill('<div class="exp-card"><div class="exp-card-header" style="background:#ddd;"><div class="skeleton" style="height:18px;width:120px;background:#ccc;"></div></div><div class="exp-card-body"><div class="skeleton" style="height:14px;margin-bottom:6px;"></div><div class="skeleton" style="height:14px;width:80%;"></div></div></div>').join('');
+    }
 }
 
 async function refreshData(isManual = false) {

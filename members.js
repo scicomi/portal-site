@@ -16,10 +16,19 @@ async function init() {
     if (cached && cached.items) {
         membersData = cached.items;
         renderMembers();
+    } else {
+        renderSkeleton();
     }
     updateSyncStatus(cached ? 'cached' : 'initial-loading', cached ? cached.timestamp : null);
 
     await refreshData();
+}
+
+function renderSkeleton() {
+    ['adviser-grid', 'coordinator-grid', 'member-grid'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = Array(3).fill('<div class="member-card" style="height:80px;"><div class="skeleton" style="height:18px;width:60%;margin-bottom:6px;"></div><div class="skeleton" style="height:14px;width:40%;"></div></div>').join('');
+    });
 }
 
 async function refreshData(isManual = false) {
