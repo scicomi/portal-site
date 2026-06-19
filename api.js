@@ -105,6 +105,11 @@ const api = {
       console.error('save failed:', res);
       throw new Error(res.error || 'save failed');
     }
+    // GASが古いデプロイなど item を返さない場合のフォールバック
+    if (!res.item) {
+      console.warn('GAS did not return item; falling back to local item. Old GAS deployment?');
+      return { ...item };
+    }
     return res.item;
   },
 

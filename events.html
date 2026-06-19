@@ -6,6 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>イベント | SciComi Portal</title>
     <link rel="stylesheet" href="style.css">
+    <!-- 高速化: FullCalendar を early に preload しておく -->
+    <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js">
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://script.google.com" crossorigin>
     <!-- Google Fonts -->
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap"
@@ -38,7 +42,23 @@
         <!-- Calendar Section -->
         <section id="calendar-wrapper" class="calendar-section"
             style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 30px;">
-            <div id="calendar"></div>
+            <!-- Skeleton: FullCalendar読込中の代替表示 -->
+            <div id="calendar-skeleton" style="display:flex;flex-direction:column;gap:6px;">
+                <div class="skeleton" style="height:36px;width:60%;margin:0 auto 12px;"></div>
+                <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">
+                    <div class="skeleton" style="height:24px;"></div><div class="skeleton" style="height:24px;"></div><div class="skeleton" style="height:24px;"></div>
+                    <div class="skeleton" style="height:24px;"></div><div class="skeleton" style="height:24px;"></div><div class="skeleton" style="height:24px;"></div><div class="skeleton" style="height:24px;"></div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:4px;">
+                    <div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div>
+                    <div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:4px;">
+                    <div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div>
+                    <div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div>
+                </div>
+            </div>
+            <div id="calendar" style="display:none;"></div>
         </section>
 
         <div id="event-list" class="event-list">
@@ -145,6 +165,14 @@
                                 <th>📋 スケジュール<br>　 運搬</th>
                                 <td>
                                     <div class="field-value display-mode text-area-view" data-field="Meeting_Logistics"
+                                        style="white-space: pre-wrap;"></div>
+                                </td>
+                            </tr>
+
+                            <tr class="event-only-section">
+                                <th>🎒 持ち物</th>
+                                <td>
+                                    <div class="field-value display-mode text-area-view" data-field="Belongings"
                                         style="white-space: pre-wrap;"></div>
                                 </td>
                             </tr>
@@ -297,6 +325,11 @@
                                 <textarea class="e1-input edit-mode" data-field="Meeting_Logistics" rows="5"></textarea>
                             </div>
 
+                            <div class="e1-group event-only-section">
+                                <label class="e1-label">🎒 持ち物（1行1つ）</label>
+                                <textarea class="e1-input edit-mode" data-field="Belongings" rows="3" placeholder="スリッパ&#10;名札&#10;ポロシャツ"></textarea>
+                            </div>
+
                             <div class="e1-group">
                                 <label class="e1-label remarks-label-edit">📝 備考</label>
                                 <textarea class="e1-input edit-mode" data-field="Remarks" rows="4"></textarea>
@@ -340,6 +373,16 @@
                 <button class="btn btn-category cat-general-btn" onclick="startNewEvent('general')">全体ミーティング</button>
                 <button class="btn btn-category cat-admin-btn" onclick="startNewEvent('admin')">幹部ミーティング</button>
             </div>
+
+            <div style="margin: 20px 0; text-align: center; color: #999;">または</div>
+
+            <div class="e1-group">
+                <label class="e1-label">📋 過去イベントから複製</label>
+                <select id="template-source" class="e1-input" onchange="onTemplateSelect(this.value)">
+                    <option value="">-- 過去イベントを選んで複製 --</option>
+                </select>
+            </div>
+
             <button class="btn btn-text mt-2" onclick="closeModal()">キャンセル</button>
         </div>
 

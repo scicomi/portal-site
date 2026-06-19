@@ -41,9 +41,36 @@ function uiToGas(u) {
         HoukokuDeadline: u.Houkoku_Deadline || '',
         Logistics: u.Meeting_Logistics || '',
         Remarks: u.Remarks || '',
+        Belongings: u.Belongings || '',
         Files: (u.Files || '').split(',').filter(s => s.trim()).map(url => ({ name: '', url: url.trim() })),
         UpdatedBy: u.UpdatedBy || ''
     };
+}
+
+// ---- グローバルキーボードショートカット ----
+document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+        // フォーム編集中は Esc / Ctrl+S だけ拾う
+        if (e.key === 'Escape') closeAnyOpenModal();
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            const saveBtn = document.querySelector('.modal-content .btn-primary:not(.hidden), .event-card.editing .btn-primary:not(.hidden)');
+            if (saveBtn) { e.preventDefault(); saveBtn.click(); }
+        }
+        return;
+    }
+    if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openNewEventModal(); }
+    if (e.key === '/' && document.getElementById('event-search')) {
+        e.preventDefault();
+        document.getElementById('event-search').focus();
+    }
+    if (e.key === 'Escape') closeAnyOpenModal();
+});
+
+function closeAnyOpenModal() {
+    const overlay = document.getElementById('modal-overlay');
+    if (overlay && !overlay.classList.contains('hidden')) {
+        overlay.classList.add('hidden');
+    }
 }
 
 // ---- フィルタ状態 ----
@@ -147,6 +174,15 @@ function refreshCalendar() {
 function initFullCalendar() {
     const calendarEl = document.getElementById('calendar');
     if (!calendarEl) return;
+    // FullCalendarがまだ読み込み完了していなければリトライ
+    if (typeof FullCalendar === 'undefined') {
+        setTimeout(initFullCalendar, 50);
+        return;
+    }
+    // スケルトンを非表示にしてカレンダー表示
+    const skeleton = document.getElementById('calendar-skeleton');
+    if (skeleton) skeleton.style.display = 'none';
+    calendarEl.style.display = '';
 
     // Custom Jump UI
     const jumpHtml = `
@@ -232,6 +268,19 @@ function initFullCalendar() {
         },
         eventClick: function (info) {
             viewEventInModal(info.event.id);
+        },
+        eventDidMount: function (info) {
+            // ホバーツールチップ
+            const ev = eventsData.find(x => x.ID === info.event.id);
+            if (!ev) return;
+            const lines = [
+                ev.Title,
+                ev.Date + (ev.Date_End && ev.Date_End !== ev.Date ? ' 〜 ' + ev.Date_End : ''),
+                ev.Event_Time && '⏰ ' + ev.Event_Time,
+                ev.Location && '📍 ' + ev.Location,
+                ev.Audience && '👥 ' + ev.Audience
+            ].filter(Boolean);
+            info.el.title = lines.join('\n');
         }
     });
     calendar.render();
@@ -512,7 +561,7 @@ function populateFields(cardElement, eventData) {
         remarksLabel.textContent = isMeeting ? '📝 議題 / 備考' : '📝 備考';
     }
 
-    const fields = ['Title', 'Location', 'Audience', 'Meeting_Number', 'Date', 'Date_End', 'Event_Time', 'Meeting_Logistics', 'Remarks'];
+    const fields = ['Title', 'Location', 'Audience', 'Meeting_Number', 'Date', 'Date_End', 'Event_Time', 'Meeting_Logistics', 'Remarks', 'Belongings'];
 
     fields.forEach(field => {
         // Display elements
@@ -949,13 +998,39 @@ function openNewEventModal() {
     document.getElementById('modal-overlay').classList.remove('hidden');
     document.getElementById('category-selection-modal').classList.remove('hidden');
     document.getElementById('new-event-edit-modal').classList.add('hidden');
+    populateTemplateDropdown();
+}
+
+function populateTemplateDropdown() {
+    const sel = document.getElementById('template-source');
+    if (!sel) return;
+    const sorted = eventsData.slice().sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
+    sel.innerHTML = '<option value="">-- 過去イベントを選んで複製 --</option>' +
+        sorted.slice(0, 50).map(e => {
+            const catLabel = { normal: '通常', other: '学内', general: '全体', admin: '幹部' }[e.Category] || '';
+            return `<option value="${e.ID}">${e.Date} ${catLabel}: ${escapeHtmlSimple(e.Title)}</option>`;
+        }).join('');
+    sel.value = '';
+}
+
+function escapeHtmlSimple(s) {
+    if (!s) return '';
+    return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+function onTemplateSelect(sourceId) {
+    if (!sourceId) return;
+    const source = eventsData.find(e => e.ID === sourceId);
+    if (!source) return;
+    // カテゴリは元イベントを継承して新規作成フローへ
+    startNewEvent(source.Category || 'normal', source);
 }
 
 function closeModal() {
     document.getElementById('modal-overlay').classList.add('hidden');
 }
 
-function startNewEvent(category) {
+function startNewEvent(category, template) {
     // Hide category selection, show edit form
     document.getElementById('category-selection-modal').classList.add('hidden');
     document.getElementById('new-event-edit-modal').classList.remove('hidden');
@@ -963,15 +1038,11 @@ function startNewEvent(category) {
     const newId = "ev_" + Date.now();
     const today = new Date().toISOString().split('T')[0];
 
-    // Use globally set temp dates from calendar selection if available
     const startDate = window.tempStart || today;
     const endDate = window.tempEnd || "";
-
-    // Clear them out for next time
     window.tempStart = null;
     window.tempEnd = null;
 
-    // Default titles based on category
     const titleMap = {
         'normal': '新規通常イベント',
         'other': '新規学内イベント',
@@ -979,25 +1050,31 @@ function startNewEvent(category) {
         'admin': '幹部ミーティング'
     };
 
-    const newEvent = {
-        ID: newId,
-        Date: startDate,
-        Date_End: endDate,
-        Title: titleMap[category],
-        Location: "",
-        Meeting_Number: "",
-        Category: category,
-        Event_Time: "",
-        Meeting_Logistics: "",
-        Experiments: "",
-        Presenters: "",
-        Admin_Kyoka: "",
-        Admin_Houkoku: "",
-        Kyoka_Deadline: "",
-        Houkoku_Deadline: "",
-        Remarks: "",
-        Files: ""
-    };
+    let newEvent;
+    if (template) {
+        // 過去イベントから複製（日付・IDだけリセット）
+        newEvent = { ...template };
+        newEvent.ID = newId;
+        newEvent.Date = startDate;
+        newEvent.Date_End = endDate;
+        newEvent.Title = (template.Title || '') + ' (複製)';
+        newEvent.Kyoka_Deadline = '';
+        newEvent.Houkoku_Deadline = '';
+        toast('過去イベントを複製しました。日付などを編集してください', 'info', 4000);
+    } else {
+        newEvent = {
+            ID: newId,
+            Date: startDate,
+            Date_End: endDate,
+            Title: titleMap[category],
+            Location: "", Meeting_Number: "", Category: category,
+            Event_Time: "", Meeting_Logistics: "",
+            Experiments: "", Presenters: "",
+            Admin_Kyoka: "", Admin_Houkoku: "",
+            Kyoka_Deadline: "", Houkoku_Deadline: "",
+            Remarks: "", Belongings: "", Files: ""
+        };
+    }
 
     // Auto calc initial deadlines
     const dHands = calculateDeadlines(startDate);
