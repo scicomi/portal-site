@@ -1,21 +1,80 @@
 /**
  * SciComi Portal - 共通ロジック
  *
- * 全ページで読み込まれる:
+ * 全ページで読み込まれる（config.js の後に読み込む前提）:
+ *   - 共通ユーティリティ（escapeHtml / 日付ヘルパー）
  *   - パスワード認証モーダル
  *   - ヘッダー＋ナビゲーション描画
  *   - 同期ステータス表示
  *   - トースト通知
  */
 
-// ====== ナビゲーション ======
+// ====== 共通ユーティリティ ======
 
-const NAV_ITEMS = [
-  { href: 'index.html',       label: '🏠 ホーム',    page: 'home' },
-  { href: 'events.html',      label: '📅 イベント',  page: 'events' },
-  { href: 'members.html',     label: '👥 メンバー',  page: 'members' },
-  { href: 'experiments.html', label: '🧪 実験内容',  page: 'experiments' }
-];
+/** HTMLエスケープ（XSS・表示崩れ防止）。全ページ共通。 */
+function escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** HTML属性値用エスケープ（value="..." に埋め込む時） */
+function escapeAttr(s) {
+  return escapeHtml(s);
+}
+
+/** Date → 'YYYY-MM-DD'（ローカルタイム基準。UTCずれを防ぐ） */
+function toISODate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** 'YYYY-MM-DD' → Date（ローカル正午で生成しタイムゾーンずれを回避） */
+function parseISODate(str) {
+  if (!str) return null;
+  const parts = String(str).split('-');
+  if (parts.length < 3) return new Date(str);
+  return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
+}
+
+/** 今日の 'YYYY-MM-DD' */
+function todayISO() {
+  return toISODate(new Date());
+}
+
+/** 'YYYY-MM-DD' → 曜日（日本語1文字） */
+function dayOfWeekJP(str) {
+  const d = parseISODate(str);
+  if (!d) return '';
+  return ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
+}
+
+/** 'YYYY-MM-DD' → 'M/D' 短縮表示 */
+function shortDate(str) {
+  const parts = String(str || '').split('-');
+  if (parts.length < 3) return str || '';
+  return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
+}
+
+/** 2つの日付の差（日数）。a から b までの日数。 */
+function daysBetween(aISO, bISO) {
+  const a = parseISODate(aISO), b = parseISODate(bISO);
+  if (!a || !b) return null;
+  return Math.round((b - a) / (1000 * 60 * 60 * 24));
+}
+
+/** 衝突しにくいID生成（時刻＋乱数） */
+function genId(prefix) {
+  return prefix + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+// ====== ナビゲーション ======
 
 function renderHeader(activePage) {
   const header = document.querySelector('.app-header');
@@ -23,8 +82,10 @@ function renderHeader(activePage) {
   header.innerHTML = `
     <div class="header-top">
       <div class="header-brand">
-        <span class="brand-icon">🔬</span>
-        <span class="brand-name">SciComi Portal</span>
+        <a href="index.html" style="color:inherit;text-decoration:none;display:flex;align-items:center;gap:8px;">
+          <span class="brand-icon">🔬</span>
+          <span class="brand-name">SciComi Portal</span>
+        </a>
       </div>
       <div class="header-actions">
         <div id="sync-status" class="sync-status" title="クリックで再読込" onclick="if(window.refreshData)refreshData(true)"></div>
@@ -32,7 +93,7 @@ function renderHeader(activePage) {
       </div>
     </div>
     <nav class="app-nav">
-      ${NAV_ITEMS.map(item => `
+      ${CONFIG.NAV_ITEMS.map(item => `
         <a href="${item.href}" class="nav-link ${item.page === activePage ? 'active' : ''}">
           ${item.label}
         </a>

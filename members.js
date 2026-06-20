@@ -48,18 +48,35 @@ async function refreshData(isManual = false) {
     }
 }
 
+let showGraduated = false; // 卒業生を表示するか
+
 function onMemberSearch() {
     memberSearchKw = (document.getElementById('member-search').value || '').toLowerCase();
     renderMembers();
 }
 
+function toggleGraduated() {
+    showGraduated = !showGraduated;
+    const btn = document.getElementById('toggle-grad-btn');
+    if (btn) {
+        btn.textContent = showGraduated ? '👁️ 卒業生を隠す' : '🎓 卒業生も表示';
+        btn.classList.toggle('active', showGraduated);
+    }
+    renderMembers();
+}
+
+function isActive(m) { return m.Active !== 'false'; }
+
 function renderMembers() {
+    // 在籍/卒業の絞り込み
+    let base = showGraduated ? membersData : membersData.filter(isActive);
+
     const filtered = memberSearchKw
-        ? membersData.filter(m => {
+        ? base.filter(m => {
             const hay = [m.Name, m.Role, m.Affiliation, m.StudentID, m.Note].filter(Boolean).join(' ').toLowerCase();
             return hay.includes(memberSearchKw);
         })
-        : membersData;
+        : base;
 
     const advisers = filtered.filter(m => m.Category === 'adviser');
     const coordinators = filtered.filter(m => m.Category === 'coordinator');
@@ -69,9 +86,13 @@ function renderMembers() {
     renderCategoryGrid('coordinator-grid', coordinators, 'coordinator');
     renderCategoryGrid('member-grid', regulars, 'member');
 
+    // 卒業生数を表示
+    const gradCount = membersData.filter(m => !isActive(m)).length;
     document.getElementById('adviser-count').textContent = advisers.length + '名';
     document.getElementById('coordinator-count').textContent = coordinators.length + '名';
     document.getElementById('member-count').textContent = regulars.length + '名';
+    const gradBtn = document.getElementById('toggle-grad-btn');
+    if (gradBtn) gradBtn.style.display = gradCount > 0 ? '' : 'none';
 }
 
 function renderCategoryGrid(elId, items, cat) {
@@ -80,15 +101,17 @@ function renderCategoryGrid(elId, items, cat) {
         el.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:20px;">該当者なし</div>';
         return;
     }
-    // 役職持ちを上に
+    // 在籍を上・役職持ちを上・学年降順
     const sorted = items.slice().sort((a, b) => {
-        if (a.Role && !b.Role) return -1;
-        if (!a.Role && b.Role) return 1;
-        return (b.Year || '').localeCompare(a.Year || ''); // 学年降順
+        if (isActive(a) !== isActive(b)) return isActive(a) ? -1 : 1;
+        if (!!a.Role !== !!b.Role) return a.Role ? -1 : 1;
+        return (b.Year || '').localeCompare(a.Year || '');
     });
-    el.innerHTML = sorted.map(m => `
-        <div class="member-card ${cat}" data-id="${m.ID}">
-            <div class="member-name">${escapeHtml(m.Name || '')}</div>
+    el.innerHTML = sorted.map(m => {
+        const grad = !isActive(m);
+        return `
+        <div class="member-card ${cat} ${grad ? 'graduated' : ''}" data-id="${m.ID}">
+            <div class="member-name">${escapeHtml(m.Name || '')}${grad ? ' <span class="grad-badge">卒業</span>' : ''}</div>
             ${m.Role ? `<div class="member-role">⭐ ${escapeHtml(m.Role)}</div>` : ''}
             <div class="member-meta">
                 ${m.Year ? `${escapeHtml(m.Year)}年 ` : ''}
@@ -98,10 +121,29 @@ function renderCategoryGrid(elId, items, cat) {
             ${m.Note ? `<div class="member-meta">📝 ${escapeHtml(m.Note)}</div>` : ''}
             <div class="member-actions">
                 <button onclick="editMember('${m.ID}')">✏️ 編集</button>
+                <button onclick="toggleGraduate('${m.ID}')">${grad ? '↩️ 在籍に戻す' : '🎓 卒業'}</button>
                 <button class="del-btn" onclick="deleteMember('${m.ID}')">🗑️ 削除</button>
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
+}
+
+/** メンバーを卒業/在籍トグル（削除せずArchive）。 */
+async function toggleGraduate(id) {
+    const m = membersData.find(x => x.ID === id);
+    if (!m) return;
+    const nowActive = isActive(m);
+    const updated = { ...m, Active: nowActive ? 'false' : 'true' };
+    try {
+        const saved = await api.save('members', updated);
+        const idx = membersData.findIndex(x => x.ID === id);
+        if (idx >= 0) membersData[idx] = saved;
+        api.saveCache('members', membersData);
+        renderMembers();
+        toast(nowActive ? `${m.Name} を卒業生にしました` : `${m.Name} を在籍に戻しました`, 'success');
+    } catch (e) {
+        toast('更新失敗: ' + e.message, 'error');
+    }
 }
 
 // ---- モーダル制御 ----
@@ -190,9 +232,4 @@ function deleteMember(id) {
         },
         5000
     );
-}
-
-function escapeHtml(s) {
-    if (s === null || s === undefined) return '';
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }

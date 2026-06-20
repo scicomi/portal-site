@@ -18,6 +18,7 @@ async function init() {
     if (cached && cached.items) {
         expData = cached.items;
         render();
+        focusFromUrl(); // キャッシュがあれば即座にフォーカス
     } else {
         renderSkeleton();
     }
@@ -39,6 +40,7 @@ async function refreshData(isManual = false) {
         expData = await api.list('experiments');
         api.saveCache('experiments', expData);
         render();
+        focusFromUrl();
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
         if (String(e).includes('unauthorized')) {
@@ -47,6 +49,36 @@ async function refreshData(isManual = false) {
             return;
         }
         updateSyncStatus('error', null, e.message);
+    }
+}
+
+/**
+ * URLの ?focus=実験名 を見て、該当実験の詳細を自動で開く（A3：相互リンク）。
+ * イベントページの実験名リンクから飛んできた時に使う。
+ */
+let focusHandled = false;
+function focusFromUrl() {
+    if (focusHandled) return;
+    const params = new URLSearchParams(location.search);
+    const focusName = params.get('focus');
+    if (!focusName) return;
+
+    const match = expData.find(e => e.Name === focusName)
+        || expData.find(e => (e.Name || '').toLowerCase() === focusName.toLowerCase());
+    if (match) {
+        focusHandled = true;
+        // 該当タブに切り替えてから詳細を開く
+        switchExpTab(match.Category || 'other');
+        viewExp(match.ID);
+    } else {
+        // 完全一致しない場合は検索ボックスに入れて絞り込み
+        const searchEl = document.getElementById('exp-search');
+        if (searchEl) {
+            searchEl.value = focusName;
+            onExpSearch();
+            toast(`「${focusName}」に一致する実験が見つかりませんでした`, 'info', 4000);
+            focusHandled = true;
+        }
     }
 }
 
@@ -241,9 +273,4 @@ function deleteExp(id) {
         },
         5000
     );
-}
-
-function escapeHtml(s) {
-    if (s === null || s === undefined) return '';
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }

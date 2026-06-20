@@ -59,7 +59,7 @@ function renderWelcome() {
 }
 
 function renderStats(all) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     const upcomingCount = (all.events || []).filter(e => (e.DateEnd || e.Date) >= today).length;
     document.getElementById('stat-events').textContent = (all.events || []).length;
     document.getElementById('stat-upcoming').textContent = upcomingCount;
@@ -69,7 +69,7 @@ function renderStats(all) {
 
 function renderEventsCard(events) {
     const container = document.getElementById('upcoming-events');
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
 
     const upcoming = (events || [])
         .filter(e => (e.DateEnd || e.Date) >= today)
@@ -78,30 +78,22 @@ function renderEventsCard(events) {
 
     if (upcoming.length === 0) {
         container.innerHTML = '<li style="color:#999;justify-content:center;">予定なし</li>';
-        return;
+    } else {
+        container.innerHTML = upcoming.map(e => {
+            const c = getEventCategory(e.Category);
+            let title = e.Title || '(無題)';
+            if (c.isMeeting && e.MeetingNumber) {
+                title = `第${e.MeetingNumber}回 ${title}`;
+            }
+            return `
+                <li onclick="location.href='events.html'" style="cursor:pointer;">
+                    <span class="dl-date">${shortDate(e.Date)}</span>
+                    <span class="dl-title">${escapeHtml(title)}</span>
+                    <span class="dl-badge" style="background:${c.bg};color:${c.text};">${c.short}</span>
+                </li>
+            `;
+        }).join('');
     }
-
-    const catColors = {
-        normal: { bg: '#fecaca', color: '#7c2d2d', label: '通常' },
-        other: { bg: '#bbf7d0', color: '#14532d', label: '学内' },
-        general: { bg: '#bfdbfe', color: '#1e3a5f', label: '全体' },
-        admin: { bg: '#fde68a', color: '#78350f', label: '幹部' }
-    };
-
-    container.innerHTML = upcoming.map(e => {
-        const c = catColors[e.Category] || catColors.normal;
-        let title = e.Title || '(無題)';
-        if ((e.Category === 'admin' || e.Category === 'general') && e.MeetingNumber) {
-            title = `第${e.MeetingNumber}回 ${title}`;
-        }
-        return `
-            <li>
-                <span class="dl-date">${formatShortDate(e.Date)}</span>
-                <span class="dl-title">${escapeHtml(title)}</span>
-                <span class="dl-badge" style="background:${c.bg};color:${c.color};">${c.label}</span>
-            </li>
-        `;
-    }).join('');
 
     // 期限カード
     renderDeadlinesCard(events);
@@ -109,9 +101,8 @@ function renderEventsCard(events) {
 
 function renderDeadlinesCard(events) {
     const container = document.getElementById('upcoming-deadlines');
-    const today = new Date().toISOString().slice(0, 10);
-    const in30days = new Date(); in30days.setDate(in30days.getDate() + 30);
-    const in30 = in30days.toISOString().slice(0, 10);
+    const today = todayISO();
+    const in30 = toISODate((() => { const d = new Date(); d.setDate(d.getDate() + 30); return d; })());
 
     const deadlines = [];
     (events || []).forEach(e => {
@@ -129,13 +120,30 @@ function renderDeadlinesCard(events) {
         return;
     }
 
-    container.innerHTML = deadlines.slice(0, 5).map(d => `
-        <li>
-            <span class="dl-date">${formatShortDate(d.date)}</span>
-            <span class="dl-title">${escapeHtml(d.type)} (${escapeHtml(d.event)})</span>
-            <span class="dl-badge" style="background:#fee2e2;color:#7c2d2d;">${escapeHtml(d.admin || '未定')}</span>
-        </li>
-    `).join('');
+    container.innerHTML = deadlines.slice(0, 6).map(d => {
+        const u = deadlineUrgency(d.date);
+        return `
+        <li class="deadline-row ${u.cls}">
+            <span class="dl-date">${shortDate(d.date)}</span>
+            <span class="dl-title">${u.icon} ${escapeHtml(d.type)} <span style="color:#999;">(${escapeHtml(d.event)})</span></span>
+            <span class="dl-badge" style="background:${u.bg};color:${u.text};">${u.daysLabel}</span>
+        </li>`;
+    }).join('');
+}
+
+/**
+ * 期限日までの残り日数から緊急度を判定（CONFIG.DEADLINE_ALERTに従う）。
+ */
+function deadlineUrgency(dateISO) {
+    const days = daysBetween(todayISO(), dateISO);
+    const A = CONFIG.DEADLINE_ALERT;
+    if (days <= A.danger) {
+        return { cls: 'urgent', icon: '🔴', bg: '#fee2e2', text: '#991b1b', daysLabel: days <= 0 ? '今日!' : `あと${days}日` };
+    }
+    if (days <= A.warning) {
+        return { cls: 'soon', icon: '🟡', bg: '#fef3c7', text: '#92400e', daysLabel: `あと${days}日` };
+    }
+    return { cls: '', icon: '🟢', bg: '#dcfce7', text: '#166534', daysLabel: `あと${days}日` };
 }
 
 function renderMembersCard(members) {
@@ -173,20 +181,4 @@ function renderExperimentsCard(experiments) {
     `;
 }
 
-// ---- helpers ----
-function formatShortDate(d) {
-    if (!d) return '';
-    const parts = String(d).split('-');
-    if (parts.length < 3) return d;
-    return `${parts[1]}/${parts[2]}`;
-}
-
-function escapeHtml(s) {
-    if (s === null || s === undefined) return '';
-    return String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
+// formatShortDate / escapeHtml は app.js の shortDate / escapeHtml を使用

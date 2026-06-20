@@ -2,9 +2,14 @@
 
 ## 概要
 - スプレッドシート名: `SciComi_Portal_DB`
-- シート2つ構成
+- シート構成
   - `Events` … イベント本体（1行 = 1イベント）
+  - `Members` … メンバー（1行 = 1人）
+  - `Experiments` … 実験ネタ（1行 = 1種類）
   - `Config` … 設定値（パスワード等）
+
+> シートとヘッダーは GAS の `setupSpreadsheet()` を実行すると自動作成される。
+> 列を増やしたい時はヘッダーに足してから `setupSpreadsheet()` を再実行すれば不足列が補完される。
 
 ---
 
@@ -31,6 +36,7 @@
 | `HoukokuDeadline` | 文字列(YYYY-MM-DD) | `2026-06-27` | 報告書 期限（Date+7日で自動算出） |
 | `Logistics` | 文字列(複数行) | `9:00 集合\n9:15 搬入` | スケジュール・運搬 |
 | `Remarks` | 文字列(複数行) | `駐車場は北側` | 備考 |
+| `Belongings` | 文字列(複数行) | `スリッパ\n名札` | 持ち物（1行1つ） |
 | `Files` | JSON文字列 | `[{"name":"資料.pdf","url":"https://..."}]` | 関連ファイルリスト |
 | `CreatedAt` | 文字列(ISO) | `2026-06-18T10:23:45.000Z` | 作成日時 |
 | `UpdatedAt` | 文字列(ISO) | `2026-06-18T11:00:00.000Z` | 最終更新日時 |
@@ -43,7 +49,37 @@
 
 ---
 
-## シート2: `Config`
+## シート2: `Members`
+
+| 列名 | 型 | 例 | 説明 |
+|---|---|---|---|
+| `ID` | 文字列 | `mb_...` | 主キー |
+| `Name` | 文字列 | `井上 咲笑` | 氏名 |
+| `Category` | 文字列 | `member` | `adviser` / `coordinator` / `member` |
+| `Role` | 文字列 | `プロジェクトリーダー` | 役職（任意） |
+| `StudentID` | 文字列 | `4CEQ1205` | 学生証/教職員番号 |
+| `Affiliation` | 文字列 | `理系教育センター` | 所属（教員用） |
+| `Year` | 文字列 | `4` | 学年 |
+| `Note` | 文字列 | | メモ |
+| `Active` | 文字列 | `true` | 在籍=`true` / 卒業=`false`（卒業生アーカイブ用） |
+| `CreatedAt` / `UpdatedAt` | ISO | | 自動 |
+
+## シート3: `Experiments`
+
+| 列名 | 型 | 例 | 説明 |
+|---|---|---|---|
+| `ID` | 文字列 | `ex_...` | 主キー |
+| `Name` | 文字列 | `スライム` | 実験名 |
+| `Category` | 文字列 | `workshop` | `workshop`(工作) / `show`(実験ショー) / `other` |
+| `Materials` | 文字列(複数行) | | 使用物品 |
+| `Preparation` | 文字列(複数行) | | 事前準備 |
+| `Flow` | 文字列(複数行) | | 発表の流れ |
+| `Notes` | 文字列(複数行) | | 注意事項 |
+| `SlidesURL` | 文字列 | `https://...` | スライド/資料URL |
+| `Active` | 文字列 | `true` | 有効フラグ |
+| `CreatedAt` / `UpdatedAt` | ISO | | 自動 |
+
+## シート4: `Config`
 
 | Key | Value |
 |---|---|

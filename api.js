@@ -13,11 +13,12 @@
  *   await api.delete('events', id)        → 削除
  */
 
-const API_URL = 'https://script.google.com/macros/s/AKfycbwfR0LGJmGhCzBZIj7UXhYok11Kmt0ZAmnwv1SIeWFFUUUCk0H0wMFHiZuMmEBII8FA/exec';
-const TOKEN_KEY = 'scicomi_portal_token';
-const CACHE_KEY_PREFIX = 'scicomi_cache_';
-const HOLIDAYS_CACHE_KEY = 'scicomi_holidays_cache';
-const HOLIDAYS_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30日
+// 設定は config.js に集約。読み込み順の保険でフォールバックも用意。
+const API_URL = (typeof CONFIG !== 'undefined' && CONFIG.API_URL) || '';
+const TOKEN_KEY = (typeof CONFIG !== 'undefined' && CONFIG.TOKEN_KEY) || 'scicomi_portal_token';
+const CACHE_KEY_PREFIX = (typeof CONFIG !== 'undefined' && CONFIG.CACHE_PREFIX) || 'scicomi_cache_';
+const HOLIDAYS_CACHE_KEY = (typeof CONFIG !== 'undefined' && CONFIG.HOLIDAYS_CACHE_KEY) || 'scicomi_holidays_cache';
+const HOLIDAYS_CACHE_TTL_MS = (typeof CONFIG !== 'undefined' && CONFIG.HOLIDAYS_TTL_MS) || (30 * 24 * 60 * 60 * 1000);
 
 const api = {
 

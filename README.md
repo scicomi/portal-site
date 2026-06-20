@@ -82,8 +82,9 @@ portal-site/
 ├── members.html       # メンバーリスト
 ├── experiments.html   # 実験内容
 ├── style.css          # 共通スタイル
+├── config.js          # ★一元設定（URL・カテゴリ定義・期限ルール等）
 ├── api.js             # GAS通信レイヤー（3リソース対応）
-├── app.js             # 共通ロジック（認証/ナビ/同期/トースト）
+├── app.js             # 共通ロジック（認証/ナビ/同期/トースト/ユーティリティ）
 ├── home.js            # ホームページ
 ├── script.js          # イベントページ
 ├── members.js         # メンバーページ
@@ -96,6 +97,23 @@ portal-site/
     ├── 02_setup_guide.md
     └── 03_phase3_proposal.md
 ```
+
+> **スクリプトの読み込み順**は全ページ共通で
+> `config.js → api.js → app.js → 各ページ.js`。
+> config.js が他の全てより先に読まれる前提なので、この順序は変えないこと。
+
+### 🔧 拡張するときはまず config.js
+
+カテゴリ追加・色変更・URL変更・期限ルール変更は、原則 **config.js だけ** 直せば全ページに反映される設計です。
+
+| やりたいこと | config.js の該当箇所 |
+|---|---|
+| GASのURLを変えた | `API_URL` |
+| イベント種類を増やす | `EVENT_CATEGORIES` に1行 |
+| 実験タブを増やす | `EXPERIMENT_CATEGORIES` に1行 |
+| メンバー区分を増やす | `MEMBER_CATEGORIES` に1行 |
+| 書類期限の日数を変える | `DEADLINE_RULES` |
+| 期限警告の色しきい値 | `DEADLINE_ALERT` |
 
 ### 各ファイルの役割
 

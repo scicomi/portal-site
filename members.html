@@ -14,6 +14,7 @@
         <div class="page-section-actions">
             <h1 class="page-title" style="margin:0; flex:1;">👥 メンバーリスト</h1>
             <input id="member-search" class="search-input" type="text" placeholder="🔍 名前・役職で検索" oninput="onMemberSearch()">
+            <button id="toggle-grad-btn" class="filter-chip" style="display:none;" onclick="toggleGraduated()">🎓 卒業生も表示</button>
             <button class="btn-primary-solid" style="width: auto; padding: 8px 16px;" onclick="openMemberModal()">＋ メンバー追加</button>
         </div>
 
@@ -87,6 +88,7 @@
         </div>
     </main>
 
+    <script src="config.js"></script>
     <script src="api.js"></script>
     <script src="app.js"></script>
     <script src="members.js"></script>

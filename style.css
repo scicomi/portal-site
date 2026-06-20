@@ -606,6 +606,15 @@ textarea:focus {
     border: 1px solid #ffe37d;
 }
 
+.exp-link-inline {
+    color: #5d4a00;
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+}
+.exp-link-inline:hover { color: #8a6d00; }
+.tag-presenter { color: #806a2e; font-weight: 400; }
+
 .tag-deadline {
     font-weight: bold;
     color: #a80000;
@@ -1178,7 +1187,12 @@ textarea:focus {
 .dash-list .dl-title { font-weight: 500; flex: 1; }
 .dash-list .dl-badge {
     padding: 2px 8px; border-radius: 10px; font-size: 0.75rem;
+    flex-shrink: 0; white-space: nowrap;
 }
+
+/* 期限の緊急度アクセント */
+.deadline-row.urgent { background: linear-gradient(90deg, #fff5f5 0%, transparent 60%); }
+.deadline-row.soon { background: linear-gradient(90deg, #fffbeb 0%, transparent 60%); }
 
 .dash-stats {
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
@@ -1227,6 +1241,11 @@ textarea:focus {
 .member-card.adviser { border-left-color: #f59e0b; }
 .member-card.coordinator { border-left-color: #10b981; }
 .member-card.member { border-left-color: #6264a7; }
+.member-card.graduated { opacity: 0.6; background: #f8f8f8; border-left-color: #bbb !important; }
+.grad-badge {
+    font-size: 0.65rem; background: #e5e5e5; color: #666;
+    padding: 1px 6px; border-radius: 8px; vertical-align: middle; font-weight: 600;
+}
 .member-name { font-weight: 700; font-size: 1.05rem; color: #252423; }
 .member-role { font-size: 0.85rem; color: #c2410c; font-weight: 600; margin-top: 2px; }
 .member-meta { font-size: 0.8rem; color: #666; margin-top: 4px; }
@@ -1338,4 +1357,81 @@ textarea:focus {
 @keyframes skeleton-loading {
     0% { background-position: 200% 0; }
     100% { background-position: -200% 0; }
+}
+
+/* ============================================================
+   B3: スマホ最適化（768px以下）
+   ============================================================ */
+@media (max-width: 768px) {
+    /* ページ上部の検索・ボタン群を縦並びに */
+    .page-section-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .page-section-actions .search-input {
+        max-width: 100%;
+        width: 100%;
+    }
+    .page-section-actions .page-title { text-align: left; }
+
+    /* カテゴリ/期間フィルタは横スクロールで省スペース */
+    .page-section-actions:has(.filter-chip) {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    /* モーダルのアクションボタンを画面下部に固定（押しやすく） */
+    .modal-content .action-buttons,
+    .modal-content .form-actions {
+        position: sticky;
+        bottom: 0;
+        background: white;
+        margin: 1rem -1rem -1rem;
+        padding: 12px 1rem;
+        border-top: 1px solid #e0e0e0;
+        box-shadow: 0 -2px 8px rgba(0,0,0,0.06);
+        z-index: 5;
+    }
+    .modal-content .action-buttons .btn,
+    .modal-content .form-actions .btn {
+        flex: 1;
+        padding: 0.7rem 0.5rem;
+        font-size: 0.95rem;
+    }
+
+    /* large-modal のヘッダーボタンを折り返す */
+    .modal-header { flex-wrap: wrap; gap: 8px; }
+    .action-buttons-top { flex-wrap: wrap; }
+    .action-buttons-top .btn { padding: 0.4rem 0.7rem; font-size: 0.85rem; }
+
+    /* 時刻ドロップダウンを縦に */
+    .time-select-group { flex-wrap: wrap; }
+    .time-select-group select { width: calc(50% - 20px); }
+
+    /* 実験カード/メンバーカードを1列に */
+    .exp-grid, .member-grid { grid-template-columns: 1fr; }
+
+    /* 統計カードは2列 */
+    .dash-stats { grid-template-columns: repeat(2, 1fr); }
+
+    /* カレンダーのイベント文字を少し小さく */
+    .fc .fc-daygrid-event { font-size: 0.7rem; }
+
+    /* トーストを画面幅にフィット */
+    #toast-container { left: 12px; right: 12px; transform: none; }
+    .toast { min-width: 0; width: 100%; }
+
+    /* タッチターゲットを大きく */
+    .nav-link { padding: 12px 14px; }
+    .member-actions button, .exp-card { min-height: 36px; }
+}
+
+/* さらに狭い端末（480px以下） */
+@media (max-width: 480px) {
+    .header-brand .brand-name { font-size: 0.95rem; }
+    .dash-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-num { font-size: 1.5rem; }
+    .welcome-hero { padding: 20px; }
+    .welcome-hero h2 { font-size: 1.2rem; }
+    .category-buttons { grid-template-columns: 1fr; }
 }
