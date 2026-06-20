@@ -1,10 +1,11 @@
 /**
  * 実験内容ページ
- * タブ: workshop（工作）/ show（実験ショー）/ other（その他）
+ * データベース風テーブル表示。フィルタチップ + 検索。
+ * 行クリックで詳細モーダルを開く。
  */
 
 let expData = [];
-let expCurrentTab = 'workshop';
+let expCurrentTab = 'all';
 let expSearchKw = '';
 let currentExpId = null;
 let editingExpId = null;
@@ -18,20 +19,10 @@ async function init() {
     if (cached && cached.items) {
         expData = cached.items;
         render();
-        focusFromUrl(); // キャッシュがあれば即座にフォーカス
-    } else {
-        renderSkeleton();
+        focusFromUrl();
     }
     updateSyncStatus(cached ? 'cached' : 'initial-loading', cached ? cached.timestamp : null);
-
     await refreshData();
-}
-
-function renderSkeleton() {
-    const grid = document.getElementById('exp-grid');
-    if (grid) {
-        grid.innerHTML = Array(6).fill('<div class="exp-card"><div class="exp-card-header" style="background:#ddd;"><div class="skeleton" style="height:18px;width:120px;background:#ccc;"></div></div><div class="exp-card-body"><div class="skeleton" style="height:14px;margin-bottom:6px;"></div><div class="skeleton" style="height:14px;width:80%;"></div></div></div>').join('');
-    }
 }
 
 async function refreshData(isManual = false) {
@@ -52,10 +43,6 @@ async function refreshData(isManual = false) {
     }
 }
 
-/**
- * URLの ?focus=実験名 を見て、該当実験の詳細を自動で開く（A3：相互リンク）。
- * イベントページの実験名リンクから飛んできた時に使う。
- */
 let focusHandled = false;
 function focusFromUrl() {
     if (focusHandled) return;
@@ -67,11 +54,9 @@ function focusFromUrl() {
         || expData.find(e => (e.Name || '').toLowerCase() === focusName.toLowerCase());
     if (match) {
         focusHandled = true;
-        // 該当タブに切り替えてから詳細を開く
         switchExpTab(match.Category || 'other');
         viewExp(match.ID);
     } else {
-        // 完全一致しない場合は検索ボックスに入れて絞り込み
         const searchEl = document.getElementById('exp-search');
         if (searchEl) {
             searchEl.value = focusName;
@@ -84,7 +69,9 @@ function focusFromUrl() {
 
 function switchExpTab(cat) {
     expCurrentTab = cat;
-    document.querySelectorAll('.exp-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
+    document.querySelectorAll('.filter-chip[data-cat]').forEach(t =>
+        t.classList.toggle('active', t.dataset.cat === cat)
+    );
     render();
 }
 
@@ -95,12 +82,15 @@ function onExpSearch() {
 
 function render() {
     // タブカウント
+    document.getElementById('tab-cnt-all').textContent = expData.length;
     document.getElementById('tab-cnt-workshop').textContent = expData.filter(e => e.Category === 'workshop').length;
     document.getElementById('tab-cnt-show').textContent = expData.filter(e => e.Category === 'show').length;
     document.getElementById('tab-cnt-other').textContent = expData.filter(e => e.Category === 'other').length;
 
-    // タブのアイテム
-    let items = expData.filter(e => (e.Category || 'other') === expCurrentTab);
+    let items = expCurrentTab === 'all'
+        ? expData
+        : expData.filter(e => (e.Category || 'other') === expCurrentTab);
+
     if (expSearchKw) {
         items = items.filter(e => {
             const hay = [e.Name, e.Materials, e.Preparation, e.Flow, e.Notes].filter(Boolean).join(' ').toLowerCase();
@@ -108,29 +98,28 @@ function render() {
         });
     }
 
-    const grid = document.getElementById('exp-grid');
+    const tbody = document.getElementById('experiments-tbody');
+
     if (items.length === 0) {
-        grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">🧪</div>該当する実験はありません</div>';
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">該当する実験はありません</td></tr>';
         return;
     }
 
-    const catLabel = { workshop: '工作', show: 'ショー', other: 'その他' };
-
-    grid.innerHTML = items.map(e => {
-        const cat = e.Category || 'other';
-        const snippet = (e.Materials || e.Notes || '物品・注意事項はまだ未入力').split('\n').slice(0, 3).join(' / ');
+    tbody.innerHTML = items.map(e => {
+        const cat = getExperimentCategory(e.Category);
+        const snippet = (e.Materials || '').split('\n').slice(0, 2).join(', ') || '-';
         const hasSlides = e.SlidesURL && e.SlidesURL.trim();
         return `
-            <div class="exp-card ${cat}" onclick="viewExp('${e.ID}')">
-                <div class="exp-card-header">
-                    <span class="exp-card-title">${escapeHtml(e.Name || '(無題)')}</span>
-                    <span class="exp-card-cat-badge">${catLabel[cat]}</span>
-                </div>
-                <div class="exp-card-body">
-                    <div class="exp-snippet">${escapeHtml(snippet)}</div>
-                    ${hasSlides ? `<div style="margin-top:8px;"><a class="exp-link" href="${escapeHtml(e.SlidesURL)}" target="_blank" onclick="event.stopPropagation()">📊 スライドを開く</a></div>` : ''}
-                </div>
-            </div>
+            <tr class="clickable-row" onclick="viewExp('${e.ID}')">
+                <td class="cell-name">${escapeHtml(e.Name || '(無題)')}</td>
+                <td><span class="cat-badge" style="background:${cat.color};">${escapeHtml(cat.label)}</span></td>
+                <td class="hide-mobile cell-snippet">${escapeHtml(snippet)}</td>
+                <td class="hide-mobile">${hasSlides ? `<a href="${escapeAttr(e.SlidesURL)}" target="_blank" onclick="event.stopPropagation()" class="tbl-link">資料を開く</a>` : '-'}</td>
+                <td class="cell-actions" onclick="event.stopPropagation()">
+                    <button class="tbl-btn" onclick="editExp('${e.ID}')">編集</button>
+                    <button class="tbl-btn tbl-btn-danger" onclick="deleteExp('${e.ID}')">削除</button>
+                </td>
+            </tr>
         `;
     }).join('');
 }
@@ -153,17 +142,16 @@ function viewExp(id) {
         return `<div class="exp-detail-section"><h3>${title}</h3>${inner}</div>`;
     };
 
+    const cat = getExperimentCategory(e.Category);
     body.innerHTML = `
         <div style="margin-bottom:12px;">
-            <span class="exp-card-cat-badge" style="background:${e.Category === 'workshop' ? '#10b981' : e.Category === 'show' ? '#f59e0b' : '#8b5cf6'};color:white;">
-                ${e.Category === 'workshop' ? '🛠️ 工作' : e.Category === 'show' ? '🎭 実験ショー' : '✨ その他'}
-            </span>
-            ${e.SlidesURL ? ` &nbsp;<a class="exp-link" href="${escapeHtml(e.SlidesURL)}" target="_blank">📊 スライドを開く</a>` : ''}
+            <span class="cat-badge" style="background:${cat.color};">${escapeHtml(cat.label)}</span>
+            ${e.SlidesURL ? ` &nbsp;<a class="tbl-link" href="${escapeAttr(e.SlidesURL)}" target="_blank">資料を開く</a>` : ''}
         </div>
-        ${section('📦 使用物品', e.Materials, true)}
-        ${section('🔧 事前準備', e.Preparation, true)}
-        ${section('📋 発表の流れ', e.Flow, true)}
-        ${section('⚠️ 注意事項', e.Notes, true)}
+        ${section('使用物品', e.Materials, true)}
+        ${section('事前準備', e.Preparation, true)}
+        ${section('発表の流れ', e.Flow, true)}
+        ${section('注意事項', e.Notes, true)}
     `;
 
     document.getElementById('exp-detail-modal').classList.remove('hidden');
@@ -194,7 +182,7 @@ function openExpModal() {
     ['ex-name', 'ex-materials', 'ex-preparation', 'ex-flow', 'ex-notes', 'ex-slides'].forEach(id => {
         document.getElementById(id).value = '';
     });
-    document.getElementById('ex-category').value = expCurrentTab;
+    document.getElementById('ex-category').value = expCurrentTab === 'all' ? 'workshop' : expCurrentTab;
     document.getElementById('exp-edit-modal').classList.remove('hidden');
     setTimeout(() => document.getElementById('ex-name').focus(), 50);
 }
@@ -222,6 +210,7 @@ async function saveExp() {
     const name = document.getElementById('ex-name').value.trim();
     if (!name) { toast('実験名を入力してください', 'error'); return; }
 
+    const existing = editingExpId ? expData.find(x => x.ID === editingExpId) : null;
     const item = {
         ID: editingExpId || '',
         Name: name,
@@ -231,7 +220,7 @@ async function saveExp() {
         Flow: document.getElementById('ex-flow').value,
         Notes: document.getElementById('ex-notes').value,
         SlidesURL: document.getElementById('ex-slides').value.trim(),
-        Active: 'true'
+        Active: existing ? (existing.Active || 'true') : 'true'
     };
 
     try {

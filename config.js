@@ -11,11 +11,11 @@
  *   - 実験のタブを増やす          → EXPERIMENT_CATEGORIES に1行足す
  *   - メンバー区分を増やす        → MEMBER_CATEGORIES に1行足す
  *   - 書類期限の日数を変える      → DEADLINE_RULES
+ *   - リマインダーの日数を変える  → REMINDER.days
  */
 
 const CONFIG = {
   // ===== バックエンド =====
-  // GASのWebアプリURL。デプロイし直してURLが変わったらここだけ直す。
   API_URL: 'https://script.google.com/macros/s/AKfycbwfR0LGJmGhCzBZIj7UXhYok11Kmt0ZAmnwv1SIeWFFUUUCk0H0wMFHiZuMmEBII8FA/exec',
 
   // ===== キャッシュ =====
@@ -36,16 +36,21 @@ const CONFIG = {
     warning: 7   // 7日前以内 → 黄
   },
 
+  // ===== Phase 4: リマインダーメール =====
+  REMINDER: {
+    days: [7, 3, 1],              // 期限の何日前に送信するか
+    subjectPrefix: '[SciComi]'    // メール件名接頭辞
+  },
+
   // ===== ナビゲーション =====
   NAV_ITEMS: [
-    { href: 'index.html',       label: '🏠 ホーム',   page: 'home' },
-    { href: 'events.html',      label: '📅 イベント', page: 'events' },
-    { href: 'members.html',     label: '👥 メンバー', page: 'members' },
-    { href: 'experiments.html', label: '🧪 実験内容', page: 'experiments' }
+    { href: 'index.html',       label: 'ホーム',   page: 'home' },
+    { href: 'events.html',      label: 'イベント', page: 'events' },
+    { href: 'members.html',     label: 'メンバー', page: 'members' },
+    { href: 'experiments.html', label: '実験内容', page: 'experiments' }
   ],
 
   // ===== イベントカテゴリ =====
-  // key=DBに保存される値 / label=表示名 / bg,text=カレンダー色 / isMeeting=ミーティング扱いか
   EVENT_CATEGORIES: {
     normal:  { label: '通常イベント',     short: '通常',   bg: '#f8b4b4', text: '#7c2d2d', isMeeting: false },
     other:   { label: '学内イベント',     short: '学内',   bg: '#86efac', text: '#14532d', isMeeting: false },
@@ -55,22 +60,22 @@ const CONFIG = {
 
   // ===== 実験カテゴリ（タブ） =====
   EXPERIMENT_CATEGORIES: {
-    workshop: { label: '🛠️ 工作',       color: '#10b981' },
-    show:     { label: '🎭 実験ショー',  color: '#f59e0b' },
-    other:    { label: '✨ その他',      color: '#8b5cf6' }
+    workshop: { label: '工作',       color: '#10b981' },
+    show:     { label: '実験ショー', color: '#f59e0b' },
+    other:    { label: 'その他',     color: '#8b5cf6' }
   },
 
   // ===== メンバーカテゴリ =====
+  // hasEmail: true のカテゴリにはメールアドレス欄が表示される
   MEMBER_CATEGORIES: {
-    adviser:     { label: '🎓 アドバイザー',     color: '#f59e0b' },
-    coordinator: { label: '🤝 コーディネーター', color: '#10b981' },
-    member:      { label: '👨‍🎓 メンバー',        color: '#6264a7' }
+    adviser:     { label: 'アドバイザー',     color: '#f59e0b', hasEmail: true },
+    coordinator: { label: 'コーディネーター', color: '#10b981', hasEmail: true },
+    member:      { label: 'メンバー',         color: '#6264a7', hasEmail: false }
   }
 };
 
 // ---- ヘルパー（定義から派生する便利関数） ----
 
-// カテゴリ定義を安全に取得（未知のキーでも落ちない）
 function getEventCategory(key) {
   return CONFIG.EVENT_CATEGORIES[key] || CONFIG.EVENT_CATEGORIES.normal;
 }

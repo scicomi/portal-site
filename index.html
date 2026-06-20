@@ -8,41 +8,39 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <header class="app-header"><!-- Filled by app.js --></header>
+    <header class="app-header"></header>
 
     <main class="container">
         <div class="welcome-hero">
-            <h2>🔬 サイエンスコミュニケーションサークル</h2>
+            <h2>サイエンスコミュニケーションサークル</h2>
             <p id="welcome-msg">こんにちは。今日もいい日にしましょう。</p>
         </div>
 
-        <!-- 統計 -->
         <div class="dash-stats" id="dash-stats">
-            <div class="stat-card"><div class="stat-num" id="stat-events">—</div><div class="stat-label">登録イベント</div></div>
-            <div class="stat-card"><div class="stat-num" id="stat-upcoming">—</div><div class="stat-label">今後の予定</div></div>
-            <div class="stat-card"><div class="stat-num" id="stat-members">—</div><div class="stat-label">メンバー</div></div>
-            <div class="stat-card"><div class="stat-num" id="stat-experiments">—</div><div class="stat-label">実験ネタ</div></div>
+            <div class="stat-card"><div class="stat-num" id="stat-events">&mdash;</div><div class="stat-label">登録イベント</div></div>
+            <div class="stat-card"><div class="stat-num" id="stat-upcoming">&mdash;</div><div class="stat-label">今後の予定</div></div>
+            <div class="stat-card"><div class="stat-num" id="stat-members">&mdash;</div><div class="stat-label">メンバー</div></div>
+            <div class="stat-card"><div class="stat-num" id="stat-experiments">&mdash;</div><div class="stat-label">実験ネタ</div></div>
         </div>
 
-        <!-- ダッシュボード -->
         <div class="dashboard-grid">
             <div class="dash-card">
-                <h3 class="dash-card-title">📅 直近のイベント <a href="events.html">すべて見る →</a></h3>
+                <h3 class="dash-card-title">直近のイベント <a href="events.html">すべて見る →</a></h3>
                 <ul class="dash-list" id="upcoming-events"><li>読み込み中...</li></ul>
             </div>
 
             <div class="dash-card">
-                <h3 class="dash-card-title">⚠️ 期限が近い書類 <a href="events.html">イベント一覧 →</a></h3>
+                <h3 class="dash-card-title">期限が近い書類 <a href="events.html">イベント一覧 →</a></h3>
                 <ul class="dash-list" id="upcoming-deadlines"><li>読み込み中...</li></ul>
             </div>
 
             <div class="dash-card">
-                <h3 class="dash-card-title">🧪 実験ネタ <a href="experiments.html">一覧 →</a></h3>
+                <h3 class="dash-card-title">実験ネタ <a href="experiments.html">一覧 →</a></h3>
                 <ul class="dash-list" id="exp-summary"><li>読み込み中...</li></ul>
             </div>
 
             <div class="dash-card">
-                <h3 class="dash-card-title">👥 メンバー <a href="members.html">一覧 →</a></h3>
+                <h3 class="dash-card-title">メンバー <a href="members.html">一覧 →</a></h3>
                 <ul class="dash-list" id="member-summary"><li>読み込み中...</li></ul>
             </div>
         </div>

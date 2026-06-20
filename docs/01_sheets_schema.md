@@ -60,6 +60,7 @@
 | `StudentID` | 文字列 | `4CEQ1205` | 学生証/教職員番号 |
 | `Affiliation` | 文字列 | `理系教育センター` | 所属（教員用） |
 | `Year` | 文字列 | `4` | 学年 |
+| `Email` | 文字列 | `name@example.com` | メールアドレス（アドバイザー/コーディネーター用。リマインダー送信先） |
 | `Note` | 文字列 | | メモ |
 | `Active` | 文字列 | `true` | 在籍=`true` / 卒業=`false`（卒業生アーカイブ用） |
 | `CreatedAt` / `UpdatedAt` | ISO | | 自動 |
@@ -87,8 +88,11 @@
 | `storage_warn_mb` | `60` |
 | `storage_block_mb` | `100` |
 | `file_retention_years` | `5` |
+| `reminder_enabled` | `true`（リマインダーメール有効/無効） |
+| `reminder_days` | `7,3,1`（期限の何日前に通知するか。カンマ区切り） |
+| `report_recipients` | メールアドレス（年間レポート送信先。空欄ならアドバイザー/コーディネーター全員に送信） |
 
-将来Phase 2でファイル管理にも使う。**`password` は必ず変更すること**。
+**`password` は必ず変更すること**。
 
 ---
 

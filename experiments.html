@@ -12,28 +12,42 @@
 
     <main class="container">
         <div class="page-section-actions">
-            <h1 class="page-title" style="margin:0; flex:1;">🧪 実験内容</h1>
-            <input id="exp-search" class="search-input" type="text" placeholder="🔍 名前・材料で検索" oninput="onExpSearch()">
-            <button class="btn-primary-solid" style="width: auto; padding: 8px 16px;" onclick="openExpModal()">＋ 実験を追加</button>
+            <h1 class="page-title" style="margin:0; flex:1;">実験内容</h1>
+            <input id="exp-search" class="search-input" type="text" placeholder="名前・材料で検索" oninput="onExpSearch()">
+            <button class="btn-primary-solid" style="width: auto; padding: 8px 16px;" onclick="openExpModal()">+ 実験を追加</button>
         </div>
 
-        <div class="exp-tabs">
-            <button class="exp-tab active" data-cat="workshop" onclick="switchExpTab('workshop')">🛠️ 工作 <span id="tab-cnt-workshop">0</span></button>
-            <button class="exp-tab" data-cat="show" onclick="switchExpTab('show')">🎭 実験ショー <span id="tab-cnt-show">0</span></button>
-            <button class="exp-tab" data-cat="other" onclick="switchExpTab('other')">✨ その他 <span id="tab-cnt-other">0</span></button>
+        <div class="page-section-actions">
+            <button class="filter-chip active" data-cat="all" onclick="switchExpTab('all')">全部 <span id="tab-cnt-all">0</span></button>
+            <button class="filter-chip" data-cat="workshop" onclick="switchExpTab('workshop')">工作 <span id="tab-cnt-workshop">0</span></button>
+            <button class="filter-chip" data-cat="show" onclick="switchExpTab('show')">実験ショー <span id="tab-cnt-show">0</span></button>
+            <button class="filter-chip" data-cat="other" onclick="switchExpTab('other')">その他 <span id="tab-cnt-other">0</span></button>
         </div>
 
-        <div class="exp-grid" id="exp-grid"></div>
+        <div class="table-wrapper">
+            <table class="data-table" id="experiments-table">
+                <thead>
+                    <tr>
+                        <th>実験名</th>
+                        <th>区分</th>
+                        <th class="hide-mobile">使用物品</th>
+                        <th class="hide-mobile">資料</th>
+                        <th style="width:140px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="experiments-tbody"></tbody>
+            </table>
+        </div>
 
         <!-- 詳細モーダル -->
         <div id="exp-detail-modal" class="modal-overlay hidden">
             <div class="modal-content large-modal exp-detail">
                 <div class="modal-header">
-                    <h2 id="exp-detail-title">—</h2>
+                    <h2 id="exp-detail-title">&mdash;</h2>
                     <div class="action-buttons-top">
                         <button class="btn btn-text" onclick="closeExpDetail()">閉じる</button>
-                        <button class="btn btn-secondary" onclick="editCurrentExp()">✏️ 編集</button>
-                        <button class="btn btn-danger" onclick="deleteCurrentExp()">🗑️ 削除</button>
+                        <button class="btn btn-secondary" onclick="editCurrentExp()">編集</button>
+                        <button class="btn btn-danger" onclick="deleteCurrentExp()">削除</button>
                     </div>
                 </div>
                 <div class="modal-body" id="exp-detail-body"></div>
@@ -54,9 +68,9 @@
                     <div class="e1-group">
                         <label class="e1-label">カテゴリ *</label>
                         <select id="ex-category" class="e1-input">
-                            <option value="workshop">🛠️ 工作</option>
-                            <option value="show">🎭 実験ショー</option>
-                            <option value="other">✨ その他</option>
+                            <option value="workshop">工作</option>
+                            <option value="show">実験ショー</option>
+                            <option value="other">その他</option>
                         </select>
                     </div>
                     <div class="e1-group">
@@ -81,7 +95,7 @@
                     </div>
                     <div class="action-buttons">
                         <button class="btn btn-text" onclick="closeExpEdit()">キャンセル</button>
-                        <button class="btn btn-primary-solid" style="width:auto;" onclick="saveExp()">💾 保存</button>
+                        <button class="btn btn-primary-solid" style="width:auto;" onclick="saveExp()">保存</button>
                     </div>
                 </div>
             </div>
