@@ -1,6 +1,6 @@
-# SciComi Portal — サイエンスコミュニケーションサークル ポータルサイト
+# SciComi Portal — サイエンスコミュニケーター ポータルサイト
 
-東海大学 サイエンスコミュニケーションサークル 向けのイベント管理ポータル。
+東海大学 サイエンスコミュニケーター 向けのイベント管理ポータル。
 カレンダー表示、イベント詳細管理、書類期限の自動計算、担当者管理などを行う。
 
 **公開URL**: https://scicomi.github.io/portal-site/
@@ -93,7 +93,13 @@ portal-site/
 ├── experiments.js     # 実験ページ
 ├── README.md
 ├── gas/
-│   └── Code.gs        # GASに貼り付けるバックエンド（3リソース対応）
+│   ├── Code.gs        # GASに貼り付けるバックエンド（3リソース対応）
+│   ├── appsscript.json # GASプロジェクトマニフェスト（clasp用）
+│   ├── .clasp.json    # clasp設定（scriptId要設定）
+│   └── .claspignore   # clasp push 除外リスト
+├── .github/
+│   └── workflows/
+│       └── deploy-gas.yml  # GitHub Actions: gas/ 変更時に自動 clasp push
 └── docs/
     ├── 01_sheets_schema.md
     ├── 02_setup_guide.md
@@ -178,9 +184,30 @@ git push
 
 **重要**：GASは「保存」だけでは公開されない。**必ず「新しいバージョン」でデプロイ**すること。
 
-### 5. GitHubのコードとGASのコードを同期する
+### 5. GASの自動デプロイ（clasp）
 
-GASエディタでは `gas/Code.gs` の内容をコピペで使う。GitHubのリポジトリにある `gas/Code.gs` は**履歴管理用**であり、GASエディタとは自動連携していない。手作業で同期する。
+`gas/` 配下の変更を `main` ブランチに push すると、GitHub Actions が自動で `clasp push` を実行する。
+
+**初回セットアップ**:
+
+```bash
+# 1. clasp をインストール
+npm install -g @google/clasp
+
+# 2. Google アカウントで認証（ブラウザが開く）
+clasp login
+
+# 3. ~/.clasprc.json の内容をコピー
+cat ~/.clasprc.json
+
+# 4. GitHub リポジトリ Settings > Secrets and variables > Actions で
+#    シークレット名: CLASP_TOKEN / 値: 上でコピーした JSON をそのまま貼る
+
+# 5. gas/.clasp.json の scriptId を実際の GAS プロジェクト ID に書き換え
+#    GASエディタ URL: https://script.google.com/home/projects/【このID】/edit
+```
+
+手動コピペ運用も引き続き可能。clasp が未設定の間は今まで通り GAS エディタで直接編集する。
 
 ---
 
@@ -228,6 +255,19 @@ Google Drive（将来Phase 2でファイル保存に使う）の容量は drive.
 
 GASエディタで `generateAnnualReport(2026)` を実行（引数なしなら現在年度を自動判定）。
 送信先は Config シートの `report_recipients`（空欄ならアドバイザー/コーディネーター全員）。
+
+### Phase 2: ファイルアップロード (Google Drive)
+
+イベント編集画面から関連ファイル（PDF、画像、Excel等）を Google Drive にアップロードできる。
+
+- アップロード上限: 10MB/ファイル
+- 保存先: Google Drive の `SciComi_Portal_Files` フォルダ（自動作成）
+- 共有設定: リンクを知っている人が閲覧可（自動設定）
+- 自動削除: 5年以上前のファイルを毎月1日に自動ゴミ箱移動
+  - `Config` シートの `file_retention_years` で保持年数を変更可能
+  - ゴミ箱からは30日間復元可能
+
+初回セットアップ: `installTriggers()` を再実行（Phase 4 で実行済みなら不要、ただしファイルクリーンアップのトリガー追加のため再実行推奨）
 
 ### バックアップを取る
 
@@ -296,7 +336,7 @@ Phase 3 で自動リフレッシュ実装予定。
 | Phase | 内容 | 状態 |
 |---|---|---|
 | Phase 1 | データ永続化（GAS + Sheets） | 完了 |
-| Phase 2 | ファイルアップロード（Google Drive） + 5年自動削除 | 後回し |
+| Phase 2 | ファイルアップロード（Google Drive） + 5年自動削除 | 完了 |
 | Phase 3 | UI改善（検索・フィルタ・担当者マスタ・削除UNDO・テーブル化） | 完了 |
 | Phase 4 | 期限リマインダーメール・年間レポート自動生成 | 完了 |
 

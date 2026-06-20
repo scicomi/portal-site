@@ -42,6 +42,15 @@ const CONFIG = {
     subjectPrefix: '[SciComi]'    // メール件名接頭辞
   },
 
+  // ===== Phase 2: ファイルアップロード =====
+  FILE_UPLOAD: {
+    maxSizeMB: 10,
+    retentionYears: 5
+  },
+
+  // ===== リソース名一覧（api.js が参照） =====
+  RESOURCE_NAMES: ['events', 'members', 'experiments'],
+
   // ===== ナビゲーション =====
   NAV_ITEMS: [
     { href: 'index.html',       label: 'ホーム',   page: 'home' },
@@ -70,7 +79,7 @@ const CONFIG = {
   MEMBER_CATEGORIES: {
     adviser:     { label: 'アドバイザー',     color: '#f59e0b', hasEmail: true },
     coordinator: { label: 'コーディネーター', color: '#10b981', hasEmail: true },
-    member:      { label: 'メンバー',         color: '#6264a7', hasEmail: false }
+    member:      { label: 'メンバー',         color: '#6264a7', hasEmail: true }
   }
 };
 

@@ -674,6 +674,53 @@ textarea:focus {
     text-decoration: underline;
 }
 
+.file-drop-zone {
+    cursor: pointer;
+}
+
+.file-upload-area {
+    margin-top: 4px;
+}
+
+.file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    margin-top: 4px;
+    font-size: 0.85rem;
+}
+
+.file-item .file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.file-item .file-size {
+    color: #888;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.file-item .file-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.file-item.uploading {
+    opacity: 0.6;
+}
+
+.file-item.uploading .file-name {
+    font-style: italic;
+}
+
 /* --- Utility Classes --- */
 .hidden {
     display: none !important;

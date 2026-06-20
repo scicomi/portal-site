@@ -17,12 +17,24 @@ function gasToUi(g) {
     u.Houkoku_Deadline = g.HoukokuDeadline || '';
     u.Meeting_Number = g.MeetingNumber || '';
     u.PartsList = Array.isArray(g.PartsList) ? JSON.stringify(g.PartsList) : (g.PartsList || '');
-    u.Files = Array.isArray(g.Files) ? g.Files.map(f => f.url || f).join(',') : (g.Files || '');
+    u.Files = Array.isArray(g.Files)
+        ? g.Files.map(f => typeof f === 'string' ? { name: '', url: f } : f)
+        : [];
     return u;
 }
 
 function uiToGas(u) {
     const time = (u.Event_Time || '').split(' - ');
+
+    let partsList = [];
+    if (u.PartsList) {
+        if (typeof u.PartsList === 'string') {
+            try { partsList = JSON.parse(u.PartsList); } catch (_) { partsList = []; }
+        } else if (Array.isArray(u.PartsList)) {
+            partsList = u.PartsList;
+        }
+    }
+
     return {
         ID: u.ID || '',
         Date: u.Date || '',
@@ -34,7 +46,7 @@ function uiToGas(u) {
         TimeStart: (time[0] || '').trim(),
         TimeEnd: (time[1] || '').trim(),
         MeetingNumber: u.Meeting_Number || '',
-        PartsList: u.PartsList ? (typeof u.PartsList === 'string' ? JSON.parse(u.PartsList) : u.PartsList) : [],
+        PartsList: partsList,
         AdminKyoka: u.Admin_Kyoka || '',
         AdminHoukoku: u.Admin_Houkoku || '',
         KyokaDeadline: u.Kyoka_Deadline || '',
@@ -42,7 +54,7 @@ function uiToGas(u) {
         Logistics: u.Meeting_Logistics || '',
         Remarks: u.Remarks || '',
         Belongings: u.Belongings || '',
-        Files: (u.Files || '').split(',').filter(s => s.trim()).map(url => ({ name: '', url: url.trim() })),
+        Files: Array.isArray(u.Files) ? u.Files : [],
         UpdatedBy: u.UpdatedBy || ''
     };
 }
@@ -94,10 +106,7 @@ async function init() {
         eventsData = cached.items;
     }
 
-    // 担当者・実験名の候補をキャッシュから即構築（A1/A3）
     populateDatalists();
-
-    initFullCalendar();
     renderEvents();
 
     if (cached) updateSyncStatus('cached', cached.timestamp);
@@ -147,7 +156,7 @@ async function refreshData(isManual = false) {
         eventsData = list.map(gasToUi);
         api.saveCache('events', eventsData);
         renderEvents();
-        refreshCalendar();
+        if (calendarVisible) refreshCalendar();
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
         if (String(e).includes('unauthorized')) {
@@ -169,7 +178,7 @@ function onCategoryFilter(cat) {
     filterState.category = cat;
     document.querySelectorAll('.filter-chip[data-cat]').forEach(c => c.classList.toggle('active', c.dataset.cat === cat));
     renderEvents();
-    refreshCalendar();
+    if (calendarVisible) refreshCalendar();
 }
 function onPeriodFilter(period) {
     filterState.period = period;
@@ -221,15 +230,10 @@ function refreshCalendar() {
 function initFullCalendar() {
     const calendarEl = document.getElementById('calendar');
     if (!calendarEl) return;
-    // FullCalendarがまだ読み込み完了していなければリトライ
     if (typeof FullCalendar === 'undefined') {
         setTimeout(initFullCalendar, 50);
         return;
     }
-    // スケルトンを非表示にしてカレンダー表示
-    const skeleton = document.getElementById('calendar-skeleton');
-    if (skeleton) skeleton.style.display = 'none';
-    calendarEl.style.display = '';
 
     // Custom Jump UI
     const jumpHtml = `
@@ -382,66 +386,75 @@ function viewEventInModal(id) {
     renderModalForm(eventData, false);
 }
 
-// Render all events
+// Calendar toggle
+let calendarVisible = false;
+let calendarInitialized = false;
+
+function toggleCalendar() {
+    calendarVisible = !calendarVisible;
+    const wrapper = document.getElementById('calendar-wrapper');
+    const btn = document.getElementById('calendar-toggle-btn');
+    if (calendarVisible) {
+        wrapper.classList.remove('hidden');
+        btn.textContent = 'カレンダーを非表示';
+        btn.classList.add('active');
+        if (!calendarInitialized) {
+            initFullCalendar();
+            calendarInitialized = true;
+        } else if (window.globalCalendar) {
+            window.globalCalendar.updateSize();
+            refreshCalendar();
+        }
+    } else {
+        wrapper.classList.add('hidden');
+        btn.textContent = 'カレンダーを表示';
+        btn.classList.remove('active');
+    }
+}
+
+// Render all events as table
 function renderEvents() {
-    const listContainer = document.getElementById('event-list');
-    const template = document.getElementById('event-template');
+    const heading = document.getElementById('event-list-heading');
+    const tbody = document.getElementById('events-tbody');
 
-    listContainer.innerHTML = ''; // Clear current
-
-    // フィルタ＆ソート（今後＝昇順、過去＝降順、全部＝昇順）
     const filtered = applyFilters(eventsData);
     const sorted = filtered.slice().sort((a, b) => {
         if (filterState.period === 'past') return (b.Date || '').localeCompare(a.Date || '');
         return (a.Date || '').localeCompare(b.Date || '');
     });
 
-    const heading = document.createElement('h3');
-    heading.style.marginBottom = '1rem';
     const periodLabel = { upcoming: '今後のイベント', past: '過去のイベント', all: '全てのイベント' };
     heading.textContent = `${periodLabel[filterState.period]} (${sorted.length}件)`;
-    listContainer.appendChild(heading);
 
     if (sorted.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'empty-state';
-        empty.innerHTML = '<div class="empty-icon">&mdash;</div>該当するイベントはありません';
-        listContainer.appendChild(empty);
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">該当するイベントはありません</td></tr>';
         return;
     }
 
-    sorted.forEach(event => {
-        const clone = template.content.cloneNode(true);
-        const card = clone.querySelector('.event-card');
-        card.setAttribute('data-id', event.ID);
-
-        // Populate Summary
-        clone.querySelector('.event-date-badge').textContent = `${event.Date} (${dayOfWeekJP(event.Date)})`;
-
-        // Display Time instead of Target
-        const timeDisplay = clone.querySelector('.event-time-display');
-        if (timeDisplay) timeDisplay.textContent = event.Event_Time || '--:--';
-
-        let displayTitle = event.Title;
-        if ((event.Category === 'admin' || event.Category === 'general') && event.Meeting_Number) {
-            displayTitle = `第${event.Meeting_Number}回 ${event.Title}`;
+    tbody.innerHTML = sorted.map(event => {
+        const cat = getEventCategory(event.Category);
+        let displayTitle = event.Title || '(無題)';
+        if (cat.isMeeting && event.Meeting_Number) {
+            displayTitle = `第${event.Meeting_Number}回 ${displayTitle}`;
         }
-        clone.querySelector('.event-title').textContent = displayTitle;
-
-        // Populate Fields
-        populateFields(card, event);
-
-        // Make whole summary clickable to view modal
-        const summary = clone.querySelector('.event-summary');
-        if (summary) {
-            summary.onclick = (e) => {
-                e.stopPropagation();
-                viewEventInModal(event.ID);
-            };
-        }
-
-        listContainer.appendChild(clone);
-    });
+        return `
+            <tr class="clickable-row" onclick="viewEventInModal('${event.ID}')">
+                <td class="cell-name" style="white-space:nowrap;">
+                    ${escapeHtml(event.Date || '')} <span style="color:#888;">(${dayOfWeekJP(event.Date)})</span>
+                    ${event.Date_End && event.Date_End !== event.Date ? '<br><span style="color:#888;font-size:0.8rem;">〜 ' + escapeHtml(event.Date_End) + '</span>' : ''}
+                </td>
+                <td>
+                    <span style="font-weight:600;">${escapeHtml(displayTitle)}</span>
+                    <span class="cat-badge" style="background:${cat.bg};color:${cat.text};margin-left:6px;">${cat.short}</span>
+                </td>
+                <td class="hide-mobile">${escapeHtml(event.Location || '')}</td>
+                <td class="hide-mobile">${escapeHtml(event.Event_Time || '')}</td>
+                <td class="cell-actions" onclick="event.stopPropagation()">
+                    <button class="tbl-btn" onclick="viewEventInModal('${event.ID}')">詳細</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
 }
 
 // Populate fields within a card element
@@ -614,25 +627,29 @@ function populateFields(cardElement, eventData) {
         meetingTitleInput.value = eventData.Title || '';
     }
 
-    // File processing
-    const fileContainer = cardElement.querySelector(`.display-mode[data-field="Files_Display"]`);
-    const fileInput = cardElement.querySelector(`input[data-field="Files"]`);
-    if (fileContainer && fileInput) {
-        if (eventData.Files) {
-            fileInput.value = eventData.Files;
-            const urls = eventData.Files.split(',').filter(u => u.trim());
-            fileContainer.innerHTML = urls.map((url, i) => {
-                const safe = encodeURI(url.trim());
-                // http(s) のみ許可（javascript: 等を弾く）
-                const ok = /^https?:\/\//i.test(url.trim());
-                return ok
-                    ? `<a href="${escapeAttr(safe)}" target="_blank" rel="noopener" class="file-link">関連ファイル ${i + 1}</a>`
-                    : `<span class="file-link" style="color:#999;">無効なURL ${i + 1}</span>`;
+    // File processing (Phase 2: Drive upload)
+    const fileContainer = cardElement.querySelector('.display-mode[data-field="Files_Display"]');
+    const fileListEdit = cardElement.querySelector('.file-list-edit');
+    const files = Array.isArray(eventData.Files) ? eventData.Files : [];
+
+    if (fileContainer) {
+        if (files.length > 0) {
+            fileContainer.innerHTML = files.map((f, i) => {
+                const url = f.url || '';
+                const name = escapeHtml(f.name || ('ファイル ' + (i + 1)));
+                const size = f.size ? ' (' + formatFileSize(f.size) + ')' : '';
+                if (/^https?:\/\//i.test(url)) {
+                    return `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="file-link">${name}${size}</a>`;
+                }
+                return `<span class="file-link" style="color:#999;">${name} (リンク切れ)</span>`;
             }).join('');
         } else {
             fileContainer.innerHTML = '<span style="color:#999;font-size:0.9rem;">なし</span>';
-            fileInput.value = "";
         }
+    }
+
+    if (fileListEdit) {
+        renderEditFileList(fileListEdit, files);
     }
 }
 
@@ -804,7 +821,7 @@ function startNewEvent(category, template) {
             Experiments: "", Presenters: "",
             Admin_Kyoka: "", Admin_Houkoku: "",
             Kyoka_Deadline: "", Houkoku_Deadline: "",
-            Remarks: "", Belongings: "", Files: ""
+            Remarks: "", Belongings: "", Files: []
         };
     }
 
@@ -833,7 +850,7 @@ function startNewEvent(category, template) {
 let tempNewEvent = null;
 
 function renderModalForm(eventData, isEditMode = true) {
-    tempNewEvent = { ...eventData };
+    tempNewEvent = { ...eventData, Files: Array.isArray(eventData.Files) ? [...eventData.Files] : [] };
     const container = document.getElementById('new-event-form-container');
     container.innerHTML = ''; // clear
 
@@ -893,7 +910,7 @@ function deleteModalEvent() {
     eventsData.splice(eventIndex, 1);
     api.saveCache('events', eventsData);
     renderEvents();
-    refreshCalendar();
+    if (calendarVisible) refreshCalendar();
     closeModal();
 
     toastUndo(
@@ -922,7 +939,7 @@ async function saveEventFromModal() {
 
     inputs.forEach(input => {
         const field = input.getAttribute('data-field');
-        if (field) {
+        if (field && field !== 'Files') {
             tempNewEvent[field] = input.value;
         }
     });
@@ -1053,22 +1070,104 @@ function calculateDeadlines(dateStr) {
 
 // 日付フォーマットは app.js の toISODate / todayISO を使用
 
-// File Drag & Drop (Visual only)
+// ---- Phase 2: ファイルアップロード (Google Drive) ----
+
 function allowDrop(ev) {
     ev.preventDefault();
 }
 
-function handleDrop(ev, element) {
+function handleDrop(ev) {
     ev.preventDefault();
+    ev.currentTarget.classList.remove('dragover');
 
+    const files = [];
     if (ev.dataTransfer.items) {
-        // Use DataTransferItemList interface to access the file(s)
-        [...ev.dataTransfer.items].forEach((item, i) => {
-            // If dropped items aren't files, reject them
-            if (item.kind === 'file') {
-                const file = item.getAsFile();
-                toast(`ファイル「${file.name}」はまだ保存機能が未実装です（Phase 2予定）`, 'info', 4000);
-            }
+        [...ev.dataTransfer.items].forEach(item => {
+            if (item.kind === 'file') files.push(item.getAsFile());
         });
+    } else if (ev.dataTransfer.files) {
+        files.push(...ev.dataTransfer.files);
     }
+    if (files.length > 0) uploadFiles(files);
+}
+
+function handleFileSelect(input) {
+    const files = Array.from(input.files);
+    if (files.length > 0) uploadFiles(files);
+    input.value = '';
+}
+
+async function uploadFiles(fileList) {
+    const maxSizeMB = (CONFIG.FILE_UPLOAD && CONFIG.FILE_UPLOAD.maxSizeMB) || 10;
+
+    for (const file of fileList) {
+        if (file.size > maxSizeMB * 1024 * 1024) {
+            toast(`「${file.name}」はサイズ上限(${maxSizeMB}MB)を超えています`, 'error');
+            continue;
+        }
+        if (!tempNewEvent) continue;
+        if (!Array.isArray(tempNewEvent.Files)) tempNewEvent.Files = [];
+
+        tempNewEvent.Files.push({ name: file.name, size: file.size, _uploading: true });
+        refreshEditFileList();
+
+        try {
+            const result = await api.uploadFile(file);
+            const idx = tempNewEvent.Files.findIndex(f => f._uploading && f.name === file.name);
+            if (idx >= 0) {
+                tempNewEvent.Files[idx] = result;
+            } else {
+                tempNewEvent.Files.push(result);
+            }
+            toast(`「${file.name}」をアップロードしました`, 'success', 2000);
+        } catch (e) {
+            toast(`「${file.name}」のアップロード失敗: ${e.message}`, 'error');
+            const idx = tempNewEvent.Files.findIndex(f => f._uploading && f.name === file.name);
+            if (idx >= 0) tempNewEvent.Files.splice(idx, 1);
+        }
+        refreshEditFileList();
+    }
+}
+
+async function removeFile(index) {
+    if (!tempNewEvent || !Array.isArray(tempNewEvent.Files)) return;
+    const file = tempNewEvent.Files[index];
+    if (!file) return;
+
+    if (file.driveId) {
+        try { await api.deleteFile(file.driveId); } catch (e) {
+            console.warn('Drive file deletion failed:', e);
+        }
+    }
+    tempNewEvent.Files.splice(index, 1);
+    refreshEditFileList();
+}
+
+function refreshEditFileList() {
+    const card = document.querySelector('#new-event-form-container .event-card');
+    if (!card || !tempNewEvent) return;
+    const el = card.querySelector('.file-list-edit');
+    if (el) renderEditFileList(el, tempNewEvent.Files);
+}
+
+function renderEditFileList(container, files) {
+    if (!files || files.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    container.innerHTML = files.map((f, i) => {
+        const name = escapeHtml(f.name || ('ファイル ' + (i + 1)));
+        const size = f.size ? formatFileSize(f.size) : '';
+        const uploading = f._uploading;
+        return `
+            <div class="file-item${uploading ? ' uploading' : ''}" data-index="${i}">
+                <span class="file-name">${name}${uploading ? ' (アップロード中...)' : ''}</span>
+                <span class="file-size">${size}</span>
+                <div class="file-actions">
+                    ${!uploading && f.url ? `<a href="${escapeAttr(f.url)}" target="_blank" rel="noopener" class="tbl-btn">開く</a>` : ''}
+                    ${!uploading ? `<button class="tbl-btn tbl-btn-danger" onclick="removeFile(${i})" type="button">削除</button>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
 }

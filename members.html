@@ -14,30 +14,24 @@
         <div class="page-section-actions">
             <h1 class="page-title" style="margin:0; flex:1;">メンバーリスト</h1>
             <input id="member-search" class="search-input" type="text" placeholder="名前・役職で検索" oninput="onMemberSearch()">
-            <button id="toggle-grad-btn" class="filter-chip" style="display:none;" onclick="toggleGraduated()">卒業生も表示</button>
             <button class="btn-primary-solid" style="width: auto; padding: 8px 16px;" onclick="openMemberModal()">+ メンバー追加</button>
         </div>
 
         <div class="page-section-actions">
-            <button class="filter-chip active" data-cat="all" onclick="onCategoryFilterMember('all')">全員</button>
-            <button class="filter-chip" data-cat="adviser" onclick="onCategoryFilterMember('adviser')">アドバイザー</button>
-            <button class="filter-chip" data-cat="coordinator" onclick="onCategoryFilterMember('coordinator')">コーディネーター</button>
-            <button class="filter-chip" data-cat="member" onclick="onCategoryFilterMember('member')">メンバー</button>
+            <select id="fiscal-year-select" class="e1-input" style="width:auto; padding:6px 12px;" onchange="onFiscalYearChange()"></select>
+            <button class="filter-chip" id="toggle-adviser-btn" onclick="toggleCategoryFilter('adviser')">アドバイザーも表示</button>
+            <button class="filter-chip" id="toggle-coordinator-btn" onclick="toggleCategoryFilter('coordinator')">コーディネーターも表示</button>
         </div>
 
         <div class="table-wrapper">
             <table class="data-table" id="members-table">
                 <thead>
                     <tr>
+                        <th>学籍/教職員番号</th>
                         <th>名前</th>
-                        <th>区分</th>
-                        <th>役職</th>
-                        <th class="hide-mobile">学年</th>
-                        <th class="hide-mobile">学籍番号</th>
-                        <th class="hide-mobile">所属</th>
-                        <th class="hide-mobile">メール</th>
-                        <th class="hide-mobile">メモ</th>
-                        <th style="width:160px;">操作</th>
+                        <th>役職/所属</th>
+                        <th class="hide-mobile">メールアドレス</th>
+                        <th style="width:120px;">操作</th>
                     </tr>
                 </thead>
                 <tbody id="members-tbody"></tbody>
@@ -53,13 +47,13 @@
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">カテゴリ *</label>
-                    <select id="mb-category" class="e1-input" onchange="onMbCategoryChange()">
+                    <select id="mb-category" class="e1-input">
                         <option value="member">メンバー</option>
                         <option value="coordinator">コーディネーター</option>
                         <option value="adviser">アドバイザー</option>
                     </select>
                 </div>
-                <div class="e1-group" id="mb-email-group" style="display:none;">
+                <div class="e1-group">
                     <label class="e1-label">メールアドレス</label>
                     <input id="mb-email" class="e1-input" type="email" placeholder="例: name@example.com">
                 </div>
@@ -67,19 +61,17 @@
                     <label class="e1-label">役職・担当</label>
                     <input id="mb-role" class="e1-input" type="text" placeholder="例: プロジェクトリーダー">
                 </div>
-                <div class="flex-row">
-                    <div class="e1-group" style="flex:2;">
-                        <label class="e1-label">学生証番号 / 教職員番号</label>
-                        <input id="mb-student-id" class="e1-input" type="text" placeholder="例: 4CSC1234">
-                    </div>
-                    <div class="e1-group" style="flex:1;">
-                        <label class="e1-label">学年</label>
-                        <input id="mb-year" class="e1-input" type="text" placeholder="例: 4">
-                    </div>
+                <div class="e1-group">
+                    <label class="e1-label">学生証番号 / 教職員番号</label>
+                    <input id="mb-student-id" class="e1-input" type="text" placeholder="例: 5CSC1234">
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">所属</label>
                     <input id="mb-affiliation" class="e1-input" type="text" placeholder="例: 理系教育センター">
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">年度</label>
+                    <select id="mb-fiscal-year" class="e1-input"></select>
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">メモ</label>

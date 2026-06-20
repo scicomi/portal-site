@@ -65,6 +65,13 @@ function genId(prefix) {
   return prefix + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
 }
 
+function formatFileSize(bytes) {
+  if (!bytes || bytes <= 0) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
 // ====== ナビゲーション ======
 
 function renderHeader(activePage) {

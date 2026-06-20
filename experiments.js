@@ -1,11 +1,12 @@
 /**
  * 実験内容ページ
- * データベース風テーブル表示。フィルタチップ + 検索。
+ * カテゴリタブ（工作/実験ショー/その他）+ 検索。
  * 行クリックで詳細モーダルを開く。
+ * 各実験に反省点・良かった点を記録可能。
  */
 
 let expData = [];
-let expCurrentTab = 'all';
+let expCurrentTab = 'workshop';
 let expSearchKw = '';
 let currentExpId = null;
 let editingExpId = null;
@@ -81,19 +82,15 @@ function onExpSearch() {
 }
 
 function render() {
-    // タブカウント
-    document.getElementById('tab-cnt-all').textContent = expData.length;
     document.getElementById('tab-cnt-workshop').textContent = expData.filter(e => e.Category === 'workshop').length;
     document.getElementById('tab-cnt-show').textContent = expData.filter(e => e.Category === 'show').length;
     document.getElementById('tab-cnt-other').textContent = expData.filter(e => e.Category === 'other').length;
 
-    let items = expCurrentTab === 'all'
-        ? expData
-        : expData.filter(e => (e.Category || 'other') === expCurrentTab);
+    let items = expData.filter(e => (e.Category || 'other') === expCurrentTab);
 
     if (expSearchKw) {
         items = items.filter(e => {
-            const hay = [e.Name, e.Materials, e.Preparation, e.Flow, e.Notes].filter(Boolean).join(' ').toLowerCase();
+            const hay = [e.Name, e.Materials, e.Preparation, e.Flow, e.Notes, e.Reflections, e.Positives].filter(Boolean).join(' ').toLowerCase();
             return hay.includes(expSearchKw);
         });
     }
@@ -101,18 +98,20 @@ function render() {
     const tbody = document.getElementById('experiments-tbody');
 
     if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">該当する実験はありません</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">該当する実験はありません</td></tr>';
         return;
     }
 
     tbody.innerHTML = items.map(e => {
-        const cat = getExperimentCategory(e.Category);
         const snippet = (e.Materials || '').split('\n').slice(0, 2).join(', ') || '-';
         const hasSlides = e.SlidesURL && e.SlidesURL.trim();
+        const hasReview = (e.Reflections && e.Reflections.trim()) || (e.Positives && e.Positives.trim());
         return `
             <tr class="clickable-row" onclick="viewExp('${e.ID}')">
-                <td class="cell-name">${escapeHtml(e.Name || '(無題)')}</td>
-                <td><span class="cat-badge" style="background:${cat.color};">${escapeHtml(cat.label)}</span></td>
+                <td class="cell-name">
+                    ${escapeHtml(e.Name || '(無題)')}
+                    ${hasReview ? '<span style="color:#10b981;margin-left:4px;font-size:0.75rem;" title="振り返りあり">memo</span>' : ''}
+                </td>
                 <td class="hide-mobile cell-snippet">${escapeHtml(snippet)}</td>
                 <td class="hide-mobile">${hasSlides ? `<a href="${escapeAttr(e.SlidesURL)}" target="_blank" onclick="event.stopPropagation()" class="tbl-link">資料を開く</a>` : '-'}</td>
                 <td class="cell-actions" onclick="event.stopPropagation()">
@@ -152,6 +151,9 @@ function viewExp(id) {
         ${section('事前準備', e.Preparation, true)}
         ${section('発表の流れ', e.Flow, true)}
         ${section('注意事項', e.Notes, true)}
+        ${(e.Positives && e.Positives.trim()) || (e.Reflections && e.Reflections.trim()) ? '<hr style="border:0;border-top:1px solid #eee;margin:20px 0;">' : ''}
+        ${section('良かった点', e.Positives, false)}
+        ${section('反省点', e.Reflections, false)}
     `;
 
     document.getElementById('exp-detail-modal').classList.remove('hidden');
@@ -179,10 +181,10 @@ function deleteCurrentExp() {
 function openExpModal() {
     editingExpId = null;
     document.getElementById('exp-edit-title').textContent = '実験を追加';
-    ['ex-name', 'ex-materials', 'ex-preparation', 'ex-flow', 'ex-notes', 'ex-slides'].forEach(id => {
+    ['ex-name', 'ex-materials', 'ex-preparation', 'ex-flow', 'ex-notes', 'ex-slides', 'ex-positives', 'ex-reflections'].forEach(id => {
         document.getElementById(id).value = '';
     });
-    document.getElementById('ex-category').value = expCurrentTab === 'all' ? 'workshop' : expCurrentTab;
+    document.getElementById('ex-category').value = expCurrentTab;
     document.getElementById('exp-edit-modal').classList.remove('hidden');
     setTimeout(() => document.getElementById('ex-name').focus(), 50);
 }
@@ -199,6 +201,8 @@ function editExp(id) {
     document.getElementById('ex-flow').value = e.Flow || '';
     document.getElementById('ex-notes').value = e.Notes || '';
     document.getElementById('ex-slides').value = e.SlidesURL || '';
+    document.getElementById('ex-positives').value = e.Positives || '';
+    document.getElementById('ex-reflections').value = e.Reflections || '';
     document.getElementById('exp-edit-modal').classList.remove('hidden');
 }
 
@@ -220,6 +224,8 @@ async function saveExp() {
         Flow: document.getElementById('ex-flow').value,
         Notes: document.getElementById('ex-notes').value,
         SlidesURL: document.getElementById('ex-slides').value.trim(),
+        Positives: document.getElementById('ex-positives').value,
+        Reflections: document.getElementById('ex-reflections').value,
         Active: existing ? (existing.Active || 'true') : 'true'
     };
 
