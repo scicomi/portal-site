@@ -1,12 +1,19 @@
 /**
  * メンバーリストページ
- * データベース風テーブル表示。カテゴリフィルタ + 検索 + 卒業生トグル。
+ * 年度別表示。メンバーがデフォルト、アドバイザー/コーディネーターはトグルで表示。
  */
 
 let membersData = [];
 let memberSearchKw = '';
-let memberCatFilter = 'all';
 let editingMemberId = null;
+let selectedFiscalYear = currentFiscalYear();
+let showAdviser = false;
+let showCoordinator = false;
+
+function currentFiscalYear() {
+    const now = new Date();
+    return (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     bootPage('members', init);
@@ -16,6 +23,7 @@ async function init() {
     const cached = api.loadCache('members');
     if (cached && cached.items) {
         membersData = cached.items;
+        buildFiscalYearSelect();
         renderMembers();
     }
     updateSyncStatus(cached ? 'cached' : 'initial-loading', cached ? cached.timestamp : null);
@@ -27,6 +35,7 @@ async function refreshData(isManual = false) {
     try {
         membersData = await api.list('members');
         api.saveCache('members', membersData);
+        buildFiscalYearSelect();
         renderMembers();
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
@@ -39,39 +48,62 @@ async function refreshData(isManual = false) {
     }
 }
 
-let showGraduated = false;
+function buildFiscalYearSelect() {
+    const sel = document.getElementById('fiscal-year-select');
+    if (!sel) return;
+
+    const years = new Set();
+    const curFY = currentFiscalYear();
+    years.add(curFY);
+
+    membersData.forEach(m => {
+        const fy = m.FiscalYear ? parseInt(m.FiscalYear) : null;
+        if (fy) years.add(fy);
+    });
+
+    const sorted = [...years].sort((a, b) => b - a);
+    sel.innerHTML = sorted.map(y =>
+        `<option value="${y}" ${y === selectedFiscalYear ? 'selected' : ''}>${y}年度</option>`
+    ).join('');
+}
+
+function onFiscalYearChange() {
+    selectedFiscalYear = parseInt(document.getElementById('fiscal-year-select').value);
+    renderMembers();
+}
 
 function onMemberSearch() {
     memberSearchKw = (document.getElementById('member-search').value || '').toLowerCase();
     renderMembers();
 }
 
-function onCategoryFilterMember(cat) {
-    memberCatFilter = cat;
-    document.querySelectorAll('.filter-chip[data-cat]').forEach(c =>
-        c.classList.toggle('active', c.dataset.cat === cat)
-    );
-    renderMembers();
-}
-
-function toggleGraduated() {
-    showGraduated = !showGraduated;
-    const btn = document.getElementById('toggle-grad-btn');
-    if (btn) {
-        btn.textContent = showGraduated ? '卒業生を隠す' : '卒業生も表示';
-        btn.classList.toggle('active', showGraduated);
+function toggleCategoryFilter(cat) {
+    if (cat === 'adviser') {
+        showAdviser = !showAdviser;
+        document.getElementById('toggle-adviser-btn').classList.toggle('active', showAdviser);
+    } else if (cat === 'coordinator') {
+        showCoordinator = !showCoordinator;
+        document.getElementById('toggle-coordinator-btn').classList.toggle('active', showCoordinator);
     }
     renderMembers();
 }
 
-function isActive(m) { return m.Active !== 'false'; }
+function getMemberFiscalYear(m) {
+    if (m.FiscalYear) return parseInt(m.FiscalYear);
+    return currentFiscalYear();
+}
 
 function renderMembers() {
-    let base = showGraduated ? membersData : membersData.filter(isActive);
+    let base = membersData.filter(m => {
+        const fy = getMemberFiscalYear(m);
+        if (fy !== selectedFiscalYear) return false;
 
-    if (memberCatFilter !== 'all') {
-        base = base.filter(m => (m.Category || 'member') === memberCatFilter);
-    }
+        const cat = m.Category || 'member';
+        if (cat === 'member') return true;
+        if (cat === 'adviser') return showAdviser;
+        if (cat === 'coordinator') return showCoordinator;
+        return true;
+    });
 
     if (memberSearchKw) {
         base = base.filter(m => {
@@ -81,83 +113,63 @@ function renderMembers() {
     }
 
     const sorted = base.slice().sort((a, b) => {
-        if (isActive(a) !== isActive(b)) return isActive(a) ? -1 : 1;
         const catOrder = { adviser: 0, coordinator: 1, member: 2 };
         const ca = catOrder[a.Category] ?? 2, cb = catOrder[b.Category] ?? 2;
         if (ca !== cb) return ca - cb;
         if (!!a.Role !== !!b.Role) return a.Role ? -1 : 1;
-        return (b.Year || '').localeCompare(a.Year || '');
+        return (a.Name || '').localeCompare(b.Name || '');
     });
 
     const tbody = document.getElementById('members-tbody');
 
     if (sorted.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">該当するメンバーはいません</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">該当するメンバーはいません</td></tr>';
     } else {
         tbody.innerHTML = sorted.map(m => {
-            const grad = !isActive(m);
-            const cat = getMemberCategory(m.Category);
+            const cat = m.Category || 'member';
+            const catDef = getMemberCategory(cat);
+            const roleAffil = [m.Role, m.Affiliation].filter(Boolean).join(' / ');
+            const isSub = cat !== 'member';
             return `
-            <tr class="${grad ? 'graduated' : ''}" data-id="${m.ID}">
+            <tr data-id="${m.ID}" ${isSub ? 'style="background:#faf9f8;"' : ''}>
+                <td>${escapeHtml(m.StudentID || '')}</td>
                 <td class="cell-name">
                     <span class="member-name-text">${escapeHtml(m.Name || '')}</span>
-                    ${grad ? '<span class="grad-badge">卒業</span>' : ''}
+                    ${isSub ? '<span class="cat-badge" style="background:' + catDef.color + ';margin-left:6px;font-size:0.7rem;">' + escapeHtml(catDef.label) + '</span>' : ''}
                 </td>
-                <td><span class="cat-badge" style="background:${cat.color};">${escapeHtml(cat.label)}</span></td>
-                <td>${escapeHtml(m.Role || '')}</td>
-                <td class="hide-mobile">${escapeHtml(m.Year ? m.Year + '年' : '')}</td>
-                <td class="hide-mobile">${escapeHtml(m.StudentID || '')}</td>
-                <td class="hide-mobile">${escapeHtml(m.Affiliation || '')}</td>
+                <td>${escapeHtml(roleAffil || '')}</td>
                 <td class="hide-mobile">${m.Email ? `<a href="mailto:${escapeAttr(m.Email)}">${escapeHtml(m.Email)}</a>` : ''}</td>
-                <td class="hide-mobile">${escapeHtml(m.Note || '')}</td>
                 <td class="cell-actions">
                     <button class="tbl-btn" onclick="editMember('${m.ID}')" title="編集">編集</button>
-                    <button class="tbl-btn" onclick="toggleGraduate('${m.ID}')" title="${grad ? '在籍に戻す' : '卒業'}">${grad ? '復帰' : '卒業'}</button>
                     <button class="tbl-btn tbl-btn-danger" onclick="deleteMember('${m.ID}')" title="削除">削除</button>
                 </td>
             </tr>`;
         }).join('');
     }
-
-    const gradCount = membersData.filter(m => !isActive(m)).length;
-    const gradBtn = document.getElementById('toggle-grad-btn');
-    if (gradBtn) gradBtn.style.display = gradCount > 0 ? '' : 'none';
-}
-
-async function toggleGraduate(id) {
-    const m = membersData.find(x => x.ID === id);
-    if (!m) return;
-    const nowActive = isActive(m);
-    const updated = { ...m, Active: nowActive ? 'false' : 'true' };
-    try {
-        const saved = await api.save('members', updated);
-        const idx = membersData.findIndex(x => x.ID === id);
-        if (idx >= 0) membersData[idx] = saved;
-        api.saveCache('members', membersData);
-        renderMembers();
-        toast(nowActive ? `${m.Name} を卒業生にしました` : `${m.Name} を在籍に戻しました`, 'success');
-    } catch (e) {
-        toast('更新失敗: ' + e.message, 'error');
-    }
 }
 
 // ---- モーダル ----
 
-function onMbCategoryChange() {
-    const cat = document.getElementById('mb-category').value;
-    const emailGroup = document.getElementById('mb-email-group');
-    const catDef = getMemberCategory(cat);
-    emailGroup.style.display = catDef.hasEmail ? '' : 'none';
+function populateFiscalYearModal() {
+    const sel = document.getElementById('mb-fiscal-year');
+    if (!sel) return;
+    const curFY = currentFiscalYear();
+    const years = [];
+    for (let y = curFY + 1; y >= curFY - 5; y--) years.push(y);
+    sel.innerHTML = years.map(y =>
+        `<option value="${y}" ${y === curFY ? 'selected' : ''}>${y}年度</option>`
+    ).join('');
 }
 
 function openMemberModal() {
     editingMemberId = null;
     document.getElementById('member-modal-title').textContent = 'メンバー追加';
-    ['mb-name', 'mb-role', 'mb-student-id', 'mb-year', 'mb-affiliation', 'mb-note', 'mb-email'].forEach(id => {
+    ['mb-name', 'mb-role', 'mb-student-id', 'mb-affiliation', 'mb-note', 'mb-email'].forEach(id => {
         document.getElementById(id).value = '';
     });
     document.getElementById('mb-category').value = 'member';
-    onMbCategoryChange();
+    populateFiscalYearModal();
+    document.getElementById('mb-fiscal-year').value = selectedFiscalYear || currentFiscalYear();
     document.getElementById('member-modal').classList.remove('hidden');
     setTimeout(() => document.getElementById('mb-name').focus(), 50);
 }
@@ -171,11 +183,11 @@ function editMember(id) {
     document.getElementById('mb-category').value = m.Category || 'member';
     document.getElementById('mb-role').value = m.Role || '';
     document.getElementById('mb-student-id').value = m.StudentID || '';
-    document.getElementById('mb-year').value = m.Year || '';
     document.getElementById('mb-affiliation').value = m.Affiliation || '';
     document.getElementById('mb-note').value = m.Note || '';
     document.getElementById('mb-email').value = m.Email || '';
-    onMbCategoryChange();
+    populateFiscalYearModal();
+    document.getElementById('mb-fiscal-year').value = m.FiscalYear || currentFiscalYear();
     document.getElementById('member-modal').classList.remove('hidden');
 }
 
@@ -194,10 +206,10 @@ async function saveMember() {
         Category: document.getElementById('mb-category').value,
         Role: document.getElementById('mb-role').value.trim(),
         StudentID: document.getElementById('mb-student-id').value.trim(),
-        Year: document.getElementById('mb-year').value.trim(),
         Affiliation: document.getElementById('mb-affiliation').value.trim(),
         Note: document.getElementById('mb-note').value.trim(),
         Email: document.getElementById('mb-email').value.trim(),
+        FiscalYear: document.getElementById('mb-fiscal-year').value,
         Active: existing ? (existing.Active || 'true') : 'true'
     };
 
@@ -210,6 +222,7 @@ async function saveMember() {
             membersData.push(saved);
         }
         api.saveCache('members', membersData);
+        buildFiscalYearSelect();
         renderMembers();
         closeMemberModal();
         toast('保存しました', 'success');

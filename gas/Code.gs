@@ -13,7 +13,7 @@
  */
 
 // ====== 設定 ======
-const SHEET_ID = '★ここにスプレッドシートのIDを貼る★';
+const SHEET_ID = '19C7hff94sp6s6rsbhwMPeIvOhhqqbOK-kj9edSu2UPc';
 const EVENTS_SHEET = 'Events';
 const MEMBERS_SHEET = 'Members';
 const EXPERIMENTS_SHEET = 'Experiments';
@@ -83,6 +83,16 @@ function doPost(e) {
       return jsonResponse({ success: deleted });
     }
 
+    if (action === 'uploadFile') {
+      const result = uploadFileToDrive(body.file || {});
+      return jsonResponse({ success: true, file: result });
+    }
+
+    if (action === 'deleteFile') {
+      const ok = deleteFileFromDrive(body.driveId || '');
+      return jsonResponse({ success: ok });
+    }
+
     return jsonResponse({ success: false, error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse({ success: false, error: String(err), stack: err.stack });
@@ -111,24 +121,23 @@ function getConfig(key) {
   return '';
 }
 
-function getSheetName(resource) {
-  if (resource === 'events') return EVENTS_SHEET;
-  if (resource === 'members') return MEMBERS_SHEET;
-  if (resource === 'experiments') return EXPERIMENTS_SHEET;
-  throw new Error('unknown resource: ' + resource);
+// ====== スキーマ駆動リソースレジストリ ======
+// 新しいリソース追加時はここに1エントリ足すだけでCRUD全対応
+const RESOURCE_REGISTRY = {
+  events:      { sheet: EVENTS_SHEET,      idPrefix: 'ev_', jsonFields: ['PartsList', 'Files'] },
+  members:     { sheet: MEMBERS_SHEET,     idPrefix: 'mb_', jsonFields: [] },
+  experiments: { sheet: EXPERIMENTS_SHEET, idPrefix: 'ex_', jsonFields: [] }
+};
+
+function getResourceDef(resource) {
+  const def = RESOURCE_REGISTRY[resource];
+  if (!def) throw new Error('unknown resource: ' + resource);
+  return def;
 }
 
-function getJsonFields(resource) {
-  if (resource === 'events') return ['PartsList', 'Files'];
-  return [];
-}
-
-function getIdPrefix(resource) {
-  if (resource === 'events') return 'ev_';
-  if (resource === 'members') return 'mb_';
-  if (resource === 'experiments') return 'ex_';
-  return 'id_';
-}
+function getSheetName(resource) { return getResourceDef(resource).sheet; }
+function getJsonFields(resource) { return getResourceDef(resource).jsonFields; }
+function getIdPrefix(resource) { return getResourceDef(resource).idPrefix; }
 
 // ====== 汎用CRUD ======
 
@@ -137,7 +146,8 @@ function listResource(resource) {
   if (!sheet) return [];
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const rawHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const headers = rawHeaders.map(h => String(h || '').trim());
   const rows = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
   const jsonFields = getJsonFields(resource);
   return rows
@@ -145,11 +155,14 @@ function listResource(resource) {
     .map(r => {
       const obj = {};
       headers.forEach((h, i) => {
+        if (!h) return;
         let val = r[i];
         if (val instanceof Date) {
           val = Utilities.formatDate(val, 'Asia/Tokyo', 'yyyy-MM-dd');
+        } else if (typeof val === 'boolean') {
+          val = String(val);
         }
-        obj[h] = val === '' || val === null ? '' : String(val);
+        obj[h] = val === '' || val === null || val === undefined ? '' : String(val);
       });
       jsonFields.forEach(f => {
         if (obj[f]) {
@@ -163,65 +176,85 @@ function listResource(resource) {
 }
 
 function saveResource(resource, item) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(getSheetName(resource));
-  if (!sheet) throw new Error('sheet not found: ' + resource);
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const jsonFields = getJsonFields(resource);
-  const now = new Date().toISOString();
-
-  if (!item.ID) {
-    item.ID = getIdPrefix(resource) + Date.now();
-    if (headers.indexOf('CreatedAt') >= 0) item.CreatedAt = now;
-  }
-  if (headers.indexOf('UpdatedAt') >= 0) item.UpdatedAt = now;
-
-  const rowData = headers.map(h => {
-    let val = item[h];
-    if (val === undefined || val === null) return '';
-    if (jsonFields.indexOf(h) >= 0 && typeof val !== 'string') {
-      return JSON.stringify(val);
-    }
-    return val;
-  });
-
-  const lastRow = sheet.getLastRow();
-  let existingRow = -1;
-  if (lastRow >= 2) {
-    const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-    for (let i = 0; i < ids.length; i++) {
-      if (ids[i][0] === item.ID) { existingRow = i + 2; break; }
-    }
+  // LockService で同時書き込みの競合を防ぐ
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (_) {
+    throw new Error('他のユーザーが保存中です。数秒後にもう一度お試しください。');
   }
 
-  if (existingRow > 0) {
-    sheet.getRange(existingRow, 1, 1, headers.length).setValues([rowData]);
-  } else {
-    sheet.appendRow(rowData);
-  }
+  try {
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(getSheetName(resource));
+    if (!sheet) throw new Error('sheet not found: ' + resource);
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const jsonFields = getJsonFields(resource);
+    const now = new Date().toISOString();
 
-  const returned = {};
-  headers.forEach((h, i) => { returned[h] = rowData[i]; });
-  jsonFields.forEach(f => {
-    if (returned[f] && typeof returned[f] === 'string') {
-      try { returned[f] = JSON.parse(returned[f]); } catch (_) { returned[f] = []; }
+    if (!item.ID) {
+      item.ID = getIdPrefix(resource) + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+      if (headers.indexOf('CreatedAt') >= 0) item.CreatedAt = now;
     }
-  });
-  return returned;
+    if (headers.indexOf('UpdatedAt') >= 0) item.UpdatedAt = now;
+
+    const rowData = headers.map(h => {
+      let val = item[h];
+      if (val === undefined || val === null) return '';
+      if (jsonFields.indexOf(h) >= 0 && typeof val !== 'string') {
+        return JSON.stringify(val);
+      }
+      return val;
+    });
+
+    const lastRow = sheet.getLastRow();
+    let existingRow = -1;
+    if (lastRow >= 2) {
+      const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+      for (let i = 0; i < ids.length; i++) {
+        if (ids[i][0] === item.ID) { existingRow = i + 2; break; }
+      }
+    }
+
+    if (existingRow > 0) {
+      sheet.getRange(existingRow, 1, 1, headers.length).setValues([rowData]);
+    } else {
+      sheet.appendRow(rowData);
+    }
+
+    const returned = {};
+    headers.forEach((h, i) => { returned[h] = rowData[i]; });
+    jsonFields.forEach(f => {
+      if (returned[f] && typeof returned[f] === 'string') {
+        try { returned[f] = JSON.parse(returned[f]); } catch (_) { returned[f] = []; }
+      }
+    });
+    return returned;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function deleteResource(resource, id) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(getSheetName(resource));
-  if (!sheet) return false;
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return false;
-  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-  for (let i = 0; i < ids.length; i++) {
-    if (ids[i][0] === id) {
-      sheet.deleteRow(i + 2);
-      return true;
-    }
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (_) {
+    throw new Error('他のユーザーが操作中です。数秒後にもう一度お試しください。');
   }
-  return false;
+  try {
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(getSheetName(resource));
+    if (!sheet) return false;
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return false;
+    const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (let i = 0; i < ids.length; i++) {
+      if (ids[i][0] === id) {
+        sheet.deleteRow(i + 2);
+        return true;
+      }
+    }
+    return false;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // ====== 初期セットアップ ======
@@ -234,13 +267,13 @@ const EVENTS_HEADERS = [
   'CreatedAt', 'UpdatedAt', 'UpdatedBy'
 ];
 const MEMBERS_HEADERS = [
-  'ID', 'Name', 'Category', 'Role', 'StudentID', 'Affiliation', 'Year',
-  'Email', 'Note', 'Active',
+  'ID', 'Name', 'Category', 'Role', 'StudentID', 'Affiliation',
+  'Email', 'Note', 'FiscalYear', 'Active',
   'CreatedAt', 'UpdatedAt'
 ];
 const EXPERIMENTS_HEADERS = [
   'ID', 'Name', 'Category', 'Materials', 'Preparation', 'Flow', 'Notes',
-  'SlidesURL', 'Active', 'CreatedAt', 'UpdatedAt'
+  'SlidesURL', 'Reflections', 'Positives', 'Active', 'CreatedAt', 'UpdatedAt'
 ];
 
 function setupSpreadsheet() {
@@ -306,6 +339,83 @@ function ensureConfigSheet(ss) {
     config.setFrozenRows(1);
     Logger.log('Created Config sheet with default password');
   }
+}
+
+// ====================================================================
+// Phase 2: ファイルアップロード (Google Drive) + 5年自動削除
+// ====================================================================
+
+const DRIVE_FOLDER_NAME = 'SciComi_Portal_Files';
+
+function getUploadFolder() {
+  const folders = DriveApp.getFoldersByName(DRIVE_FOLDER_NAME);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(DRIVE_FOLDER_NAME);
+}
+
+function uploadFileToDrive(fileData) {
+  if (!fileData || !fileData.base64 || !fileData.name) {
+    throw new Error('ファイルデータが不正です');
+  }
+
+  const decoded = Utilities.base64Decode(fileData.base64);
+  const sizeMB = decoded.length / (1024 * 1024);
+  const maxMB = parseInt(getConfig('storage_block_mb')) || 100;
+
+  if (sizeMB > maxMB) {
+    throw new Error('ファイルサイズが上限(' + maxMB + 'MB)を超えています');
+  }
+
+  const blob = Utilities.newBlob(decoded, fileData.mimeType || 'application/octet-stream', fileData.name);
+  const folder = getUploadFolder();
+  const file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  return {
+    name: fileData.name,
+    url: file.getUrl(),
+    driveId: file.getId(),
+    size: decoded.length,
+    uploadedAt: new Date().toISOString()
+  };
+}
+
+function deleteFileFromDrive(driveId) {
+  if (!driveId) return false;
+  try {
+    DriveApp.getFileById(driveId).setTrashed(true);
+    return true;
+  } catch (e) {
+    Logger.log('File delete failed (' + driveId + '): ' + e);
+    return false;
+  }
+}
+
+/**
+ * 保持期限を過ぎた Drive ファイルをゴミ箱に移動。
+ * installTriggers() で毎月1日に自動実行される。
+ */
+function cleanupOldFiles() {
+  const retentionYears = parseInt(getConfig('file_retention_years')) || 5;
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - retentionYears);
+
+  var folder;
+  try { folder = getUploadFolder(); } catch (e) {
+    Logger.log('Upload folder not found, nothing to clean up');
+    return;
+  }
+
+  var files = folder.getFiles();
+  var count = 0;
+  while (files.hasNext()) {
+    var f = files.next();
+    if (f.getDateCreated() < cutoff) {
+      f.setTrashed(true);
+      count++;
+    }
+  }
+  Logger.log('cleanupOldFiles: ' + count + ' files trashed (retention=' + retentionYears + 'y)');
 }
 
 // ====================================================================
@@ -618,22 +728,30 @@ function parseDateLocal(str) {
  * - 重複設置を防ぐため、既存の同名トリガーは削除してから再設置する。
  */
 function installTriggers() {
-  // 既存のリマインダートリガーを削除
   const triggers = ScriptApp.getProjectTriggers();
+
+  // 既存トリガーを削除（重複防止）
   triggers.forEach(t => {
-    if (t.getHandlerFunction() === 'sendDeadlineReminders') {
+    const fn = t.getHandlerFunction();
+    if (fn === 'sendDeadlineReminders' || fn === 'cleanupOldFiles') {
       ScriptApp.deleteTrigger(t);
-      Logger.log('Deleted existing trigger for sendDeadlineReminders');
+      Logger.log('Deleted existing trigger: ' + fn);
     }
   });
 
-  // 毎日午前8時に実行
+  // 毎日午前8時: リマインダーメール
   ScriptApp.newTrigger('sendDeadlineReminders')
     .timeBased()
     .atHour(8)
     .everyDays(1)
     .create();
 
-  Logger.log('Installed daily trigger for sendDeadlineReminders at 8:00 AM');
-  Logger.log('To configure: set reminder_enabled=true and reminder_days=7,3,1 in Config sheet');
+  // 毎月1日午前3時: 古いファイルのクリーンアップ
+  ScriptApp.newTrigger('cleanupOldFiles')
+    .timeBased()
+    .onMonthDay(1)
+    .atHour(3)
+    .create();
+
+  Logger.log('Installed triggers: sendDeadlineReminders(daily 8AM), cleanupOldFiles(monthly 1st 3AM)');
 }

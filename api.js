@@ -1,24 +1,25 @@
 /**
- * SciComi Portal - GAS Backend API Client (v2)
+ * SciComi Portal - GAS Backend API Client (v3)
  *
- * 3リソース対応: events / members / experiments
+ * スキーマ駆動: CONFIG.RESOURCE_NAMES に登録されたリソース名を自動認識。
+ * Optimistic UI: save はローカルキャッシュを即更新し、GAS呼び出しは裏で実行。
  *
  * 使い方:
  *   await api.auth(password)              → 認証
  *   await api.list('events')              → イベント一覧
- *   await api.list('members')             → メンバー一覧
- *   await api.list('experiments')         → 実験一覧
- *   await api.listAll()                   → 全部まとめて（ホーム用）
- *   await api.save('events', eventObj)    → 保存
+ *   await api.listAll()                   → 全リソース一括取得
+ *   await api.save('events', eventObj)    → 保存（楽観的UI対応）
  *   await api.delete('events', id)        → 削除
  */
 
-// 設定は config.js に集約。読み込み順の保険でフォールバックも用意。
 const API_URL = (typeof CONFIG !== 'undefined' && CONFIG.API_URL) || '';
 const TOKEN_KEY = (typeof CONFIG !== 'undefined' && CONFIG.TOKEN_KEY) || 'scicomi_portal_token';
 const CACHE_KEY_PREFIX = (typeof CONFIG !== 'undefined' && CONFIG.CACHE_PREFIX) || 'scicomi_cache_';
 const HOLIDAYS_CACHE_KEY = (typeof CONFIG !== 'undefined' && CONFIG.HOLIDAYS_CACHE_KEY) || 'scicomi_holidays_cache';
 const HOLIDAYS_CACHE_TTL_MS = (typeof CONFIG !== 'undefined' && CONFIG.HOLIDAYS_TTL_MS) || (30 * 24 * 60 * 60 * 1000);
+
+const RESOURCE_NAMES = (typeof CONFIG !== 'undefined' && CONFIG.RESOURCE_NAMES)
+  || ['events', 'members', 'experiments'];
 
 const api = {
 
@@ -51,11 +52,33 @@ const api = {
         items,
         timestamp: Date.now()
       }));
-    } catch (_) {}
+    } catch (e) {
+      if (e.name === 'QuotaExceededError') {
+        this._evictOldestCache();
+        try {
+          localStorage.setItem(CACHE_KEY_PREFIX + resource, JSON.stringify({
+            items, timestamp: Date.now()
+          }));
+        } catch (_) {}
+      }
+    }
+  },
+
+  _evictOldestCache() {
+    let oldest = null;
+    let oldestTs = Infinity;
+    RESOURCE_NAMES.forEach(r => {
+      const cached = this.loadCache(r);
+      if (cached && cached.timestamp < oldestTs) {
+        oldestTs = cached.timestamp;
+        oldest = r;
+      }
+    });
+    if (oldest) localStorage.removeItem(CACHE_KEY_PREFIX + oldest);
   },
 
   clearAllCache() {
-    ['events', 'members', 'experiments'].forEach(r => {
+    RESOURCE_NAMES.forEach(r => {
       localStorage.removeItem(CACHE_KEY_PREFIX + r);
     });
   },
@@ -90,11 +113,9 @@ const api = {
     const res = await fetch(url, { method: 'GET' });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'listAll failed');
-    return {
-      events: data.events || [],
-      members: data.members || [],
-      experiments: data.experiments || []
-    };
+    const result = {};
+    RESOURCE_NAMES.forEach(r => { result[r] = data[r] || []; });
+    return result;
   },
 
   async save(resource, item) {
@@ -106,12 +127,87 @@ const api = {
       console.error('save failed:', res);
       throw new Error(res.error || 'save failed');
     }
-    // GASが古いデプロイなど item を返さない場合のフォールバック
     if (!res.item) {
-      console.warn('GAS did not return item; falling back to local item. Old GAS deployment?');
+      console.warn('GAS did not return item; falling back to local item.');
       return { ...item };
     }
     return res.item;
+  },
+
+  /**
+   * Optimistic Save: キャッシュを即更新し、GAS保存はPromiseで返す。
+   * 呼び出し元は await せずにUIを先に更新できる。
+   * 失敗時はキャッシュをロールバックする。
+   *
+   * @param {string} resource
+   * @param {object} item
+   * @param {Array} localList - 現在のローカルデータ配列（直接変更される）
+   * @param {Function} onRollback - GAS保存失敗時に呼ぶUI復元コールバック
+   * @returns {Promise<object>} GASが返した保存済みアイテム
+   */
+  async saveOptimistic(resource, item, localList, onRollback) {
+    const existingIdx = item.ID ? localList.findIndex(x => x.ID === item.ID) : -1;
+    const backup = existingIdx >= 0 ? { ...localList[existingIdx] } : null;
+
+    const optimistic = { ...item, _pending: true };
+    if (!optimistic.ID) optimistic.ID = '_tmp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+
+    if (existingIdx >= 0) {
+      localList[existingIdx] = optimistic;
+    } else {
+      localList.push(optimistic);
+    }
+    this.saveCache(resource, localList);
+
+    try {
+      const saved = await this.save(resource, item);
+      const idx = localList.findIndex(x => x.ID === optimistic.ID);
+      if (idx >= 0) {
+        localList[idx] = saved;
+      }
+      this.saveCache(resource, localList);
+      return saved;
+    } catch (e) {
+      if (backup && existingIdx >= 0) {
+        localList[existingIdx] = backup;
+      } else {
+        const idx = localList.findIndex(x => x.ID === optimistic.ID);
+        if (idx >= 0) localList.splice(idx, 1);
+      }
+      this.saveCache(resource, localList);
+      if (onRollback) onRollback();
+      throw e;
+    }
+  },
+
+  async uploadFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = reader.result.split(',')[1];
+          const res = await this._post({
+            action: 'uploadFile',
+            token: this.getToken(),
+            file: { name: file.name, mimeType: file.type || 'application/octet-stream', base64 }
+          });
+          if (!res.success) throw new Error(res.error || 'upload failed');
+          resolve(res.file);
+        } catch (e) { reject(e); }
+      };
+      reader.onerror = () => reject(new Error('ファイル読み込みエラー'));
+      reader.readAsDataURL(file);
+    });
+  },
+
+  async deleteFile(driveId) {
+    const res = await this._post({
+      action: 'deleteFile',
+      token: this.getToken(),
+      driveId
+    });
+    if (!res.success) throw new Error(res.error || 'delete file failed');
+    return true;
   },
 
   async delete(resource, id) {
@@ -137,7 +233,7 @@ const api = {
     try {
       return JSON.parse(text);
     } catch (_) {
-      throw new Error('GASレスポンスのパース失敗: ' + text.slice(0, 200));
+      throw new Error('GAS response parse error: ' + text.slice(0, 200));
     }
   }
 };

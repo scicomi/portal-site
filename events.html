@@ -40,28 +40,33 @@
             </span>
         </div>
 
-        <!-- Calendar Section -->
-        <section id="calendar-wrapper" class="calendar-section"
+        <!-- Calendar Toggle -->
+        <div style="margin-bottom: 16px;">
+            <button class="filter-chip" id="calendar-toggle-btn" onclick="toggleCalendar()">カレンダーを表示</button>
+        </div>
+
+        <!-- Calendar Section (hidden by default) -->
+        <section id="calendar-wrapper" class="calendar-section hidden"
             style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 30px;">
-            <div id="calendar-skeleton" style="display:flex;flex-direction:column;gap:6px;">
-                <div class="skeleton" style="height:36px;width:60%;margin:0 auto 12px;"></div>
-                <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">
-                    <div class="skeleton" style="height:24px;"></div><div class="skeleton" style="height:24px;"></div><div class="skeleton" style="height:24px;"></div>
-                    <div class="skeleton" style="height:24px;"></div><div class="skeleton" style="height:24px;"></div><div class="skeleton" style="height:24px;"></div><div class="skeleton" style="height:24px;"></div>
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:4px;">
-                    <div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div>
-                    <div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div>
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:4px;">
-                    <div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div>
-                    <div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div><div class="skeleton" style="height:80px;"></div>
-                </div>
-            </div>
-            <div id="calendar" style="display:none;"></div>
+            <div id="calendar"></div>
         </section>
 
-        <div id="event-list" class="event-list"></div>
+        <!-- Event List Table -->
+        <h3 id="event-list-heading" style="margin-bottom: 1rem;"></h3>
+        <div class="table-wrapper">
+            <table class="data-table" id="events-table">
+                <thead>
+                    <tr>
+                        <th>日付</th>
+                        <th>イベント名</th>
+                        <th class="hide-mobile">場所</th>
+                        <th class="hide-mobile">時間</th>
+                        <th style="width:80px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="events-tbody"></tbody>
+            </table>
+        </div>
     </main>
 
     <!-- Template for Event Item -->
@@ -321,12 +326,19 @@
 
                             <div class="e1-group event-only-section">
                                 <label class="e1-label">関連ファイル</label>
-                                <div class="file-drop-zone" ondrop="handleDrop(event, this)"
-                                    ondragover="allowDrop(event)">
-                                    <p style="margin:0; font-weight:bold;">ファイルをここにドラッグ＆ドロップ</p>
-                                    <p style="margin:5px 0 0 0; font-size:0.85rem;">またはクリックして選択</p>
+                                <div class="file-upload-area">
+                                    <div class="file-drop-zone"
+                                        ondrop="handleDrop(event)"
+                                        ondragover="allowDrop(event)"
+                                        ondragenter="this.classList.add('dragover')"
+                                        ondragleave="this.classList.remove('dragover')"
+                                        onclick="this.parentElement.querySelector('.file-input-hidden').click()">
+                                        <p style="margin:0; font-weight:bold;">ファイルをここにドラッグ＆ドロップ</p>
+                                        <p style="margin:5px 0 0 0; font-size:0.85rem;">またはクリックして選択 (上限 10MB/ファイル)</p>
+                                    </div>
+                                    <input type="file" class="file-input-hidden" multiple style="display:none;" onchange="handleFileSelect(this)">
+                                    <div class="file-list-edit"></div>
                                 </div>
-                                <input type="hidden" class="edit-mode" data-field="Files">
                             </div>
 
                         </div>
