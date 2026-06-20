@@ -12,37 +12,38 @@
 
     <main class="container">
         <div class="page-section-actions">
-            <h1 class="page-title" style="margin:0; flex:1;">👥 メンバーリスト</h1>
-            <input id="member-search" class="search-input" type="text" placeholder="🔍 名前・役職で検索" oninput="onMemberSearch()">
-            <button id="toggle-grad-btn" class="filter-chip" style="display:none;" onclick="toggleGraduated()">🎓 卒業生も表示</button>
-            <button class="btn-primary-solid" style="width: auto; padding: 8px 16px;" onclick="openMemberModal()">＋ メンバー追加</button>
+            <h1 class="page-title" style="margin:0; flex:1;">メンバーリスト</h1>
+            <input id="member-search" class="search-input" type="text" placeholder="名前・役職で検索" oninput="onMemberSearch()">
+            <button id="toggle-grad-btn" class="filter-chip" style="display:none;" onclick="toggleGraduated()">卒業生も表示</button>
+            <button class="btn-primary-solid" style="width: auto; padding: 8px 16px;" onclick="openMemberModal()">+ メンバー追加</button>
         </div>
 
-        <section id="adviser-section" class="member-category">
-            <h2 class="member-category-title">
-                🎓 アドバイザー
-                <span class="member-category-count" id="adviser-count">0名</span>
-            </h2>
-            <div class="member-grid" id="adviser-grid"></div>
-        </section>
+        <div class="page-section-actions">
+            <button class="filter-chip active" data-cat="all" onclick="onCategoryFilterMember('all')">全員</button>
+            <button class="filter-chip" data-cat="adviser" onclick="onCategoryFilterMember('adviser')">アドバイザー</button>
+            <button class="filter-chip" data-cat="coordinator" onclick="onCategoryFilterMember('coordinator')">コーディネーター</button>
+            <button class="filter-chip" data-cat="member" onclick="onCategoryFilterMember('member')">メンバー</button>
+        </div>
 
-        <section id="coordinator-section" class="member-category">
-            <h2 class="member-category-title">
-                🤝 コーディネーター
-                <span class="member-category-count" id="coordinator-count">0名</span>
-            </h2>
-            <div class="member-grid" id="coordinator-grid"></div>
-        </section>
+        <div class="table-wrapper">
+            <table class="data-table" id="members-table">
+                <thead>
+                    <tr>
+                        <th>名前</th>
+                        <th>区分</th>
+                        <th>役職</th>
+                        <th class="hide-mobile">学年</th>
+                        <th class="hide-mobile">学籍番号</th>
+                        <th class="hide-mobile">所属</th>
+                        <th class="hide-mobile">メール</th>
+                        <th class="hide-mobile">メモ</th>
+                        <th style="width:160px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="members-tbody"></tbody>
+            </table>
+        </div>
 
-        <section id="member-section" class="member-category">
-            <h2 class="member-category-title">
-                👨‍🎓 メンバー
-                <span class="member-category-count" id="member-count">0名</span>
-            </h2>
-            <div class="member-grid" id="member-grid"></div>
-        </section>
-
-        <!-- 編集モーダル -->
         <div id="member-modal" class="modal-overlay hidden">
             <div class="modal-content" style="max-width: 500px;">
                 <h2 id="member-modal-title">メンバー追加</h2>
@@ -52,11 +53,15 @@
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">カテゴリ *</label>
-                    <select id="mb-category" class="e1-input">
+                    <select id="mb-category" class="e1-input" onchange="onMbCategoryChange()">
                         <option value="member">メンバー</option>
                         <option value="coordinator">コーディネーター</option>
                         <option value="adviser">アドバイザー</option>
                     </select>
+                </div>
+                <div class="e1-group" id="mb-email-group" style="display:none;">
+                    <label class="e1-label">メールアドレス</label>
+                    <input id="mb-email" class="e1-input" type="email" placeholder="例: name@example.com">
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">役職・担当</label>
@@ -82,7 +87,7 @@
                 </div>
                 <div class="action-buttons">
                     <button class="btn btn-text" onclick="closeMemberModal()">キャンセル</button>
-                    <button class="btn btn-primary-solid" style="width:auto;" onclick="saveMember()">💾 保存</button>
+                    <button class="btn btn-primary-solid" style="width:auto;" onclick="saveMember()">保存</button>
                 </div>
             </div>
         </div>

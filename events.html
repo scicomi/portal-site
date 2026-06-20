@@ -6,11 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>イベント | SciComi Portal</title>
     <link rel="stylesheet" href="style.css">
-    <!-- 高速化: FullCalendar を early に preload しておく -->
     <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js">
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
     <link rel="preconnect" href="https://script.google.com" crossorigin>
-    <!-- Google Fonts -->
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap"
         rel="stylesheet">
@@ -18,17 +16,16 @@
 </head>
 
 <body>
-    <header class="app-header"><!-- Filled by app.js renderHeader('events') --></header>
+    <header class="app-header"></header>
 
-    <!-- 入力補助: 担当者・実験名の候補（members/experimentsから自動生成） -->
     <datalist id="member-datalist"></datalist>
     <datalist id="experiment-datalist"></datalist>
 
     <main class="container">
         <div class="page-section-actions">
-            <h1 class="page-title" style="margin: 0; flex: 1;">📅 イベント管理</h1>
-            <input id="event-search" class="search-input" type="text" placeholder="🔍 タイトル・場所・担当者で検索" oninput="onSearchChange()">
-            <button class="btn btn-primary" onclick="openNewEventModal()" style="background: #464775; color: white; border: 1px solid #464775;">＋ 新規イベント</button>
+            <h1 class="page-title" style="margin: 0; flex: 1;">イベント管理</h1>
+            <input id="event-search" class="search-input" type="text" placeholder="タイトル・場所・担当者で検索" oninput="onSearchChange()">
+            <button class="btn btn-primary" onclick="openNewEventModal()" style="background: #464775; color: white; border: 1px solid #464775;">+ 新規イベント</button>
         </div>
         <div class="page-section-actions">
             <button class="filter-chip active" data-cat="all" onclick="onCategoryFilter('all')">全部</button>
@@ -46,7 +43,6 @@
         <!-- Calendar Section -->
         <section id="calendar-wrapper" class="calendar-section"
             style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 30px;">
-            <!-- Skeleton: FullCalendar読込中の代替表示 -->
             <div id="calendar-skeleton" style="display:flex;flex-direction:column;gap:6px;">
                 <div class="skeleton" style="height:36px;width:60%;margin:0 auto 12px;"></div>
                 <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">
@@ -65,12 +61,10 @@
             <div id="calendar" style="display:none;"></div>
         </section>
 
-        <div id="event-list" class="event-list">
-            <!-- Events will be rendered here by JS -->
-        </div>
+        <div id="event-list" class="event-list"></div>
     </main>
 
-    <!-- Template for Event Item (Used by JS) -->
+    <!-- Template for Event Item -->
     <template id="event-template">
         <div class="event-card" data-id="">
             <div class="event-summary">
@@ -82,76 +76,69 @@
                 </div>
                 <div class="summary-right">
                     <span class="event-time-display display-mode"></span>
-                    <span class="expand-icon" style="font-size: 1.2rem; transform: none !important;">↗</span>
+                    <span class="expand-icon" style="font-size: 1.2rem; transform: none !important;">→</span>
                 </div>
             </div>
 
             <div class="event-details collapsed">
                 <div class="details-content">
-
-                    <!-- Top Section: Basic Info -->
                     <section class="detail-section top-section">
-                        <!-- Meeting Mode Only (Title is fully dynamic) -->
+                        <!-- Meeting Mode Title -->
                         <div class="field-group full-width meeting-only-section">
-                            <label>🏷️ ミーティング名</label>
+                            <label>ミーティング名</label>
                             <div class="field-value display-mode" data-field="Title_Display"></div>
                             <div class="edit-mode hidden title-input-wrapper"
                                 style="display:flex; align-items:center; gap: 10px;">
-                                <span style="font-weight:bold; color:#464775; white-space:nowrap;">回数：</span>
+                                <span style="font-weight:bold; color:#464775; white-space:nowrap;">回数:</span>
                                 <input type="number" class="e1-input edit-mode" id="meeting-num-input"
                                     data-field="Meeting_Number" style="width:70px; flex:none;" placeholder="3">
-                                <span style="font-weight:bold; color:#464775; white-space:nowrap;">ミーティング名：</span>
+                                <span style="font-weight:bold; color:#464775; white-space:nowrap;">名称:</span>
                                 <input type="text" class="e1-input edit-mode" id="meeting-name-input" data-field="Title"
                                     style="flex:1;" placeholder="イベント振り返りなど">
                             </div>
                         </div>
 
-                        <!-- General Layout (Event / Meeting) -->
-                        <!-- Meeting has hidden the old Event_Time logic but we implement new fixed dropdowns -->
+                        <!-- Display Table -->
                         <table class="d1-table display-mode-table display-mode">
                             <tr class="event-only-section">
-                                <th style="width: 140px;">🏷️ イベント名</th>
+                                <th style="width: 140px;">イベント名</th>
                                 <td>
                                     <div class="field-value display-mode" data-field="Title"
                                         style="font-size: 1.25rem; font-weight: bold; color: #464775;"></div>
                                 </td>
                             </tr>
                             <tr class="event-only-section">
-                                <th>👥 対象・人数</th>
+                                <th>対象・人数</th>
                                 <td>
                                     <div class="field-value display-mode" data-field="Audience"></div>
                                 </td>
                             </tr>
                             <tr>
-                                <th style="width: 140px;">📍 場所</th>
+                                <th style="width: 140px;">場所</th>
                                 <td>
                                     <div class="field-value display-mode" data-field="Location"></div>
                                 </td>
                             </tr>
                             <tr>
-                                <th>📅 日時</th>
+                                <th>日時</th>
                                 <td>
                                     <div class="field-value display-mode" data-field="Date_Display"></div>
                                 </td>
                             </tr>
                             <tr>
-                                <th>⏰ 時間</th>
+                                <th>時間</th>
                                 <td>
                                     <div class="field-value display-mode" data-field="Event_Time"></div>
                                 </td>
                             </tr>
-
-                            <!-- Display block for Experiments and Parts -->
                             <tr class="event-only-section">
-                                <th>🧪 実験・担当</th>
+                                <th>実験・担当</th>
                                 <td>
                                     <div class="field-value display-mode" data-field="Experiments_Display"></div>
                                 </td>
                             </tr>
-
-                            <!-- Display block for Deadlines -->
                             <tr class="event-only-section">
-                                <th>⚠️ 書類期限</th>
+                                <th>書類期限</th>
                                 <td>
                                     <ul style="margin:0; padding-left: 20px;">
                                         <li>許可願: 担当 <strong data-field="Admin_Kyoka"></strong> <span
@@ -164,33 +151,29 @@
                                     </ul>
                                 </td>
                             </tr>
-
                             <tr class="event-only-section">
-                                <th>📋 スケジュール<br>　 運搬</th>
+                                <th>スケジュール<br>運搬</th>
                                 <td>
                                     <div class="field-value display-mode text-area-view" data-field="Meeting_Logistics"
                                         style="white-space: pre-wrap;"></div>
                                 </td>
                             </tr>
-
                             <tr class="event-only-section">
-                                <th>🎒 持ち物</th>
+                                <th>持ち物</th>
                                 <td>
                                     <div class="field-value display-mode text-area-view" data-field="Belongings"
                                         style="white-space: pre-wrap;"></div>
                                 </td>
                             </tr>
-
                             <tr>
-                                <th><span class="remarks-label-view">📝 備考</span></th>
+                                <th><span class="remarks-label-view">備考</span></th>
                                 <td>
                                     <div class="field-value display-mode text-area-view" data-field="Remarks"
                                         style="white-space: pre-wrap;"></div>
                                 </td>
                             </tr>
-
                             <tr class="event-only-section">
-                                <th>📁 関連ファイル</th>
+                                <th>関連ファイル</th>
                                 <td>
                                     <div class="file-list display-mode" data-field="Files_Display"></div>
                                 </td>
@@ -201,17 +184,17 @@
                         <div class="edit-mode hidden edit-form-wrapper">
 
                             <div class="e1-group event-only-section">
-                                <label class="e1-label">🏷️ イベント名</label>
+                                <label class="e1-label">イベント名</label>
                                 <input type="text" class="e1-input edit-mode" data-field="Title">
                             </div>
 
                             <div class="flex-row">
                                 <div class="e1-group" style="flex:2;">
-                                    <label class="e1-label">📍 場所</label>
+                                    <label class="e1-label">場所</label>
                                     <input type="text" class="e1-input edit-mode" data-field="Location">
                                 </div>
                                 <div class="e1-group event-only-section" style="flex:2;">
-                                    <label class="e1-label">👥 対象者・人数</label>
+                                    <label class="e1-label">対象者・人数</label>
                                     <input type="text" class="e1-input edit-mode" data-field="Audience"
                                         placeholder="例: 小学1〜3年生 40名">
                                 </div>
@@ -219,16 +202,16 @@
 
                             <div class="flex-row">
                                 <div class="e1-group" style="flex:1;">
-                                    <label class="e1-label">📅 開始日</label>
+                                    <label class="e1-label">開始日</label>
                                     <input type="date" class="e1-input edit-mode" data-field="Date"
                                         onchange="updateDeadlines(this)">
                                 </div>
                                 <div class="e1-group" style="flex:1;">
-                                    <label class="e1-label">🏁 終了日</label>
+                                    <label class="e1-label">終了日</label>
                                     <input type="date" class="e1-input edit-mode" data-field="Date_End">
                                 </div>
                                 <div class="e1-group" style="flex:1;">
-                                    <label class="e1-label">⏰ 時間</label>
+                                    <label class="e1-label">時間</label>
                                     <div class="time-select-group">
                                         <select class="e1-input time-start-select" data-field="Time_Start">
                                             <option>09:00</option>
@@ -293,19 +276,16 @@
                                 style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
 
                             <div class="e1-group event-only-section">
-                                <label class="e1-label">🧪 実験・担当者</label>
-                                <div class="parts-container" data-field="PartsList">
-                                    <!-- Dynamic parts will be inserted here -->
-                                </div>
-                                <button class="btn-add-part" type="button" onclick="addDynamicPart(this)">＋
-                                    新しい部を追加</button>
+                                <label class="e1-label">実験・担当者</label>
+                                <div class="parts-container" data-field="PartsList"></div>
+                                <button class="btn-add-part" type="button" onclick="addDynamicPart(this)">+ 新しい部を追加</button>
                             </div>
 
                             <hr class="event-only-section"
                                 style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
 
                             <div class="e1-group event-only-section">
-                                <label class="e1-label">⚠️ 書類期限（日付は自動計算されます）</label>
+                                <label class="e1-label">書類期限（日付は自動計算されます）</label>
                                 <div class="deadline-grid">
                                     <div>
                                         <label
@@ -325,22 +305,22 @@
                             </div>
 
                             <div class="e1-group event-only-section">
-                                <label class="e1-label">📋 スケジュール・運搬</label>
+                                <label class="e1-label">スケジュール・運搬</label>
                                 <textarea class="e1-input edit-mode" data-field="Meeting_Logistics" rows="5"></textarea>
                             </div>
 
                             <div class="e1-group event-only-section">
-                                <label class="e1-label">🎒 持ち物（1行1つ）</label>
+                                <label class="e1-label">持ち物（1行1つ）</label>
                                 <textarea class="e1-input edit-mode" data-field="Belongings" rows="3" placeholder="スリッパ&#10;名札&#10;ポロシャツ"></textarea>
                             </div>
 
                             <div class="e1-group">
-                                <label class="e1-label remarks-label-edit">📝 備考</label>
+                                <label class="e1-label remarks-label-edit">備考</label>
                                 <textarea class="e1-input edit-mode" data-field="Remarks" rows="4"></textarea>
                             </div>
 
                             <div class="e1-group event-only-section">
-                                <label class="e1-label">📁 関連ファイル</label>
+                                <label class="e1-label">関連ファイル</label>
                                 <div class="file-drop-zone" ondrop="handleDrop(event, this)"
                                     ondragover="allowDrop(event)">
                                     <p style="margin:0; font-weight:bold;">ファイルをここにドラッグ＆ドロップ</p>
@@ -351,7 +331,6 @@
 
                         </div>
                     </section>
-                    <!-- 編集・保存・削除はモーダルヘッダー(#modal-action-buttons)で行う -->
                 </div>
             </div>
         </div>
@@ -372,7 +351,7 @@
             <div style="margin: 20px 0; text-align: center; color: #999;">または</div>
 
             <div class="e1-group">
-                <label class="e1-label">📋 過去イベントから複製</label>
+                <label class="e1-label">過去イベントから複製</label>
                 <select id="template-source" class="e1-input" onchange="onTemplateSelect(this.value)">
                     <option value="">-- 過去イベントを選んで複製 --</option>
                 </select>
@@ -383,14 +362,13 @@
 
         <div class="modal-content event-card hidden large-modal" id="new-event-edit-modal">
             <div class="modal-header">
-                <h2>📝 イベント詳細</h2>
+                <h2>イベント詳細</h2>
                 <div class="action-buttons-top" id="modal-action-buttons">
                     <button class="btn btn-text" onclick="closeModal()">閉じる</button>
                 </div>
             </div>
 
             <div class="modal-body">
-                <!-- The inner form will be populated by JS using the template -->
                 <div id="new-event-form-container"></div>
             </div>
         </div>

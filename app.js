@@ -11,7 +11,6 @@
 
 // ====== 共通ユーティリティ ======
 
-/** HTMLエスケープ（XSS・表示崩れ防止）。全ページ共通。 */
 function escapeHtml(s) {
   if (s === null || s === undefined) return '';
   return String(s)
@@ -22,12 +21,10 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
-/** HTML属性値用エスケープ（value="..." に埋め込む時） */
 function escapeAttr(s) {
   return escapeHtml(s);
 }
 
-/** Date → 'YYYY-MM-DD'（ローカルタイム基準。UTCずれを防ぐ） */
 function toISODate(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -35,7 +32,6 @@ function toISODate(date) {
   return `${y}-${m}-${d}`;
 }
 
-/** 'YYYY-MM-DD' → Date（ローカル正午で生成しタイムゾーンずれを回避） */
 function parseISODate(str) {
   if (!str) return null;
   const parts = String(str).split('-');
@@ -43,33 +39,28 @@ function parseISODate(str) {
   return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
 }
 
-/** 今日の 'YYYY-MM-DD' */
 function todayISO() {
   return toISODate(new Date());
 }
 
-/** 'YYYY-MM-DD' → 曜日（日本語1文字） */
 function dayOfWeekJP(str) {
   const d = parseISODate(str);
   if (!d) return '';
   return ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
 }
 
-/** 'YYYY-MM-DD' → 'M/D' 短縮表示 */
 function shortDate(str) {
   const parts = String(str || '').split('-');
   if (parts.length < 3) return str || '';
   return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
 }
 
-/** 2つの日付の差（日数）。a から b までの日数。 */
 function daysBetween(aISO, bISO) {
   const a = parseISODate(aISO), b = parseISODate(bISO);
   if (!a || !b) return null;
   return Math.round((b - a) / (1000 * 60 * 60 * 24));
 }
 
-/** 衝突しにくいID生成（時刻＋乱数） */
 function genId(prefix) {
   return prefix + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
 }
@@ -83,7 +74,7 @@ function renderHeader(activePage) {
     <div class="header-top">
       <div class="header-brand">
         <a href="index.html" style="color:inherit;text-decoration:none;display:flex;align-items:center;gap:8px;">
-          <span class="brand-icon">🔬</span>
+          <span class="brand-icon">SC</span>
           <span class="brand-name">SciComi Portal</span>
         </a>
       </div>
@@ -110,7 +101,6 @@ function confirmLogout() {
 }
 
 // ====== 認証ゲート ======
-// 各ページのDOMContentLoadedで呼ぶ。tokenなしならログインモーダル→ログイン後にコールバック実行
 
 async function requireAuth(onReady) {
   if (!api.getToken()) {
@@ -126,7 +116,7 @@ function showPasswordModal(onSuccess) {
   modal.innerHTML = `
     <div class="pw-overlay">
       <div class="pw-box">
-        <h2>🔒 ログイン</h2>
+        <h2>ログイン</h2>
         <p>サークルメンバー共通パスワードを入力してください。</p>
         <input id="pw-input" type="password" placeholder="パスワード" autofocus>
         <div id="pw-error" class="pw-error"></div>
@@ -202,8 +192,7 @@ function toast(message, type = 'info', duration = 3000) {
   }
   const t = document.createElement('div');
   t.className = `toast toast-${type}`;
-  const icons = { success: '✅', error: '⚠️', info: 'ℹ️' };
-  t.innerHTML = `<span>${icons[type] || ''}</span> ${message}`;
+  t.textContent = message;
   container.appendChild(t);
   setTimeout(() => t.classList.add('show'), 10);
   setTimeout(() => {
@@ -212,7 +201,6 @@ function toast(message, type = 'info', duration = 3000) {
   }, duration);
 }
 
-// 削除UNDO付きトースト
 function toastUndo(message, onUndo, onCommit, delay = 5000) {
   let container = document.getElementById('toast-container');
   if (!container) {
@@ -223,7 +211,7 @@ function toastUndo(message, onUndo, onCommit, delay = 5000) {
   const t = document.createElement('div');
   t.className = 'toast toast-undo';
   t.innerHTML = `
-    <span>🗑️ ${message}</span>
+    <span>${escapeHtml(message)}</span>
     <button class="toast-undo-btn">元に戻す</button>
     <div class="toast-progress"></div>
   `;
@@ -252,7 +240,7 @@ function toastUndo(message, onUndo, onCommit, delay = 5000) {
 }
 
 // ====== 起動共通 ======
-// 各ページから呼ぶ。activePage は 'home' / 'events' / 'members' / 'experiments'
+
 async function bootPage(activePage, onAuthReady) {
   renderHeader(activePage);
   await requireAuth(async () => {

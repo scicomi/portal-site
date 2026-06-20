@@ -97,11 +97,7 @@ async function init() {
     // 担当者・実験名の候補をキャッシュから即構築（A1/A3）
     populateDatalists();
 
-    if (document.getElementById('calendar-grid')) {
-        initCalendar();
-    } else if (document.getElementById('calendar')) {
-        initFullCalendar();
-    }
+    initFullCalendar();
     renderEvents();
 
     if (cached) updateSyncStatus('cached', cached.timestamp);
@@ -180,8 +176,27 @@ function onPeriodFilter(period) {
     document.querySelectorAll('.filter-chip[data-period]').forEach(c => c.classList.toggle('active', c.dataset.period === period));
     renderEvents();
 }
+/**
+ * イベントの検索対象テキストを生成。
+ * 実験名・担当者は PartsList（JSON文字列）に入っているのでパースして含める。
+ */
+function eventSearchText(e) {
+    const parts = [e.Title, e.Location, e.Audience, e.Remarks, e.Belongings, e.Admin_Kyoka, e.Admin_Houkoku];
+    // PartsList から実験名・担当者を抽出
+    if (e.PartsList) {
+        try {
+            const list = typeof e.PartsList === 'string' ? JSON.parse(e.PartsList) : e.PartsList;
+            (list || []).forEach(p => {
+                if (p.partName) parts.push(p.partName);
+                (p.items || []).forEach(it => { parts.push(it.name); parts.push(it.presenter); });
+            });
+        } catch (_) { /* 壊れたJSONは無視 */ }
+    }
+    return parts.filter(Boolean).join(' ').toLowerCase();
+}
+
 function applyFilters(events) {
-    const today = formatDate(new Date());
+    const today = todayISO();
     return events.filter(e => {
         // カテゴリ
         if (filterState.category !== 'all' && (e.Category || 'normal') !== filterState.category) return false;
@@ -189,21 +204,16 @@ function applyFilters(events) {
         const endDate = e.Date_End || e.Date;
         if (filterState.period === 'upcoming' && endDate < today) return false;
         if (filterState.period === 'past' && e.Date >= today) return false;
-        // キーワード
+        // キーワード（実験名・担当者も含めて検索）
         if (filterState.keyword) {
-            const haystack = [e.Title, e.Location, e.Audience, e.Remarks, e.Experiments, e.Presenters, e.Admin_Kyoka, e.Admin_Houkoku]
-                .filter(Boolean).join(' ').toLowerCase();
-            if (!haystack.includes(filterState.keyword)) return false;
+            if (!eventSearchText(e).includes(filterState.keyword)) return false;
         }
         return true;
     });
 }
 
 function refreshCalendar() {
-    if (document.getElementById('calendar-grid')) {
-        renderCalendar(currentMonth);
-    } else if (window.globalCalendar) {
-        // FullCalendar
+    if (window.globalCalendar) {
         window.globalCalendar.refetchEvents();
     }
 }
@@ -306,9 +316,9 @@ function initFullCalendar() {
             const lines = [
                 ev.Title,
                 ev.Date + (ev.Date_End && ev.Date_End !== ev.Date ? ' 〜 ' + ev.Date_End : ''),
-                ev.Event_Time && '⏰ ' + ev.Event_Time,
-                ev.Location && '📍 ' + ev.Location,
-                ev.Audience && '👥 ' + ev.Audience
+                ev.Event_Time,
+                ev.Location,
+                ev.Audience
             ].filter(Boolean);
             info.el.title = lines.join('\n');
         }
@@ -344,137 +354,7 @@ function initFullCalendar() {
     }
 }
 
-// --- Calendar Logic ---
-let currentMonth = new Date();
-
-function initCalendar() {
-    const yPicker = document.getElementById('calendar-year');
-    const mPicker = document.getElementById('calendar-month');
-
-    // populate years (e.g., -2 to +3)
-    const currentY = new Date().getFullYear();
-    for (let i = currentY - 2; i <= currentY + 3; i++) {
-        const opt = document.createElement('option');
-        opt.value = i;
-        opt.textContent = i;
-        yPicker.appendChild(opt);
-    }
-
-    // populate months
-    for (let i = 1; i <= 12; i++) {
-        const opt = document.createElement('option');
-        opt.value = i - 1; // 0-indexed
-        opt.textContent = i;
-        mPicker.appendChild(opt);
-    }
-
-    renderCalendar(currentMonth);
-}
-
-function renderCalendar(date) {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-
-    document.getElementById('calendar-year').value = year;
-    document.getElementById('calendar-month').value = month;
-
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-
-    // Start from the Sunday before the 1st
-    const startDate = new Date(firstDay);
-    startDate.setDate(firstDay.getDate() - firstDay.getDay());
-
-    // End on the Saturday after the last day
-    const endDate = new Date(lastDay);
-    endDate.setDate(lastDay.getDate() + (6 - lastDay.getDay()));
-
-    const grid = document.getElementById('calendar-grid');
-    grid.innerHTML = '';
-
-    let loopDate = new Date(startDate);
-    while (loopDate <= endDate) {
-        const cell = document.createElement('div');
-        cell.className = 'calendar-day';
-        if (loopDate.getMonth() !== month) {
-            cell.classList.add('other-month');
-        }
-
-        const dateStrCurrent = formatDate(loopDate);
-        if (holidaysData[dateStrCurrent]) {
-            cell.classList.add('holiday');
-            cell.title = holidaysData[dateStrCurrent];
-        }
-
-        // Click on cell to start new event
-        cell.onclick = () => {
-            window.tempStart = dateStrCurrent;
-            window.tempEnd = ""; // Custom calendar only selects 1 day for now
-            openNewEventModal();
-        };
-
-        // Check for "today"
-        const today = new Date();
-        if (loopDate.toDateString() === today.toDateString()) {
-            cell.classList.add('today');
-        }
-
-        // Date Number
-        const dayNum = document.createElement('span');
-        dayNum.className = 'day-number';
-        dayNum.textContent = loopDate.getDate();
-        cell.appendChild(dayNum);
-
-        // Find events for this day traversing Date_End
-        const dateStr = formatDate(loopDate);
-        const dayEvents = eventsData.filter(e => {
-            if (!e.Date_End || e.Date_End === e.Date) {
-                return e.Date === dateStr;
-            }
-            return dateStr >= e.Date && dateStr <= e.Date_End;
-        });
-
-        dayEvents.forEach(ev => {
-            const evChip = document.createElement('div');
-            evChip.className = `cal-event cat-${ev.Category || 'normal'}`;
-
-            let displayTitle = ev.Title;
-            if ((ev.Category === 'admin' || ev.Category === 'general') && ev.Meeting_Number) {
-                displayTitle = `第${ev.Meeting_Number}回 ${ev.Title}`;
-            }
-            evChip.textContent = displayTitle;
-
-            evChip.title = displayTitle; // Tooltip
-            evChip.onclick = (e) => {
-                e.stopPropagation();
-                viewEventInModal(ev.ID);
-            };
-            cell.appendChild(evChip);
-        });
-
-        grid.appendChild(cell);
-
-        // Next day
-        loopDate.setDate(loopDate.getDate() + 1);
-    }
-}
-
-function prevMonth() {
-    currentMonth.setMonth(currentMonth.getMonth() - 1);
-    renderCalendar(currentMonth);
-}
-
-function nextMonth() {
-    currentMonth.setMonth(currentMonth.getMonth() + 1);
-    renderCalendar(currentMonth);
-}
-
-function jumpToMonthSelect() {
-    const y = parseInt(document.getElementById('calendar-year').value);
-    const m = parseInt(document.getElementById('calendar-month').value);
-    currentMonth = new Date(y, m, 1);
-    renderCalendar(currentMonth);
-}
+// ※ カスタムグリッド暦（#calendar-grid）は廃止。カレンダーは FullCalendar(#calendar) に一本化。
 
 function viewEventInModal(id) {
     const eventData = eventsData.find(e => e.ID === id);
@@ -486,15 +366,15 @@ function viewEventInModal(id) {
     document.getElementById('new-event-edit-modal').classList.remove('hidden');
 
     const headerTitle = document.querySelector('#new-event-edit-modal h2');
-    if (headerTitle) headerTitle.textContent = "📝 イベント詳細";
+    if (headerTitle) headerTitle.textContent = "イベント詳細";
 
     const actionButtons = document.getElementById('modal-action-buttons');
     if (actionButtons) {
         actionButtons.innerHTML = `
             <button class="btn btn-text" onclick="closeModal()">閉じる</button>
-            <button class="btn btn-secondary display-mode-btn" onclick="enableModalEdit()">✏️ 編集</button>
-            <button class="btn btn-danger hidden edit-mode-btn" onclick="deleteModalEvent()">🗑️ 削除</button>
-            <button class="btn btn-primary hidden edit-mode-btn" onclick="saveEventFromModal()">💾 保存</button>
+            <button class="btn btn-secondary display-mode-btn" onclick="enableModalEdit()">編集</button>
+            <button class="btn btn-danger hidden edit-mode-btn" onclick="deleteModalEvent()">削除</button>
+            <button class="btn btn-primary hidden edit-mode-btn" onclick="saveEventFromModal()">保存</button>
             <button class="btn btn-text hidden edit-mode-btn" onclick="cancelModalEdit('${id}')">キャンセル</button>
         `;
     }
@@ -518,14 +398,14 @@ function renderEvents() {
 
     const heading = document.createElement('h3');
     heading.style.marginBottom = '1rem';
-    const periodLabel = { upcoming: '🌟 今後のイベント', past: '📜 過去のイベント', all: '📋 全てのイベント' };
+    const periodLabel = { upcoming: '今後のイベント', past: '過去のイベント', all: '全てのイベント' };
     heading.textContent = `${periodLabel[filterState.period]} (${sorted.length}件)`;
     listContainer.appendChild(heading);
 
     if (sorted.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'empty-state';
-        empty.innerHTML = '<div class="empty-icon">📭</div>該当するイベントはありません';
+        empty.innerHTML = '<div class="empty-icon">&mdash;</div>該当するイベントはありません';
         listContainer.appendChild(empty);
         return;
     }
@@ -586,7 +466,7 @@ function populateFields(cardElement, eventData) {
 
     const remarksLabel = cardElement.querySelector('.remarks-label');
     if (remarksLabel) {
-        remarksLabel.textContent = isMeeting ? '📝 議題 / 備考' : '📝 備考';
+        remarksLabel.textContent = isMeeting ? '議題 / 備考' : '備考';
     }
 
     const fields = ['Title', 'Location', 'Audience', 'Meeting_Number', 'Date', 'Date_End', 'Event_Time', 'Meeting_Logistics', 'Remarks', 'Belongings'];
@@ -705,8 +585,8 @@ function populateFields(cardElement, eventData) {
                         <input type="text" class="e1-input part-name-input" value="${escapeAttr(p.partName)}" placeholder="部の名前 (例: 一部)">
                     </div>
                     <div class="part-actions">
-                        <button class="btn btn-secondary btn-sm" onclick="copyDynamicPart(this)" type="button">📑 部のコピー</button>
-                        <button class="btn btn-danger-text btn-sm" onclick="removeDynamicPart(this)" type="button">🗑️ 部の削除</button>
+                        <button class="btn btn-secondary btn-sm" onclick="copyDynamicPart(this)" type="button">部のコピー</button>
+                        <button class="btn btn-danger-text btn-sm" onclick="removeDynamicPart(this)" type="button">部の削除</button>
                     </div>
                 </div>
                 <div class="dynamic-wrapper">${rowsHtml}</div>
@@ -746,8 +626,8 @@ function populateFields(cardElement, eventData) {
                 // http(s) のみ許可（javascript: 等を弾く）
                 const ok = /^https?:\/\//i.test(url.trim());
                 return ok
-                    ? `<a href="${escapeAttr(safe)}" target="_blank" rel="noopener" class="file-link">📄 関連ファイル ${i + 1}</a>`
-                    : `<span class="file-link" style="color:#999;">⚠️ 無効なURL ${i + 1}</span>`;
+                    ? `<a href="${escapeAttr(safe)}" target="_blank" rel="noopener" class="file-link">関連ファイル ${i + 1}</a>`
+                    : `<span class="file-link" style="color:#999;">無効なURL ${i + 1}</span>`;
             }).join('');
         } else {
             fileContainer.innerHTML = '<span style="color:#999;font-size:0.9rem;">なし</span>';
@@ -790,8 +670,8 @@ function addDynamicPart(btn) {
                 <input type="text" class="e1-input part-name-input" value="新規の部" placeholder="部の名前 (例: 一部)">
             </div>
             <div class="part-actions">
-                <button class="btn btn-secondary btn-sm" onclick="copyDynamicPart(this)" type="button">📑 部のコピー</button>
-                <button class="btn btn-danger-text btn-sm" onclick="removeDynamicPart(this)" type="button">🗑️ 部の削除</button>
+                <button class="btn btn-secondary btn-sm" onclick="copyDynamicPart(this)" type="button">部のコピー</button>
+                <button class="btn btn-danger-text btn-sm" onclick="removeDynamicPart(this)" type="button">部の削除</button>
             </div>
         </div>
         <div class="dynamic-wrapper">${buildDynamicRow('', '')}</div>
@@ -934,7 +814,7 @@ function startNewEvent(category, template) {
     newEvent.Houkoku_Deadline = dHands.houkoku;
 
     const headerTitle = document.querySelector('#new-event-edit-modal h2');
-    if (headerTitle) headerTitle.textContent = "✨ 新規イベント作成";
+    if (headerTitle) headerTitle.textContent = "新規イベント作成";
 
     const actionButtons = document.getElementById('modal-action-buttons');
     if (actionButtons) {
@@ -1171,12 +1051,7 @@ function calculateDeadlines(dateStr) {
     };
 }
 
-function formatDate(date) {
-    const y = date.getFullYear();
-    const m = ('0' + (date.getMonth() + 1)).slice(-2);
-    const d = ('0' + date.getDate()).slice(-2);
-    return `${y}-${m}-${d}`;
-}
+// 日付フォーマットは app.js の toISODate / todayISO を使用
 
 // File Drag & Drop (Visual only)
 function allowDrop(ev) {
@@ -1192,8 +1067,7 @@ function handleDrop(ev, element) {
             // If dropped items aren't files, reject them
             if (item.kind === 'file') {
                 const file = item.getAsFile();
-                console.log(`... file[${i}].name = ${file.name}`);
-                alert(`ファイル "${file.name}" を受け付けました（保存機能は未実装）`);
+                toast(`ファイル「${file.name}」はまだ保存機能が未実装です（Phase 2予定）`, 'info', 4000);
             }
         });
     }

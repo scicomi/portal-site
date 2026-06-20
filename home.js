@@ -7,7 +7,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function init() {
-    // 1. 各リソースをキャッシュから即表示
     const cachedEv = api.loadCache('events');
     const cachedMb = api.loadCache('members');
     const cachedEx = api.loadCache('experiments');
@@ -24,7 +23,6 @@ async function init() {
 
     updateSyncStatus(cachedEv ? 'cached' : 'initial-loading', cachedEv ? cachedEv.timestamp : null);
 
-    // 2. 裏でまとめて取得
     try {
         updateSyncStatus('syncing-bg');
         const all = await api.listAll();
@@ -55,7 +53,7 @@ function renderWelcome() {
     let greeting = 'こんにちは';
     if (hour < 11) greeting = 'おはようございます';
     else if (hour >= 18) greeting = 'こんばんは';
-    document.getElementById('welcome-msg').textContent = `${greeting}！今日も活動を楽しんでいきましょう。`;
+    document.getElementById('welcome-msg').textContent = `${greeting} -- 今日も活動を楽しんでいきましょう。`;
 }
 
 function renderStats(all) {
@@ -95,7 +93,6 @@ function renderEventsCard(events) {
         }).join('');
     }
 
-    // 期限カード
     renderDeadlinesCard(events);
 }
 
@@ -125,25 +122,22 @@ function renderDeadlinesCard(events) {
         return `
         <li class="deadline-row ${u.cls}">
             <span class="dl-date">${shortDate(d.date)}</span>
-            <span class="dl-title">${u.icon} ${escapeHtml(d.type)} <span style="color:#999;">(${escapeHtml(d.event)})</span></span>
+            <span class="dl-title">${escapeHtml(d.type)} <span style="color:#999;">(${escapeHtml(d.event)})</span></span>
             <span class="dl-badge" style="background:${u.bg};color:${u.text};">${u.daysLabel}</span>
         </li>`;
     }).join('');
 }
 
-/**
- * 期限日までの残り日数から緊急度を判定（CONFIG.DEADLINE_ALERTに従う）。
- */
 function deadlineUrgency(dateISO) {
     const days = daysBetween(todayISO(), dateISO);
     const A = CONFIG.DEADLINE_ALERT;
     if (days <= A.danger) {
-        return { cls: 'urgent', icon: '🔴', bg: '#fee2e2', text: '#991b1b', daysLabel: days <= 0 ? '今日!' : `あと${days}日` };
+        return { cls: 'urgent', bg: '#fee2e2', text: '#991b1b', daysLabel: days <= 0 ? '今日!' : `あと${days}日` };
     }
     if (days <= A.warning) {
-        return { cls: 'soon', icon: '🟡', bg: '#fef3c7', text: '#92400e', daysLabel: `あと${days}日` };
+        return { cls: 'soon', bg: '#fef3c7', text: '#92400e', daysLabel: `あと${days}日` };
     }
-    return { cls: '', icon: '🟢', bg: '#dcfce7', text: '#166534', daysLabel: `あと${days}日` };
+    return { cls: '', bg: '#dcfce7', text: '#166534', daysLabel: `あと${days}日` };
 }
 
 function renderMembersCard(members) {
@@ -169,16 +163,14 @@ function renderExperimentsCard(experiments) {
     const other = experiments.filter(e => e.Category === 'other');
 
     container.innerHTML = `
-        <li><span class="dl-date">🛠️ 工作</span><span class="dl-title">${workshop.length}種類</span></li>
-        <li><span class="dl-date">🎭 実験ショー</span><span class="dl-title">${show.length}種類</span></li>
-        <li><span class="dl-date">✨ その他</span><span class="dl-title">${other.length}種類</span></li>
+        <li><span class="dl-date">工作</span><span class="dl-title">${workshop.length}種類</span></li>
+        <li><span class="dl-date">実験ショー</span><span class="dl-title">${show.length}種類</span></li>
+        <li><span class="dl-date">その他</span><span class="dl-title">${other.length}種類</span></li>
         ${experiments.slice(0, 4).map(e => `
             <li>
-                <span class="dl-date">${e.Category === 'workshop' ? '🛠️' : e.Category === 'show' ? '🎭' : '✨'}</span>
+                <span class="dl-date" style="min-width:70px;">${escapeHtml(getExperimentCategory(e.Category).label)}</span>
                 <span class="dl-title">${escapeHtml(e.Name)}</span>
             </li>
         `).join('')}
     `;
 }
-
-// formatShortDate / escapeHtml は app.js の shortDate / escapeHtml を使用
