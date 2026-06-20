@@ -94,6 +94,9 @@ async function init() {
         eventsData = cached.items;
     }
 
+    // 担当者・実験名の候補をキャッシュから即構築（A1/A3）
+    populateDatalists();
+
     if (document.getElementById('calendar-grid')) {
         initCalendar();
     } else if (document.getElementById('calendar')) {
@@ -105,6 +108,40 @@ async function init() {
     else updateSyncStatus('initial-loading');
 
     refreshData();
+}
+
+/**
+ * 担当者(members)・実験名(experiments)のdatalist候補を構築。
+ * イベントページは events だけを同期するので、members/experiments はキャッシュを使う。
+ * キャッシュが無ければ裏で1回だけ取得する。
+ */
+async function populateDatalists() {
+    const memberDl = document.getElementById('member-datalist');
+    const expDl = document.getElementById('experiment-datalist');
+
+    let members = (api.loadCache('members') || {}).items;
+    let experiments = (api.loadCache('experiments') || {}).items;
+
+    // キャッシュが無ければ裏で取得（失敗しても致命的でない）
+    if (!members) {
+        try { members = await api.list('members'); api.saveCache('members', members); } catch (_) { members = []; }
+    }
+    if (!experiments) {
+        try { experiments = await api.list('experiments'); api.saveCache('experiments', experiments); } catch (_) { experiments = []; }
+    }
+
+    if (memberDl && members) {
+        memberDl.innerHTML = members
+            .filter(m => m.Active !== 'false' && m.Name)
+            .map(m => `<option value="${escapeAttr(m.Name)}">${escapeAttr(m.Role || getMemberCategory(m.Category).label)}</option>`)
+            .join('');
+    }
+    if (expDl && experiments) {
+        expDl.innerHTML = experiments
+            .filter(e => e.Name)
+            .map(e => `<option value="${escapeAttr(e.Name)}">${escapeAttr(getExperimentCategory(e.Category).label)}</option>`)
+            .join('');
+    }
 }
 
 async function refreshData(isManual = false) {
@@ -204,9 +241,7 @@ function initFullCalendar() {
             today: '今日'
         },
         dayCellClassNames: function (arg) {
-            // Adjust to robust local date string
-            const d = new Date(arg.date.getTime() - arg.date.getTimezoneOffset() * 60000);
-            const dateStr = d.toISOString().split('T')[0];
+            const dateStr = toISODate(arg.date); // ローカル日付（タイムゾーン安全）
             if (holidaysData[dateStr]) {
                 return ['holiday'];
             }
@@ -235,22 +270,17 @@ function initFullCalendar() {
                 ? eventsData
                 : eventsData.filter(e => (e.Category || 'normal') === filterState.category);
             const fcEvents = source.map(e => {
+                const cat = getEventCategory(e.Category); // CONFIGから色・定義を取得
                 let displayTitle = e.Title;
-                if ((e.Category === 'admin' || e.Category === 'general') && e.Meeting_Number) {
+                if (cat.isMeeting && e.Meeting_Number) {
                     displayTitle = `第${e.Meeting_Number}回 ${e.Title}`;
                 }
 
-                let bgColor = '#f8b4b4'; // normal = soft red
-                let textColor = '#7c2d2d';
-                if (e.Category === 'other') { bgColor = '#86efac'; textColor = '#14532d'; }
-                if (e.Category === 'general') { bgColor = '#93c5fd'; textColor = '#1e3a5f'; }
-                if (e.Category === 'admin') { bgColor = '#fde68a'; textColor = '#78350f'; }
-
                 let endDate = null;
                 if (e.Date_End) {
-                    const d = new Date(e.Date_End);
-                    d.setDate(d.getDate() + 1); // exclusive end logic for fullcalendar
-                    endDate = d.toISOString().split('T')[0];
+                    const d = parseISODate(e.Date_End);
+                    d.setDate(d.getDate() + 1); // FullCalendarのend排他仕様に合わせ+1日
+                    endDate = toISODate(d);
                 }
 
                 return {
@@ -258,9 +288,9 @@ function initFullCalendar() {
                     title: displayTitle,
                     start: e.Date,
                     end: endDate,
-                    backgroundColor: bgColor,
-                    borderColor: bgColor,
-                    textColor: textColor,
+                    backgroundColor: cat.bg,
+                    borderColor: cat.bg,
+                    textColor: cat.text,
                     display: 'block'
                 };
             });
@@ -506,9 +536,7 @@ function renderEvents() {
         card.setAttribute('data-id', event.ID);
 
         // Populate Summary
-        const dateObj = new Date(event.Date);
-        const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][dateObj.getDay()];
-        clone.querySelector('.event-date-badge').textContent = `${event.Date} (${dayOfWeek})`;
+        clone.querySelector('.event-date-badge').textContent = `${event.Date} (${dayOfWeekJP(event.Date)})`;
 
         // Display Time instead of Target
         const timeDisplay = clone.querySelector('.event-time-display');
@@ -571,11 +599,8 @@ function populateFields(cardElement, eventData) {
 
         const displayEl = cardElement.querySelector(`.display-mode[data-field="${field}"]`);
         if (displayEl) {
-            if (displayEl.classList.contains('text-area-view')) {
-                displayEl.innerHTML = val.split('\n').map(line => line.trim()).join('\n');
-            } else {
-                displayEl.textContent = val;
-            }
+            // text-area-view は CSS の white-space:pre-wrap で改行が出るので textContent でOK（XSS安全）
+            displayEl.textContent = val;
         }
 
         // Input elements
@@ -650,55 +675,43 @@ function populateFields(cardElement, eventData) {
 
     if (expDisplay && partsContainer) {
         // Render Display Mode (Tabular format groups tags by Part)
+        // ※ 全てのユーザー入力は escapeHtml で安全化（XSS・表示崩れ防止）
+        // ※ 実験名は実験ページへのリンクに（A3：相互リンク）
         let displayHtml = '';
         partsData.forEach(p => {
             if (p.items.length === 0 || (p.items.length === 1 && !p.items[0].name && !p.items[0].presenter)) return;
-            displayHtml += `<div class="part-title">【${p.partName || '部なし'}】</div><div style="margin-bottom: 10px;">`;
+            displayHtml += `<div class="part-title">【${escapeHtml(p.partName || '部なし')}】</div><div style="margin-bottom: 10px;">`;
             p.items.forEach(item => {
                 if (!item.name && !item.presenter) return;
-                displayHtml += `<span class="tag tag-exp">${item.name || '(未定)'} (${item.presenter || '未定'})</span>`;
+                const expName = item.name
+                    ? `<a href="experiments.html?focus=${encodeURIComponent(item.name)}" class="exp-link-inline" title="実験内容を見る">${escapeHtml(item.name)}</a>`
+                    : '(未定)';
+                displayHtml += `<span class="tag tag-exp">${expName} <span class="tag-presenter">(${escapeHtml(item.presenter || '未定')})</span></span>`;
             });
             displayHtml += `</div>`;
         });
         expDisplay.innerHTML = displayHtml || '---';
 
-        // Render Edit Mode Inputs
+        // Render Edit Mode Inputs（担当者欄は member-datalist 連携：A1）
         partsContainer.innerHTML = '';
         partsData.forEach(p => {
             const block = document.createElement('div');
             block.className = 'part-block';
-            let html = `
+            const itemsToRender = p.items.length > 0 ? p.items : [{ name: '', presenter: '' }];
+            let rowsHtml = itemsToRender.map(item => buildDynamicRow(item.name, item.presenter)).join('');
+            block.innerHTML = `
                 <div class="part-header">
                     <div>
-                        <input type="text" class="e1-input part-name-input" value="${p.partName}" placeholder="部の名前 (例: 一部)">
+                        <input type="text" class="e1-input part-name-input" value="${escapeAttr(p.partName)}" placeholder="部の名前 (例: 一部)">
                     </div>
                     <div class="part-actions">
                         <button class="btn btn-secondary btn-sm" onclick="copyDynamicPart(this)" type="button">📑 部のコピー</button>
                         <button class="btn btn-danger-text btn-sm" onclick="removeDynamicPart(this)" type="button">🗑️ 部の削除</button>
                     </div>
                 </div>
-                <div class="dynamic-wrapper">
+                <div class="dynamic-wrapper">${rowsHtml}</div>
+                <button class="btn-add-exp" onclick="addDynamicItem(this)" type="button">＋ 実験を追加</button>
             `;
-            p.items.forEach(item => {
-                html += `
-                    <div class="dynamic-row">
-                        <input type="text" class="e1-input experiment-name" style="flex:5" value="${item.name}" placeholder="実験名">
-                        <input type="text" class="e1-input presenter-name" style="flex:3" value="${item.presenter}" placeholder="担当者">
-                        <button class="btn-del" onclick="removeDynamicItem(this)" type="button">✖</button>
-                    </div>
-                `;
-            });
-            if (p.items.length === 0) {
-                html += `
-                    <div class="dynamic-row">
-                        <input type="text" class="e1-input experiment-name" style="flex:5" value="" placeholder="実験名">
-                        <input type="text" class="e1-input presenter-name" style="flex:3" value="" placeholder="担当者">
-                        <button class="btn-del" onclick="removeDynamicItem(this)" type="button">✖</button>
-                    </div>
-                `;
-            }
-            html += `</div><button class="btn-add-exp" onclick="addDynamicItem(this)" type="button">＋ 実験を追加</button>`;
-            block.innerHTML = html;
             partsContainer.appendChild(block);
         });
     }
@@ -727,10 +740,15 @@ function populateFields(cardElement, eventData) {
     if (fileContainer && fileInput) {
         if (eventData.Files) {
             fileInput.value = eventData.Files;
-            const urls = eventData.Files.split(',');
-            fileContainer.innerHTML = urls.map((url, i) =>
-                `<a href="${url.trim()}" target="_blank" class="file-link">📄 関連ファイル ${i + 1}</a>`
-            ).join('');
+            const urls = eventData.Files.split(',').filter(u => u.trim());
+            fileContainer.innerHTML = urls.map((url, i) => {
+                const safe = encodeURI(url.trim());
+                // http(s) のみ許可（javascript: 等を弾く）
+                const ok = /^https?:\/\//i.test(url.trim());
+                return ok
+                    ? `<a href="${escapeAttr(safe)}" target="_blank" rel="noopener" class="file-link">📄 関連ファイル ${i + 1}</a>`
+                    : `<span class="file-link" style="color:#999;">⚠️ 無効なURL ${i + 1}</span>`;
+            }).join('');
         } else {
             fileContainer.innerHTML = '<span style="color:#999;font-size:0.9rem;">なし</span>';
             fileInput.value = "";
@@ -738,84 +756,30 @@ function populateFields(cardElement, eventData) {
     }
 }
 
-// Accordion Toggle
-function toggleAccordion(summaryElement) {
-    const card = summaryElement.closest('.event-card');
-    const details = card.querySelector('.event-details');
-    const icon = card.querySelector('.expand-icon');
-
-    // Check if currently editing
-    if (card.classList.contains('editing')) {
-        return; // Disable collapse while editing
-    }
-
-    if (details.classList.contains('collapsed')) {
-        details.classList.remove('collapsed');
-        icon.style.transform = 'rotate(180deg)';
-    } else {
-        details.classList.add('collapsed');
-        icon.style.transform = 'rotate(0deg)';
-    }
-}
-
-// Enter Edit Mode
-function enableEdit(btn) {
-    const card = btn.closest('.event-card');
-    card.classList.add('editing');
-
-    // Toggle visiblity
-    card.querySelectorAll('.display-mode').forEach(el => el.classList.add('hidden'));
-    card.querySelectorAll('.edit-mode').forEach(el => el.classList.remove('hidden'));
-}
-
-// Cancel Edit Mode
-function cancelEdit(btn) {
-    const card = btn.closest('.event-card');
-    const id = card.getAttribute('data-id');
-    const originalData = eventsData.find(e => e.ID === id);
-
-    // Re-populate original data to inputs
-    populateFields(card, originalData);
-
-    card.classList.remove('editing');
-    card.querySelectorAll('.display-mode').forEach(el => el.classList.remove('hidden'));
-    card.querySelectorAll('.edit-mode').forEach(el => el.classList.add('hidden'));
-}
-
-// Delete Event (with UNDO)
-function deleteEvent(btn) {
-    const card = btn.closest('.event-card');
-    const id = card.getAttribute('data-id');
-    const eventIndex = eventsData.findIndex(e => e.ID === id);
-    if (eventIndex < 0) return;
-
-    const backup = eventsData[eventIndex];
-
-    // UIから即削除
-    eventsData.splice(eventIndex, 1);
-    api.saveCache('events', eventsData);
-    renderEvents();
-    refreshCalendar();
-
-    toastUndo(
-        `「${backup.Title}」を削除しました`,
-        () => {
-            // UNDO: 復元
-            eventsData.splice(eventIndex, 0, backup);
-            api.saveCache('events', eventsData);
-            renderEvents();
-            refreshCalendar();
-        },
-        async () => {
-            // 確定: GASに削除リクエスト
-            await api.delete('events', id);
-            toast('削除を確定しました', 'success', 2000);
-        },
-        5000
-    );
-}
+// ※ インラインカードの編集/削除/アコーディオン機能は廃止。
+//   イベントの閲覧・編集・削除はすべてモーダル経由で行う:
+//     表示  → viewEventInModal()
+//     編集  → enableModalEdit()
+//     保存  → saveEventFromModal()
+//     削除  → deleteModalEvent()
 
 // Dynamic List Actions
+
+/**
+ * 実験1行のHTMLを生成（実験名・担当者）。
+ * 担当者欄は member-datalist と紐付け、実験名欄は experiment-datalist と紐付ける（A1）。
+ * 値は escapeAttr で必ず安全化する。
+ */
+function buildDynamicRow(expName, presenter) {
+    return `
+        <div class="dynamic-row">
+            <input type="text" class="e1-input experiment-name" style="flex:5" value="${escapeAttr(expName || '')}" placeholder="実験名" list="experiment-datalist">
+            <input type="text" class="e1-input presenter-name" style="flex:3" value="${escapeAttr(presenter || '')}" placeholder="担当者" list="member-datalist">
+            <button class="btn-del" onclick="removeDynamicItem(this)" type="button">✖</button>
+        </div>
+    `;
+}
+
 function addDynamicPart(btn) {
     const container = btn.parentElement.querySelector('.parts-container');
     const block = document.createElement('div');
@@ -830,13 +794,7 @@ function addDynamicPart(btn) {
                 <button class="btn btn-danger-text btn-sm" onclick="removeDynamicPart(this)" type="button">🗑️ 部の削除</button>
             </div>
         </div>
-        <div class="dynamic-wrapper">
-            <div class="dynamic-row">
-                <input type="text" class="e1-input experiment-name" style="flex:5" value="" placeholder="実験名">
-                <input type="text" class="e1-input presenter-name" style="flex:3" value="" placeholder="担当者">
-                <button class="btn-del" onclick="removeDynamicItem(this)" type="button">✖</button>
-            </div>
-        </div>
+        <div class="dynamic-wrapper">${buildDynamicRow('', '')}</div>
         <button class="btn-add-exp" onclick="addDynamicItem(this)" type="button">＋ 実験を追加</button>
     `;
     container.appendChild(block);
@@ -871,14 +829,9 @@ function copyDynamicPart(btn) {
 
 function addDynamicItem(btn) {
     const wrapper = btn.closest('.part-block').querySelector('.dynamic-wrapper');
-    const div = document.createElement('div');
-    div.className = 'dynamic-row';
-    div.innerHTML = `
-        <input type="text" class="e1-input experiment-name" style="flex:5" placeholder="実験名" value="">
-        <input type="text" class="e1-input presenter-name" style="flex:3" placeholder="担当者" value="">
-        <button class="btn-del" onclick="removeDynamicItem(this)" type="button">✖</button>
-    `;
-    wrapper.appendChild(div);
+    const temp = document.createElement('div');
+    temp.innerHTML = buildDynamicRow('', '');
+    wrapper.appendChild(temp.firstElementChild);
 }
 
 function removeDynamicItem(btn) {
@@ -889,107 +842,6 @@ function removeDynamicItem(btn) {
     if (wrapper.children.length === 0) {
         addDynamicItem(wrapper.parentElement.querySelector('.btn-add-exp'));
     }
-}
-
-// Save Event
-async function saveEvent(btn) {
-    const card = btn.closest('.event-card');
-    const id = card.getAttribute('data-id');
-    const eventIndex = eventsData.findIndex(e => e.ID === id);
-
-    // Collect data from inputs
-    const inputs = card.querySelectorAll('.edit-mode:not(.dynamic-item input)'); // Exclude dynamic ones here
-    let newData = { ...eventsData[eventIndex] };
-
-    inputs.forEach(input => {
-        const field = input.getAttribute('data-field');
-        if (field) {
-            newData[field] = input.value;
-        }
-    });
-
-    // Collect time from explicit selects
-    const startSel = card.querySelector('.time-start-select');
-    const endSel = card.querySelector('.time-end-select');
-    if (startSel && endSel) {
-        newData.Event_Time = `${startSel.value} - ${endSel.value}`;
-    }
-
-    // Special meeting title handling
-    if (newData.Category === 'admin' || newData.Category === 'general') {
-        const metNum = card.querySelector('#meeting-num-input');
-        const metName = card.querySelector('#meeting-name-input');
-        if (metNum) newData.Meeting_Number = metNum.value;
-        if (metName) newData.Title = metName.value;
-    }
-
-    // Collect dynamic lists (Parts structure)
-    const partsContainer = card.querySelector('.parts-container');
-    if (partsContainer) {
-        const blocks = partsContainer.querySelectorAll('.part-block');
-        const partsList = [];
-
-        // For backwards compat / quick access
-        const flatExps = [];
-        const flatPres = [];
-
-        blocks.forEach(block => {
-            const partName = block.querySelector('.part-name-input').value;
-            const rows = block.querySelectorAll('.dynamic-row');
-            const items = [];
-            rows.forEach(row => {
-                const exp = row.querySelector('.experiment-name').value.trim();
-                const pre = row.querySelector('.presenter-name').value.trim();
-                if (exp || pre) {
-                    items.push({ name: exp, presenter: pre });
-                    flatExps.push(exp);
-                    flatPres.push(pre);
-                }
-            });
-            partsList.push({ partName: partName, items: items });
-        });
-
-        newData.PartsList = JSON.stringify(partsList);
-        newData.Experiments = flatExps.join(',');
-        newData.Presenters = flatPres.join(',');
-    }
-
-    // Recalculate deadlines explicitly (just in case input change didn't trigger)
-    const deadLines = calculateDeadlines(newData.Date);
-    newData.Kyoka_Deadline = deadLines.kyoka;
-    newData.Houkoku_Deadline = deadLines.houkoku;
-
-    // GASに保存
-    try {
-        const savedGas = await api.save('events', uiToGas(newData));
-        newData = gasToUi(savedGas);
-    } catch (e) {
-        toast('保存失敗: ' + e.message, 'error');
-        return;
-    }
-
-    // Update state
-    eventsData[eventIndex] = newData;
-    api.saveCache('events', eventsData);
-
-    // Re-render this specific card (or part of it) to show read-only view
-    populateFields(card, newData);
-
-    // Update header info as well
-    const dateObj = new Date(newData.Date);
-    const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][dateObj.getDay()];
-    card.querySelector('.event-date-badge').textContent = `${newData.Date} (${dayOfWeek})`;
-    card.querySelector('.event-title').textContent = newData.Title;
-
-    // Display Time
-    const timeDisplay = card.querySelector('.event-time-display');
-    if (timeDisplay) timeDisplay.textContent = newData.Event_Time || '--:--';
-
-    card.classList.remove('editing');
-    card.querySelectorAll('.display-mode').forEach(el => el.classList.remove('hidden'));
-    card.querySelectorAll('.edit-mode').forEach(el => el.classList.add('hidden'));
-
-    toast('保存しました', 'success');
 }
 
 // --- Modal & New Event Logic ---
@@ -1035,7 +887,7 @@ function startNewEvent(category, template) {
     document.getElementById('category-selection-modal').classList.add('hidden');
     document.getElementById('new-event-edit-modal').classList.remove('hidden');
 
-    const newId = "ev_" + Date.now();
+    const newId = genId("ev_");
     const today = new Date().toISOString().split('T')[0];
 
     const startDate = window.tempStart || today;
@@ -1116,9 +968,6 @@ function renderModalForm(eventData, isEditMode = true) {
 
     const details = card.querySelector('.event-details');
     details.classList.remove('collapsed');
-
-    // Hide purely action buttons from the template and drag drop (keep simple for now)
-    card.querySelector('.action-buttons').style.display = 'none';
 
     // Populate and force Edit Mode
     populateFields(card, eventData);
@@ -1307,19 +1156,18 @@ function updateDeadlines(dateInput) {
 function calculateDeadlines(dateStr) {
     if (!dateStr) return { kyoka: '', houkoku: '' };
 
-    const eventDate = new Date(dateStr);
+    const eventDate = parseISODate(dateStr); // タイムゾーン安全
+    const rules = CONFIG.DEADLINE_RULES;
 
-    // Kyoka: -10 days
     const kyokaDate = new Date(eventDate);
-    kyokaDate.setDate(eventDate.getDate() - 10);
+    kyokaDate.setDate(eventDate.getDate() + rules.kyoka); // 既定: -10日
 
-    // Houkoku: +7 days
     const houkokuDate = new Date(eventDate);
-    houkokuDate.setDate(eventDate.getDate() + 7);
+    houkokuDate.setDate(eventDate.getDate() + rules.houkoku); // 既定: +7日
 
     return {
-        kyoka: formatDate(kyokaDate),
-        houkoku: formatDate(houkokuDate)
+        kyoka: toISODate(kyokaDate),
+        houkoku: toISODate(houkokuDate)
     };
 }
 

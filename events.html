@@ -20,6 +20,10 @@
 <body>
     <header class="app-header"><!-- Filled by app.js renderHeader('events') --></header>
 
+    <!-- 入力補助: 担当者・実験名の候補（members/experimentsから自動生成） -->
+    <datalist id="member-datalist"></datalist>
+    <datalist id="experiment-datalist"></datalist>
+
     <main class="container">
         <div class="page-section-actions">
             <h1 class="page-title" style="margin: 0; flex: 1;">📅 イベント管理</h1>
@@ -69,7 +73,7 @@
     <!-- Template for Event Item (Used by JS) -->
     <template id="event-template">
         <div class="event-card" data-id="">
-            <div class="event-summary" onclick="toggleAccordion(this)">
+            <div class="event-summary">
                 <div class="summary-left">
                     <span class="event-date-badge"></span>
                     <h3 class="event-title display-mode"></h3>
@@ -347,16 +351,7 @@
 
                         </div>
                     </section>
-
-                    <!-- Action Buttons -->
-                    <div class="action-buttons form-actions">
-                        <button class="btn btn-secondary display-mode" onclick="enableEdit(this)">✏️ 編集</button>
-                        <button class="btn btn-danger-text edit-mode hidden" onclick="deleteEvent(this)"
-                            style="margin-right:auto;">🗑️ 削除</button>
-                        <button class="btn btn-secondary edit-mode hidden" onclick="cancelEdit(this)">キャンセル</button>
-                        <button class="btn btn-primary edit-mode hidden" onclick="saveEvent(this)">💾 保存</button>
-                    </div>
-
+                    <!-- 編集・保存・削除はモーダルヘッダー(#modal-action-buttons)で行う -->
                 </div>
             </div>
         </div>
@@ -401,6 +396,7 @@
         </div>
     </div>
 
+    <script src="config.js"></script>
     <script src="api.js"></script>
     <script src="app.js"></script>
     <script src="script.js"></script>
