@@ -29,8 +29,8 @@
         </div>
         <div class="page-section-actions">
             <button class="filter-chip active" data-cat="all" onclick="onCategoryFilter('all')">全部</button>
-            <button class="filter-chip" data-cat="normal" onclick="onCategoryFilter('normal')">通常</button>
-            <button class="filter-chip" data-cat="other" onclick="onCategoryFilter('other')">学内</button>
+            <button class="filter-chip" data-cat="normal" onclick="onCategoryFilter('normal')">イベント</button>
+            <button class="filter-chip" data-cat="other" onclick="onCategoryFilter('other')">その他</button>
             <button class="filter-chip" data-cat="general" onclick="onCategoryFilter('general')">全体MTG</button>
             <button class="filter-chip" data-cat="admin" onclick="onCategoryFilter('admin')">幹部MTG</button>
             <span style="margin-left: auto;">
@@ -183,6 +183,20 @@
                                     <div class="file-list display-mode" data-field="Files_Display"></div>
                                 </td>
                             </tr>
+                            <tr>
+                                <th>良かった点</th>
+                                <td>
+                                    <div class="field-value display-mode text-area-view" data-field="Positives"
+                                        style="white-space: pre-wrap;"></div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>反省点</th>
+                                <td>
+                                    <div class="field-value display-mode text-area-view" data-field="Reflections"
+                                        style="white-space: pre-wrap;"></div>
+                                </td>
+                            </tr>
                         </table>
 
                         <!-- Editor UI Forms -->
@@ -324,6 +338,16 @@
                                 <textarea class="e1-input edit-mode" data-field="Remarks" rows="4"></textarea>
                             </div>
 
+                            <div class="e1-group">
+                                <label class="e1-label">良かった点</label>
+                                <textarea class="e1-input edit-mode" data-field="Positives" rows="3" placeholder="会場・運営・実験などで良かったこと"></textarea>
+                            </div>
+
+                            <div class="e1-group">
+                                <label class="e1-label">反省点</label>
+                                <textarea class="e1-input edit-mode" data-field="Reflections" rows="3" placeholder="会場・運営・実験などの改善点"></textarea>
+                            </div>
+
                             <div class="e1-group event-only-section">
                                 <label class="e1-label">関連ファイル</label>
                                 <div class="file-upload-area">
@@ -354,8 +378,8 @@
             <h2>新規イベント作成</h2>
             <p>イベントの種類を選択してください。</p>
             <div class="category-buttons">
-                <button class="btn btn-category cat-normal-btn" onclick="startNewEvent('normal')">通常イベント</button>
-                <button class="btn btn-category cat-other-btn" onclick="startNewEvent('other')">学内イベント</button>
+                <button class="btn btn-category cat-normal-btn" onclick="startNewEvent('normal')">イベント</button>
+                <button class="btn btn-category cat-other-btn" onclick="startNewEvent('other')">その他</button>
                 <button class="btn btn-category cat-general-btn" onclick="startNewEvent('general')">全体ミーティング</button>
                 <button class="btn btn-category cat-admin-btn" onclick="startNewEvent('admin')">幹部ミーティング</button>
             </div>

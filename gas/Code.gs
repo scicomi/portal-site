@@ -264,6 +264,7 @@ const EVENTS_HEADERS = [
   'TimeStart', 'TimeEnd', 'MeetingNumber', 'PartsList',
   'AdminKyoka', 'AdminHoukoku', 'KyokaDeadline', 'HoukokuDeadline',
   'Logistics', 'Remarks', 'Files', 'Belongings',
+  'SeriesKey', 'Positives', 'Reflections',
   'CreatedAt', 'UpdatedAt', 'UpdatedBy'
 ];
 const MEMBERS_HEADERS = [

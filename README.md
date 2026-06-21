@@ -94,6 +94,7 @@ portal-site/
 ├── README.md
 ├── gas/
 │   ├── Code.gs        # GASに貼り付けるバックエンド（3リソース対応）
+│   ├── ImportData.gs  # 過去スケジュール一括取り込み（importSchedule）
 │   ├── appsscript.json # GASプロジェクトマニフェスト（clasp用）
 │   ├── .clasp.json    # clasp設定（scriptId要設定）
 │   └── .claspignore   # clasp push 除外リスト
@@ -220,12 +221,28 @@ cat ~/.clasprc.json
 3. メンバーに新パスワードを共有
 4. 各メンバーは次回ログイン時に新パスワードを入力すればOK
 
+### 過去スケジュール（23〜26年度）を一括取り込みする
+
+`gas/ImportData.gs` に、23〜26年度の年間スケジュール.xlsm から抽出した
+**過去イベント150件**と**実験17件（工作8・実験ショー9）**が埋め込まれている。
+
+取り込み手順（1回だけ）:
+1. GASエディタで先に `setupSpreadsheet()` を実行（新カラム `SeriesKey` / `Positives` / `Reflections` / `FiscalYear` 等を追加）
+2. 続けて `importSchedule()` を実行
+   - `Events` シートに過去イベントを追記（`Date`＋`Title` が重複する行はスキップ）
+   - `Experiments` シートに実験を追記（`Name` が重複する行はスキップ）
+3. 同名イベントは `SeriesKey` で自動的に紐づき、イベントページに「N回目／通算M回」が表示される
+
+再取り込みしても重複しないので、何度実行しても安全。
+分類は機械抽出のため、カテゴリ（イベント／その他／全体MTG／幹部MTG）はUI上で適宜修正可能。
+
 ### 過去のイベントを直接修正したい
 
 スプレッドシートの `Events` シートを直接編集してOK。
 ただし以下のフィールドは特殊なので注意：
 - `PartsList`：JSON文字列。形式を壊さないこと
 - `Files`：JSON文字列。同上
+- `SeriesKey`：同名イベントを紐付けるキー（開催回数の集計に使う）。空欄なら `Title` で自動集計
 - `ID`：絶対に変更しない
 
 ### イベントをCSVでエクスポートしたい
