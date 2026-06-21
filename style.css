@@ -1282,6 +1282,19 @@ textarea:focus {
     white-space: nowrap;
 }
 
+.occ-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #5b3b00;
+    background: #ffe8b3;
+    border: 1px solid #f5cf7a;
+    white-space: nowrap;
+}
+
 .tbl-btn {
     background: none; border: 1px solid #ddd;
     padding: 3px 10px; border-radius: 4px;

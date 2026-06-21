@@ -55,8 +55,30 @@ function uiToGas(u) {
         Remarks: u.Remarks || '',
         Belongings: u.Belongings || '',
         Files: Array.isArray(u.Files) ? u.Files : [],
+        SeriesKey: u.SeriesKey || '',
+        Positives: u.Positives || '',
+        Reflections: u.Reflections || '',
         UpdatedBy: u.UpdatedBy || ''
     };
+}
+
+// ---- 開催回数（同名イベントの紐付け） ----
+// SeriesKey（無ければ Title）が一致するイベントを「同じ催し」とみなし、
+// 日付順に何回目かと通算回数を算出する。毎年やるイベントの開催回数把握に使う。
+function eventSeriesKey(e) {
+    const k = (e.SeriesKey && String(e.SeriesKey).trim()) || (e.Title || '');
+    return k.replace(/\s+/g, '').replace(/^第\d+回/, '');
+}
+
+function occurrenceInfo(e) {
+    const key = eventSeriesKey(e);
+    if (!key) return null;
+    const series = eventsData
+        .filter(x => eventSeriesKey(x) === key && x.Date)
+        .sort((a, b) => (a.Date || '').localeCompare(b.Date || ''));
+    if (series.length < 2) return null;
+    const idx = series.findIndex(x => x.ID === e.ID);
+    return { num: idx >= 0 ? idx + 1 : series.length, total: series.length };
 }
 
 // ---- グローバルキーボードショートカット ----
@@ -437,6 +459,7 @@ function renderEvents() {
         if (cat.isMeeting && event.Meeting_Number) {
             displayTitle = `第${event.Meeting_Number}回 ${displayTitle}`;
         }
+        const occ = occurrenceInfo(event);
         return `
             <tr class="clickable-row" onclick="viewEventInModal('${event.ID}')">
                 <td class="cell-name" style="white-space:nowrap;">
@@ -446,6 +469,7 @@ function renderEvents() {
                 <td>
                     <span style="font-weight:600;">${escapeHtml(displayTitle)}</span>
                     <span class="cat-badge" style="background:${cat.bg};color:${cat.text};margin-left:6px;">${cat.short}</span>
+                    ${occ ? `<span class="occ-badge" title="通算${occ.total}回">${occ.num}回目</span>` : ''}
                 </td>
                 <td class="hide-mobile">${escapeHtml(event.Location || '')}</td>
                 <td class="hide-mobile">${escapeHtml(event.Event_Time || '')}</td>
@@ -482,7 +506,7 @@ function populateFields(cardElement, eventData) {
         remarksLabel.textContent = isMeeting ? '議題 / 備考' : '備考';
     }
 
-    const fields = ['Title', 'Location', 'Audience', 'Meeting_Number', 'Date', 'Date_End', 'Event_Time', 'Meeting_Logistics', 'Remarks', 'Belongings'];
+    const fields = ['Title', 'Location', 'Audience', 'Meeting_Number', 'Date', 'Date_End', 'Event_Time', 'Meeting_Logistics', 'Remarks', 'Belongings', 'Positives', 'Reflections'];
 
     fields.forEach(field => {
         // Display elements
@@ -510,6 +534,13 @@ function populateFields(cardElement, eventData) {
             dateDisplayEl.textContent = `${eventData.Date} 〜 ${eventData.Date_End}`;
         } else {
             dateDisplayEl.textContent = eventData.Date || '---';
+        }
+        const occ = occurrenceInfo(eventData);
+        if (occ) {
+            const b = document.createElement('span');
+            b.className = 'occ-badge';
+            b.textContent = `${occ.num}回目 / 通算${occ.total}回`;
+            dateDisplayEl.appendChild(b);
         }
     }
 

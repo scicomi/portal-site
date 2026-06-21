@@ -9,6 +9,20 @@ let editingMemberId = null;
 let selectedFiscalYear = currentFiscalYear();
 let showAdviser = false;
 let showCoordinator = false;
+let gradeFilter = null; // 例: '5C' / '院生' / null(全員)
+
+// 学籍番号の先頭2文字（例: '5CSC1234' → '5C'）。なければ空。
+function gradeOf(m) {
+    const id = (m.StudentID || '').trim();
+    if (id.length < 2) return '';
+    return id.slice(0, 2).toUpperCase();
+}
+
+// 5文字目が m/M なら院生（例: '5CSKM0112'）。
+function isGradStudent(m) {
+    const id = (m.StudentID || '').trim();
+    return id.length >= 5 && (id[4] === 'm' || id[4] === 'M');
+}
 
 function currentFiscalYear() {
     const now = new Date();
@@ -69,6 +83,41 @@ function buildFiscalYearSelect() {
 
 function onFiscalYearChange() {
     selectedFiscalYear = parseInt(document.getElementById('fiscal-year-select').value);
+    gradeFilter = null; // 年度が変われば学年構成も変わるのでリセット
+    renderMembers();
+}
+
+// 表示中の年度の学生から学年チップ（◯C生）を動的生成。院生がいれば院生チップも追加。
+function buildGradeChips(fyMembers) {
+    const row = document.getElementById('grade-filter-row');
+    const wrap = document.getElementById('grade-filter-chips');
+    if (!wrap || !row) return;
+
+    const grades = new Set();
+    let hasGrad = false;
+    fyMembers.forEach(m => {
+        if ((m.Category || 'member') !== 'member') return;
+        const g = gradeOf(m);
+        if (g && /^\d[A-Z]$/.test(g)) grades.add(g);
+        if (isGradStudent(m)) hasGrad = true;
+    });
+
+    const list = [...grades].sort();
+    if (hasGrad) list.push('院生');
+
+    if (list.length === 0) {
+        row.style.display = 'none';
+        wrap.innerHTML = '';
+        return;
+    }
+    row.style.display = '';
+    wrap.innerHTML = list.map(g =>
+        `<button class="filter-chip ${gradeFilter === g ? 'active' : ''}" onclick="setGradeFilter('${g}')">${g === '院生' ? '院生' : g + '生'}</button>`
+    ).join('');
+}
+
+function setGradeFilter(g) {
+    gradeFilter = (gradeFilter === g) ? null : g;
     renderMembers();
 }
 
@@ -94,16 +143,26 @@ function getMemberFiscalYear(m) {
 }
 
 function renderMembers() {
-    let base = membersData.filter(m => {
-        const fy = getMemberFiscalYear(m);
-        if (fy !== selectedFiscalYear) return false;
+    const fyMembers = membersData.filter(m => getMemberFiscalYear(m) === selectedFiscalYear);
+    buildGradeChips(fyMembers);
 
-        const cat = m.Category || 'member';
-        if (cat === 'member') return true;
-        if (cat === 'adviser') return showAdviser;
-        if (cat === 'coordinator') return showCoordinator;
-        return true;
-    });
+    let base;
+    if (gradeFilter) {
+        // 学年/院生フィルタが選択されている時は、その学年の学生だけを表示
+        if (gradeFilter === '院生') {
+            base = fyMembers.filter(isGradStudent);
+        } else {
+            base = fyMembers.filter(m => gradeOf(m) === gradeFilter);
+        }
+    } else {
+        base = fyMembers.filter(m => {
+            const cat = m.Category || 'member';
+            if (cat === 'member') return true;
+            if (cat === 'adviser') return showAdviser;
+            if (cat === 'coordinator') return showCoordinator;
+            return true;
+        });
+    }
 
     if (memberSearchKw) {
         base = base.filter(m => {

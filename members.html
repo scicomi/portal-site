@@ -23,6 +23,11 @@
             <button class="filter-chip" id="toggle-coordinator-btn" onclick="toggleCategoryFilter('coordinator')">コーディネーターも表示</button>
         </div>
 
+        <div class="page-section-actions" id="grade-filter-row" style="display:none;">
+            <span style="font-size:0.85rem; color:#888;">学年で絞り込み:</span>
+            <span id="grade-filter-chips" style="display:flex; gap:8px; flex-wrap:wrap;"></span>
+        </div>
+
         <div class="table-wrapper">
             <table class="data-table" id="members-table">
                 <thead>

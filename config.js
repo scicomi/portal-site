@@ -61,8 +61,8 @@ const CONFIG = {
 
   // ===== イベントカテゴリ =====
   EVENT_CATEGORIES: {
-    normal:  { label: '通常イベント',     short: '通常',   bg: '#f8b4b4', text: '#7c2d2d', isMeeting: false },
-    other:   { label: '学内イベント',     short: '学内',   bg: '#86efac', text: '#14532d', isMeeting: false },
+    normal:  { label: 'イベント',         short: 'イベント', bg: '#f8b4b4', text: '#7c2d2d', isMeeting: false },
+    other:   { label: 'その他',           short: 'その他',   bg: '#86efac', text: '#14532d', isMeeting: false },
     general: { label: '全体ミーティング', short: '全体MTG', bg: '#93c5fd', text: '#1e3a5f', isMeeting: true },
     admin:   { label: '幹部ミーティング', short: '幹部MTG', bg: '#fde68a', text: '#78350f', isMeeting: true }
   },
