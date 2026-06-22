@@ -51,12 +51,21 @@ const CONFIG = {
   // ===== リソース名一覧（api.js が参照） =====
   RESOURCE_NAMES: ['events', 'members', 'experiments'],
 
+  // ===== Gemini API (Bot用) =====
+  GEMINI: {
+    MODEL: 'gemini-2.0-flash-lite',
+    DAILY_LIMIT: 1500,
+    USAGE_KEY: 'scicomi_bot_usage',
+    API_KEY_STORAGE: 'scicomi_gemini_key'
+  },
+
   // ===== ナビゲーション =====
   NAV_ITEMS: [
     { href: 'index.html',       label: 'ホーム',   page: 'home' },
     { href: 'events.html',      label: 'イベント', page: 'events' },
     { href: 'members.html',     label: 'メンバー', page: 'members' },
-    { href: 'experiments.html', label: '実験内容', page: 'experiments' }
+    { href: 'experiments.html', label: '実験内容', page: 'experiments' },
+    { href: 'bot.html',         label: 'Bot',      page: 'bot' }
   ],
 
   // ===== イベントカテゴリ =====
