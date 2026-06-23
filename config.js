@@ -51,12 +51,16 @@ const CONFIG = {
   // ===== リソース名一覧（api.js が参照） =====
   RESOURCE_NAMES: ['events', 'members', 'experiments'],
 
-  // ===== Gemini API (Bot用) =====
+  // ===== 管理者 =====
+  ADMIN_TOKEN_KEY: 'scicomi_admin_token',
+  ADMIN_TOKEN_TS_KEY: 'scicomi_admin_token_ts',
+  ADMIN_TOKEN_TTL_MS: 2 * 60 * 60 * 1000, // 2時間
+
+  // ===== Gemini API (Bot用 — APIキーはサーバー側管理) =====
   GEMINI: {
     MODEL: 'gemini-2.0-flash-lite',
     DAILY_LIMIT: 1500,
-    USAGE_KEY: 'scicomi_bot_usage',
-    API_KEY_STORAGE: 'scicomi_gemini_key'
+    USAGE_KEY: 'scicomi_bot_usage'
   },
 
   // ===== ナビゲーション =====

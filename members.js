@@ -189,18 +189,21 @@ function renderMembers() {
             const catDef = getMemberCategory(cat);
             const roleAffil = [m.Role, m.Affiliation].filter(Boolean).join(' / ');
             const isSub = cat !== 'member';
+            const isInactive = m.Active === 'false';
+            const rowStyle = isInactive ? 'style="background:#faf9f8;opacity:0.6;"' : (isSub ? 'style="background:#faf9f8;"' : '');
             return `
-            <tr data-id="${m.ID}" ${isSub ? 'style="background:#faf9f8;"' : ''}>
+            <tr data-id="${m.ID}" ${rowStyle}>
                 <td>${escapeHtml(m.StudentID || '')}</td>
                 <td class="cell-name">
                     <span class="member-name-text">${escapeHtml(m.Name || '')}</span>
                     ${isSub ? '<span class="cat-badge" style="background:' + catDef.color + ';margin-left:6px;font-size:0.7rem;">' + escapeHtml(catDef.label) + '</span>' : ''}
+                    ${isInactive ? '<span class="cat-badge" style="background:#9ca3af;margin-left:6px;font-size:0.7rem;">卒業・退会</span>' : ''}
                 </td>
                 <td>${escapeHtml(roleAffil || '')}</td>
                 <td class="hide-mobile">${m.Email ? `<a href="mailto:${escapeAttr(m.Email)}">${escapeHtml(m.Email)}</a>` : ''}</td>
                 <td class="cell-actions">
                     <button class="tbl-btn" onclick="editMember('${m.ID}')" title="編集">編集</button>
-                    <button class="tbl-btn tbl-btn-danger" onclick="deleteMember('${m.ID}')" title="削除">削除</button>
+                    <button class="tbl-btn tbl-btn-danger${api.isAdmin() ? '' : ' admin-hidden'}" onclick="deleteMember('${m.ID}')" title="削除">削除</button>
                 </td>
             </tr>`;
         }).join('');
@@ -227,6 +230,7 @@ function openMemberModal() {
         document.getElementById(id).value = '';
     });
     document.getElementById('mb-category').value = 'member';
+    document.getElementById('mb-active').value = 'true';
     populateFiscalYearModal();
     document.getElementById('mb-fiscal-year').value = selectedFiscalYear || currentFiscalYear();
     document.getElementById('member-modal').classList.remove('hidden');
@@ -247,6 +251,7 @@ function editMember(id) {
     document.getElementById('mb-email').value = m.Email || '';
     populateFiscalYearModal();
     document.getElementById('mb-fiscal-year').value = m.FiscalYear || currentFiscalYear();
+    document.getElementById('mb-active').value = (m.Active === 'false') ? 'false' : 'true';
     document.getElementById('member-modal').classList.remove('hidden');
 }
 
@@ -269,8 +274,11 @@ async function saveMember() {
         Note: document.getElementById('mb-note').value.trim(),
         Email: document.getElementById('mb-email').value.trim(),
         FiscalYear: document.getElementById('mb-fiscal-year').value,
-        Active: existing ? (existing.Active || 'true') : 'true'
+        Active: document.getElementById('mb-active').value === 'false' ? 'false' : 'true'
     };
+
+    // 編集時は競合検知用に読み込み時の版を添える
+    if (editingMemberId && existing) item._baseUpdatedAt = existing.UpdatedAt || '';
 
     try {
         const saved = await api.save('members', item);
@@ -286,30 +294,57 @@ async function saveMember() {
         closeMemberModal();
         toast('保存しました', 'success');
     } catch (e) {
+        if (String(e.message).includes('conflict')) {
+            toast('他の人がこのメンバーを編集しました。最新を読み込みます。', 'error', 5000);
+            closeMemberModal();
+            await refreshData();
+            return;
+        }
         toast('保存失敗: ' + e.message, 'error');
     }
 }
 
-function deleteMember(id) {
+async function deleteMember(id) {
+    if (!api.isAdmin()) {
+        showAdminAuthModal(() => deleteMember(id));
+        return;
+    }
     const idx = membersData.findIndex(m => m.ID === id);
     if (idx < 0) return;
     const backup = membersData[idx];
 
+    // UIから即削除（楽観的表示）
     membersData.splice(idx, 1);
     api.saveCache('members', membersData);
     renderMembers();
 
+    // サーバー削除を即時実行（ページ離脱でも確実に確定する）
+    try {
+        await api.delete('members', id);
+    } catch (e) {
+        membersData.splice(idx, 0, backup);
+        api.saveCache('members', membersData);
+        renderMembers();
+        toast('削除失敗: ' + e.message, 'error');
+        return;
+    }
+
+    // 削除確定後、UNDO（同一IDで再作成）を提示
     toastUndo(
         `「${backup.Name}」を削除しました`,
-        () => {
-            membersData.splice(idx, 0, backup);
-            api.saveCache('members', membersData);
-            renderMembers();
-        },
         async () => {
-            await api.delete('members', id);
-            toast('削除を確定しました', 'success', 2000);
+            try {
+                const saved = await api.save('members', backup);
+                membersData.splice(idx, 0, saved);
+                api.saveCache('members', membersData);
+                buildFiscalYearSelect();
+                renderMembers();
+                toast('元に戻しました', 'success', 2000);
+            } catch (e) {
+                toast('復元に失敗しました: ' + e.message, 'error');
+            }
         },
+        () => {},   // 確定処理は不要（既にサーバー削除済み）
         5000
     );
 }

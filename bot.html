@@ -30,22 +30,33 @@
         </div>
     </main>
 
-    <div class="modal-overlay hidden" id="gemini-settings-modal">
-        <div class="modal-content" style="max-width:480px;">
-            <h2>Gemini API 設定</h2>
-            <p style="color:#666;font-size:0.9rem;margin-bottom:16px;">
-                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>
-                でAPIキーを取得し、下に貼り付けてください。<br>
-                APIキーはこのブラウザのlocalStorageに保存されます。
-            </p>
-            <div class="e1-group">
-                <label class="e1-label">APIキー</label>
-                <input type="password" id="gemini-key-input" class="e1-input" placeholder="AIza...">
+    <!-- Gemini設定は管理者設定モーダル（app.js）で管理 -->
+
+    <!-- 実験 詳細モーダル（Bot用・実験ページと同じ内容） -->
+    <div id="bot-exp-detail-modal" class="modal-overlay hidden">
+        <div class="modal-content large-modal exp-detail">
+            <div class="modal-header">
+                <h2 id="bot-exp-detail-title">&mdash;</h2>
+                <div class="action-buttons-top">
+                    <a id="bot-exp-detail-link" class="btn btn-secondary" href="experiments.html">実験ページで開く</a>
+                    <button class="btn btn-text" onclick="closeBotExpDetail()">閉じる</button>
+                </div>
             </div>
-            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
-                <button class="btn btn-secondary" id="gemini-settings-cancel">キャンセル</button>
-                <button class="btn btn-primary-solid" id="gemini-settings-save" style="width:auto;padding:8px 24px;">保存</button>
+            <div class="modal-body" id="bot-exp-detail-body"></div>
+        </div>
+    </div>
+
+    <!-- イベント 詳細モーダル（Bot用・イベントページと同じ内容） -->
+    <div id="bot-event-detail-modal" class="modal-overlay hidden">
+        <div class="modal-content large-modal exp-detail">
+            <div class="modal-header">
+                <h2 id="bot-event-detail-title">&mdash;</h2>
+                <div class="action-buttons-top">
+                    <a id="bot-event-detail-link" class="btn btn-secondary" href="events.html">イベントページで開く</a>
+                    <button class="btn btn-text" onclick="closeBotEventDetail()">閉じる</button>
+                </div>
             </div>
+            <div class="modal-body" id="bot-event-detail-body"></div>
         </div>
     </div>
 

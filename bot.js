@@ -19,180 +19,53 @@ const usageTracker = {
   get() {
     try {
       const raw = localStorage.getItem(this._key());
-      if (!raw) return { date: todayISO(), count: 0 };
+      if (!raw) return { date: todayISO(), count: 0, limit: this._limit() };
       const d = JSON.parse(raw);
-      return d.date === todayISO() ? d : { date: todayISO(), count: 0 };
-    } catch { return { date: todayISO(), count: 0 }; }
+      return d.date === todayISO() ? d : { date: todayISO(), count: 0, limit: this._limit() };
+    } catch { return { date: todayISO(), count: 0, limit: this._limit() }; }
   },
 
-  increment() {
-    const d = this.get();
-    d.count++;
+  setFromServer(count, limit) {
+    const d = { date: todayISO(), count: count || 0, limit: limit || this._limit() };
     localStorage.setItem(this._key(), JSON.stringify(d));
     renderGauge();
   },
 
   count() { return this.get().count; },
-  limit() { return this._limit(); },
-  remaining() { return Math.max(0, this._limit() - this.count()); }
+  limit() { return this.get().limit || this._limit(); },
+  remaining() { return Math.max(0, this.limit() - this.count()); }
 };
 
-// ====== Gemini クライアント ======
+// ====== Gemini クライアント（サーバープロキシ経由） ======
 
 const gemini = {
-  getKey() {
-    return localStorage.getItem(CONFIG.GEMINI.API_KEY_STORAGE) || '';
-  },
-  setKey(k) { localStorage.setItem(CONFIG.GEMINI.API_KEY_STORAGE, k); },
-  removeKey() { localStorage.removeItem(CONFIG.GEMINI.API_KEY_STORAGE); },
-  isReady() { return !!this.getKey(); },
-
-  systemPrompt() {
-    const today = todayISO();
-    const fy = currentFiscalYear();
-    return `あなたはSciComi Portal（サイエンスコミュニケーターサークルのポータル）のデータ検索アシスタントです。
-ユーザーの質問を分析し、JSON形式の検索クエリに変換してください。
-※個人情報は一切送信されません。質問文のみが送られます。
-
-## データスキーマ
-
-### events（イベント）
-- Date: 開催日(YYYY-MM-DD), DateEnd: 終了日
-- Title: イベント名
-- Category: normal(イベント), other(その他), general(全体MTG), admin(幹部MTG)
-- Location: 場所, Audience: 対象者
-- AdminKyoka: 許可願の担当者名（人名）
-- AdminHoukoku: 報告書の担当者名（人名）
-- KyokaDeadline: 許可願期限(YYYY-MM-DD), HoukokuDeadline: 報告書期限
-- PartsList: 部ごとの実験・担当者リスト JSON配列
-  形式: [{"partName":"一部","items":[{"name":"実験名","presenter":"担当者名"}]}]
-- Positives: 良かった点, Reflections: 反省点
-- Remarks: 備考, Belongings: 持ち物
-
-### members（メンバー）
-- Name: 氏名
-- Category: adviser(アドバイザー), coordinator(コーディネーター), member(メンバー)
-- Role: 役職（例: プロジェクトリーダー）
-- StudentID: 学籍番号。先頭2文字が学年コース（例: 4C, 5C, 6C）
-- Active: "true"=在籍, "false"=卒業
-- FiscalYear: 登録年度
-- Note: メモ
-
-### experiments（実験ネタ）
-- Name: 実験名
-- Category: workshop(工作), show(実験ショー), other(その他)
-- Materials: 使用物品, Preparation: 事前準備
-- Flow: 発表の流れ, Notes: 注意事項
-- SlidesURL: スライドURL, Active: 有効フラグ
-
-## 今日: ${today} / 年度: ${fy}年度（${fy}年4月〜${fy + 1}年3月）
-
-## 書類の判定ルール
-「書類を書いた」= イベントのAdminKyoka or AdminHoukokuにその人の名前がある
-「書類を書いていない」= どのイベントにも名前がない
-
-## 参加の判定ルール
-「イベントに参加した」= PartsList内のitemsのpresenterにその人の名前がある
-
-## 返答JSON形式（必ずこの形式のJSONのみ返す）
-
-{
-  "intent": "find_members|find_events|find_experiments|members_docs|member_activity|upcoming|count|general|unknown",
-  "params": {
-    "name": "人名（部分一致検索用）",
-    "grade": "学年コード（例:6C）",
-    "member_category": "adviser|coordinator|member",
-    "event_category": "normal|other|general|admin",
-    "exp_category": "workshop|show|other",
-    "date_from": "YYYY-MM-DD",
-    "date_to": "YYYY-MM-DD",
-    "keyword": "自由キーワード",
-    "active_only": true,
-    "doc_type": "kyoka|houkoku|both",
-    "include_in": "parts|admin|both",
-    "fiscal_year": ${fy}
-  },
-  "response_text": "検索内容を説明する日本語文（結果の前に表示される）"
-}
-
-paramsは必要なものだけ含めてください。不要なものは省略。
-
-## 例
-
-Q: 「6Cで最近書類を書いていないメンバーは？」
-A: {"intent":"members_docs","params":{"grade":"6C","doc_type":"both","active_only":true},"response_text":"6Cで書類（許可願・報告書）を担当していないメンバーを検索します。"}
-
-Q: 「来月のイベント」
-A: {"intent":"find_events","params":{"date_from":"${nextMonthStart()}","date_to":"${nextMonthEnd()}"},"response_text":"来月のイベント一覧です。"}
-
-Q: 「田中さんが参加したイベント」
-A: {"intent":"member_activity","params":{"name":"田中","include_in":"both"},"response_text":"田中さんが関わったイベントを検索します。"}
-
-Q: 「次のミーティングはいつ？」
-A: {"intent":"find_events","params":{"event_category":"general","date_from":"${today}"},"response_text":"次の全体ミーティングを検索します。"}
-
-Q: 「工作の実験ネタ」
-A: {"intent":"find_experiments","params":{"exp_category":"workshop"},"response_text":"工作カテゴリの実験ネタ一覧です。"}
-
-Q: 「こんにちは」
-A: {"intent":"general","params":{},"response_text":"こんにちは！イベント・メンバー・実験に関する質問をどうぞ。\\n\\n例:\\n・来月のイベントは？\\n・6Cで書類を書いていないメンバーは？\\n・工作の実験ネタを教えて\\n・田中さんの参加イベント"}
-
-Q: 「天気教えて」
-A: {"intent":"unknown","params":{},"response_text":"すみません、サークルのデータ（イベント・メンバー・実験）に関する質問にお答えできます。"}`;
-  },
 
   async parseIntent(message) {
-    const key = this.getKey();
-    if (!key) throw new Error('API_KEY_NOT_SET');
-    if (usageTracker.remaining() <= 0) throw new Error('DAILY_LIMIT');
+    // システムプロンプトはサーバー側で生成・固定される（APIキー悪用防止）
+    const result = await api.geminiProxy(message);
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI.MODEL}:generateContent?key=${key}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: message }] }],
-        systemInstruction: { parts: [{ text: this.systemPrompt() }] },
-        generationConfig: { responseMimeType: 'application/json' }
-      })
-    });
-
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => '');
-      if (res.status === 400 && errBody.includes('API_KEY_INVALID')) throw new Error('API_KEY_INVALID');
-      if (res.status === 429) throw new Error('RATE_LIMIT');
-      throw new Error('API_ERROR_' + res.status);
+    if (result.usage !== undefined) {
+      usageTracker.setFromServer(result.usage, result.limit);
     }
 
-    usageTracker.increment();
-    const data = await res.json();
+    const data = result.data;
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('EMPTY_RESPONSE');
-    return JSON.parse(text);
+    if (!text) {
+      throw new Error(data.promptFeedback?.blockReason ? 'BLOCKED' : 'EMPTY_RESPONSE');
+    }
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      throw new Error('PARSE_ERROR');
+    }
   }
 };
 
 // ====== 日付ヘルパー ======
-
-function currentFiscalYear() {
-  const now = new Date();
-  return (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
-}
+// 年度範囲のみ使用（旧 systemPrompt 用の currentFiscalYear / nextMonth* はサーバー移管に伴い削除）
 
 function fiscalYearRange(fy) {
   return { from: `${fy}-04-01`, to: `${fy + 1}-03-31` };
-}
-
-function nextMonthStart() {
-  const d = new Date();
-  d.setMonth(d.getMonth() + 1, 1);
-  return toISODate(d);
-}
-
-function nextMonthEnd() {
-  const d = new Date();
-  d.setMonth(d.getMonth() + 2, 0);
-  return toISODate(d);
 }
 
 // ====== クエリエンジン ======
@@ -403,13 +276,14 @@ const queryEngine = {
         if (e.AdminKyoka) admin.push(`許可願: ${escapeHtml(e.AdminKyoka)}`);
         if (e.AdminHoukoku) admin.push(`報告書: ${escapeHtml(e.AdminHoukoku)}`);
         const adminStr = admin.length ? `<div class="bot-ri-detail">${admin.join(' | ')}</div>` : '';
-        return `<div class="bot-result-item event-item">
+        return `<div class="bot-result-item event-item bot-clickable" onclick="openEventDetailFromBot('${escapeAttr(e.ID)}')" title="クリックで詳細を表示">
           <div class="bot-ri-date">${d}${dow}</div>
           <div class="bot-ri-body">
             <div class="bot-ri-main">${escapeHtml(e.Title)} <span class="bot-ri-badge" style="background:${catCfg.bg};color:${catCfg.text}">${escapeHtml(cat)}</span></div>
             <div class="bot-ri-sub">${escapeHtml(e.Location || '')}</div>
             ${adminStr}
           </div>
+          <span class="bot-ri-chevron">›</span>
         </div>`;
       }).join('')}</div>`;
   },
@@ -423,13 +297,152 @@ const queryEngine = {
         const catCfg = getExperimentCategory(x.Category);
         const mat = x.Materials ? x.Materials.split('\n').slice(0, 3).join(', ') : '';
         const matStr = mat ? `<div class="bot-ri-sub">材料: ${escapeHtml(mat)}</div>` : '';
-        return `<div class="bot-result-item exp-item">
+        return `<div class="bot-result-item exp-item bot-clickable" onclick="openExpDetailFromBot('${escapeAttr(x.ID)}')" title="クリックで詳細を表示">
           <div class="bot-ri-main">${escapeHtml(x.Name)} <span class="bot-ri-badge" style="background:${catCfg.color};color:white">${escapeHtml(cat)}</span></div>
           ${matStr}
+          <span class="bot-ri-chevron">›</span>
         </div>`;
       }).join('')}</div>`;
   }
 };
+
+// ====== 詳細ポップアップ（実験ページ／イベントページと同じ内容を表示） ======
+
+// --- 実験の詳細（experiments.js の viewExp と同じ構成） ---
+function buildExpDetailBody(e) {
+  const section = (title, content, isList) => {
+    if (!content || !String(content).trim()) return '';
+    const lines = String(content).split('\n').map(s => s.trim()).filter(Boolean);
+    const inner = isList
+      ? `<ul>${lines.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
+      : `<div class="exp-text">${escapeHtml(content)}</div>`;
+    return `<div class="exp-detail-section"><h3>${title}</h3>${inner}</div>`;
+  };
+  const cat = getExperimentCategory(e.Category);
+  const hasReview = (e.Positives && e.Positives.trim()) || (e.Reflections && e.Reflections.trim());
+  return `
+    <div style="margin-bottom:12px;">
+      <span class="cat-badge" style="background:${cat.color};">${escapeHtml(cat.label)}</span>
+      ${e.SlidesURL ? ` &nbsp;<a class="tbl-link" href="${escapeAttr(e.SlidesURL)}" target="_blank" rel="noopener">資料を開く</a>` : ''}
+    </div>
+    ${section('使用物品', e.Materials, true)}
+    ${section('事前準備', e.Preparation, true)}
+    ${section('発表の流れ', e.Flow, true)}
+    ${section('注意事項', e.Notes, true)}
+    ${hasReview ? '<hr style="border:0;border-top:1px solid #eee;margin:20px 0;">' : ''}
+    ${section('良かった点', e.Positives, false)}
+    ${section('反省点', e.Reflections, false)}
+  `;
+}
+
+function openExpDetailFromBot(id) {
+  const e = allData.experiments.find(x => x.ID === id);
+  if (!e) return;
+  document.getElementById('bot-exp-detail-title').textContent = e.Name || '(無題)';
+  document.getElementById('bot-exp-detail-body').innerHTML = buildExpDetailBody(e);
+  const link = document.getElementById('bot-exp-detail-link');
+  if (link) link.href = 'experiments.html?focus=' + encodeURIComponent(e.Name || '');
+  document.getElementById('bot-exp-detail-modal').classList.remove('hidden');
+}
+
+function closeBotExpDetail() {
+  document.getElementById('bot-exp-detail-modal').classList.add('hidden');
+}
+
+// --- イベントの詳細（events ページの閲覧モーダルと同等の内容） ---
+function buildEventDetailBody(e) {
+  const cat = getEventCategory(e.Category);
+  const isMeeting = !!cat.isMeeting;
+
+  const row = (label, value) => (value && String(value).trim())
+    ? `<div class="bot-detail-row"><span class="bot-detail-label">${label}</span><span class="bot-detail-value">${escapeHtml(value)}</span></div>`
+    : '';
+  const textSec = (title, content) => (content && String(content).trim())
+    ? `<div class="exp-detail-section"><h3>${title}</h3><div class="exp-text">${escapeHtml(content)}</div></div>`
+    : '';
+  const sec = (title, inner) => inner ? `<div class="exp-detail-section"><h3>${title}</h3>${inner}</div>` : '';
+
+  let dateStr = e.Date ? `${e.Date} (${dayOfWeekJP(e.Date)})` : '未定';
+  if (e.DateEnd && e.DateEnd !== e.Date) dateStr += ` 〜 ${e.DateEnd} (${dayOfWeekJP(e.DateEnd)})`;
+  const timeStr = (e.TimeStart && e.TimeEnd) ? `${e.TimeStart} - ${e.TimeEnd}` : (e.TimeStart || '');
+
+  // 部ごとの実験・担当者
+  let parts = e.PartsList;
+  if (typeof parts === 'string') { try { parts = JSON.parse(parts); } catch (_) { parts = []; } }
+  let partsHtml = '';
+  if (Array.isArray(parts)) {
+    parts.forEach(p => {
+      const items = (p.items || []).filter(it => it.name || it.presenter);
+      if (items.length === 0) return;
+      partsHtml += `<div class="part-title">【${escapeHtml(p.partName || '部なし')}】</div><div style="margin-bottom:10px;">`;
+      items.forEach(it => {
+        const name = it.name
+          ? `<a href="experiments.html?focus=${encodeURIComponent(it.name)}" class="exp-link-inline">${escapeHtml(it.name)}</a>`
+          : '(未定)';
+        partsHtml += `<span class="tag tag-exp">${name} <span class="tag-presenter">(${escapeHtml(it.presenter || '未定')})</span></span>`;
+      });
+      partsHtml += `</div>`;
+    });
+  }
+
+  // 書類（担当・期限）
+  const docRows = [
+    row('許可願 担当', e.AdminKyoka),
+    row('許可願 期限', e.KyokaDeadline),
+    row('報告書 担当', e.AdminHoukoku),
+    row('報告書 期限', e.HoukokuDeadline)
+  ].join('');
+
+  // ファイル
+  const files = Array.isArray(e.Files) ? e.Files : [];
+  let filesHtml = '';
+  if (files.length) {
+    filesHtml = files.map((f, i) => {
+      const url = (f && f.url) || (typeof f === 'string' ? f : '');
+      const name = escapeHtml((f && f.name) || ('ファイル ' + (i + 1)));
+      return /^https?:\/\//i.test(url)
+        ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="tbl-link" style="display:block;margin:2px 0;">${name}</a>`
+        : `<span style="display:block;margin:2px 0;color:#999;">${name}（リンク切れ）</span>`;
+    }).join('');
+  }
+
+  return `
+    <div style="margin-bottom:12px;">
+      <span class="cat-badge" style="background:${cat.bg};color:${cat.text};">${escapeHtml(cat.label)}</span>
+    </div>
+    <div class="bot-detail-rows">
+      ${row('日程', dateStr)}
+      ${timeStr ? row('時間', timeStr) : ''}
+      ${isMeeting && e.MeetingNumber ? row('回数', '第' + e.MeetingNumber + '回') : ''}
+      ${row('場所', e.Location)}
+      ${row('対象', e.Audience)}
+    </div>
+    ${partsHtml ? sec('実験・担当', partsHtml) : ''}
+    ${docRows ? sec('書類', `<div class="bot-detail-rows">${docRows}</div>`) : ''}
+    ${textSec(isMeeting ? '議題 / 備考' : '備考', e.Remarks)}
+    ${textSec('持ち物', e.Belongings)}
+    ${textSec('当日運営・ロジ', e.Logistics)}
+    ${filesHtml ? sec('ファイル', filesHtml) : ''}
+    ${(e.Positives && e.Positives.trim()) || (e.Reflections && e.Reflections.trim()) ? '<hr style="border:0;border-top:1px solid #eee;margin:20px 0;">' : ''}
+    ${textSec('良かった点', e.Positives)}
+    ${textSec('反省点', e.Reflections)}
+  `;
+}
+
+function openEventDetailFromBot(id) {
+  const e = allData.events.find(x => x.ID === id);
+  if (!e) return;
+  const cat = getEventCategory(e.Category);
+  let title = e.Title || '(無題)';
+  if (cat.isMeeting && e.MeetingNumber) title = `第${e.MeetingNumber}回 ${title}`;
+  document.getElementById('bot-event-detail-title').textContent = title;
+  document.getElementById('bot-event-detail-body').innerHTML = buildEventDetailBody(e);
+  document.getElementById('bot-event-detail-modal').classList.remove('hidden');
+}
+
+function closeBotEventDetail() {
+  document.getElementById('bot-event-detail-modal').classList.add('hidden');
+}
 
 // ====== キーワード検索（Gemini未設定時のフォールバック） ======
 
@@ -469,9 +482,16 @@ function keywordSearch(text) {
 
 // ====== チャットUI ======
 
-function addMessage(role, text, html) {
-  chatHistory.push({ role, text, html, time: new Date() });
+// source: 'ai'（Gemini AIで解析）/ 'keyword'（キーワード検索）/ null（案内・エラー等）
+function addMessage(role, text, html, source) {
+  chatHistory.push({ role, text, html, source: source || null, time: new Date() });
   renderMessages();
+}
+
+function sourceBadge(source) {
+  if (source === 'ai') return '<span class="bot-source-badge src-ai">🤖 AI回答</span>';
+  if (source === 'keyword') return '<span class="bot-source-badge src-keyword">🔍 キーワード検索</span>';
+  return '';
 }
 
 function renderMessages() {
@@ -488,7 +508,7 @@ function renderMessages() {
       <div class="bot-msg-avatar">SC</div>
       <div class="bot-msg-content">
         <div class="bot-msg-bubble bot-bubble">${msg.text ? escapeHtml(msg.text).replace(/\n/g, '<br>') : ''}${msg.html || ''}</div>
-        <div class="bot-msg-time">${timeStr}</div>
+        <div class="bot-msg-meta">${sourceBadge(msg.source)}<span class="bot-msg-time">${timeStr}</span></div>
       </div>
     </div>`;
   }).join('');
@@ -527,11 +547,6 @@ function renderGauge() {
   if (pct >= 90) fillEl.className = 'bot-gauge-fill gauge-danger';
   else if (pct >= 60) fillEl.className = 'bot-gauge-fill gauge-warn';
   else fillEl.className = 'bot-gauge-fill gauge-ok';
-
-  if (!gemini.isReady()) {
-    countEl.textContent = 'APIキー未設定';
-    fillEl.style.width = '0%';
-  }
 }
 
 // ====== メッセージ送信 ======
@@ -546,66 +561,54 @@ async function handleSend() {
   showTyping();
 
   try {
-    if (!gemini.isReady()) {
-      const result = keywordSearch(text);
-      hideTyping();
-      addMessage('bot', result.response_text, result.html);
-      return;
-    }
-
     const query = await gemini.parseIntent(text);
     const result = queryEngine.execute(query.intent, query.params || {});
 
     hideTyping();
-    addMessage('bot', query.response_text || '', result.html || '');
+    addMessage('bot', query.response_text || '', result.html || '', 'ai');
     renderGauge();
 
   } catch (e) {
     hideTyping();
     const errMsg = e.message || String(e);
-    if (errMsg === 'API_KEY_NOT_SET') {
-      addMessage('bot', 'Gemini APIキーが未設定です。⚙ボタンから設定してください。\nキーワード検索にフォールバックします。');
+    if (errMsg === 'gemini_key_not_configured') {
+      addMessage('bot', 'Gemini APIキーがサーバー側で未設定です。管理者に連絡してください。\nキーワード検索にフォールバックします。');
       const result = keywordSearch(text);
-      addMessage('bot', result.response_text, result.html);
+      addMessage('bot', result.response_text, result.html, 'keyword');
     } else if (errMsg === 'API_KEY_INVALID') {
       addMessage('bot', 'APIキーが無効です。⚙ボタンから正しいキーを設定してください。');
     } else if (errMsg === 'DAILY_LIMIT') {
       addMessage('bot', '本日のAPI使用上限（' + usageTracker.limit() + '回）に達しました。明日リセットされます。\nキーワード検索にフォールバックします。');
       const result = keywordSearch(text);
-      addMessage('bot', result.response_text, result.html);
+      addMessage('bot', result.response_text, result.html, 'keyword');
     } else if (errMsg === 'RATE_LIMIT') {
-      addMessage('bot', 'レート制限に達しました。少し待ってから再度お試しください。');
+      addMessage('bot', 'Gemini APIのレート制限に達しました（無料枠の上限）。数回自動で再試行しましたが回復しませんでした。少し時間をおくと回復します。\nキーワード検索に切り替えます。');
+      const result = keywordSearch(text);
+      addMessage('bot', result.response_text, result.html, 'keyword');
+    } else if (errMsg === 'NETWORK_ERROR') {
+      addMessage('bot', '通信エラーが発生しました。ネットワーク接続を確認してください。\nキーワード検索に切り替えます。');
+      const result = keywordSearch(text);
+      addMessage('bot', result.response_text, result.html, 'keyword');
+    } else if (errMsg === 'BLOCKED') {
+      addMessage('bot', '安全フィルタにより応答がブロックされました。質問の表現を変えてお試しください。');
+    } else if (errMsg === 'PARSE_ERROR' || errMsg === 'EMPTY_RESPONSE') {
+      addMessage('bot', 'AIの応答を解釈できませんでした。もう一度お試しください。\nキーワード検索に切り替えます。');
+      const result = keywordSearch(text);
+      addMessage('bot', result.response_text, result.html, 'keyword');
     } else {
       addMessage('bot', 'エラーが発生しました: ' + escapeHtml(errMsg));
     }
   }
 }
 
-// ====== 設定モーダル ======
+// ====== 設定（管理者専用 → 管理者設定モーダルへ誘導） ======
 
 function openSettings() {
-  const modal = document.getElementById('gemini-settings-modal');
-  const input = document.getElementById('gemini-key-input');
-  input.value = gemini.getKey();
-  modal.classList.remove('hidden');
-  setTimeout(() => input.focus(), 50);
-}
-
-function closeSettings() {
-  document.getElementById('gemini-settings-modal').classList.add('hidden');
-}
-
-function saveSettings() {
-  const key = document.getElementById('gemini-key-input').value.trim();
-  if (key) {
-    gemini.setKey(key);
-    toast('APIキーを保存しました', 'success');
+  if (api.isAdmin()) {
+    showAdminSettingsModal();
   } else {
-    gemini.removeKey();
-    toast('APIキーを削除しました', 'info');
+    showAdminAuthModal(() => showAdminSettingsModal());
   }
-  closeSettings();
-  renderGauge();
 }
 
 // ====== 起動 ======
@@ -621,8 +624,15 @@ async function init() {
     if (e.key === 'Enter' && !e.isComposing) handleSend();
   });
   document.getElementById('bot-settings-btn').addEventListener('click', openSettings);
-  document.getElementById('gemini-settings-cancel').addEventListener('click', closeSettings);
-  document.getElementById('gemini-settings-save').addEventListener('click', saveSettings);
+
+  // 詳細モーダル: オーバーレイ外側クリック / Esc で閉じる
+  ['bot-exp-detail-modal', 'bot-event-detail-modal'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', ev => { if (ev.target === el) el.classList.add('hidden'); });
+  });
+  document.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape') { closeBotExpDetail(); closeBotEventDetail(); }
+  });
 
   // ゲージ初期描画
   renderGauge();
@@ -639,11 +649,15 @@ async function init() {
   // ウェルカムメッセージ
   addMessage('bot', 'こんにちは！SciComi Bot です。\nイベント・メンバー・実験に関する質問をどうぞ。\n\n例:\n・来月のイベントは？\n・6Cで書類を書いていないメンバーは？\n・工作の実験ネタを教えて\n・田中さんの参加イベント');
 
-  if (!gemini.isReady()) {
-    addMessage('bot', '現在キーワード検索モードです。⚙ボタンからGemini APIキーを設定すると、自然言語での質問が可能になります。');
-  }
+  // APIキー未設定時のメッセージはサーバー応答で判定するため、ここでは出さない
 
   // バックグラウンドでデータ更新
+  await refreshData();
+}
+
+// 同期ステータスのクリック（ヘッダー）からも呼ばれる。最新データを取得して allData を更新する。
+async function refreshData(isManual = false) {
+  updateSyncStatus(isManual ? 'syncing' : 'syncing-bg');
   try {
     const fresh = await api.listAll();
     RESOURCE_NAMES.forEach(r => {
