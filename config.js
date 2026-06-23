@@ -69,7 +69,9 @@ const CONFIG = {
     { href: 'events.html',      label: 'イベント', page: 'events' },
     { href: 'members.html',     label: 'メンバー', page: 'members' },
     { href: 'experiments.html', label: '実験内容', page: 'experiments' },
-    { href: 'bot.html',         label: 'Bot',      page: 'bot' }
+    { href: 'bot.html',         label: 'Bot',      page: 'bot' },
+    // 管理者ログイン時のみ表示（外部サービスの認証情報の一覧）
+    { href: 'passwords.html',   label: 'パスワード一覧', page: 'passwords', adminOnly: true }
   ],
 
   // ===== イベントカテゴリ =====

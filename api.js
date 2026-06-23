@@ -41,6 +41,25 @@ const api = {
     return false;
   },
 
+  // 統合ログイン: 入力パスワードからロールを判別。
+  // 幹部パスワードなら管理者トークンも受け取り、自動で管理者モードになる。
+  // 戻り値: { ok: boolean, role: 'admin' | 'member' | null }
+  async login(password) {
+    const res = await this._post({ action: 'login', password });
+    if (res.success && res.token) {
+      this.setToken(res.token);
+      if (res.adminToken) this.setAdminToken(res.adminToken);
+      return { ok: true, role: res.role || 'member' };
+    }
+    // 旧バックエンド（login 未対応）では従来の auth にフォールバックして、
+    // GAS 再デプロイ前でもメンバーログインが止まらないようにする。
+    if (res.error && String(res.error).indexOf('unknown action') >= 0) {
+      const ok = await this.auth(password);
+      return { ok, role: ok ? 'member' : null };
+    }
+    return { ok: false, role: null };
+  },
+
   // ---- 管理者認証 ----
   getAdminToken() {
     const ts = parseInt(localStorage.getItem(ADMIN_TOKEN_TS_KEY)) || 0;
@@ -225,6 +244,38 @@ const api = {
     return true;
   },
 
+  // ---- パスワード一覧（管理者専用リソース） ----
+  // 閲覧・追加・編集・削除すべてに管理者トークンを添付する。
+  async listPasswords() {
+    const res = await this._post({
+      action: 'list', resource: 'passwords',
+      token: this.getToken(), adminToken: this.getAdminToken()
+    });
+    if (!res.success) {
+      if (res.error === 'admin_required') throw new Error('ADMIN_REQUIRED');
+      throw new Error(res.error || 'list passwords failed');
+    }
+    return res.items || [];
+  },
+
+  async savePassword(item) {
+    const res = await this._post({
+      action: 'save', resource: 'passwords',
+      token: this.getToken(), adminToken: this.getAdminToken(), item
+    });
+    if (!res.success) {
+      if (res.error === 'admin_required') throw new Error('ADMIN_REQUIRED');
+      if (res.error === 'conflict') throw new Error('conflict');
+      throw new Error(res.error || 'save password failed');
+    }
+    return res.item || { ...item };
+  },
+
+  async deletePassword(id) {
+    // delete アクションは既に管理者トークンを送る
+    return this.delete('passwords', id);
+  },
+
   // ---- Gemini プロキシ ----
   // systemPrompt はサーバー側で固定生成されるため送信しない（APIキー悪用防止）
   async geminiProxy(message) {
@@ -233,7 +284,14 @@ const api = {
       token: this.getToken(),
       message
     });
-    if (!res.success) throw new Error(res.error || 'gemini proxy failed');
+    if (!res.success) {
+      // retrySec / detail / scope を例外に載せてクライアント側で活用できるようにする
+      const err = new Error(res.error || 'gemini proxy failed');
+      err.retrySec = res.retrySec;
+      err.detail = res.detail;
+      err.scope = res.scope;
+      throw err;
+    }
     return res;
   },
 

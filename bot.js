@@ -551,6 +551,8 @@ function renderGauge() {
 
 // ====== メッセージ送信 ======
 
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
 async function handleSend() {
   const input = document.getElementById('bot-input');
   const text = input.value.trim();
@@ -558,46 +560,94 @@ async function handleSend() {
 
   input.value = '';
   addMessage('user', text);
-  showTyping();
+  await processQuery(text, false);
+}
 
+// 1つの質問を Gemini で処理する。isRetry=true は1分レート制限の自動再試行時。
+async function processQuery(text, isRetry) {
+  showTyping();
   try {
     const query = await gemini.parseIntent(text);
     const result = queryEngine.execute(query.intent, query.params || {});
-
     hideTyping();
     addMessage('bot', query.response_text || '', result.html || '', 'ai');
     renderGauge();
-
   } catch (e) {
     hideTyping();
-    const errMsg = e.message || String(e);
-    if (errMsg === 'gemini_key_not_configured') {
-      addMessage('bot', 'Gemini APIキーがサーバー側で未設定です。管理者に連絡してください。\nキーワード検索にフォールバックします。');
-      const result = keywordSearch(text);
-      addMessage('bot', result.response_text, result.html, 'keyword');
-    } else if (errMsg === 'API_KEY_INVALID') {
-      addMessage('bot', 'APIキーが無効です。⚙ボタンから正しいキーを設定してください。');
-    } else if (errMsg === 'DAILY_LIMIT') {
-      addMessage('bot', '本日のAPI使用上限（' + usageTracker.limit() + '回）に達しました。明日リセットされます。\nキーワード検索にフォールバックします。');
-      const result = keywordSearch(text);
-      addMessage('bot', result.response_text, result.html, 'keyword');
-    } else if (errMsg === 'RATE_LIMIT') {
-      addMessage('bot', 'Gemini APIのレート制限に達しました（無料枠の上限）。数回自動で再試行しましたが回復しませんでした。少し時間をおくと回復します。\nキーワード検索に切り替えます。');
-      const result = keywordSearch(text);
-      addMessage('bot', result.response_text, result.html, 'keyword');
-    } else if (errMsg === 'NETWORK_ERROR') {
+    await handleBotError(e, text, isRetry);
+  }
+}
+
+function fallbackToKeyword(text) {
+  const result = keywordSearch(text);
+  addMessage('bot', result.response_text, result.html, 'keyword');
+}
+
+async function handleBotError(e, text, isRetry) {
+  const errMsg = e.message || String(e);
+  const detailNote = e.detail ? '\n\n（詳細: ' + e.detail + '）' : '';
+
+  switch (errMsg) {
+    case 'gemini_key_not_configured':
+      addMessage('bot', 'Gemini APIキーがサーバー側で未設定です。管理者設定（⚙→管理）で設定してください。\nキーワード検索にフォールバックします。');
+      fallbackToKeyword(text);
+      break;
+
+    case 'API_KEY_INVALID':
+      addMessage('bot', 'APIキーが無効です。⚙→管理 から正しいキーを設定してください。');
+      break;
+
+    // キーは有効だが、API未有効化・地域制限・請求設定などでプロジェクト側が使えない状態
+    case 'API_FORBIDDEN':
+      addMessage('bot', 'APIキーは認識されましたが、このキーのプロジェクトで Gemini API を利用できない状態です。\n' +
+        'Google AI Studio / Cloud Console で「Generative Language API」が有効か、地域・請求設定に問題がないか確認してください。' + detailNote);
+      fallbackToKeyword(text);
+      break;
+
+    case 'MODEL_NOT_FOUND':
+      addMessage('bot', '指定中のモデルが利用できません（廃止またはキー未対応）。⚙→管理 の「使用モデル」を別のものに切り替えてください。' + detailNote);
+      fallbackToKeyword(text);
+      break;
+
+    // 1日あたりの無料枠を使い切った（再試行しても当日は回復しない）
+    case 'RATE_LIMIT_DAILY':
+    case 'DAILY_LIMIT': // 後方互換
+      addMessage('bot', '本日の無料枠（1日あたりの上限）を使い切りました。日本時間17時ごろ（太平洋時間0時）にリセットされます。\nそれまではキーワード検索をご利用ください。' + detailNote);
+      fallbackToKeyword(text);
+      break;
+
+    // 1分あたりの上限。少し待てば回復するので、一度だけ自動再試行する
+    case 'RATE_LIMIT_MINUTE':
+    case 'RATE_LIMIT': // 後方互換
+      if (!isRetry) {
+        const sec = Math.min(Math.max(parseInt(e.retrySec, 10) || 20, 5), 40);
+        addMessage('bot', `アクセスが集中しています（無料枠は「1分あたりの回数」に上限があります）。${sec}秒後に自動で再試行します…`);
+        await sleep(sec * 1000);
+        await processQuery(text, true);
+        return;
+      }
+      addMessage('bot', '時間をおいても混雑が解消しませんでした。少し待ってから再度お試しください。\nキーワード検索に切り替えます。' + detailNote);
+      fallbackToKeyword(text);
+      break;
+
+    case 'NETWORK_ERROR':
       addMessage('bot', '通信エラーが発生しました。ネットワーク接続を確認してください。\nキーワード検索に切り替えます。');
-      const result = keywordSearch(text);
-      addMessage('bot', result.response_text, result.html, 'keyword');
-    } else if (errMsg === 'BLOCKED') {
+      fallbackToKeyword(text);
+      break;
+
+    case 'BLOCKED':
       addMessage('bot', '安全フィルタにより応答がブロックされました。質問の表現を変えてお試しください。');
-    } else if (errMsg === 'PARSE_ERROR' || errMsg === 'EMPTY_RESPONSE') {
+      break;
+
+    case 'PARSE_ERROR':
+    case 'EMPTY_RESPONSE':
       addMessage('bot', 'AIの応答を解釈できませんでした。もう一度お試しください。\nキーワード検索に切り替えます。');
-      const result = keywordSearch(text);
-      addMessage('bot', result.response_text, result.html, 'keyword');
-    } else {
-      addMessage('bot', 'エラーが発生しました: ' + escapeHtml(errMsg));
-    }
+      fallbackToKeyword(text);
+      break;
+
+    default:
+      addMessage('bot', 'エラーが発生しました: ' + escapeHtml(errMsg) + detailNote);
+      fallbackToKeyword(text);
   }
 }
 
