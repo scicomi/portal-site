@@ -21,9 +21,13 @@ const HOLIDAYS_CACHE_TTL_MS = (typeof CONFIG !== 'undefined' && CONFIG.HOLIDAYS_
 const RESOURCE_NAMES = (typeof CONFIG !== 'undefined' && CONFIG.RESOURCE_NAMES)
   || ['events', 'members', 'experiments'];
 
+const ADMIN_TOKEN_KEY = (typeof CONFIG !== 'undefined' && CONFIG.ADMIN_TOKEN_KEY) || 'scicomi_admin_token';
+const ADMIN_TOKEN_TS_KEY = (typeof CONFIG !== 'undefined' && CONFIG.ADMIN_TOKEN_TS_KEY) || 'scicomi_admin_token_ts';
+const ADMIN_TOKEN_TTL = (typeof CONFIG !== 'undefined' && CONFIG.ADMIN_TOKEN_TTL_MS) || (2 * 60 * 60 * 1000);
+
 const api = {
 
-  // ---- 認証 ----
+  // ---- メンバー認証 ----
   getToken() { return localStorage.getItem(TOKEN_KEY) || ''; },
   setToken(t) { localStorage.setItem(TOKEN_KEY, t); },
   clearToken() { localStorage.removeItem(TOKEN_KEY); },
@@ -35,6 +39,48 @@ const api = {
       return true;
     }
     return false;
+  },
+
+  // ---- 管理者認証 ----
+  getAdminToken() {
+    const ts = parseInt(localStorage.getItem(ADMIN_TOKEN_TS_KEY)) || 0;
+    if (Date.now() - ts > ADMIN_TOKEN_TTL) {
+      this.clearAdminToken();
+      return '';
+    }
+    return localStorage.getItem(ADMIN_TOKEN_KEY) || '';
+  },
+  setAdminToken(t) {
+    localStorage.setItem(ADMIN_TOKEN_KEY, t);
+    localStorage.setItem(ADMIN_TOKEN_TS_KEY, String(Date.now()));
+  },
+  clearAdminToken() {
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    localStorage.removeItem(ADMIN_TOKEN_TS_KEY);
+  },
+  isAdmin() { return !!this.getAdminToken(); },
+
+  async adminAuth(adminPassword) {
+    const res = await this._post({ action: 'adminAuth', admin_password: adminPassword, token: this.getToken() });
+    if (res.success && res.adminToken) {
+      this.setAdminToken(res.adminToken);
+      return true;
+    }
+    return false;
+  },
+
+  adminLogout() { this.clearAdminToken(); },
+
+  async adminGetConfig() {
+    const res = await this._post({ action: 'adminGetConfig', token: this.getToken(), adminToken: this.getAdminToken() });
+    if (!res.success) throw new Error(res.error || 'failed');
+    return res.config;
+  },
+
+  async adminSetConfig(key, value) {
+    const res = await this._post({ action: 'adminSetConfig', token: this.getToken(), adminToken: this.getAdminToken(), key, value });
+    if (!res.success) throw new Error(res.error || 'failed');
+    return true;
   },
 
   // ---- キャッシュ ----
@@ -101,20 +147,16 @@ const api = {
 
   // ---- CRUD ----
   async list(resource) {
-    const url = `${API_URL}?action=list&resource=${resource}&token=${encodeURIComponent(this.getToken())}`;
-    const res = await fetch(url, { method: 'GET' });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'list failed');
-    return data.items || [];
+    const res = await this._post({ action: 'list', resource, token: this.getToken() });
+    if (!res.success) throw new Error(res.error || 'list failed');
+    return res.items || [];
   },
 
   async listAll() {
-    const url = `${API_URL}?action=listAll&token=${encodeURIComponent(this.getToken())}`;
-    const res = await fetch(url, { method: 'GET' });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'listAll failed');
+    const res = await this._post({ action: 'listAll', token: this.getToken() });
+    if (!res.success) throw new Error(res.error || 'listAll failed');
     const result = {};
-    RESOURCE_NAMES.forEach(r => { result[r] = data[r] || []; });
+    RESOURCE_NAMES.forEach(r => { result[r] = res[r] || []; });
     return result;
   },
 
@@ -132,52 +174,6 @@ const api = {
       return { ...item };
     }
     return res.item;
-  },
-
-  /**
-   * Optimistic Save: キャッシュを即更新し、GAS保存はPromiseで返す。
-   * 呼び出し元は await せずにUIを先に更新できる。
-   * 失敗時はキャッシュをロールバックする。
-   *
-   * @param {string} resource
-   * @param {object} item
-   * @param {Array} localList - 現在のローカルデータ配列（直接変更される）
-   * @param {Function} onRollback - GAS保存失敗時に呼ぶUI復元コールバック
-   * @returns {Promise<object>} GASが返した保存済みアイテム
-   */
-  async saveOptimistic(resource, item, localList, onRollback) {
-    const existingIdx = item.ID ? localList.findIndex(x => x.ID === item.ID) : -1;
-    const backup = existingIdx >= 0 ? { ...localList[existingIdx] } : null;
-
-    const optimistic = { ...item, _pending: true };
-    if (!optimistic.ID) optimistic.ID = '_tmp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-
-    if (existingIdx >= 0) {
-      localList[existingIdx] = optimistic;
-    } else {
-      localList.push(optimistic);
-    }
-    this.saveCache(resource, localList);
-
-    try {
-      const saved = await this.save(resource, item);
-      const idx = localList.findIndex(x => x.ID === optimistic.ID);
-      if (idx >= 0) {
-        localList[idx] = saved;
-      }
-      this.saveCache(resource, localList);
-      return saved;
-    } catch (e) {
-      if (backup && existingIdx >= 0) {
-        localList[existingIdx] = backup;
-      } else {
-        const idx = localList.findIndex(x => x.ID === optimistic.ID);
-        if (idx >= 0) localList.splice(idx, 1);
-      }
-      this.saveCache(resource, localList);
-      if (onRollback) onRollback();
-      throw e;
-    }
   },
 
   async uploadFile(file) {
@@ -204,22 +200,41 @@ const api = {
     const res = await this._post({
       action: 'deleteFile',
       token: this.getToken(),
+      adminToken: this.getAdminToken(),
       driveId
     });
-    if (!res.success) throw new Error(res.error || 'delete file failed');
+    if (!res.success) {
+      if (res.error === 'admin_required') throw new Error('ADMIN_REQUIRED');
+      throw new Error(res.error || 'delete file failed');
+    }
     return true;
   },
 
   async delete(resource, id) {
     const res = await this._post({
       action: 'delete', resource,
-      token: this.getToken(), id
+      token: this.getToken(),
+      adminToken: this.getAdminToken(),
+      id
     });
     if (!res.success) {
+      if (res.error === 'admin_required') throw new Error('ADMIN_REQUIRED');
       console.error('delete failed:', res);
       throw new Error(res.error || 'delete failed');
     }
     return true;
+  },
+
+  // ---- Gemini プロキシ ----
+  // systemPrompt はサーバー側で固定生成されるため送信しない（APIキー悪用防止）
+  async geminiProxy(message) {
+    const res = await this._post({
+      action: 'geminiProxy',
+      token: this.getToken(),
+      message
+    });
+    if (!res.success) throw new Error(res.error || 'gemini proxy failed');
+    return res;
   },
 
   async _post(payload) {

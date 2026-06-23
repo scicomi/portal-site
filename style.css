@@ -1624,6 +1624,44 @@ textarea:focus {
 }
 .bot-count span { font-size: 1rem; font-weight: 600; color: var(--text-secondary); }
 
+/* 回答ソース表示（AI / キーワード検索）*/
+.bot-msg-meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; padding: 0 4px; }
+.bot-msg-meta .bot-msg-time { margin-top: 0; padding: 0; }
+.bot-source-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 999px;
+    line-height: 1.6;
+    white-space: nowrap;
+}
+.src-ai { background: #ede9fe; color: #6d28d9; }
+.src-keyword { background: #e0f2fe; color: #0369a1; }
+
+/* クリックで詳細を開ける結果アイテム */
+.bot-clickable { cursor: pointer; position: relative; padding-right: 24px; transition: background 0.15s, border-left-color 0.15s; }
+.bot-clickable:hover { background: #f0eefc; border-left-color: var(--primary-color); }
+.bot-ri-chevron {
+    position: absolute;
+    right: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #c4b5fd;
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1;
+}
+.bot-clickable:hover .bot-ri-chevron { color: var(--primary-color); }
+
+/* 詳細ポップアップ内のラベル・値の行 */
+.bot-detail-rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.bot-detail-row { display: flex; gap: 10px; font-size: 0.9rem; }
+.bot-detail-label { flex-shrink: 0; min-width: 92px; color: var(--text-secondary); font-weight: 600; }
+.bot-detail-value { color: var(--text-color); word-break: break-word; }
+
 /* Bot mobile */
 @media (max-width: 768px) {
     .bot-container { height: calc(100vh - 80px); }
@@ -1631,4 +1669,32 @@ textarea:focus {
     .bot-messages { padding: 14px; gap: 12px; }
     .bot-input-area { padding: 10px 14px; }
     .bot-gauge { padding: 8px 14px; }
+}
+
+/* ========== Admin UI ========== */
+.admin-badge {
+    background: #f59e0b;
+    color: #78350f;
+    font-size: 0.7rem;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+.admin-hidden { display: none !important; }
+.admin-settings-section {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+}
+.admin-settings-section h3 {
+    color: #464775;
+    margin: 0 0 4px 0;
+    font-size: 1rem;
+}
+.admin-settings-desc {
+    color: #888;
+    font-size: 0.8rem;
+    margin: 0 0 12px 0;
 }

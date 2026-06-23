@@ -86,13 +86,15 @@ function render() {
     document.getElementById('tab-cnt-show').textContent = expData.filter(e => e.Category === 'show').length;
     document.getElementById('tab-cnt-other').textContent = expData.filter(e => e.Category === 'other').length;
 
-    let items = expData.filter(e => (e.Category || 'other') === expCurrentTab);
-
+    // 検索語がある時は全カテゴリ横断、無い時は現在タブのみ表示
+    let items;
     if (expSearchKw) {
-        items = items.filter(e => {
+        items = expData.filter(e => {
             const hay = [e.Name, e.Materials, e.Preparation, e.Flow, e.Notes, e.Reflections, e.Positives].filter(Boolean).join(' ').toLowerCase();
             return hay.includes(expSearchKw);
         });
+    } else {
+        items = expData.filter(e => (e.Category || 'other') === expCurrentTab);
     }
 
     const tbody = document.getElementById('experiments-tbody');
@@ -116,7 +118,7 @@ function render() {
                 <td class="hide-mobile">${hasSlides ? `<a href="${escapeAttr(e.SlidesURL)}" target="_blank" onclick="event.stopPropagation()" class="tbl-link">資料を開く</a>` : '-'}</td>
                 <td class="cell-actions" onclick="event.stopPropagation()">
                     <button class="tbl-btn" onclick="editExp('${e.ID}')">編集</button>
-                    <button class="tbl-btn tbl-btn-danger" onclick="deleteExp('${e.ID}')">削除</button>
+                    <button class="tbl-btn tbl-btn-danger${api.isAdmin() ? '' : ' admin-hidden'}" onclick="deleteExp('${e.ID}')">削除</button>
                 </td>
             </tr>
         `;
@@ -229,6 +231,9 @@ async function saveExp() {
         Active: existing ? (existing.Active || 'true') : 'true'
     };
 
+    // 編集時は競合検知用に読み込み時の版を添える
+    if (editingExpId && existing) item._baseUpdatedAt = existing.UpdatedAt || '';
+
     try {
         const saved = await api.save('experiments', item);
         if (editingExpId) {
@@ -242,30 +247,56 @@ async function saveExp() {
         closeExpEdit();
         toast('保存しました', 'success');
     } catch (e) {
+        if (String(e.message).includes('conflict')) {
+            toast('他の人がこの実験を編集しました。最新を読み込みます。', 'error', 5000);
+            closeExpEdit();
+            await refreshData();
+            return;
+        }
         toast('保存失敗: ' + e.message, 'error');
     }
 }
 
-function deleteExp(id) {
+async function deleteExp(id) {
+    if (!api.isAdmin()) {
+        showAdminAuthModal(() => deleteExp(id));
+        return;
+    }
     const idx = expData.findIndex(x => x.ID === id);
     if (idx < 0) return;
     const backup = expData[idx];
 
+    // UIから即削除（楽観的表示）
     expData.splice(idx, 1);
     api.saveCache('experiments', expData);
     render();
 
+    // サーバー削除を即時実行（ページ離脱でも確実に確定する）
+    try {
+        await api.delete('experiments', id);
+    } catch (e) {
+        expData.splice(idx, 0, backup);
+        api.saveCache('experiments', expData);
+        render();
+        toast('削除失敗: ' + e.message, 'error');
+        return;
+    }
+
+    // 削除確定後、UNDO（同一IDで再作成）を提示
     toastUndo(
         `「${backup.Name}」を削除しました`,
-        () => {
-            expData.splice(idx, 0, backup);
-            api.saveCache('experiments', expData);
-            render();
-        },
         async () => {
-            await api.delete('experiments', id);
-            toast('削除を確定しました', 'success', 2000);
+            try {
+                const saved = await api.save('experiments', backup);
+                expData.splice(idx, 0, saved);
+                api.saveCache('experiments', expData);
+                render();
+                toast('元に戻しました', 'success', 2000);
+            } catch (e) {
+                toast('復元に失敗しました: ' + e.message, 'error');
+            }
         },
+        () => {},   // 確定処理は不要（既にサーバー削除済み）
         5000
     );
 }

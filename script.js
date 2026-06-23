@@ -58,7 +58,8 @@ function uiToGas(u) {
         SeriesKey: u.SeriesKey || '',
         Positives: u.Positives || '',
         Reflections: u.Reflections || '',
-        UpdatedBy: u.UpdatedBy || ''
+        UpdatedBy: u.UpdatedBy || '',
+        CreatedAt: u.CreatedAt || ''  // 既存の作成日時を保持（更新・UNDO再作成で消さない）
     };
 }
 
@@ -285,9 +286,10 @@ function initFullCalendar() {
         },
         select: function (info) {
             // info.endStr is exclusive. Convert to inclusive Date_End.
-            const endObj = new Date(info.endStr);
+            // parseISODate は正午基準なのでタイムゾーンによる日付ズレを防げる
+            const endObj = parseISODate(info.endStr);
             endObj.setDate(endObj.getDate() - 1);
-            const endDateStr = endObj.toISOString().split('T')[0];
+            const endDateStr = toISODate(endObj);
 
             // Open modal with pre-filled dates
             document.getElementById('category-selection-modal').classList.remove('hidden');
@@ -362,9 +364,8 @@ function initFullCalendar() {
 
         const jumpInput = jumpWrapper.querySelector('#fc-month-jump');
         if (jumpInput) {
-            // Sync with current month
-            const currentDate = calendar.getDate();
-            jumpInput.value = currentDate.toISOString().slice(0, 7);
+            // Sync with current month（toISODate でローカル日付に。UTC変換による月ズレを防ぐ）
+            jumpInput.value = toISODate(calendar.getDate()).slice(0, 7);
 
             jumpInput.addEventListener('change', (e) => {
                 if (e.target.value) {
@@ -373,8 +374,9 @@ function initFullCalendar() {
             });
 
             // Keep input synced when navigating with prev/next
-            calendar.on('datesSet', (info) => {
-                jumpInput.value = info.start.toISOString().slice(0, 7);
+            // info.start は表示範囲先頭（前月末を含む）ため getDate() を使う
+            calendar.on('datesSet', () => {
+                jumpInput.value = toISODate(calendar.getDate()).slice(0, 7);
             });
         }
     }
@@ -399,7 +401,7 @@ function viewEventInModal(id) {
         actionButtons.innerHTML = `
             <button class="btn btn-text" onclick="closeModal()">閉じる</button>
             <button class="btn btn-secondary display-mode-btn" onclick="enableModalEdit()">編集</button>
-            <button class="btn btn-danger hidden edit-mode-btn" onclick="deleteModalEvent()">削除</button>
+            <button class="btn btn-danger hidden edit-mode-btn${api.isAdmin() ? '' : ' admin-hidden'}" onclick="deleteModalEvent()">削除</button>
             <button class="btn btn-primary hidden edit-mode-btn" onclick="saveEventFromModal()">保存</button>
             <button class="btn btn-text hidden edit-mode-btn" onclick="cancelModalEdit('${id}')">キャンセル</button>
         `;
@@ -788,14 +790,9 @@ function populateTemplateDropdown() {
     sel.innerHTML = '<option value="">-- 過去イベントを選んで複製 --</option>' +
         sorted.slice(0, 50).map(e => {
             const catLabel = { normal: '通常', other: '学内', general: '全体', admin: '幹部' }[e.Category] || '';
-            return `<option value="${e.ID}">${e.Date} ${catLabel}: ${escapeHtmlSimple(e.Title)}</option>`;
+            return `<option value="${escapeAttr(e.ID)}">${escapeHtml(e.Date)} ${catLabel}: ${escapeHtml(e.Title)}</option>`;
         }).join('');
     sel.value = '';
-}
-
-function escapeHtmlSimple(s) {
-    if (!s) return '';
-    return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 }
 
 function onTemplateSelect(sourceId) {
@@ -816,7 +813,7 @@ function startNewEvent(category, template) {
     document.getElementById('new-event-edit-modal').classList.remove('hidden');
 
     const newId = genId("ev_");
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayISO(); // ローカル日付（UTC変換による日付ズレを防ぐ）
 
     const startDate = window.tempStart || today;
     const endDate = window.tempEnd || "";
@@ -856,10 +853,16 @@ function startNewEvent(category, template) {
         };
     }
 
-    // Auto calc initial deadlines
-    const dHands = calculateDeadlines(startDate);
-    newEvent.Kyoka_Deadline = dHands.kyoka;
-    newEvent.Houkoku_Deadline = dHands.houkoku;
+    // Auto calc initial deadlines（ミーティングには書類期限は無い）
+    const isMeetingCat = category === 'general' || category === 'admin';
+    if (isMeetingCat) {
+        newEvent.Kyoka_Deadline = '';
+        newEvent.Houkoku_Deadline = '';
+    } else {
+        const dHands = calculateDeadlines(startDate);
+        newEvent.Kyoka_Deadline = dHands.kyoka;
+        newEvent.Houkoku_Deadline = dHands.houkoku;
+    }
 
     const headerTitle = document.querySelector('#new-event-edit-modal h2');
     if (headerTitle) headerTitle.textContent = "新規イベント作成";
@@ -931,31 +934,52 @@ function cancelModalEdit(originalId) {
     viewEventInModal(originalId); // reset view to original state
 }
 
-function deleteModalEvent() {
+async function deleteModalEvent() {
+    if (!api.isAdmin()) {
+        showAdminAuthModal(() => deleteModalEvent());
+        return;
+    }
     const id = tempNewEvent.ID;
     const eventIndex = eventsData.findIndex(e => e.ID === id);
     if (eventIndex < 0) return;
     const backup = eventsData[eventIndex];
 
-    // UIから即削除
+    // UIから即削除（楽観的表示）
     eventsData.splice(eventIndex, 1);
     api.saveCache('events', eventsData);
     renderEvents();
     if (calendarVisible) refreshCalendar();
     closeModal();
 
+    // サーバー削除を即時実行する（5秒待たないのでページ離脱でも確実に削除される）
+    try {
+        await api.delete('events', id);
+    } catch (e) {
+        // 失敗したら元に戻す
+        eventsData.splice(eventIndex, 0, backup);
+        api.saveCache('events', eventsData);
+        renderEvents();
+        if (calendarVisible) refreshCalendar();
+        toast('削除失敗: ' + e.message, 'error');
+        return;
+    }
+
+    // 削除確定後、UNDO（同一IDで再作成）を提示
     toastUndo(
         `「${backup.Title}」を削除しました`,
-        () => {
-            eventsData.splice(eventIndex, 0, backup);
-            api.saveCache('events', eventsData);
-            renderEvents();
-            refreshCalendar();
-        },
         async () => {
-            await api.delete('events', id);
-            toast('削除を確定しました', 'success', 2000);
+            try {
+                const restored = gasToUi(await api.save('events', uiToGas(backup)));
+                eventsData.splice(eventIndex, 0, restored);
+                api.saveCache('events', eventsData);
+                renderEvents();
+                if (calendarVisible) refreshCalendar();
+                toast('元に戻しました', 'success', 2000);
+            } catch (e) {
+                toast('復元に失敗しました: ' + e.message, 'error');
+            }
         },
+        () => {},   // 確定処理は不要（既にサーバー削除済み）
         5000
     );
 }
@@ -965,8 +989,8 @@ async function saveEventFromModal() {
     const container = document.getElementById('new-event-form-container');
     const card = container.querySelector('.event-card');
 
-    // Collect data from inputs
-    const inputs = card.querySelectorAll('.edit-mode:not(.dynamic-item input)');
+    // Collect data from inputs（動的行の input は data-field を持たないので下のフィルタで自然に除外される）
+    const inputs = card.querySelectorAll('.edit-mode');
 
     inputs.forEach(input => {
         const field = input.getAttribute('data-field');
@@ -1020,17 +1044,31 @@ async function saveEventFromModal() {
         tempNewEvent.Presenters = flatPres.join(',');
     }
 
-    // Recalculate deadlines explicitly
-    const deadLines = calculateDeadlines(tempNewEvent.Date);
-    tempNewEvent.Kyoka_Deadline = deadLines.kyoka;
-    tempNewEvent.Houkoku_Deadline = deadLines.houkoku;
+    // Recalculate deadlines explicitly（ミーティングには書類期限を付けない）
+    if (tempNewEvent.Category === 'general' || tempNewEvent.Category === 'admin') {
+        tempNewEvent.Kyoka_Deadline = '';
+        tempNewEvent.Houkoku_Deadline = '';
+    } else {
+        const deadLines = calculateDeadlines(tempNewEvent.Date);
+        tempNewEvent.Kyoka_Deadline = deadLines.kyoka;
+        tempNewEvent.Houkoku_Deadline = deadLines.houkoku;
+    }
 
-    // GASに保存
+    // GASに保存（編集時は競合検知用に読み込み時の版を添える）
+    const gasItem = uiToGas(tempNewEvent);
+    if (eventIndex > -1) gasItem._baseUpdatedAt = tempNewEvent.UpdatedAt || '';
     let savedEvent;
     try {
-        const savedGas = await api.save('events', uiToGas(tempNewEvent));
+        const savedGas = await api.save('events', gasItem);
         savedEvent = gasToUi(savedGas);
     } catch (e) {
+        if (String(e.message).includes('conflict')) {
+            toast('他の人がこのイベントを編集しました。最新の内容を読み込みます。', 'error', 5000);
+            closeModal();
+            tempNewEvent = null;
+            await refreshData();
+            return;
+        }
         toast('保存失敗: ' + e.message, 'error');
         return;
     }
@@ -1050,33 +1088,20 @@ async function saveEventFromModal() {
     toast('保存しました', 'success');
 }
 
-// Update Deadlines on Date Change
+// 日付変更時に期限表示を即時更新する（期限は自動計算のみ・表示専用スパン）。
+// 実際の保存値は saveEventFromModal で確定する。
 function updateDeadlines(dateInput) {
     const card = dateInput.closest('.event-card');
     const newDate = dateInput.value;
-
     if (!newDate) return;
 
-    const calculations = calculateDeadlines(newDate);
-
-    // Update the READ ONLY display span next to the input (if we were displaying it there)
-    // But since we are in edit mode, we might want to update invisible inputs or just displayed text?
-    // In this UI, deadlines are Auto-calculated. Users might manually override?
-    // The requirement says "Auto set on Date input. Manual override possible."
-    // So we need inputs for deadlines too? 
-    // Wait, requirement: "Behavior: Auto-set on Event_Date input. Manual overwrite also possible."
-    // My HTML currently doesn't have INPUTS for deadlines, only display spans.
-    // Let's add Inputs for deadlines or just rely on display for now?
-    // "UI Requirement: Center Left: Timeline... Center Right: Experiments... and Deadlines"
-    // "Logic: Auto calculate... manual overwrite possible."
-
-    // I should add hidden inputs for deadlines or make the deadline display editable.
-    // For now, I'll just update the display logic in the object context.
-    // Actually, let's just update the display spans directly for feedback.
+    // カテゴリがミーティングなら期限は無し
+    const cat = (tempNewEvent && tempNewEvent.Category) || 'normal';
+    const isMeeting = cat === 'general' || cat === 'admin';
+    const calculations = isMeeting ? { kyoka: '', houkoku: '' } : calculateDeadlines(newDate);
 
     const kyokaDisplay = card.querySelector('[data-field="Kyoka_Deadline"]');
     const houkokuDisplay = card.querySelector('[data-field="Houkoku_Deadline"]');
-
     if (kyokaDisplay) kyokaDisplay.textContent = calculations.kyoka;
     if (houkokuDisplay) houkokuDisplay.textContent = calculations.houkoku;
 }
@@ -1166,8 +1191,19 @@ async function removeFile(index) {
     if (!file) return;
 
     if (file.driveId) {
-        try { await api.deleteFile(file.driveId); } catch (e) {
+        if (!api.isAdmin()) {
+            showAdminAuthModal(() => removeFile(index));
+            return;
+        }
+        try {
+            await api.deleteFile(file.driveId);
+        } catch (e) {
+            if (e.message === 'ADMIN_REQUIRED') {
+                showAdminAuthModal(() => removeFile(index));
+                return;
+            }
             console.warn('Drive file deletion failed:', e);
+            toast('Driveファイルの削除に失敗しました（参照のみ解除します）', 'error', 4000);
         }
     }
     tempNewEvent.Files.splice(index, 1);

@@ -23,8 +23,12 @@ async function init() {
 
     updateSyncStatus(cachedEv ? 'cached' : 'initial-loading', cachedEv ? cachedEv.timestamp : null);
 
+    await refreshData(false);
+}
+
+async function refreshData(isManual = false) {
+    updateSyncStatus(isManual ? 'syncing' : 'syncing-bg');
     try {
-        updateSyncStatus('syncing-bg');
         const all = await api.listAll();
         api.saveCache('events', all.events);
         api.saveCache('members', all.members);
@@ -45,8 +49,6 @@ async function init() {
         updateSyncStatus('error', null, e.message);
     }
 }
-
-async function refreshData() { await init(); }
 
 function renderWelcome() {
     const hour = new Date().getHours();
@@ -103,6 +105,8 @@ function renderDeadlinesCard(events) {
 
     const deadlines = [];
     (events || []).forEach(e => {
+        // ミーティング（全体MTG/幹部MTG）には書類期限が無いので除外
+        if (e.Category === 'general' || e.Category === 'admin') return;
         if (e.KyokaDeadline && e.KyokaDeadline >= today && e.KyokaDeadline <= in30) {
             deadlines.push({ date: e.KyokaDeadline, type: '許可願', event: e.Title, admin: e.AdminKyoka });
         }

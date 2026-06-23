@@ -59,10 +59,10 @@
 | `Role` | 文字列 | `プロジェクトリーダー` | 役職（任意） |
 | `StudentID` | 文字列 | `4CEQ1205` | 学生証/教職員番号 |
 | `Affiliation` | 文字列 | `理系教育センター` | 所属（教員用） |
-| `Year` | 文字列 | `4` | 学年 |
 | `Email` | 文字列 | `name@example.com` | メールアドレス（アドバイザー/コーディネーター用。リマインダー送信先） |
 | `Note` | 文字列 | | メモ |
-| `Active` | 文字列 | `true` | 在籍=`true` / 卒業=`false`（卒業生アーカイブ用） |
+| `FiscalYear` | 文字列 | `2026` | 登録年度（メンバーページの年度フィルタに使用）。学年は `StudentID` 先頭2文字から判定 |
+| `Active` | 文字列 | `true` | 在籍=`true` / 卒業=`false`（卒業生アーカイブ用。編集モーダルの「在籍状況」で切替） |
 | `CreatedAt` / `UpdatedAt` | ISO | | 自動 |
 
 ## シート3: `Experiments`
@@ -77,6 +77,8 @@
 | `Flow` | 文字列(複数行) | | 発表の流れ |
 | `Notes` | 文字列(複数行) | | 注意事項 |
 | `SlidesURL` | 文字列 | `https://...` | スライド/資料URL |
+| `Positives` | 文字列(複数行) | | 良かった点（振り返り） |
+| `Reflections` | 文字列(複数行) | | 反省点（振り返り） |
 | `Active` | 文字列 | `true` | 有効フラグ |
 | `CreatedAt` / `UpdatedAt` | ISO | | 自動 |
 
@@ -85,14 +87,37 @@
 | Key | Value |
 |---|---|
 | `password` | `sc2026_xxx`（メンバーに共有するパスワード） |
+| `admin_password` | 幹部（管理者）パスワード。削除・設定変更に必要 |
+| `gemini_api_key` | Bot 用 Gemini API キー（サーバー側のみ保持） |
 | `storage_warn_mb` | `60` |
 | `storage_block_mb` | `100` |
+| `file_max_mb` | `10`（1ファイルあたりのアップロード上限MB。フロントの上限と一致させる） |
+| `file_sharing` | `domain`（推奨：同一ドメイン内のみ閲覧可）/ `anyone`（リンクを知る全員）。個人アカウントでは domain 指定でも自動で anyone にフォールバック |
 | `file_retention_years` | `5` |
 | `reminder_enabled` | `true`（リマインダーメール有効/無効） |
 | `reminder_days` | `7,3,1`（期限の何日前に通知するか。カンマ区切り） |
 | `report_recipients` | メールアドレス（年間レポート送信先。空欄ならアドバイザー/コーディネーター全員に送信） |
+| `annual_report_enabled` | `true`（毎年4月1日の年間レポート自動送信の有効/無効） |
+| `backup_keep_count` | `6`（自動バックアップで保持する世代数。超過分は古いものからゴミ箱へ） |
+| `audit_keep_days` | `365`（AuditLog を保持する日数。超過分は月次で間引き） |
 
 **`password` は必ず変更すること**。
+
+---
+
+## シート5: `AuditLog`（監査ログ）
+
+`setupSpreadsheet()` で自動作成される。重要操作の証跡を時系列で追記する。
+
+| 列名 | 説明 |
+|---|---|
+| `Timestamp` | 記録日時（JST, ISO風 `yyyy-MM-ddTHH:mm:ss`） |
+| `Action` | 操作種別（`create` / `update` / `delete` / `uploadFile` / `deleteFile` / `adminAuth_*` / `auth_fail` / `adminSetConfig` / `backupSpreadsheet` / `cleanup*` / `reminder_*` 等） |
+| `Detail` | 対象（`resource:ID` やファイル名など） |
+| `TokenHash` | セッショントークンのSHA-256先頭12桁（共通パスワード運用のため個人特定は不可。同一セッションの紐付けに使う） |
+| `Role` | `member` / `admin` / 空 |
+
+> 月次トリガー（`monthlyMaintenance`）で `audit_keep_days` を超えた古い行を自動削除する。
 
 ---
 
