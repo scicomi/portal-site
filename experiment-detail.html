@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>実験詳細 | SciComi Portal</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="app-header"></header>
+
+    <main class="container">
+        <div style="margin-bottom: 16px;">
+            <a href="experiments.html" class="back-link">&larr; 実験一覧に戻る</a>
+        </div>
+
+        <div id="exp-loading" class="empty-state">読み込み中...</div>
+
+        <div id="exp-content" class="hidden">
+            <!-- Experiment Info Card -->
+            <div class="expd-info-card">
+                <div class="expd-info-header">
+                    <h1 id="expd-name" class="expd-title"></h1>
+                    <div class="expd-header-actions">
+                        <span id="expd-cat-badge" class="cat-badge"></span>
+                        <a id="expd-slides-link" class="tbl-link hidden" target="_blank">資料を開く</a>
+                        <button class="tbl-btn" onclick="goEdit()">編集</button>
+                    </div>
+                </div>
+                <div id="expd-info-body"></div>
+            </div>
+
+            <!-- Events that used this experiment -->
+            <div id="expd-events-section" class="expd-section hidden">
+                <h2 class="expd-section-title">実施イベント</h2>
+                <div id="expd-events-list"></div>
+            </div>
+
+            <!-- Feedback Timeline -->
+            <div class="expd-section">
+                <div class="expd-section-header">
+                    <h2 class="expd-section-title">振り返り</h2>
+                    <button class="btn-primary-solid" style="width:auto; padding:6px 16px; font-size:0.85rem;" onclick="openAddFeedback()">+ 振り返りを追加</button>
+                </div>
+                <div class="expd-feedback-filters">
+                    <button class="filter-chip active" data-fb="all" onclick="filterFeedback('all')">全て</button>
+                    <button class="filter-chip" data-fb="positive" onclick="filterFeedback('positive')">良かった点</button>
+                    <button class="filter-chip" data-fb="reflection" onclick="filterFeedback('reflection')">改善点</button>
+                    <input id="feedback-search" class="search-input" type="text" placeholder="キーワードで検索" style="max-width:220px; margin-left:auto;" oninput="renderFeedback()">
+                </div>
+                <div id="feedback-timeline"></div>
+            </div>
+        </div>
+
+        <!-- Add Feedback Modal -->
+        <div id="feedback-modal" class="modal-overlay hidden">
+            <div class="modal-content" style="max-width:520px;">
+                <div class="modal-header">
+                    <h2 id="fb-modal-title">振り返りを追加</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="e1-group">
+                        <label class="e1-label">種別</label>
+                        <select id="fb-type" class="e1-input">
+                            <option value="positive">良かった点</option>
+                            <option value="reflection">改善点</option>
+                        </select>
+                    </div>
+                    <div class="e1-group">
+                        <label class="e1-label">関連イベント（任意）</label>
+                        <select id="fb-event" class="e1-input">
+                            <option value="">-- なし（実験全般） --</option>
+                        </select>
+                    </div>
+                    <div class="e1-group">
+                        <label class="e1-label">内容 *</label>
+                        <textarea id="fb-text" class="e1-input" rows="4" placeholder="振り返りの内容"></textarea>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn btn-text" onclick="closeFeedbackModal()">キャンセル</button>
+                        <button class="btn btn-primary-solid" style="width:auto;" onclick="saveFeedback()">保存</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="config.js"></script>
+    <script src="api.js"></script>
+    <script src="app.js"></script>
+    <script src="experiment-detail.js"></script>
+</body>
+</html>

@@ -48,6 +48,18 @@ let focusHandled = false;
 function focusFromUrl() {
     if (focusHandled) return;
     const params = new URLSearchParams(location.search);
+
+    const editId = params.get('edit');
+    if (editId) {
+        const match = expData.find(e => e.ID === editId);
+        if (match) {
+            focusHandled = true;
+            switchExpTab(match.Category || 'other');
+            editExp(match.ID);
+        }
+        return;
+    }
+
     const focusName = params.get('focus');
     if (!focusName) return;
 
@@ -107,16 +119,17 @@ function render() {
     tbody.innerHTML = items.map(e => {
         const snippet = (e.Materials || '').split('\n').slice(0, 2).join(', ') || '-';
         const hasSlides = e.SlidesURL && e.SlidesURL.trim();
-        const hasReview = (e.Reflections && e.Reflections.trim()) || (e.Positives && e.Positives.trim());
+        const fbCount = countFeedback(e);
         return `
-            <tr class="clickable-row" onclick="viewExp('${e.ID}')">
+            <tr class="clickable-row" onclick="goToDetail('${e.ID}')">
                 <td class="cell-name">
                     ${escapeHtml(e.Name || '(無題)')}
-                    ${hasReview ? '<span style="color:#10b981;margin-left:4px;font-size:0.75rem;" title="振り返りあり">memo</span>' : ''}
+                    ${fbCount > 0 ? `<span style="color:#10b981;margin-left:4px;font-size:0.72rem;" title="振り返り ${fbCount}件">${fbCount}件</span>` : ''}
                 </td>
                 <td class="hide-mobile cell-snippet">${escapeHtml(snippet)}</td>
                 <td class="hide-mobile">${hasSlides ? `<a href="${escapeAttr(e.SlidesURL)}" target="_blank" onclick="event.stopPropagation()" class="tbl-link">資料を開く</a>` : '-'}</td>
                 <td class="cell-actions" onclick="event.stopPropagation()">
+                    <button class="tbl-btn" onclick="goToDetail('${e.ID}')">詳細</button>
                     <button class="tbl-btn" onclick="editExp('${e.ID}')">編集</button>
                     <button class="tbl-btn tbl-btn-danger${api.isAdmin() ? '' : ' admin-hidden'}" onclick="deleteExp('${e.ID}')">削除</button>
                 </td>
@@ -125,7 +138,17 @@ function render() {
     }).join('');
 }
 
-// ---- 詳細モーダル ----
+function goToDetail(id) {
+    location.href = 'experiment-detail.html?id=' + encodeURIComponent(id);
+}
+
+function countFeedback(e) {
+    const pos = parseFeedbackEntries(e.Positives);
+    const ref = parseFeedbackEntries(e.Reflections);
+    return pos.length + ref.length;
+}
+
+// ---- 詳細モーダル（簡易プレビュー） ----
 function viewExp(id) {
     const e = expData.find(x => x.ID === id);
     if (!e) return;
@@ -153,9 +176,12 @@ function viewExp(id) {
         ${section('事前準備', e.Preparation, true)}
         ${section('発表の流れ', e.Flow, true)}
         ${section('注意事項', e.Notes, true)}
-        ${(e.Positives && e.Positives.trim()) || (e.Reflections && e.Reflections.trim()) ? '<hr style="border:0;border-top:1px solid #eee;margin:20px 0;">' : ''}
-        ${section('良かった点', e.Positives, false)}
-        ${section('反省点', e.Reflections, false)}
+        <hr style="border:0;border-top:1px solid #eee;margin:20px 0;">
+        <div style="text-align:center; padding: 8px 0;">
+            <a href="experiment-detail.html?id=${encodeURIComponent(e.ID)}" class="tbl-link" style="font-size:0.95rem; font-weight:600;">
+                振り返り・詳細ページを開く &rarr;
+            </a>
+        </div>
     `;
 
     document.getElementById('exp-detail-modal').classList.remove('hidden');
@@ -183,7 +209,7 @@ function deleteCurrentExp() {
 function openExpModal() {
     editingExpId = null;
     document.getElementById('exp-edit-title').textContent = '実験を追加';
-    ['ex-name', 'ex-materials', 'ex-preparation', 'ex-flow', 'ex-notes', 'ex-slides', 'ex-positives', 'ex-reflections'].forEach(id => {
+    ['ex-name', 'ex-materials', 'ex-preparation', 'ex-flow', 'ex-notes', 'ex-slides'].forEach(id => {
         document.getElementById(id).value = '';
     });
     document.getElementById('ex-category').value = expCurrentTab;
@@ -203,8 +229,6 @@ function editExp(id) {
     document.getElementById('ex-flow').value = e.Flow || '';
     document.getElementById('ex-notes').value = e.Notes || '';
     document.getElementById('ex-slides').value = e.SlidesURL || '';
-    document.getElementById('ex-positives').value = e.Positives || '';
-    document.getElementById('ex-reflections').value = e.Reflections || '';
     document.getElementById('exp-edit-modal').classList.remove('hidden');
 }
 
@@ -226,8 +250,8 @@ async function saveExp() {
         Flow: document.getElementById('ex-flow').value,
         Notes: document.getElementById('ex-notes').value,
         SlidesURL: document.getElementById('ex-slides').value.trim(),
-        Positives: document.getElementById('ex-positives').value,
-        Reflections: document.getElementById('ex-reflections').value,
+        Positives: existing ? existing.Positives : '',
+        Reflections: existing ? existing.Reflections : '',
         Active: existing ? (existing.Active || 'true') : 'true'
     };
 

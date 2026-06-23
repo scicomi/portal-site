@@ -56,11 +56,35 @@ const CONFIG = {
   ADMIN_TOKEN_TS_KEY: 'scicomi_admin_token_ts',
   ADMIN_TOKEN_TTL_MS: 2 * 60 * 60 * 1000, // 2時間
 
-  // ===== Gemini API (Bot用 — APIキーはサーバー側管理) =====
+  // ===== Gemini API (Bot用 — APIキー・モデルはサーバー側 Config で管理) =====
+  // ※ 実際に使うモデルは GAS の Config シート（gemini_model）が正。ここは表示用の参考値。
+  //   gemini-2.0 系は 2026-06 に廃止されたため、現行の安定モデルを使うこと。
   GEMINI: {
-    MODEL: 'gemini-2.0-flash-lite',
+    MODEL: 'gemini-2.5-flash-lite',
     DAILY_LIMIT: 1500,
     USAGE_KEY: 'scicomi_bot_usage'
+  },
+
+  // ===== パスワード一覧カテゴリ =====
+  PASSWORD_CATEGORIES: {
+    account:  { label: 'アカウント',     color: '#6264a7' },
+    sns:      { label: 'SNS',           color: '#e74c8b' },
+    purchase: { label: '購買・印刷',     color: '#10b981' },
+    server:   { label: 'サーバー・開発', color: '#f59e0b' },
+    tool:     { label: 'ツール',         color: '#3b82f6' },
+    other:    { label: 'その他',         color: '#8b8b8b' }
+  },
+
+  // ===== ログイン方法 =====
+  // normal 以外はパスワード不要（外部アカウントで認証）
+  // 新しいサービスを追加する場合はここに1行足すだけでよい
+  LOGIN_TYPES: {
+    normal:  { label: 'ID / パスワード',      social: false },
+    google:  { label: 'Googleでログイン',     social: true,  color: '#db4437' },
+    twitter: { label: 'X（Twitter）でログイン', social: true, color: '#000000' },
+    apple:   { label: 'Appleでログイン',      social: true,  color: '#555555' },
+    line:    { label: 'LINEでログイン',       social: true,  color: '#00b900' },
+    other:   { label: 'その他（SSO等）',      social: true,  color: '#8b5cf6' }
   },
 
   // ===== ナビゲーション =====
@@ -70,8 +94,9 @@ const CONFIG = {
     { href: 'members.html',     label: 'メンバー', page: 'members' },
     { href: 'experiments.html', label: '実験内容', page: 'experiments' },
     { href: 'bot.html',         label: 'Bot',      page: 'bot' },
-    // 管理者ログイン時のみ表示（外部サービスの認証情報の一覧）
-    { href: 'passwords.html',   label: 'パスワード一覧', page: 'passwords', adminOnly: true }
+    // 管理者ログイン時のみ表示
+    { href: 'passwords.html',   label: 'パスワード一覧', page: 'passwords', adminOnly: true },
+    { href: 'settings.html',    label: '設定',           page: 'settings',  adminOnly: true }
   ],
 
   // ===== イベントカテゴリ =====
@@ -108,4 +133,7 @@ function getExperimentCategory(key) {
 }
 function getMemberCategory(key) {
   return CONFIG.MEMBER_CATEGORIES[key] || CONFIG.MEMBER_CATEGORIES.member;
+}
+function getPasswordCategory(key) {
+  return CONFIG.PASSWORD_CATEGORIES[key] || CONFIG.PASSWORD_CATEGORIES.other;
 }

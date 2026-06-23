@@ -5,28 +5,37 @@
  * - 閲覧/追加/編集/削除すべて管理者トークン必須（API側でもガード）。
  * - パスワードはトグル（👁）で表示。各項目はコピー可能。
  * - localStorage にはキャッシュしない（機密のため毎回サーバーから取得）。
+ * - カテゴリ（SNS/購買・印刷/サーバーなど）でフィルタ・色分け。
  */
 
 let pwData = [];
 let pwSearchKw = '';
+let pwCatFilter = '';   // '' = 全て
 let editingPwId = null;
-const expandedPw = new Set();   // 展開中カードのID
+const expandedPw = new Set();
+
+const PW_CATS = (typeof CONFIG !== 'undefined' && CONFIG.PASSWORD_CATEGORIES) || {};
+const LOGIN_TYPES = (typeof CONFIG !== 'undefined' && CONFIG.LOGIN_TYPES) || { normal: { label: 'ID / パスワード', social: false } };
+
+function isSocialLogin(loginType) {
+    const t = LOGIN_TYPES[loginType || 'normal'];
+    return t ? !!t.social : false;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     bootPage('passwords', init);
 });
 
 async function init() {
-    // メンバー認証は bootPage 済み。ここからは管理者であることを必須にする。
     if (!api.isAdmin()) {
         showAdminGate();
-        showAdminAuthModal(async () => {
-            // 認証成功 → 管理者ナビ反映のためリロードが確実
-            location.reload();
-        });
+        showAdminAuthModal(async () => { location.reload(); });
         return;
     }
     showAdminBody();
+    buildCategoryDropdown();
+    buildLoginTypeDropdown();
+    buildCategoryFilter();
     await refreshData();
 }
 
@@ -38,6 +47,64 @@ function showAdminGate() {
 function showAdminBody() {
     document.getElementById('pw-denied').style.display = 'none';
     document.getElementById('pw-admin-body').style.display = 'block';
+}
+
+// モーダル内のカテゴリ <select> を CONFIG から動的生成
+function buildCategoryDropdown() {
+    const sel = document.getElementById('pw-f-category');
+    if (!sel) return;
+    sel.innerHTML = '';
+    Object.keys(PW_CATS).forEach(key => {
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = PW_CATS[key].label;
+        sel.appendChild(opt);
+    });
+}
+
+// ログイン方法 <select> を CONFIG から動的生成
+function buildLoginTypeDropdown() {
+    const sel = document.getElementById('pw-f-logintype');
+    if (!sel) return;
+    sel.innerHTML = '';
+    Object.keys(LOGIN_TYPES).forEach(key => {
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = LOGIN_TYPES[key].label;
+        sel.appendChild(opt);
+    });
+}
+
+// ログイン方法が変わったらパスワード欄を表示/非表示
+function onLoginTypeChange() {
+    const val = document.getElementById('pw-f-logintype').value;
+    const pwGroup = document.getElementById('pw-f-password-group');
+    if (isSocialLogin(val)) {
+        pwGroup.style.display = 'none';
+        document.getElementById('pw-f-password').value = '';
+    } else {
+        pwGroup.style.display = '';
+    }
+}
+
+// カテゴリフィルタタブを生成
+function buildCategoryFilter() {
+    const container = document.getElementById('pw-cat-filter');
+    if (!container) return;
+    let html = '<button class="pw-cat-tab active" data-cat="" onclick="setPwCatFilter(\'\')">すべて</button>';
+    Object.keys(PW_CATS).forEach(key => {
+        const cat = PW_CATS[key];
+        html += `<button class="pw-cat-tab" data-cat="${key}" onclick="setPwCatFilter('${key}')" style="--cat-color:${cat.color}">${escapeHtml(cat.label)}</button>`;
+    });
+    container.innerHTML = html;
+}
+
+function setPwCatFilter(cat) {
+    pwCatFilter = cat;
+    document.querySelectorAll('.pw-cat-tab').forEach(el => {
+        el.classList.toggle('active', el.getAttribute('data-cat') === cat);
+    });
+    renderPasswords();
 }
 
 async function refreshData(isManual = false) {
@@ -54,7 +121,6 @@ async function refreshData(isManual = false) {
             return;
         }
         if (msg.includes('ADMIN_REQUIRED')) {
-            // 管理者トークンが切れた等
             api.adminLogout();
             showAdminGate();
             showAdminAuthModal(() => location.reload());
@@ -77,14 +143,33 @@ function hostOf(url) {
     catch (_) { return url; }
 }
 
+function catBadgeHtml(catKey) {
+    const cat = PW_CATS[catKey];
+    if (!cat) return '';
+    return `<span class="pw-cat-badge" style="--cat-color:${cat.color}">${escapeHtml(cat.label)}</span>`;
+}
+
+function noteToHtml(note) {
+    if (!note) return '';
+    return escapeHtml(note).replace(/\n/g, '<br>');
+}
+
 function renderPasswords() {
     const list = document.getElementById('pw-list');
     if (!list) return;
 
     let items = pwData.slice();
+
+    // カテゴリフィルタ
+    if (pwCatFilter) {
+        items = items.filter(p => (p.Category || 'other') === pwCatFilter);
+    }
+
+    // テキスト検索
     if (pwSearchKw) {
         items = items.filter(p => {
-            const hay = [p.SiteName, p.URL, p.LoginID, p.Note].filter(Boolean).join(' ').toLowerCase();
+            const catLabel = (PW_CATS[p.Category] || {}).label || '';
+            const hay = [p.SiteName, p.URL, p.LoginID, p.Note, catLabel].filter(Boolean).join(' ').toLowerCase();
             return hay.includes(pwSearchKw);
         });
     }
@@ -105,6 +190,7 @@ function renderPasswords() {
         <div class="pw-card ${open ? 'open' : ''}" data-id="${p.ID}">
             <div class="pw-card-head" onclick="togglePwCard('${p.ID}')">
                 <div class="pw-card-title">
+                    ${catBadgeHtml(p.Category)}
                     <span class="pw-card-name">${escapeHtml(p.SiteName || '(名称未設定)')}</span>
                     ${host ? `<span class="pw-card-host">${escapeHtml(host)}</span>` : ''}
                 </div>
@@ -117,18 +203,23 @@ function renderPasswords() {
                     <a class="pw-row-value tbl-link" href="${escapeAttr(urlHref)}" target="_blank" rel="noopener">${escapeHtml(p.URL)}</a>
                 </div>` : ''}
                 <div class="pw-row">
-                    <span class="pw-row-label">ログインID</span>
+                    <span class="pw-row-label">ID / メール</span>
                     <span class="pw-row-value pw-mono">${escapeHtml(p.LoginID || '—')}</span>
                     ${p.LoginID ? `<button class="pw-copy-btn" onclick="copyPwValue('${escapeAttr(p.LoginID)}', this)" title="コピー">コピー</button>` : ''}
                 </div>
+                ${isSocialLogin(p.LoginType) ? `
+                <div class="pw-row">
+                    <span class="pw-row-label">ログイン方法</span>
+                    <span class="pw-login-type-badge" style="--lt-color:${LOGIN_TYPES[p.LoginType] ? LOGIN_TYPES[p.LoginType].color : '#888'}">${escapeHtml((LOGIN_TYPES[p.LoginType] || {}).label || p.LoginType)}</span>
+                </div>` : `
                 <div class="pw-row">
                     <span class="pw-row-label">パスワード</span>
                     <span class="pw-row-value pw-mono pw-secret" id="pw-secret-${p.ID}" data-revealed="false">${p.Password ? '••••••••' : '—'}</span>
                     ${p.Password ? `
                     <button class="pw-copy-btn" onclick="toggleSecret('${p.ID}', this)" title="表示切替">👁 表示</button>
                     <button class="pw-copy-btn" onclick="copyPwValue('${escapeAttr(p.Password)}', this)" title="コピー">コピー</button>` : ''}
-                </div>
-                ${p.Note ? `<div class="pw-row"><span class="pw-row-label">メモ</span><span class="pw-row-value">${escapeHtml(p.Note)}</span></div>` : ''}
+                </div>`}
+                ${p.Note ? `<div class="pw-row pw-row-note"><span class="pw-row-label">メモ</span><span class="pw-row-value pw-note-body">${noteToHtml(p.Note)}</span></div>` : ''}
                 <div class="pw-card-actions">
                     <button class="tbl-btn" onclick="editPwEntry('${p.ID}')">編集</button>
                     <button class="tbl-btn tbl-btn-danger" onclick="deletePwEntry('${p.ID}')">削除</button>
@@ -144,7 +235,6 @@ function togglePwCard(id) {
     renderPasswords();
 }
 
-// パスワードのマスク/表示切替（カードを再描画せずその場で）
 function toggleSecret(id, btn) {
     const el = document.getElementById('pw-secret-' + id);
     if (!el) return;
@@ -173,7 +263,6 @@ async function copyPwValue(value, btn) {
     }
 }
 
-// モーダル内のパスワード欄の表示切替
 function togglePwField(inputId, btn) {
     const el = document.getElementById(inputId);
     if (!el) return;
@@ -186,10 +275,13 @@ function togglePwField(inputId, btn) {
 function openPwModal() {
     editingPwId = null;
     document.getElementById('pw-modal-title').textContent = 'パスワードを追加';
+    document.getElementById('pw-f-category').value = 'other';
+    document.getElementById('pw-f-logintype').value = 'normal';
     ['pw-f-name', 'pw-f-url', 'pw-f-loginid', 'pw-f-password', 'pw-f-note'].forEach(id => {
         document.getElementById(id).value = '';
     });
     document.getElementById('pw-f-password').type = 'password';
+    document.getElementById('pw-f-password-group').style.display = '';
     document.getElementById('pw-modal-edit').classList.remove('hidden');
     setTimeout(() => document.getElementById('pw-f-name').focus(), 50);
 }
@@ -199,12 +291,16 @@ function editPwEntry(id) {
     if (!p) return;
     editingPwId = id;
     document.getElementById('pw-modal-title').textContent = 'パスワードを編集';
+    document.getElementById('pw-f-category').value = p.Category || 'other';
+    document.getElementById('pw-f-logintype').value = p.LoginType || 'normal';
     document.getElementById('pw-f-name').value = p.SiteName || '';
     document.getElementById('pw-f-url').value = p.URL || '';
     document.getElementById('pw-f-loginid').value = p.LoginID || '';
     document.getElementById('pw-f-password').value = p.Password || '';
     document.getElementById('pw-f-password').type = 'password';
     document.getElementById('pw-f-note').value = p.Note || '';
+    // ソーシャルログインの場合はパスワード欄を非表示
+    document.getElementById('pw-f-password-group').style.display = isSocialLogin(p.LoginType) ? 'none' : '';
     document.getElementById('pw-modal-edit').classList.remove('hidden');
 }
 
@@ -219,10 +315,12 @@ async function savePwEntry() {
     const existing = editingPwId ? pwData.find(p => p.ID === editingPwId) : null;
     const item = {
         ID: editingPwId || '',
+        Category: document.getElementById('pw-f-category').value || 'other',
         SiteName: name,
         URL: document.getElementById('pw-f-url').value.trim(),
         LoginID: document.getElementById('pw-f-loginid').value.trim(),
-        Password: document.getElementById('pw-f-password').value,
+        LoginType: document.getElementById('pw-f-logintype').value || 'normal',
+        Password: isSocialLogin(document.getElementById('pw-f-logintype').value) ? '' : document.getElementById('pw-f-password').value,
         Note: document.getElementById('pw-f-note').value.trim()
     };
     if (editingPwId && existing) item._baseUpdatedAt = existing.UpdatedAt || '';
@@ -273,7 +371,6 @@ async function deletePwEntry(id) {
         await api.deletePassword(id);
         toast('削除しました', 'success', 2000);
     } catch (e) {
-        // 失敗したら元に戻す
         pwData.splice(idx, 0, backup);
         renderPasswords();
         const msg = String(e.message || e);

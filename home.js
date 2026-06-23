@@ -55,7 +55,9 @@ function renderWelcome() {
     let greeting = 'こんにちは';
     if (hour < 11) greeting = 'おはようございます';
     else if (hour >= 18) greeting = 'こんばんは';
-    document.getElementById('welcome-msg').textContent = `${greeting} -- 今日も活動を楽しんでいきましょう。`;
+    const custom = localStorage.getItem('scicomi_welcome_message');
+    const body = custom || '今日も活動を楽しんでいきましょう。';
+    document.getElementById('welcome-msg').textContent = `${greeting} -- ${body}`;
 }
 
 function renderStats(all) {

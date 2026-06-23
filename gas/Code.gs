@@ -24,8 +24,111 @@ const AUDIT_LOG_SHEET = 'AuditLog';
 
 const SESSION_TTL = 86400;       // メンバートークン有効期間: 24時間
 const ADMIN_SESSION_TTL = 7200;  // 管理者トークン有効期間: 2時間
-const GEMINI_MODEL = 'gemini-2.0-flash-lite';
+// 既定モデル。gemini-2.0-flash-lite / gemini-2.0-flash は 2026-06 に廃止予定入りし、
+// 無料枠がほぼ没収されて 1 リクエストでも 429 になるため、現行の安定モデルを既定にする。
+const GEMINI_MODEL = 'gemini-2.5-flash-lite';
 const GEMINI_DAILY_LIMIT = 1500;
+// 廃止/停止済みで無料枠が機能しないモデル。設定に残っていても自動で既定へ置き換える。
+const DEPRECATED_GEMINI_MODELS = {
+  'gemini-2.0-flash-lite': 1,
+  'gemini-2.0-flash': 1,
+  'gemini-1.5-flash': 1,
+  'gemini-1.5-flash-latest': 1,
+  'gemini-1.5-pro': 1,
+  'gemini-1.0-pro': 1
+};
+
+// ====== Config 既定値（単一の真実） ======
+// ここに1キー足すだけで「シート初期化・マイグレーション・取得(adminGetConfig)・
+// 書き込み許可(adminSetConfig)」がすべて自動で揃う。
+// （以前は ensureConfigSheet と adminGet/SetConfig でキー定義がズレており、設定画面が
+//   forbidden_key で保存失敗していた。定義を一箇所へ集約して再発を防ぐ。）
+const DEFAULT_CONFIG = {
+  password: '',            // 初期値は setup 時に乱数生成（defaultConfigValue_ で特別扱い）
+  admin_password: '',      // 同上
+  gemini_api_key: '',
+  gemini_model: GEMINI_MODEL,
+  storage_warn_mb: 60,
+  storage_block_mb: 100,
+  file_max_mb: 10,
+  file_sharing: 'domain',
+  file_retention_years: 5,
+  reminder_enabled: 'true',
+  reminder_days: '7,3,1',
+  report_recipients: '',
+  annual_report_enabled: 'true',
+  backup_keep_count: 6,
+  audit_keep_days: 365,
+  // --- 表示・運用カスタム（settings.js が読み書き／一部はメンバーにも公開） ---
+  welcome_message: '',
+  deadline_kyoka: -10,        // イベント日の10日前
+  deadline_houkoku: 7,        // イベント日の7日後
+  deadline_alert_danger: 3,
+  deadline_alert_warning: 7
+};
+
+// メンバー（非管理者）にも公開してよい表示系設定。getPublicConfig で返す（機密値は含めない）。
+const PUBLIC_CONFIG_KEYS = [
+  'welcome_message', 'deadline_kyoka', 'deadline_houkoku',
+  'deadline_alert_danger', 'deadline_alert_warning', 'reminder_days'
+];
+
+// 既定値を返す。password 系だけは毎回ランダム生成する。
+function defaultConfigValue_(key) {
+  if (key === 'password') return 'CHANGE_ME_' + Math.random().toString(36).slice(2, 8);
+  if (key === 'admin_password') return 'ADMIN_' + Math.random().toString(36).slice(2, 10);
+  return DEFAULT_CONFIG[key];
+}
+
+// 公開設定（getPublicConfig）。未設定キーは DEFAULT_CONFIG にフォールバック。
+function publicConfig_() {
+  var cfg = {};
+  PUBLIC_CONFIG_KEYS.forEach(function (k) {
+    var v = getConfig(k);
+    cfg[k] = (v === '' || v === null || v === undefined) ? String(DEFAULT_CONFIG[k]) : v;
+  });
+  return cfg;
+}
+
+// 設定値のサーバー側バリデーション（不正値の永続化を防ぐ二重チェック）。
+// 問題なければ '' を、エラーなら日本語メッセージを返す。
+function validateConfigValue_(key, value) {
+  var v = (value === null || value === undefined) ? '' : String(value);
+  switch (key) {
+    case 'deadline_kyoka':
+    case 'deadline_houkoku':
+      return /^-?\d+$/.test(v.trim()) ? '' : '数値を指定してください';
+    case 'deadline_alert_danger':
+    case 'deadline_alert_warning':
+    case 'file_max_mb':
+    case 'file_retention_years':
+    case 'backup_keep_count':
+    case 'audit_keep_days':
+    case 'storage_warn_mb':
+    case 'storage_block_mb':
+      return /^\d+$/.test(v.trim()) ? '' : '0以上の整数を指定してください';
+    case 'reminder_days':
+      return v.split(/[,\s]+/).filter(String).every(function (s) { return /^\d+$/.test(s); })
+        ? '' : '日数はカンマ区切りの整数で指定してください（例: 7,3,1）';
+    case 'file_sharing':
+      return ['domain', 'anyone'].indexOf(v) >= 0 ? '' : 'domain か anyone を指定してください';
+    case 'reminder_enabled':
+    case 'annual_report_enabled':
+      return ['true', 'false'].indexOf(v) >= 0 ? '' : 'true か false を指定してください';
+    case 'password':
+    case 'admin_password':
+      return v.length >= 4 ? '' : 'パスワードは4文字以上にしてください';
+    default:
+      return '';
+  }
+}
+
+// HTMLメール等へ値を差し込む際のエスケープ（イベント名等による崩れ・混入を防ぐ）。
+function escapeHtml_(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
 // ====== エントリポイント ======
 
@@ -86,6 +189,7 @@ function doPost(e) {
       }
       resetFailedAuth_('member');
       const newToken = generateToken('member');
+      appendAuditLog('auth_success', '', newToken, 'member');
       return jsonResponse({ success: true, token: newToken });
     }
 
@@ -123,19 +227,23 @@ function doPost(e) {
       if (adminPw !== '' && inputPw === adminPw) {
         resetFailedAuth_('member');
         resetFailedAuth_('admin');
-        appendAuditLog('login_admin', '', '');
+        const adminMemberToken = generateToken('member');
+        const adminToken = generateToken('admin');
+        // 追跡用に、発行した管理者トークンのハッシュを監査ログへ記録する
+        appendAuditLog('login_admin', '', adminToken, 'admin');
         return jsonResponse({
           success: true,
           role: 'admin',
-          token: generateToken('member'),
-          adminToken: generateToken('admin')
+          token: adminMemberToken,
+          adminToken: adminToken
         });
       }
 
       if (memberPw !== '' && inputPw === memberPw) {
         resetFailedAuth_('member');
-        appendAuditLog('login_member', '', '');
-        return jsonResponse({ success: true, role: 'member', token: generateToken('member') });
+        const memberToken = generateToken('member');
+        appendAuditLog('login_member', '', memberToken, 'member');
+        return jsonResponse({ success: true, role: 'member', token: memberToken });
       }
 
       appendAuditLog('login_fail', '', '');
@@ -218,20 +326,26 @@ function doPost(e) {
       return handleGeminiProxy(body);
     }
 
+    // --- 公開設定の読み取り（メンバーも可・表示系のみ） ---
+    // 期限ルール・アラート閾値・挨拶メッセージ等を全ユーザーのクライアントへ反映するため、
+    // 管理者トークン不要で安全なキーだけを返す（機密値は含めない）。認証は上の checkAuth 済み。
+    if (action === 'getPublicConfig') {
+      return jsonResponse({ success: true, config: publicConfig_() });
+    }
+
     // --- 管理者設定読み取り ---
     if (action === 'adminGetConfig') {
       if (!checkAdmin(body.adminToken)) {
         return jsonResponse({ success: false, error: 'admin_required' });
       }
-      return jsonResponse({
-        success: true,
-        config: {
-          password: getConfig('password'),
-          admin_password: getConfig('admin_password'),
-          gemini_api_key: getConfig('gemini_api_key'),
-          gemini_model: getConfig('gemini_model') || GEMINI_MODEL
-        }
+      // DEFAULT_CONFIG の全キーを返す（未設定キーは既定値にフォールバック）。
+      // settings.js が読む welcome_message / deadline_* / reminder_days 等もここで揃う。
+      var fullCfg = {};
+      Object.keys(DEFAULT_CONFIG).forEach(function (k) {
+        var v = getConfig(k);
+        fullCfg[k] = (v === '' || v === null || v === undefined) ? String(DEFAULT_CONFIG[k]) : v;
       });
+      return jsonResponse({ success: true, config: fullCfg });
     }
 
     // --- 管理者設定書き込み ---
@@ -239,10 +353,16 @@ function doPost(e) {
       if (!checkAdmin(body.adminToken)) {
         return jsonResponse({ success: false, error: 'admin_required' });
       }
-      const allowedKeys = ['password', 'admin_password', 'gemini_api_key', 'gemini_model'];
+      // 設定可能キーは DEFAULT_CONFIG の定義に一致させる（キー追加時の取りこぼし＝forbidden_key を防ぐ）
+      const allowedKeys = Object.keys(DEFAULT_CONFIG);
       const key = body.key || '';
       if (allowedKeys.indexOf(key) < 0) {
         return jsonResponse({ success: false, error: 'forbidden_key' });
+      }
+      // サーバー側バリデーション（シート直編集や別クライアントに対する防御）
+      const vErr = validateConfigValue_(key, body.value);
+      if (vErr) {
+        return jsonResponse({ success: false, error: 'invalid_value', detail: vErr });
       }
       setConfig(key, body.value || '');
       appendAuditLog('adminSetConfig', key, body.adminToken, 'admin');
@@ -569,11 +689,16 @@ function saveResource(resource, item) {
       return val;
     });
 
-    if (existingRow > 0) {
-      sheet.getRange(existingRow, 1, 1, headers.length).setValues([rowData]);
-    } else {
-      sheet.appendRow(rowData);
-    }
+    // 書き込み先の行を確定（新規は最終行+1）
+    const writeRow = existingRow > 0 ? existingRow : sheet.getLastRow() + 1;
+    // CreatedAt / UpdatedAt は競合検知（_baseUpdatedAt 比較）に使うため、Sheets による
+    // ISO文字列→日付型の自動変換を防ぐ。先にテキスト書式へ固定してから値を書き込む。
+    // （日付型化すると read 時に時刻が落ちて版比較が常に conflict になる事故を防ぐ）
+    ['CreatedAt', 'UpdatedAt'].forEach(h => {
+      const ci = headers.indexOf(h);
+      if (ci >= 0) sheet.getRange(writeRow, ci + 1).setNumberFormat('@');
+    });
+    sheet.getRange(writeRow, 1, 1, headers.length).setValues([rowData]);
 
     const returned = {};
     headers.forEach((h, i) => { returned[h] = rowData[i]; });
@@ -632,7 +757,7 @@ const EXPERIMENTS_HEADERS = [
 ];
 // パスワード一覧（外部サービスの認証情報）。管理者専用。
 const PASSWORDS_HEADERS = [
-  'ID', 'SiteName', 'URL', 'LoginID', 'Password', 'Note',
+  'ID', 'Category', 'SiteName', 'URL', 'LoginID', 'LoginType', 'Password', 'Note',
   'CreatedAt', 'UpdatedAt'
 ];
 
@@ -688,46 +813,35 @@ function ensureConfigSheet(ss) {
   let config = ss.getSheetByName(CONFIG_SHEET);
   if (!config) config = ss.insertSheet(CONFIG_SHEET);
   if (config.getLastRow() === 0) {
-    const rows = [
-      ['Key', 'Value'],
-      ['password', 'CHANGE_ME_' + Math.random().toString(36).slice(2, 8)],
-      ['admin_password', 'ADMIN_' + Math.random().toString(36).slice(2, 10)],
-      ['gemini_api_key', ''],
-      ['gemini_model', GEMINI_MODEL],
-      ['storage_warn_mb', 60],
-      ['storage_block_mb', 100],
-      ['file_max_mb', 10],
-      ['file_sharing', 'domain'],
-      ['file_retention_years', 5],
-      ['reminder_enabled', 'true'],
-      ['reminder_days', '7,3,1'],
-      ['report_recipients', ''],
-      ['annual_report_enabled', 'true'],
-      ['backup_keep_count', 6],
-      ['audit_keep_days', 365]
-    ];
+    // DEFAULT_CONFIG を単一の真実として初期行を生成する
+    const rows = [['Key', 'Value']];
+    Object.keys(DEFAULT_CONFIG).forEach(function (k) {
+      rows.push([k, defaultConfigValue_(k)]);
+    });
     config.getRange(1, 1, rows.length, 2).setValues(rows);
     config.getRange(1, 1, 1, 2).setFontWeight('bold').setBackground('#464775').setFontColor('#ffffff');
     config.setFrozenRows(1);
     Logger.log('Created Config sheet with default passwords');
   } else {
-    // 既存のConfigシートに不足キーを追加（マイグレーション）
+    // 既存のConfigシートに不足キーを追加（マイグレーション）。
+    // DEFAULT_CONFIG にキーを足すだけで、ここも adminGet/SetConfig も自動で揃う。
     const values = config.getDataRange().getValues();
-    const existingKeys = values.map(function(r) { return r[0]; });
-    const addIfMissing = function(key, defVal) {
-      if (existingKeys.indexOf(key) < 0) {
-        config.appendRow([key, defVal]);
-        Logger.log('Added ' + key + ' to Config');
+    const existingKeys = values.map(function (r) { return r[0]; });
+    Object.keys(DEFAULT_CONFIG).forEach(function (k) {
+      if (existingKeys.indexOf(k) < 0) {
+        config.appendRow([k, defaultConfigValue_(k)]);
+        Logger.log('Added ' + k + ' to Config');
       }
-    };
-    addIfMissing('admin_password', 'ADMIN_' + Math.random().toString(36).slice(2, 10));
-    addIfMissing('gemini_api_key', '');
-    addIfMissing('gemini_model', GEMINI_MODEL);
-    addIfMissing('file_max_mb', 10);
-    addIfMissing('file_sharing', 'domain');
-    addIfMissing('annual_report_enabled', 'true');
-    addIfMissing('backup_keep_count', 6);
-    addIfMissing('audit_keep_days', 365);
+    });
+    // 既存の設定が廃止モデルなら現行の既定モデルへ更新（無料枠没収で429になるのを防ぐ）
+    var existingModelIdx = existingKeys.indexOf('gemini_model');
+    if (existingModelIdx >= 0) {
+      var curModel = String(values[existingModelIdx][1] || '').trim();
+      if (DEPRECATED_GEMINI_MODELS[curModel]) {
+        config.getRange(existingModelIdx + 1, 2).setValue(GEMINI_MODEL);
+        Logger.log('Migrated deprecated gemini_model ' + curModel + ' -> ' + GEMINI_MODEL);
+      }
+    }
   }
 }
 
@@ -1101,6 +1215,11 @@ function handleGeminiProxy(body) {
   // 使用モデルは Config の gemini_model で差し替え可能（キーがそのモデルの無料枠を
   // 持たない／モデルが廃止された場合に、コード変更なしで別モデルへ切り替えるため）。
   var model = (getConfig('gemini_model') || '').trim() || GEMINI_MODEL;
+  // 廃止モデルが設定に残っていたら、自己修復して現行の既定モデルへ切り替える。
+  if (DEPRECATED_GEMINI_MODELS[model]) {
+    model = GEMINI_MODEL;
+    try { setConfig('gemini_model', model); } catch (_) {}
+  }
 
   // システムプロンプトはサーバー側で固定生成する。
   // クライアントから渡された systemPrompt は信用しない（API キーの汎用 LLM 化を防止）。
@@ -1264,9 +1383,16 @@ function sendDeadlineRemindersImpl_() {
     return;
   }
 
+  // 当日すでに送信済みの通知を除外（手動再実行や 10分ガード失効後の二重送信を防ぐ）
+  const pending = notifications.filter(n => !reminderAlreadySent_(today, n.key));
+  if (pending.length === 0) {
+    Logger.log('All reminders already sent today, skip');
+    return;
+  }
+
   // 担当者別にグループ化
   const grouped = {};
-  notifications.forEach(n => {
+  pending.forEach(n => {
     const key = n.recipientEmail || 'staff';
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(n);
@@ -1299,11 +1425,37 @@ function sendDeadlineRemindersImpl_() {
         body: textBody  // HTML非対応クライアント用の代替テキスト（スパム判定対策にもなる）
       });
       Logger.log('Sent reminder to ' + to + ': ' + items.length + ' items');
+      // 送信成功した通知だけ「当日送信済み」として記録する
+      items.forEach(it => reminderMarkSent_(today, it.key));
     } catch (err) {
       Logger.log('Failed to send to ' + to + ': ' + err);
       appendAuditLog('reminder_send_fail', to + ': ' + err, '');
     }
   });
+}
+
+// ---- リマインダー当日重複ガード（ScriptProperties 永続。CacheService は最大6hで日跨ぎに不足） ----
+// {date, keys:[...]} を1プロパティで保持し、日付が変われば自動リセットされる。
+function reminderAlreadySent_(today, key) {
+  var raw = PropertiesService.getScriptProperties().getProperty('reminders_sent');
+  if (raw) {
+    try {
+      var o = JSON.parse(raw);
+      if (o && o.date === today) return (o.keys || []).indexOf(key) >= 0;
+    } catch (_) {}
+  }
+  return false;
+}
+
+function reminderMarkSent_(today, key) {
+  var props = PropertiesService.getScriptProperties();
+  var o = { date: today, keys: [] };
+  var raw = props.getProperty('reminders_sent');
+  if (raw) {
+    try { var p = JSON.parse(raw); if (p && p.date === today) o = p; } catch (_) {}
+  }
+  if ((o.keys || (o.keys = [])).indexOf(key) < 0) o.keys.push(key);
+  props.setProperty('reminders_sent', JSON.stringify(o));
 }
 
 function checkDeadline(event, field, typeName, adminName, todayDate, reminderDays, members, out) {
@@ -1331,6 +1483,8 @@ function checkDeadline(event, field, typeName, adminName, todayDate, reminderDay
     daysUntil: daysUntil,
     adminName: adminName || '未定',
     recipientEmail: recipientEmail,
+    // 当日重複ガード用キー。期限日を含めるので、期限変更時は再送される。
+    key: (event.ID || event.Title || '?') + '|' + field + '|' + deadlineStr,
     summary: typeName + ': ' + event.Title + ' (あと' + daysUntil + '日)'
   });
 }
@@ -1338,12 +1492,12 @@ function checkDeadline(event, field, typeName, adminName, todayDate, reminderDay
 function buildReminderHtml(items) {
   let rows = items.map(n => `
     <tr>
-      <td style="padding:8px;border-bottom:1px solid #eee;">${n.deadlineType}</td>
-      <td style="padding:8px;border-bottom:1px solid #eee;font-weight:bold;">${n.eventTitle}</td>
-      <td style="padding:8px;border-bottom:1px solid #eee;">${n.eventDate}</td>
-      <td style="padding:8px;border-bottom:1px solid #eee;">${n.deadlineDate}</td>
+      <td style="padding:8px;border-bottom:1px solid #eee;">${escapeHtml_(n.deadlineType)}</td>
+      <td style="padding:8px;border-bottom:1px solid #eee;font-weight:bold;">${escapeHtml_(n.eventTitle)}</td>
+      <td style="padding:8px;border-bottom:1px solid #eee;">${escapeHtml_(n.eventDate)}</td>
+      <td style="padding:8px;border-bottom:1px solid #eee;">${escapeHtml_(n.deadlineDate)}</td>
       <td style="padding:8px;border-bottom:1px solid #eee;color:${n.daysUntil <= 3 ? '#c92a2a' : '#92400e'};font-weight:bold;">あと${n.daysUntil}日</td>
-      <td style="padding:8px;border-bottom:1px solid #eee;">${n.adminName}</td>
+      <td style="padding:8px;border-bottom:1px solid #eee;">${escapeHtml_(n.adminName)}</td>
     </tr>
   `).join('');
 
@@ -1446,11 +1600,11 @@ function generateAnnualReport(fiscalYear) {
   };
 
   const catRows = Object.entries(catCounts)
-    .map(([k, v]) => `<tr><td style="padding:6px 12px;">${catLabels[k] || k}</td><td style="padding:6px 12px;font-weight:bold;">${v}回</td></tr>`)
+    .map(([k, v]) => `<tr><td style="padding:6px 12px;">${escapeHtml_(catLabels[k] || k)}</td><td style="padding:6px 12px;font-weight:bold;">${v}回</td></tr>`)
     .join('');
 
   const expRows = expRanking
-    .map(([name, count]) => `<tr><td style="padding:6px 12px;">${name}</td><td style="padding:6px 12px;font-weight:bold;">${count}回</td></tr>`)
+    .map(([name, count]) => `<tr><td style="padding:6px 12px;">${escapeHtml_(name)}</td><td style="padding:6px 12px;font-weight:bold;">${count}回</td></tr>`)
     .join('');
 
   const html = `
@@ -1484,10 +1638,10 @@ function generateAnnualReport(fiscalYear) {
           </tr></thead>
           <tbody>${yearEvents.sort((a, b) => (a.Date || '').localeCompare(b.Date || '')).map(ev => `
             <tr>
-              <td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;">${ev.Date}</td>
-              <td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;">${catLabels[ev.Category] || ev.Category}</td>
-              <td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;">${ev.Title}</td>
-              <td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;">${ev.Location || ''}</td>
+              <td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;">${escapeHtml_(ev.Date)}</td>
+              <td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;">${escapeHtml_(catLabels[ev.Category] || ev.Category)}</td>
+              <td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;">${escapeHtml_(ev.Title)}</td>
+              <td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;">${escapeHtml_(ev.Location || '')}</td>
             </tr>
           `).join('')}</tbody>
         </table>

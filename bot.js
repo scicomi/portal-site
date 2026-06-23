@@ -651,13 +651,13 @@ async function handleBotError(e, text, isRetry) {
   }
 }
 
-// ====== 設定（管理者専用 → 管理者設定モーダルへ誘導） ======
+// ====== 設定（管理者専用 → 設定ページへ誘導） ======
 
 function openSettings() {
   if (api.isAdmin()) {
-    showAdminSettingsModal();
+    location.href = 'settings.html';
   } else {
-    showAdminAuthModal(() => showAdminSettingsModal());
+    showAdminAuthModal(() => { location.href = 'settings.html'; });
   }
 }
 

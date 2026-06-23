@@ -9,6 +9,37 @@
  *   - トースト通知
  */
 
+// ====== 振り返りフィードバック ユーティリティ ======
+
+function parseFeedbackEntries(raw) {
+  if (!raw || (typeof raw === 'string' && !raw.trim())) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('[')) {
+      try { return JSON.parse(trimmed); } catch (_) {}
+    }
+    return [{ id: 'legacy_' + Date.now(), date: '', eventId: '', eventTitle: '', text: trimmed }];
+  }
+  return [];
+}
+
+function stringifyFeedbackEntries(entries) {
+  if (!entries || entries.length === 0) return '';
+  return JSON.stringify(entries);
+}
+
+function getFiscalYear(dateStr) {
+  if (!dateStr) return null;
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length < 2) return null;
+  return parts[1] >= 4 ? parts[0] : parts[0] - 1;
+}
+
+function genFeedbackId() {
+  return 'fb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+}
+
 // ====== 共通ユーティリティ ======
 
 function escapeHtml(s) {
@@ -89,9 +120,7 @@ function renderHeader(activePage) {
       <div class="header-actions">
         <div id="sync-status" class="sync-status" title="クリックで再読込" onclick="if(window.refreshData)refreshData(true)"></div>
         ${isAdmin
-          ? `<span class="admin-badge">管理者</span>
-             <button class="btn btn-text-light" onclick="showAdminSettingsModal()">管理</button>
-             <button class="btn btn-text-light" onclick="doAdminLogout()">管理者解除</button>`
+          ? `<span class="admin-badge">管理者</span>`
           : `<button class="btn btn-text-light" onclick="showAdminAuthModal()">管理者</button>`
         }
         <button class="btn btn-text-light" onclick="confirmLogout()">ログアウト</button>
@@ -113,12 +142,6 @@ function confirmLogout() {
   api.clearAdminToken();
   api.clearAllCache();
   location.href = 'index.html';
-}
-
-function doAdminLogout() {
-  api.adminLogout();
-  toast('管理者モードを解除しました', 'info');
-  location.reload();
 }
 
 // ====== 管理者認証モーダル ======
@@ -186,164 +209,6 @@ function showAdminAuthModal(onSuccess) {
   });
 }
 
-// ====== 管理者設定モーダル ======
-
-async function showAdminSettingsModal() {
-  if (!api.isAdmin()) {
-    showAdminAuthModal(() => showAdminSettingsModal());
-    return;
-  }
-
-  let existing = document.getElementById('admin-settings-modal');
-  if (existing) existing.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'admin-settings-modal';
-  modal.className = 'modal-overlay';
-  modal.innerHTML = `
-    <div class="modal-content" style="max-width:520px;">
-      <div class="modal-header">
-        <h2>管理者設定</h2>
-        <button class="btn btn-text" onclick="document.getElementById('admin-settings-modal').remove()">閉じる</button>
-      </div>
-      <div class="modal-body" style="padding:16px 0;">
-        <div id="admin-settings-loading" style="text-align:center;padding:24px;color:#888;">読み込み中...</div>
-        <div id="admin-settings-content" style="display:none;">
-
-          <div class="admin-settings-section">
-            <h3>サービスパスワード</h3>
-            <p class="admin-settings-desc">メンバー全員が使うログインパスワード</p>
-            <div class="e1-group">
-              <label class="e1-label">現在のパスワード</label>
-              <div style="display:flex;gap:8px;align-items:center;">
-                <input type="text" id="admin-cfg-password" class="e1-input" readonly style="flex:1;">
-              </div>
-            </div>
-            <div class="e1-group">
-              <label class="e1-label">新しいパスワード（変更する場合）</label>
-              <div style="display:flex;gap:8px;">
-                <input type="text" id="admin-cfg-password-new" class="e1-input" placeholder="変更しない場合は空欄" style="flex:1;">
-                <button class="btn btn-primary-solid" onclick="adminSaveConfig('password')" style="width:auto;padding:8px 16px;">変更</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="admin-settings-section">
-            <h3>幹部パスワード</h3>
-            <p class="admin-settings-desc">管理者認証に使うパスワード</p>
-            <div class="e1-group">
-              <label class="e1-label">現在の幹部パスワード</label>
-              <input type="text" id="admin-cfg-admin-password" class="e1-input" readonly>
-            </div>
-            <div class="e1-group">
-              <label class="e1-label">新しい幹部パスワード（変更する場合）</label>
-              <div style="display:flex;gap:8px;">
-                <input type="text" id="admin-cfg-admin-password-new" class="e1-input" placeholder="変更しない場合は空欄" style="flex:1;">
-                <button class="btn btn-primary-solid" onclick="adminSaveConfig('admin_password')" style="width:auto;padding:8px 16px;">変更</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="admin-settings-section">
-            <h3>Gemini APIキー</h3>
-            <p class="admin-settings-desc">Bot機能で使用。サーバー側で安全に管理されます。</p>
-            <div class="e1-group">
-              <label class="e1-label">APIキー</label>
-              <div style="display:flex;gap:8px;">
-                <input type="password" id="admin-cfg-gemini-key" class="e1-input" placeholder="AIza..." style="flex:1;">
-                <button class="btn btn-secondary" onclick="toggleGeminiKeyVisibility()" style="width:auto;padding:8px 12px;" title="表示切替">👁</button>
-                <button class="btn btn-primary-solid" onclick="adminSaveConfig('gemini_api_key')" style="width:auto;padding:8px 16px;">保存</button>
-              </div>
-            </div>
-            <div class="e1-group">
-              <label class="e1-label">使用モデル</label>
-              <p class="admin-settings-desc" style="margin-top:0;">「レート制限」が頻発する場合、無料枠に余裕のあるモデルへ切り替えてください。</p>
-              <div style="display:flex;gap:8px;">
-                <select id="admin-cfg-gemini-model" class="e1-input" style="flex:1;">
-                  <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite（無料枠 15 RPM・推奨）</option>
-                  <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
-                  <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-                  <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-                </select>
-                <button class="btn btn-primary-solid" onclick="adminSaveConfig('gemini_model')" style="width:auto;padding:8px 16px;">保存</button>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) modal.remove();
-  });
-  document.addEventListener('keydown', function handler(e) {
-    if (e.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', handler); }
-  });
-
-  try {
-    const cfg = await api.adminGetConfig();
-    document.getElementById('admin-cfg-password').value = cfg.password || '';
-    document.getElementById('admin-cfg-admin-password').value = cfg.admin_password || '';
-    document.getElementById('admin-cfg-gemini-key').value = cfg.gemini_api_key || '';
-    const modelSel = document.getElementById('admin-cfg-gemini-model');
-    if (modelSel) {
-      const cur = cfg.gemini_model || 'gemini-2.0-flash-lite';
-      // 既存オプションに無いモデル名なら選択肢を追加してから選択
-      if (![...modelSel.options].some(o => o.value === cur)) {
-        modelSel.add(new Option(cur, cur));
-      }
-      modelSel.value = cur;
-    }
-    document.getElementById('admin-settings-loading').style.display = 'none';
-    document.getElementById('admin-settings-content').style.display = 'block';
-  } catch (e) {
-    document.getElementById('admin-settings-loading').textContent = '読み込み失敗: ' + e.message;
-  }
-}
-
-function toggleGeminiKeyVisibility() {
-  const el = document.getElementById('admin-cfg-gemini-key');
-  if (!el) return;
-  el.type = el.type === 'password' ? 'text' : 'password';
-}
-
-async function adminSaveConfig(key) {
-  const map = {
-    password: 'admin-cfg-password-new',
-    admin_password: 'admin-cfg-admin-password-new',
-    gemini_api_key: 'admin-cfg-gemini-key',
-    gemini_model: 'admin-cfg-gemini-model'
-  };
-  const inputId = map[key];
-  if (!inputId) return;
-  const value = document.getElementById(inputId).value.trim();
-
-  if ((key === 'password' || key === 'admin_password') && !value) {
-    toast('新しいパスワードを入力してください', 'error');
-    return;
-  }
-
-  try {
-    await api.adminSetConfig(key, value);
-    toast('保存しました', 'success');
-    if (key === 'password') {
-      document.getElementById('admin-cfg-password').value = value;
-      document.getElementById('admin-cfg-password-new').value = '';
-    }
-    if (key === 'admin_password') {
-      document.getElementById('admin-cfg-admin-password').value = value;
-      document.getElementById('admin-cfg-admin-password-new').value = '';
-      api.adminLogout();
-      toast('幹部パスワードが変更されました。再認証してください。', 'info', 5000);
-      document.getElementById('admin-settings-modal').remove();
-    }
-  } catch (e) {
-    toast('保存失敗: ' + e.message, 'error');
-  }
-}
 
 // ====== 認証ゲート ======
 
@@ -492,11 +357,53 @@ function toastUndo(message, onUndo, onCommit, delay = 5000) {
   }, delay);
 }
 
+// ====== サーバー設定の反映 ======
+
+async function applySiteSettings() {
+    const SETTINGS_CACHE_KEY = 'scicomi_site_settings';
+    const SETTINGS_TTL = 10 * 60 * 1000; // 10分
+    try {
+        const cached = localStorage.getItem(SETTINGS_CACHE_KEY);
+        if (cached) {
+            const obj = JSON.parse(cached);
+            if (Date.now() - obj.ts < SETTINGS_TTL) {
+                _applyCfg(obj.data);
+                return;
+            }
+        }
+    } catch (_) {}
+    try {
+        // 管理者は全設定、一般メンバーは公開設定（表示系のみ）を取得。
+        // どちらも期限ルール・アラート閾値・挨拶メッセージをクライアントへ反映できる。
+        const cfg = api.isAdmin() ? await api.adminGetConfig() : await api.getPublicConfig();
+        _applyCfg(cfg);
+        localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify({ data: cfg, ts: Date.now() }));
+    } catch (_) {}
+}
+
+function _applyCfg(cfg) {
+    if (!cfg) return;
+    if (cfg.deadline_kyoka != null && cfg.deadline_kyoka !== '') CONFIG.DEADLINE_RULES.kyoka = parseInt(cfg.deadline_kyoka);
+    if (cfg.deadline_houkoku != null && cfg.deadline_houkoku !== '') CONFIG.DEADLINE_RULES.houkoku = parseInt(cfg.deadline_houkoku);
+    if (cfg.deadline_alert_danger != null && cfg.deadline_alert_danger !== '') CONFIG.DEADLINE_ALERT.danger = parseInt(cfg.deadline_alert_danger);
+    if (cfg.deadline_alert_warning != null && cfg.deadline_alert_warning !== '') CONFIG.DEADLINE_ALERT.warning = parseInt(cfg.deadline_alert_warning);
+    if (cfg.reminder_days) {
+        const days = String(cfg.reminder_days).split(/[,\s]+/).map(Number).filter(n => n > 0);
+        if (days.length) CONFIG.REMINDER.days = days;
+    }
+    // 挨拶メッセージは空なら削除（管理者がクリアしたら既定文へ戻す）
+    if (cfg.welcome_message !== undefined) {
+        if (cfg.welcome_message) localStorage.setItem('scicomi_welcome_message', cfg.welcome_message);
+        else localStorage.removeItem('scicomi_welcome_message');
+    }
+}
+
 // ====== 起動共通 ======
 
 async function bootPage(activePage, onAuthReady) {
   renderHeader(activePage);
   await requireAuth(async () => {
+    await applySiteSettings();
     await onAuthReady();
   });
 }

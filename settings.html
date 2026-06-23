@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>設定 | SciComi Portal</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="app-header"></header>
+
+    <main class="container">
+        <h1 class="page-title">設定</h1>
+        <div id="settings-loading" style="text-align:center;padding:40px;color:#888;">読み込み中...</div>
+        <div id="settings-content" style="display:none;">
+
+            <!-- 表示カスタマイズ -->
+            <div class="settings-section">
+                <div class="settings-section-header">
+                    <h2>表示カスタマイズ</h2>
+                    <p class="settings-section-desc">ホーム画面の表示をカスタマイズします。</p>
+                </div>
+                <div class="settings-card">
+                    <div class="e1-group">
+                        <label class="e1-label">挨拶メッセージ</label>
+                        <p class="settings-hint">ホーム画面の「こんにちは -- ...」の部分をカスタマイズできます。<br>時間帯の挨拶（おはよう/こんにちは/こんばんは）は自動で切り替わります。<br>空欄にするとデフォルトに戻ります。</p>
+                        <div style="display:flex;gap:8px;">
+                            <input type="text" id="cfg-welcome-message" class="e1-input" placeholder="今日も活動を楽しんでいきましょう。" style="flex:1;">
+                            <button class="btn btn-primary-solid" onclick="saveSettingField('welcome_message','cfg-welcome-message')" style="width:auto;padding:8px 20px;">保存</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 書類期限設定 -->
+            <div class="settings-section">
+                <div class="settings-section-header">
+                    <h2>書類期限の設定</h2>
+                    <p class="settings-section-desc">イベントの書類提出期限を自動計算する際のルールを設定します。</p>
+                </div>
+                <div class="settings-card">
+                    <div class="settings-row-grid">
+                        <div class="e1-group">
+                            <label class="e1-label">許可願の期限</label>
+                            <p class="settings-hint">イベント日の何日前？（例: 10 → 10日前）</p>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <input type="number" id="cfg-deadline-kyoka" class="e1-input" min="1" max="90" style="width:100px;">
+                                <span style="color:#666;">日前</span>
+                            </div>
+                        </div>
+                        <div class="e1-group">
+                            <label class="e1-label">報告書の期限</label>
+                            <p class="settings-hint">イベント日の何日後？（例: 7 → 7日後）</p>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <input type="number" id="cfg-deadline-houkoku" class="e1-input" min="1" max="90" style="width:100px;">
+                                <span style="color:#666;">日後</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top:8px;">
+                        <button class="btn btn-primary-solid" onclick="saveDeadlineRules()" style="width:auto;padding:8px 20px;">期限ルールを保存</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 期限アラート設定 -->
+            <div class="settings-section">
+                <div class="settings-section-header">
+                    <h2>期限アラートの閾値</h2>
+                    <p class="settings-section-desc">ホーム画面で期限カードの色分けに使う日数です。</p>
+                </div>
+                <div class="settings-card">
+                    <div class="settings-row-grid">
+                        <div class="e1-group">
+                            <label class="e1-label"><span style="color:#991b1b;">&#9679;</span> 危険（赤）</label>
+                            <p class="settings-hint">残り日数がこの値以下で赤表示</p>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <input type="number" id="cfg-alert-danger" class="e1-input" min="0" max="30" style="width:100px;">
+                                <span style="color:#666;">日以内</span>
+                            </div>
+                        </div>
+                        <div class="e1-group">
+                            <label class="e1-label"><span style="color:#92400e;">&#9679;</span> 注意（黄）</label>
+                            <p class="settings-hint">残り日数がこの値以下で黄表示</p>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <input type="number" id="cfg-alert-warning" class="e1-input" min="1" max="60" style="width:100px;">
+                                <span style="color:#666;">日以内</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top:8px;">
+                        <button class="btn btn-primary-solid" onclick="saveAlertThresholds()" style="width:auto;padding:8px 20px;">アラート設定を保存</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- リマインダー設定 -->
+            <div class="settings-section">
+                <div class="settings-section-header">
+                    <h2>リマインダー送信日</h2>
+                    <p class="settings-section-desc">期限の何日前にリマインダーメールを送信するかを設定します。</p>
+                </div>
+                <div class="settings-card">
+                    <div class="e1-group">
+                        <label class="e1-label">送信タイミング（日前）</label>
+                        <p class="settings-hint">カンマ区切りで複数指定できます（例: 7, 3, 1）</p>
+                        <div style="display:flex;gap:8px;">
+                            <input type="text" id="cfg-reminder-days" class="e1-input" placeholder="7, 3, 1" style="flex:1;max-width:300px;">
+                            <button class="btn btn-primary-solid" onclick="saveReminderDays()" style="width:auto;padding:8px 20px;">保存</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- パスワード管理 -->
+            <div class="settings-section">
+                <div class="settings-section-header">
+                    <h2>パスワード管理</h2>
+                    <p class="settings-section-desc">サービスおよび管理者のログインパスワードを管理します。</p>
+                </div>
+                <div class="settings-card">
+                    <div class="e1-group">
+                        <label class="e1-label">サービスパスワード</label>
+                        <p class="settings-hint">メンバー全員が使うログインパスワード</p>
+                        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                            <span style="color:#666;font-size:0.9rem;">現在:</span>
+                            <code id="cfg-password-current" style="background:#f0f0f0;padding:4px 10px;border-radius:4px;font-size:0.9rem;"></code>
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <input type="text" id="cfg-password-new" class="e1-input" placeholder="新しいパスワード（変更する場合）" style="flex:1;">
+                            <button class="btn btn-primary-solid" onclick="savePassword('password')" style="width:auto;padding:8px 20px;">変更</button>
+                        </div>
+                    </div>
+
+                    <hr style="border:none;border-top:1px solid #eee;margin:20px 0;">
+
+                    <div class="e1-group">
+                        <label class="e1-label">幹部パスワード</label>
+                        <p class="settings-hint">管理者認証に使うパスワード</p>
+                        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                            <span style="color:#666;font-size:0.9rem;">現在:</span>
+                            <code id="cfg-admin-password-current" style="background:#f0f0f0;padding:4px 10px;border-radius:4px;font-size:0.9rem;"></code>
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <input type="text" id="cfg-admin-password-new" class="e1-input" placeholder="新しい幹部パスワード（変更する場合）" style="flex:1;">
+                            <button class="btn btn-primary-solid" onclick="savePassword('admin_password')" style="width:auto;padding:8px 20px;">変更</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gemini API設定 -->
+            <div class="settings-section">
+                <div class="settings-section-header">
+                    <h2>Gemini API設定</h2>
+                    <p class="settings-section-desc">Bot機能で使用するAIモデルの設定です。サーバー側で安全に管理されます。</p>
+                </div>
+                <div class="settings-card">
+                    <div class="e1-group">
+                        <label class="e1-label">APIキー</label>
+                        <div style="display:flex;gap:8px;">
+                            <input type="password" id="cfg-gemini-key" class="e1-input" placeholder="AIza..." style="flex:1;">
+                            <button class="btn btn-secondary" onclick="toggleVisibility('cfg-gemini-key')" style="width:auto;padding:8px 12px;" title="表示切替">&#128065;</button>
+                            <button class="btn btn-primary-solid" onclick="saveSettingDirect('gemini_api_key','cfg-gemini-key')" style="width:auto;padding:8px 20px;">保存</button>
+                        </div>
+                    </div>
+                    <div class="e1-group">
+                        <label class="e1-label">使用モデル</label>
+                        <p class="settings-hint">「レート制限」が頻発する場合、無料枠に余裕のあるモデルへ切り替えてください。</p>
+                        <div style="display:flex;gap:8px;">
+                            <select id="cfg-gemini-model" class="e1-input" style="flex:1;">
+                                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite（軽量・推奨）</option>
+                                <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite（新しめ・軽量）</option>
+                                <option value="gemini-2.5-flash">gemini-2.5-flash（高精度）</option>
+                                <option value="gemini-3.5-flash">gemini-3.5-flash（最新）</option>
+                                <option value="gemini-2.0-flash-lite" disabled>gemini-2.0-flash-lite（廃止・使用不可）</option>
+                                <option value="gemini-2.0-flash" disabled>gemini-2.0-flash（廃止・使用不可）</option>
+                            </select>
+                            <button class="btn btn-primary-solid" onclick="saveSettingDirect('gemini_model','cfg-gemini-model')" style="width:auto;padding:8px 20px;">保存</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- セッション管理 -->
+            <div class="settings-section">
+                <div class="settings-section-header">
+                    <h2>セッション</h2>
+                </div>
+                <div class="settings-card" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+                    <button class="btn btn-secondary" onclick="doAdminLogoutFromSettings()" style="padding:10px 24px;">管理者モードを解除</button>
+                    <span style="color:#888;font-size:0.85rem;">管理者モードを解除して通常メンバーに戻ります。</span>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script src="config.js"></script>
+    <script src="api.js"></script>
+    <script src="app.js"></script>
+    <script src="settings.js"></script>
+</body>
+</html>
