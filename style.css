@@ -1699,6 +1699,50 @@ textarea:focus {
     margin: 0 0 12px 0;
 }
 
+/* ========== 設定ページ ========== */
+.settings-section {
+    margin-bottom: 32px;
+}
+.settings-section-header {
+    margin-bottom: 12px;
+}
+.settings-section-header h2 {
+    color: #464775;
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 0 0 4px 0;
+}
+.settings-section-desc {
+    color: #888;
+    font-size: 0.85rem;
+    margin: 0;
+}
+.settings-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 20px 24px;
+}
+.settings-hint {
+    color: #999;
+    font-size: 0.8rem;
+    margin: 0 0 8px 0;
+    line-height: 1.5;
+}
+.settings-row-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+@media (max-width: 600px) {
+    .settings-row-grid {
+        grid-template-columns: 1fr;
+    }
+    .settings-card {
+        padding: 16px;
+    }
+}
+
 /* ========== パスワード一覧（管理者専用） ========== */
 .pw-denied {
     max-width: 520px;
@@ -1719,6 +1763,47 @@ textarea:focus {
     padding: 10px 14px;
     font-size: 0.85rem;
     margin: 0 0 16px;
+}
+
+/* カテゴリフィルタタブ */
+.pw-cat-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 14px;
+}
+.pw-cat-tab {
+    background: #f0eff7;
+    border: 1.5px solid transparent;
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    color: #555;
+    font-family: inherit;
+    transition: all 0.15s;
+}
+.pw-cat-tab:hover { background: #e8e6f4; }
+.pw-cat-tab.active {
+    background: var(--cat-color, var(--primary-color));
+    color: #fff;
+    border-color: var(--cat-color, var(--primary-color));
+}
+
+/* カテゴリバッジ（カードヘッダー内） */
+.pw-cat-badge {
+    display: inline-block;
+    background: var(--cat-color, #888);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+    flex-shrink: 0;
 }
 
 .pw-list {
@@ -1784,6 +1869,32 @@ textarea:focus {
 .pw-mono { font-family: 'Inter', ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.02em; }
 .pw-secret { color: #1f3d7a; }
 
+/* ソーシャルログインバッジ */
+.pw-login-type-badge {
+    display: inline-block;
+    background: var(--lt-color, #888);
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 12px;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+}
+
+/* メモ行（複数行対応） */
+.pw-row-note { align-items: flex-start; }
+.pw-note-body {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: #444;
+    background: #fafafa;
+    border-radius: 6px;
+    padding: 8px 10px;
+}
+
 .pw-copy-btn {
     background: none;
     border: 1px solid #ddd;
@@ -1806,4 +1917,299 @@ textarea:focus {
 
 @media (max-width: 768px) {
     .pw-row-label { flex-basis: 100%; }
+}
+
+/* ========== Experiment Detail Page ========== */
+.back-link {
+    color: var(--primary-light);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+.back-link:hover { text-decoration: underline; }
+
+.expd-info-card {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    margin-bottom: 24px;
+    overflow: hidden;
+}
+.expd-info-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #f0f0f0;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.expd-title {
+    margin: 0;
+    font-size: 1.4rem;
+    color: var(--primary-color);
+}
+.expd-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.expd-info-body { padding: 0 24px 20px; }
+.expd-info-section { margin-top: 16px; }
+.expd-info-section h3 {
+    color: var(--primary-color);
+    font-size: 0.95rem;
+    margin: 0 0 6px 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #eee;
+}
+.expd-info-section ul { margin: 0; padding-left: 20px; }
+.expd-info-section li { margin-bottom: 2px; font-size: 0.9rem; }
+
+.expd-section {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    padding: 20px 24px;
+    margin-bottom: 24px;
+}
+.expd-section-title {
+    margin: 0 0 12px 0;
+    font-size: 1.1rem;
+    color: var(--primary-color);
+}
+.expd-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.expd-section-header .expd-section-title { margin-bottom: 0; }
+
+.expd-feedback-filters {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+/* Event chips */
+.expd-events-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.expd-event-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #f8f9fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 6px 12px;
+    text-decoration: none;
+    color: inherit;
+    font-size: 0.85rem;
+    transition: background 0.15s;
+}
+.expd-event-chip:hover { background: #eef; }
+.expd-event-date { color: #888; font-size: 0.8rem; font-weight: 600; }
+.expd-event-title { font-weight: 500; }
+
+/* Fiscal Year Groups */
+.fy-group { margin-bottom: 8px; }
+.fy-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+}
+.fy-header:hover { background: #f0f0f5; }
+.fy-toggle { font-size: 0.7rem; color: #888; width: 14px; text-align: center; }
+.fy-header.open .fy-toggle { content: ''; }
+.fy-label { font-weight: 700; color: var(--primary-color); font-size: 0.95rem; }
+.fy-count {
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: #888;
+    background: #eee;
+    padding: 1px 8px;
+    border-radius: 10px;
+}
+.fy-body { padding: 8px 0 0 0; }
+
+/* Feedback Entries */
+.fb-entry {
+    border-left: 3px solid #ddd;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    border-radius: 0 6px 6px 0;
+    background: #fafafa;
+    transition: background 0.15s;
+}
+.fb-entry:hover { background: #f5f5fa; }
+.fb-entry.fb-positive { border-left-color: #10b981; }
+.fb-entry.fb-reflection { border-left-color: #f59e0b; }
+
+.fb-entry-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+.fb-icon { font-size: 0.85rem; }
+.fb-positive .fb-icon { color: #10b981; }
+.fb-reflection .fb-icon { color: #f59e0b; }
+.fb-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 8px;
+}
+.fb-positive .fb-label { background: #ecfdf5; color: #065f46; }
+.fb-reflection .fb-label { background: #fffbeb; color: #92400e; }
+
+.fb-event-tag {
+    font-size: 0.78rem;
+    color: #555;
+    background: #e8e6f0;
+    padding: 1px 8px;
+    border-radius: 8px;
+}
+.fb-event-tag.fb-general { background: #f0f0f0; color: #888; }
+.fb-date { font-size: 0.78rem; color: #999; margin-left: auto; }
+.fb-del-btn {
+    background: none;
+    border: none;
+    color: #ccc;
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 2px 4px;
+    line-height: 1;
+}
+.fb-del-btn:hover { color: #c92a2a; }
+
+.fb-entry-text {
+    font-size: 0.9rem;
+    color: #333;
+    white-space: pre-wrap;
+    line-height: 1.6;
+}
+
+/* ========== Event Detail: Feedback Section Headers ========== */
+.feedback-section-th {
+    font-size: 0.88rem !important;
+    font-weight: 700 !important;
+    padding: 8px 15px !important;
+    letter-spacing: 0.02em;
+}
+.event-fb-th {
+    background: #f0eefc !important;
+    color: #464775 !important;
+    border-left: 4px solid #464775;
+}
+.exp-fb-th {
+    background: #ecfdf5 !important;
+    color: #065f46 !important;
+    border-left: 4px solid #10b981;
+}
+
+/* ========== Event Feedback Sections ========== */
+.feedback-section-label {
+    font-size: 0.95rem;
+    font-weight: 700;
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin: 0 0 12px 0;
+}
+.event-feedback-label {
+    background: #f0eefc;
+    color: var(--primary-color);
+    border-left: 4px solid var(--primary-color);
+}
+.exp-feedback-label {
+    background: #ecfdf5;
+    color: #065f46;
+    border-left: 4px solid #10b981;
+}
+
+.exp-fb-card {
+    background: #f8f9fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 10px;
+}
+.exp-fb-card-title {
+    font-weight: 700;
+    color: #10b981;
+    margin: 0 0 10px 0;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.exp-fb-card-title a {
+    color: #10b981;
+    text-decoration: underline dotted;
+    font-weight: 700;
+}
+.exp-fb-card-title a:hover { color: #059669; }
+
+.exp-fb-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+.exp-fb-row label {
+    flex-shrink: 0;
+    width: 70px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #666;
+    padding-top: 8px;
+}
+.exp-fb-row textarea { flex: 1; }
+
+/* Display mode: experiment feedback links */
+.expfb-display-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #f8fdf8;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    border-left: 3px solid #10b981;
+}
+.expfb-display-item .exp-name {
+    font-weight: 600;
+    color: #10b981;
+}
+.expfb-display-item .exp-count {
+    font-size: 0.78rem;
+    color: #888;
+}
+.expfb-display-item a {
+    margin-left: auto;
+    color: var(--primary-light);
+    text-decoration: none;
+    font-size: 0.85rem;
+}
+.expfb-display-item a:hover { text-decoration: underline; }
+
+@media (max-width: 768px) {
+    .expd-info-header { padding: 14px 16px; }
+    .expd-info-body { padding: 0 16px 14px; }
+    .expd-section { padding: 14px 16px; }
+    .expd-section-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .expd-feedback-filters { flex-direction: row; flex-wrap: wrap; }
+    .expd-feedback-filters .search-input { max-width: 100% !important; margin-left: 0 !important; width: 100%; }
+    .fb-entry-header { gap: 4px; }
+    .fb-date { margin-left: 0; width: 100%; }
+    .exp-fb-row { flex-direction: column; gap: 4px; }
+    .exp-fb-row label { width: auto; padding-top: 0; }
 }

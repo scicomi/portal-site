@@ -96,9 +96,17 @@ const api = {
     return res.config;
   },
 
+  // 公開設定（表示系のみ）。管理者でなくても取得できる＝全メンバーへ反映するために使う。
+  async getPublicConfig() {
+    const res = await this._post({ action: 'getPublicConfig', token: this.getToken() });
+    if (!res.success) throw new Error(res.error || 'failed');
+    return res.config;
+  },
+
   async adminSetConfig(key, value) {
     const res = await this._post({ action: 'adminSetConfig', token: this.getToken(), adminToken: this.getAdminToken(), key, value });
-    if (!res.success) throw new Error(res.error || 'failed');
+    // invalid_value のときはサーバーの日本語 detail を優先して見せる
+    if (!res.success) throw new Error(res.detail || res.error || 'failed');
     return true;
   },
 

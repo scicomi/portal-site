@@ -609,9 +609,17 @@ function populateFields(cardElement, eventData) {
             displayHtml += `<div class="part-title">【${escapeHtml(p.partName || '部なし')}】</div><div style="margin-bottom: 10px;">`;
             p.items.forEach(item => {
                 if (!item.name && !item.presenter) return;
-                const expName = item.name
-                    ? `<a href="experiments.html?focus=${encodeURIComponent(item.name)}" class="exp-link-inline" title="実験内容を見る">${escapeHtml(item.name)}</a>`
-                    : '(未定)';
+                let expName;
+                if (item.name) {
+                    const allExp = (api.loadCache('experiments') || {}).items || [];
+                    const match = allExp.find(e => e.Name === item.name);
+                    const href = match
+                        ? `experiment-detail.html?id=${encodeURIComponent(match.ID)}`
+                        : `experiments.html?focus=${encodeURIComponent(item.name)}`;
+                    expName = `<a href="${href}" class="exp-link-inline" title="実験内容を見る">${escapeHtml(item.name)}</a>`;
+                } else {
+                    expName = '(未定)';
+                }
                 displayHtml += `<span class="tag tag-exp">${expName} <span class="tag-presenter">(${escapeHtml(item.presenter || '未定')})</span></span>`;
             });
             displayHtml += `</div>`;
@@ -658,6 +666,57 @@ function populateFields(cardElement, eventData) {
     const meetingTitleInput = cardElement.querySelector('#meeting-name-input');
     if (meetingTitleInput && isMeeting) {
         meetingTitleInput.value = eventData.Title || '';
+    }
+
+    // Experiment feedback display (per-experiment links to detail pages)
+    const expFbDisplay = cardElement.querySelector('.display-mode[data-field="ExpFeedback_Display"]');
+    if (expFbDisplay) {
+        const expNames = new Set();
+        partsData.forEach(p => (p.items || []).forEach(it => { if (it.name) expNames.add(it.name); }));
+        if (expNames.size > 0) {
+            const experiments = (api.loadCache('experiments') || {}).items || [];
+            expFbDisplay.innerHTML = [...expNames].map(name => {
+                const exp = experiments.find(e => e.Name === name);
+                if (!exp) return `<div class="expfb-display-item"><span class="exp-name">${escapeHtml(name)}</span><span class="exp-count">未登録</span></div>`;
+                const cnt = parseFeedbackEntries(exp.Positives).length + parseFeedbackEntries(exp.Reflections).length;
+                return `<div class="expfb-display-item">
+                    <span class="exp-name">${escapeHtml(name)}</span>
+                    <span class="exp-count">振り返り ${cnt}件</span>
+                    <a href="experiment-detail.html?id=${encodeURIComponent(exp.ID)}">詳細を見る &rarr;</a>
+                </div>`;
+            }).join('');
+        } else {
+            expFbDisplay.innerHTML = '<span style="color:#999;font-size:0.9rem;">実験が登録されていません</span>';
+        }
+    }
+
+    // Experiment feedback edit cards
+    const expFbEdit = cardElement.querySelector('[data-field="ExpFeedback_Edit"]');
+    if (expFbEdit) {
+        const expNames = new Set();
+        partsData.forEach(p => (p.items || []).forEach(it => { if (it.name) expNames.add(it.name); }));
+        if (expNames.size > 0) {
+            const experiments = (api.loadCache('experiments') || {}).items || [];
+            expFbEdit.innerHTML = [...expNames].map(name => {
+                const exp = experiments.find(e => e.Name === name);
+                const detailLink = exp
+                    ? `<a href="experiment-detail.html?id=${encodeURIComponent(exp.ID)}" target="_blank" onclick="event.stopPropagation();">${escapeHtml(name)}</a>`
+                    : escapeHtml(name);
+                return `<div class="exp-fb-card" data-exp-name="${escapeAttr(name)}">
+                    <div class="exp-fb-card-title">${detailLink}</div>
+                    <div class="exp-fb-row">
+                        <label>良かった点</label>
+                        <textarea class="e1-input exp-fb-positive" rows="2" placeholder="この実験で良かったこと"></textarea>
+                    </div>
+                    <div class="exp-fb-row">
+                        <label>改善点</label>
+                        <textarea class="e1-input exp-fb-reflection" rows="2" placeholder="この実験の改善点"></textarea>
+                    </div>
+                </div>`;
+            }).join('');
+        } else {
+            expFbEdit.innerHTML = '<p style="color:#999; font-size:0.85rem;">実験が登録されていないため、実験の振り返りは入力できません。</p>';
+        }
     }
 
     // File processing (Phase 2: Drive upload)
@@ -1083,9 +1142,72 @@ async function saveEventFromModal() {
     renderEvents();
     refreshCalendar();
 
+    // Save experiment feedback (if any)
+    await saveExperimentFeedback(card, savedEvent);
+
     closeModal();
     tempNewEvent = null;
     toast('保存しました', 'success');
+}
+
+async function saveExperimentFeedback(card, eventData) {
+    const fbCards = card.querySelectorAll('.exp-fb-card');
+    if (!fbCards.length) return;
+
+    let experiments = (api.loadCache('experiments') || {}).items;
+    if (!experiments) {
+        try { experiments = await api.list('experiments'); api.saveCache('experiments', experiments); } catch (_) { return; }
+    }
+
+    for (const fbCard of fbCards) {
+        const expName = fbCard.dataset.expName;
+        const posText = (fbCard.querySelector('.exp-fb-positive')?.value || '').trim();
+        const refText = (fbCard.querySelector('.exp-fb-reflection')?.value || '').trim();
+        if (!posText && !refText) continue;
+
+        const exp = experiments.find(e => e.Name === expName);
+        if (!exp) continue;
+
+        let changed = false;
+
+        if (posText) {
+            const entries = parseFeedbackEntries(exp.Positives);
+            entries.push({
+                id: genFeedbackId(),
+                date: eventData.Date || todayISO(),
+                eventId: eventData.ID || '',
+                eventTitle: eventData.Title || '',
+                text: posText
+            });
+            exp.Positives = stringifyFeedbackEntries(entries);
+            changed = true;
+        }
+
+        if (refText) {
+            const entries = parseFeedbackEntries(exp.Reflections);
+            entries.push({
+                id: genFeedbackId(),
+                date: eventData.Date || todayISO(),
+                eventId: eventData.ID || '',
+                eventTitle: eventData.Title || '',
+                text: refText
+            });
+            exp.Reflections = stringifyFeedbackEntries(entries);
+            changed = true;
+        }
+
+        if (changed) {
+            try {
+                const saved = await api.save('experiments', { ...exp, _baseUpdatedAt: exp.UpdatedAt || '' });
+                const idx = experiments.findIndex(e => e.ID === exp.ID);
+                if (idx >= 0) experiments[idx] = saved;
+            } catch (e) {
+                console.warn('Experiment feedback save failed for', expName, e);
+            }
+        }
+    }
+
+    api.saveCache('experiments', experiments);
 }
 
 // 日付変更時に期限表示を即時更新する（期限は自動計算のみ・表示専用スパン）。

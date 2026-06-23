@@ -184,6 +184,9 @@
                                 </td>
                             </tr>
                             <tr>
+                                <th colspan="2" class="feedback-section-th event-fb-th">イベント・会場の振り返り</th>
+                            </tr>
+                            <tr>
                                 <th>良かった点</th>
                                 <td>
                                     <div class="field-value display-mode text-area-view" data-field="Positives"
@@ -191,10 +194,18 @@
                                 </td>
                             </tr>
                             <tr>
-                                <th>反省点</th>
+                                <th>改善点</th>
                                 <td>
                                     <div class="field-value display-mode text-area-view" data-field="Reflections"
                                         style="white-space: pre-wrap;"></div>
+                                </td>
+                            </tr>
+                            <tr class="event-only-section">
+                                <th colspan="2" class="feedback-section-th exp-fb-th">実験の振り返り</th>
+                            </tr>
+                            <tr class="event-only-section">
+                                <td colspan="2">
+                                    <div class="field-value display-mode" data-field="ExpFeedback_Display"></div>
                                 </td>
                             </tr>
                         </table>
@@ -338,14 +349,22 @@
                                 <textarea class="e1-input edit-mode" data-field="Remarks" rows="4"></textarea>
                             </div>
 
+                            <h3 class="feedback-section-label event-feedback-label">イベント・会場の振り返り</h3>
                             <div class="e1-group">
                                 <label class="e1-label">良かった点</label>
-                                <textarea class="e1-input edit-mode" data-field="Positives" rows="3" placeholder="会場・運営・実験などで良かったこと"></textarea>
+                                <textarea class="e1-input edit-mode" data-field="Positives" rows="3" placeholder="会場・運営で良かったこと"></textarea>
+                            </div>
+                            <div class="e1-group">
+                                <label class="e1-label">改善点</label>
+                                <textarea class="e1-input edit-mode" data-field="Reflections" rows="3" placeholder="会場・運営の改善点"></textarea>
                             </div>
 
-                            <div class="e1-group">
-                                <label class="e1-label">反省点</label>
-                                <textarea class="e1-input edit-mode" data-field="Reflections" rows="3" placeholder="会場・運営・実験などの改善点"></textarea>
+                            <div class="event-only-section">
+                                <h3 class="feedback-section-label exp-feedback-label">実験の振り返り</h3>
+                                <p style="font-size:0.82rem; color:#888; margin:0 0 10px;">
+                                    各実験の気づきを記録できます。入力した内容は実験の詳細ページに蓄積されます。
+                                </p>
+                                <div class="exp-feedback-container" data-field="ExpFeedback_Edit"></div>
                             </div>
 
                             <div class="e1-group event-only-section">
