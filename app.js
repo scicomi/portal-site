@@ -98,7 +98,7 @@ function renderHeader(activePage) {
       </div>
     </div>
     <nav class="app-nav">
-      ${CONFIG.NAV_ITEMS.map(item => `
+      ${CONFIG.NAV_ITEMS.filter(item => !item.adminOnly || isAdmin).map(item => `
         <a href="${item.href}" class="nav-link ${item.page === activePage ? 'active' : ''}">
           ${item.label}
         </a>
@@ -255,6 +255,19 @@ async function showAdminSettingsModal() {
                 <button class="btn btn-primary-solid" onclick="adminSaveConfig('gemini_api_key')" style="width:auto;padding:8px 16px;">保存</button>
               </div>
             </div>
+            <div class="e1-group">
+              <label class="e1-label">使用モデル</label>
+              <p class="admin-settings-desc" style="margin-top:0;">「レート制限」が頻発する場合、無料枠に余裕のあるモデルへ切り替えてください。</p>
+              <div style="display:flex;gap:8px;">
+                <select id="admin-cfg-gemini-model" class="e1-input" style="flex:1;">
+                  <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite（無料枠 15 RPM・推奨）</option>
+                  <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+                  <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                  <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                </select>
+                <button class="btn btn-primary-solid" onclick="adminSaveConfig('gemini_model')" style="width:auto;padding:8px 16px;">保存</button>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -275,6 +288,15 @@ async function showAdminSettingsModal() {
     document.getElementById('admin-cfg-password').value = cfg.password || '';
     document.getElementById('admin-cfg-admin-password').value = cfg.admin_password || '';
     document.getElementById('admin-cfg-gemini-key').value = cfg.gemini_api_key || '';
+    const modelSel = document.getElementById('admin-cfg-gemini-model');
+    if (modelSel) {
+      const cur = cfg.gemini_model || 'gemini-2.0-flash-lite';
+      // 既存オプションに無いモデル名なら選択肢を追加してから選択
+      if (![...modelSel.options].some(o => o.value === cur)) {
+        modelSel.add(new Option(cur, cur));
+      }
+      modelSel.value = cur;
+    }
     document.getElementById('admin-settings-loading').style.display = 'none';
     document.getElementById('admin-settings-content').style.display = 'block';
   } catch (e) {
@@ -292,7 +314,8 @@ async function adminSaveConfig(key) {
   const map = {
     password: 'admin-cfg-password-new',
     admin_password: 'admin-cfg-admin-password-new',
-    gemini_api_key: 'admin-cfg-gemini-key'
+    gemini_api_key: 'admin-cfg-gemini-key',
+    gemini_model: 'admin-cfg-gemini-model'
   };
   const inputId = map[key];
   if (!inputId) return;
@@ -339,7 +362,9 @@ function showPasswordModal(onSuccess) {
     <div class="pw-overlay">
       <div class="pw-box">
         <h2>ログイン</h2>
-        <p>サークルメンバー共通パスワードを入力してください。</p>
+        <p>パスワードを入力してください。<br>
+          <span style="font-size:0.8rem;color:#888;">幹部パスワードを入力すると、自動的に管理者モードになります。</span>
+        </p>
         <input id="pw-input" type="password" placeholder="パスワード" autofocus>
         <div id="pw-error" class="pw-error"></div>
         <button id="pw-submit" class="btn btn-primary-solid">ログイン</button>
@@ -358,10 +383,16 @@ function showPasswordModal(onSuccess) {
     submitBtn.disabled = true;
     submitBtn.textContent = '認証中...';
     try {
-      const ok = await api.auth(input.value);
-      if (ok) {
+      const result = await api.login(input.value);
+      if (result.ok) {
         modal.remove();
-        await onSuccess();
+        if (result.role === 'admin') {
+          // 幹部パスワード → 自動で管理者モード。パスワード一覧ページへ。
+          toast('管理者としてログインしました', 'success');
+          location.href = 'passwords.html';
+        } else {
+          await onSuccess();
+        }
       } else {
         errEl.textContent = 'パスワードが違います';
         submitBtn.disabled = false;

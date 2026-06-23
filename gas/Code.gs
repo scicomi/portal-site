@@ -18,6 +18,7 @@ const SHEET_ID = '19C7hff94sp6s6rsbhwMPeIvOhhqqbOK-kj9edSu2UPc';
 const EVENTS_SHEET = 'Events';
 const MEMBERS_SHEET = 'Members';
 const EXPERIMENTS_SHEET = 'Experiments';
+const PASSWORDS_SHEET = 'Passwords';
 const CONFIG_SHEET = 'Config';
 const AUDIT_LOG_SHEET = 'AuditLog';
 
@@ -39,6 +40,10 @@ function doGet(e) {
     }
 
     if (action === 'list') {
+      // 機密リソースは GET では返さない（管理者トークン必須・POST 経由のみ）
+      if (isAdminOnlyResource(resource) && !checkAdmin(params.adminToken)) {
+        return jsonResponse({ success: false, error: 'admin_required' });
+      }
       return jsonResponse({ success: true, items: listResource(resource) });
     }
     if (action === 'listAll') {
@@ -99,9 +104,52 @@ function doPost(e) {
       return jsonResponse({ success: true, adminToken: adminToken });
     }
 
+    // --- 統合ログイン（最初の1回でロールを判別） ---
+    // 入力されたパスワードが幹部パスワードと一致すれば管理者トークンも同時に発行し、
+    // クライアントを自動的に管理者モードへ。一般パスワードならメンバーのみ。
+    // ※ 幹部 → メンバーを兼ねる（管理者は全機能を使えるため、メンバートークンも発行）。
+    if (action === 'login') {
+      const inputPw = (body.password || '').trim();
+      const memberPw = getConfig('password').trim();
+      const adminPw = getConfig('admin_password').trim();
+
+      if (inputPw === '') {
+        appendAuditLog('login_fail', '', '');
+        throttleFailedAuth_('member');
+        return jsonResponse({ success: false });
+      }
+
+      // 幹部パスワードを先に判定（一般と同一に設定された場合でも挙動を確定させる）
+      if (adminPw !== '' && inputPw === adminPw) {
+        resetFailedAuth_('member');
+        resetFailedAuth_('admin');
+        appendAuditLog('login_admin', '', '');
+        return jsonResponse({
+          success: true,
+          role: 'admin',
+          token: generateToken('member'),
+          adminToken: generateToken('admin')
+        });
+      }
+
+      if (memberPw !== '' && inputPw === memberPw) {
+        resetFailedAuth_('member');
+        appendAuditLog('login_member', '', '');
+        return jsonResponse({ success: true, role: 'member', token: generateToken('member') });
+      }
+
+      appendAuditLog('login_fail', '', '');
+      throttleFailedAuth_('member');
+      return jsonResponse({ success: false });
+    }
+
     // --- list/listAll (POST版) ---
     if (action === 'list') {
       if (!checkAuth(token)) return jsonResponse({ success: false, error: 'unauthorized' });
+      // パスワード一覧など機密リソースは管理者トークン必須
+      if (isAdminOnlyResource(resource) && !checkAdmin(body.adminToken)) {
+        return jsonResponse({ success: false, error: 'admin_required' });
+      }
       return jsonResponse({ success: true, items: listResource(resource) });
     }
     if (action === 'listAll') {
@@ -120,10 +168,15 @@ function doPost(e) {
     }
 
     if (action === 'save') {
+      // パスワード一覧など機密リソースの作成・更新は管理者トークン必須
+      if (isAdminOnlyResource(resource) && !checkAdmin(body.adminToken)) {
+        return jsonResponse({ success: false, error: 'admin_required' });
+      }
       try {
         const isNew = !(body.item && body.item.ID);
         const saved = saveResource(resource, body.item || {});
-        appendAuditLog(isNew ? 'create' : 'update', resource + ':' + saved.ID, token, 'member');
+        const role = isAdminOnlyResource(resource) ? 'admin' : 'member';
+        appendAuditLog(isNew ? 'create' : 'update', resource + ':' + saved.ID, isAdminOnlyResource(resource) ? body.adminToken : token, role);
         return jsonResponse({ success: true, item: saved });
       } catch (err) {
         if (String(err).indexOf('conflict') >= 0) {
@@ -175,7 +228,8 @@ function doPost(e) {
         config: {
           password: getConfig('password'),
           admin_password: getConfig('admin_password'),
-          gemini_api_key: getConfig('gemini_api_key')
+          gemini_api_key: getConfig('gemini_api_key'),
+          gemini_model: getConfig('gemini_model') || GEMINI_MODEL
         }
       });
     }
@@ -185,7 +239,7 @@ function doPost(e) {
       if (!checkAdmin(body.adminToken)) {
         return jsonResponse({ success: false, error: 'admin_required' });
       }
-      const allowedKeys = ['password', 'admin_password', 'gemini_api_key'];
+      const allowedKeys = ['password', 'admin_password', 'gemini_api_key', 'gemini_model'];
       const key = body.key || '';
       if (allowedKeys.indexOf(key) < 0) {
         return jsonResponse({ success: false, error: 'forbidden_key' });
@@ -381,8 +435,18 @@ function trimAuditLog(keepDays) {
 const RESOURCE_REGISTRY = {
   events:      { sheet: EVENTS_SHEET,      idPrefix: 'ev_', jsonFields: ['PartsList', 'Files'], timeFields: ['TimeStart', 'TimeEnd'] },
   members:     { sheet: MEMBERS_SHEET,     idPrefix: 'mb_', jsonFields: [], timeFields: [] },
-  experiments: { sheet: EXPERIMENTS_SHEET, idPrefix: 'ex_', jsonFields: [], timeFields: [] }
+  experiments: { sheet: EXPERIMENTS_SHEET, idPrefix: 'ex_', jsonFields: [], timeFields: [] },
+  // パスワード一覧（外部サービスの認証情報）: 閲覧・編集とも管理者専用
+  passwords:   { sheet: PASSWORDS_SHEET,   idPrefix: 'pw_', jsonFields: [], timeFields: [], adminOnly: true }
 };
+
+// 機密リソース（メンバーには公開せず、管理者トークン必須）。
+const ADMIN_ONLY_RESOURCES = Object.keys(RESOURCE_REGISTRY)
+  .filter(function (r) { return RESOURCE_REGISTRY[r].adminOnly; });
+
+function isAdminOnlyResource(resource) {
+  return ADMIN_ONLY_RESOURCES.indexOf(resource) >= 0;
+}
 
 function getResourceDef(resource) {
   const def = RESOURCE_REGISTRY[resource];
@@ -566,6 +630,11 @@ const EXPERIMENTS_HEADERS = [
   'ID', 'Name', 'Category', 'Materials', 'Preparation', 'Flow', 'Notes',
   'SlidesURL', 'Reflections', 'Positives', 'Active', 'CreatedAt', 'UpdatedAt'
 ];
+// パスワード一覧（外部サービスの認証情報）。管理者専用。
+const PASSWORDS_HEADERS = [
+  'ID', 'SiteName', 'URL', 'LoginID', 'Password', 'Note',
+  'CreatedAt', 'UpdatedAt'
+];
 
 function setupSpreadsheet() {
   try {
@@ -573,6 +642,7 @@ function setupSpreadsheet() {
     ensureSheet(ss, EVENTS_SHEET, EVENTS_HEADERS);
     ensureSheet(ss, MEMBERS_SHEET, MEMBERS_HEADERS);
     ensureSheet(ss, EXPERIMENTS_SHEET, EXPERIMENTS_HEADERS);
+    ensureSheet(ss, PASSWORDS_SHEET, PASSWORDS_HEADERS);
     ensureConfigSheet(ss);
     ensureAuditLogSheet(ss);
     SpreadsheetApp.flush();
@@ -623,6 +693,7 @@ function ensureConfigSheet(ss) {
       ['password', 'CHANGE_ME_' + Math.random().toString(36).slice(2, 8)],
       ['admin_password', 'ADMIN_' + Math.random().toString(36).slice(2, 10)],
       ['gemini_api_key', ''],
+      ['gemini_model', GEMINI_MODEL],
       ['storage_warn_mb', 60],
       ['storage_block_mb', 100],
       ['file_max_mb', 10],
@@ -651,6 +722,7 @@ function ensureConfigSheet(ss) {
     };
     addIfMissing('admin_password', 'ADMIN_' + Math.random().toString(36).slice(2, 10));
     addIfMissing('gemini_api_key', '');
+    addIfMissing('gemini_model', GEMINI_MODEL);
     addIfMissing('file_max_mb', 10);
     addIfMissing('file_sharing', 'domain');
     addIfMissing('annual_report_enabled', 'true');
@@ -978,8 +1050,42 @@ function geminiUsageInc_(today) {
   return next;
 }
 
+// Google の 429（RESOURCE_EXHAUSTED）レスポンス本文を解析し、
+// 「1分あたり(RPM)か / 1日あたり(RPD)か」「推奨再試行秒数」「人間向け詳細」を取り出す。
+// これまでは本文を捨てていたため、無料枠のどの上限に当たったのか判別できなかった。
+function parseGemini429_(bodyText) {
+  var info = { scope: 'minute', retrySec: 0, detail: '' };
+  var obj = null;
+  try { obj = JSON.parse(bodyText); } catch (_) {}
+  var err = obj && obj.error ? obj.error : null;
+  if (err && err.message) info.detail = String(err.message);
+
+  var details = (err && err.details) || [];
+  for (var i = 0; i < details.length; i++) {
+    var d = details[i] || {};
+    var t = String(d['@type'] || '');
+    // RetryInfo: "30s" のような推奨待機時間
+    if (t.indexOf('RetryInfo') >= 0 && d.retryDelay) {
+      // "27s" / "1.5s" → 先頭の数値を秒として採用（小数は切り捨て）
+      var sec = parseInt(String(d.retryDelay), 10);
+      if (!isNaN(sec)) info.retrySec = Math.max(sec, 1);
+    }
+    // QuotaFailure: どの枠を超えたか（…PerDay… なら日次）
+    if (t.indexOf('QuotaFailure') >= 0 && d.violations) {
+      for (var j = 0; j < d.violations.length; j++) {
+        var v = d.violations[j] || {};
+        var id = String(v.quotaId || '') + ' ' + String(v.quotaMetric || '');
+        if (/per\s*day|PerDay/i.test(id)) info.scope = 'day';
+      }
+    }
+  }
+  // details が無い場合は本文の文言から日次を推定
+  if (info.scope === 'minute' && /per\s*day|daily|per day/i.test(info.detail)) info.scope = 'day';
+  return info;
+}
+
 function handleGeminiProxy(body) {
-  var apiKey = getConfig('gemini_api_key');
+  var apiKey = (getConfig('gemini_api_key') || '').trim();
   if (!apiKey) {
     return jsonResponse({ success: false, error: 'gemini_key_not_configured' });
   }
@@ -992,19 +1098,25 @@ function handleGeminiProxy(body) {
     message = message.slice(0, 2000); // 過大入力を切り詰め（コスト・悪用対策）
   }
 
+  // 使用モデルは Config の gemini_model で差し替え可能（キーがそのモデルの無料枠を
+  // 持たない／モデルが廃止された場合に、コード変更なしで別モデルへ切り替えるため）。
+  var model = (getConfig('gemini_model') || '').trim() || GEMINI_MODEL;
+
   // システムプロンプトはサーバー側で固定生成する。
   // クライアントから渡された systemPrompt は信用しない（API キーの汎用 LLM 化を防止）。
   var systemPrompt = buildBotSystemPrompt_();
 
   var cache = CacheService.getScriptCache();
 
-  // セッション単位の毎分レート制限（1セッションが全体枠を使い切るのを防ぐ）
+  // セッション単位の毎分レート制限（1セッションが全体枠を使い切るのを防ぐ）。
+  // 無料枠の実上限（gemini-2.0-flash-lite で 15 RPM/プロジェクト全体）に合わせる。
   var th = body.token ? hmacHex_(body.token).slice(0, 16) : 'anon';
   var rlKey = 'gemini_rl_' + th + '_' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMMddHHmm');
   var rlCount = (parseInt(cache.get(rlKey), 10) || 0) + 1;
   cache.put(rlKey, String(rlCount), 120);
-  if (rlCount > 20) {
-    return jsonResponse({ success: false, error: 'RATE_LIMIT' });
+  if (rlCount > 12) {
+    return jsonResponse({ success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute', retrySec: 30,
+      detail: '短時間に送信が集中したため、このセッションを一時的に制限しました。' });
   }
 
   // 日次使用量チェック（全体枠）。
@@ -1013,10 +1125,10 @@ function handleGeminiProxy(body) {
   var today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
   var usage = geminiUsageGet_(today);
   if (usage >= GEMINI_DAILY_LIMIT) {
-    return jsonResponse({ success: false, error: 'DAILY_LIMIT', usage: usage, limit: GEMINI_DAILY_LIMIT });
+    return jsonResponse({ success: false, error: 'RATE_LIMIT_DAILY', scope: 'day', usage: usage, limit: GEMINI_DAILY_LIMIT });
   }
 
-  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent?key=' + encodeURIComponent(apiKey);
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey);
   var payload = {
     contents: [{ role: 'user', parts: [{ text: message }] }],
     generationConfig: { responseMimeType: 'application/json' }
@@ -1025,7 +1137,10 @@ function handleGeminiProxy(body) {
     payload.systemInstruction = { parts: [{ text: systemPrompt }] };
   }
 
-  var maxRetries = 2;
+  // サーバー側は短い再試行のみ（ブラウザ側 fetch を長く待たせない）。
+  // 1分枠(RPM)の本格的な待機はクライアントに retrySec を返して任せる。
+  var maxRetries = 1;
+  var last429 = null;
   for (var attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       var res = UrlFetchApp.fetch(url, {
@@ -1042,26 +1157,48 @@ function handleGeminiProxy(body) {
         return jsonResponse({ success: true, data: data, usage: newUsage, limit: GEMINI_DAILY_LIMIT });
       }
 
-      if (code === 429 && attempt < maxRetries) {
-        Utilities.sleep(1200 * Math.pow(2, attempt));
-        continue;
+      var errText = res.getContentText() || '';
+
+      if (code === 429) {
+        last429 = parseGemini429_(errText);
+        // 1分枠かつ短い待機で済むなら、サーバー側で一度だけ即リトライ
+        if (last429.scope !== 'day' && attempt < maxRetries) {
+          Utilities.sleep(Math.min((last429.retrySec || 2) * 1000, 3000));
+          continue;
+        }
+        if (last429.scope === 'day') {
+          return jsonResponse({ success: false, error: 'RATE_LIMIT_DAILY', scope: 'day',
+            retrySec: last429.retrySec, detail: last429.detail.slice(0, 300) });
+        }
+        return jsonResponse({ success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute',
+          retrySec: last429.retrySec || 30, detail: last429.detail.slice(0, 300) });
       }
 
-      var errText = res.getContentText().slice(0, 500);
-      if (code === 400 && errText.indexOf('API_KEY_INVALID') >= 0) {
+      var shortErr = errText.slice(0, 500);
+      if (code === 400 && shortErr.indexOf('API_KEY_INVALID') >= 0) {
         return jsonResponse({ success: false, error: 'API_KEY_INVALID' });
       }
-      if (code === 429) {
-        return jsonResponse({ success: false, error: 'RATE_LIMIT' });
+      if (code === 403) {
+        // 権限・APIの有効化漏れ・地域制限など。本文をそのまま返して原因究明できるように。
+        return jsonResponse({ success: false, error: 'API_FORBIDDEN', detail: shortErr });
       }
-      return jsonResponse({ success: false, error: 'API_ERROR_' + code });
+      if (code === 404) {
+        // モデル名が無効／廃止。管理者がモデルを切り替えれば直る。
+        return jsonResponse({ success: false, error: 'MODEL_NOT_FOUND', detail: 'model=' + model });
+      }
+      return jsonResponse({ success: false, error: 'API_ERROR_' + code, detail: shortErr });
     } catch (e) {
       if (attempt < maxRetries) {
-        Utilities.sleep(1200 * Math.pow(2, attempt));
+        Utilities.sleep(1500);
         continue;
       }
-      return jsonResponse({ success: false, error: 'NETWORK_ERROR' });
+      return jsonResponse({ success: false, error: 'NETWORK_ERROR', detail: String(e).slice(0, 200) });
     }
+  }
+  // ループを抜けた = 429 リトライ後も回復せず
+  if (last429) {
+    return jsonResponse({ success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute',
+      retrySec: last429.retrySec || 30, detail: last429.detail.slice(0, 300) });
   }
   return jsonResponse({ success: false, error: 'NETWORK_ERROR' });
 }
