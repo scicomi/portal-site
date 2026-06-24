@@ -2295,6 +2295,40 @@ textarea:focus {
     font-style: italic;
 }
 
+/* ========== Event Modal Tabs ========== */
+.event-tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid #e1dfdd;
+    margin-bottom: 16px;
+}
+.event-tab {
+    padding: 10px 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #666;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    font-family: inherit;
+    transition: color 0.15s;
+}
+.event-tab.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+.event-tab:hover:not(.active) {
+    color: #252423;
+}
+.event-tab-pane.hidden {
+    display: none !important;
+}
+.event-tab-pane[data-tab-pane="feedback"] {
+    padding: 8px 0;
+}
+
 /* ========== Furigana Display ========== */
 .member-furigana {
     display: block;
@@ -2303,6 +2337,88 @@ textarea:focus {
     line-height: 1.2;
     letter-spacing: 0.05em;
     font-weight: 400;
+}
+
+/* ========== Experiment Detail Tabs ========== */
+.expd-tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid #e1dfdd;
+    margin-bottom: 16px;
+    background: white;
+    border-radius: 8px 8px 0 0;
+    padding: 0 8px;
+}
+.expd-tab {
+    padding: 12px 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #666;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    font-family: inherit;
+    transition: color 0.15s;
+}
+.expd-tab.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+.expd-tab:hover:not(.active) {
+    color: #252423;
+}
+.expd-tab-pane.hidden {
+    display: none !important;
+}
+
+/* ========== Photo Gallery ========== */
+.photo-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+}
+.photo-item {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    aspect-ratio: 4/3;
+    background: #f0f0f0;
+    border: 1px solid #e1dfdd;
+}
+.photo-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    cursor: pointer;
+}
+.photo-delete {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: rgba(0,0,0,0.6);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+.photo-item:hover .photo-delete {
+    display: flex;
+}
+
+@media (max-width: 600px) {
+    .photo-gallery {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .expd-tab-bar { padding: 0; }
+    .expd-tab { padding: 10px 14px; font-size: 0.85rem; }
 }
 
 /* ========== Experiment Row (flat, no parts) ========== */

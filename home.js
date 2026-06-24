@@ -11,7 +11,7 @@ async function init() {
     const cachedMb = api.loadCache('members');
     const cachedEx = api.loadCache('experiments');
 
-    if (cachedEv) renderEventsCard(cachedEv.items || []);
+    if (cachedEv) { renderEventsCard(cachedEv.items || []); renderFeedbackPending(cachedEv.items || []); }
     if (cachedMb) renderMembersCard(cachedMb.items || []);
     if (cachedEx) renderExperimentsCard(cachedEx.items || []);
     renderStats({
@@ -35,6 +35,7 @@ async function refreshData(isManual = false) {
         api.saveCache('experiments', all.experiments);
 
         renderEventsCard(all.events);
+        renderFeedbackPending(all.events);
         renderMembersCard(all.members);
         renderExperimentsCard(all.experiments);
         renderStats(all);
@@ -160,6 +161,34 @@ function renderMembersCard(members) {
             <li><span class="dl-date" style="min-width:90px;">${escapeHtml(m.Role || '')}</span><span class="dl-title">${escapeHtml(m.Name)}</span></li>
         `).join('')}
     `;
+}
+
+function renderFeedbackPending(events) {
+    const container = document.getElementById('feedback-pending');
+    if (!container) return;
+    const today = todayISO();
+    const pending = (events || [])
+        .filter(e => {
+            if (e.Category === 'general' || e.Category === 'admin') return false;
+            const endDate = e.DateEnd || e.Date_End || e.Date;
+            if (!endDate || endDate >= today) return false;
+            return !(e.Positives || '').trim() && !(e.Reflections || '').trim();
+        })
+        .sort((a, b) => (b.Date || '').localeCompare(a.Date || ''))
+        .slice(0, 5);
+
+    if (pending.length === 0) {
+        container.innerHTML = '<li style="color:#999;justify-content:center;">未記入のイベントはありません</li>';
+        return;
+    }
+    container.innerHTML = pending.map(e => {
+        const c = getEventCategory(e.Category);
+        return `<li onclick="location.href='events.html'" style="cursor:pointer;">
+            <span class="dl-date">${shortDate(e.Date)}</span>
+            <span class="dl-title">${escapeHtml(e.Title || '(無題)')}</span>
+            <span class="dl-badge" style="background:#fef3c7;color:#92400e;">未記入</span>
+        </li>`;
+    }).join('');
 }
 
 function renderExperimentsCard(experiments) {

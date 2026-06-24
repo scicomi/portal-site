@@ -214,15 +214,14 @@ function onPeriodFilter(period) {
  */
 function eventSearchText(e) {
     const parts = [e.Title, e.Location, e.Audience, e.Remarks, e.Belongings, e.Admin_Kyoka, e.Admin_Houkoku];
-    // PartsList から実験名・担当者を抽出
     if (e.PartsList) {
         try {
-            const list = typeof e.PartsList === 'string' ? JSON.parse(e.PartsList) : e.PartsList;
-            (list || []).forEach(p => {
-                if (p.partName) parts.push(p.partName);
-                (p.items || []).forEach(it => { parts.push(it.name); parts.push(it.presenter); });
+            const list = parsePartsList(e.PartsList);
+            list.forEach(it => {
+                parts.push(it.name);
+                if (Array.isArray(it.presenters)) parts.push(...it.presenters);
             });
-        } catch (_) { /* 壊れたJSONは無視 */ }
+        } catch (_) {}
     }
     return parts.filter(Boolean).join(' ').toLowerCase();
 }
@@ -408,6 +407,11 @@ function viewEventInModal(id) {
     }
 
     renderModalForm(eventData, false);
+
+    // Show tab bar for existing events
+    const container = document.getElementById('new-event-form-container');
+    const tabBar = container.querySelector('.event-tab-bar');
+    if (tabBar) tabBar.classList.remove('hidden');
 }
 
 // Calendar toggle
@@ -972,6 +976,13 @@ function startNewEvent(category, template) {
     // We don't push to eventsData yet. We keep it temporary until "Save".
     // Render the form inside the modal using the template, force edit mode
     renderModalForm(newEvent, true);
+
+    // Hide tab bar and feedback tab for new events
+    const container = document.getElementById('new-event-form-container');
+    const tabBar = container.querySelector('.event-tab-bar');
+    if (tabBar) tabBar.classList.add('hidden');
+    const fbPane = container.querySelector('[data-tab-pane="feedback"]');
+    if (fbPane) fbPane.classList.add('hidden');
 }
 
 // Temporary storage for the event currently being created or edited in the modal
@@ -1108,35 +1119,29 @@ async function saveEventFromModal() {
         if (metName) tempNewEvent.Title = metName.value;
     }
 
-    // Collect dynamic lists (Parts structure)
-    const partsContainer = card.querySelector('.parts-container');
-    if (partsContainer) {
-        const blocks = partsContainer.querySelectorAll('.part-block');
-        const partsList = [];
-
-        const flatExps = [];
-        const flatPres = [];
-
-        blocks.forEach(block => {
-            const partName = block.querySelector('.part-name-input').value;
-            const rows = block.querySelectorAll('.dynamic-row');
-            const items = [];
-            rows.forEach(row => {
-                const exp = row.querySelector('.experiment-name').value.trim();
-                const pre = row.querySelector('.presenter-name').value.trim();
-                if (exp || pre) {
-                    items.push({ name: exp, presenter: pre });
-                    flatExps.push(exp);
-                    flatPres.push(pre);
-                }
-            });
-            partsList.push({ partName: partName, items: items });
+    // Collect experiments (flat format)
+    const expContainer = card.querySelector('.experiments-container');
+    if (expContainer) {
+        const rows = expContainer.querySelectorAll('.experiment-row');
+        const collectedExps = [];
+        rows.forEach(row => {
+            const name = (row.querySelector('.experiment-name')?.value || '').trim();
+            const tagContainer = row.querySelector('.presenter-tag-container');
+            const presenters = tagContainer?._tagInput ? tagContainer._tagInput.getValues() : [];
+            if (name || presenters.length > 0) {
+                collectedExps.push({ name, presenters });
+            }
         });
-
-        tempNewEvent.PartsList = JSON.stringify(partsList);
-        tempNewEvent.Experiments = flatExps.join(',');
-        tempNewEvent.Presenters = flatPres.join(',');
+        tempNewEvent.PartsList = JSON.stringify(collectedExps);
     }
+
+    // Collect admin tag inputs
+    card.querySelectorAll('.admin-tag-container').forEach(container => {
+        const field = container.dataset.adminField;
+        if (field && container._tagInput) {
+            tempNewEvent[field] = container._tagInput.getValues().join(', ');
+        }
+    });
 
     // Recalculate deadlines explicitly（ミーティングには書類期限を付けない）
     if (tempNewEvent.Category === 'general' || tempNewEvent.Category === 'admin') {
@@ -1243,6 +1248,57 @@ async function saveExperimentFeedback(card, eventData) {
     }
 
     api.saveCache('experiments', experiments);
+}
+
+// ---- タブ切り替え ----
+
+function switchEventTab(btn) {
+    const card = btn.closest('.event-card') || document.querySelector('#new-event-form-container .event-card');
+    if (!card) return;
+    card.querySelectorAll('.event-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    const target = btn.dataset.tab;
+    card.querySelectorAll('.event-tab-pane').forEach(p => {
+        p.classList.toggle('hidden', p.dataset.tabPane !== target);
+    });
+}
+
+async function saveFeedbackFromTab() {
+    if (!tempNewEvent) return;
+    const container = document.getElementById('new-event-form-container');
+    const card = container.querySelector('.event-card');
+    const eventIndex = eventsData.findIndex(e => e.ID === tempNewEvent.ID);
+    if (eventIndex < 0) { toast('イベントが見つかりません', 'error'); return; }
+
+    const positives = card.querySelector('.fb-tab-positives')?.value || '';
+    const reflections = card.querySelector('.fb-tab-reflections')?.value || '';
+
+    const updated = { ...eventsData[eventIndex] };
+    updated.Positives = positives;
+    updated.Reflections = reflections;
+
+    const gasItem = uiToGas(updated);
+    gasItem._baseUpdatedAt = updated.UpdatedAt || '';
+
+    try {
+        const savedGas = await api.save('events', gasItem);
+        const savedEvent = gasToUi(savedGas);
+        eventsData[eventIndex] = savedEvent;
+        tempNewEvent = { ...savedEvent, Files: Array.isArray(savedEvent.Files) ? [...savedEvent.Files] : [] };
+        api.saveCache('events', eventsData);
+
+        await saveExperimentFeedback(card, savedEvent);
+
+        toast('振り返りを保存しました', 'success');
+    } catch (e) {
+        if (String(e.message).includes('conflict')) {
+            toast('他の人が編集しました。最新を読み込みます。', 'error', 5000);
+            closeModal();
+            await refreshData();
+            return;
+        }
+        toast('保存失敗: ' + e.message, 'error');
+    }
 }
 
 // 日付変更時に期限表示を即時更新する（期限は自動計算のみ・表示専用スパン）。
