@@ -98,6 +98,7 @@ function renderPage() {
 
     renderEventsSection();
     renderFeedback();
+    renderPhotos();
     populateEventDropdown();
 }
 
@@ -110,7 +111,10 @@ function renderEventsSection() {
             const raw = ev.PartsList || ev.partsList;
             parts = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
         } catch (_) {}
-        return parts.some(p => (p.items || []).some(it => it.name === expName));
+        return parts.some(p => {
+            if (p.items) return p.items.some(it => it.name === expName);
+            return p.name === expName;
+        });
     }).sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
 
     const sec = document.getElementById('expd-events-section');
@@ -325,5 +329,112 @@ async function deleteFeedbackEntry(fbId, type) {
 function goEdit() {
     if (currentExp) {
         location.href = 'experiments.html?edit=' + currentExp.ID;
+    }
+}
+
+// ---- Tab switching ----
+
+function switchExpTab(btn) {
+    document.querySelectorAll('.expd-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    const target = btn.dataset.tab;
+    document.querySelectorAll('.expd-tab-pane').forEach(p => {
+        p.classList.toggle('hidden', p.dataset.tabPane !== target);
+    });
+}
+
+// ---- Photo Gallery ----
+
+function renderPhotos() {
+    const gallery = document.getElementById('expd-photo-gallery');
+    if (!gallery || !currentExp) return;
+
+    let photos = [];
+    try { photos = JSON.parse(currentExp.Photos || '[]'); } catch (_) {}
+    if (!Array.isArray(photos)) photos = [];
+
+    const adminBtn = document.querySelector('.admin-only-btn');
+    if (adminBtn) {
+        adminBtn.classList.toggle('hidden', !api.isAdmin() || photos.length >= 5);
+    }
+
+    if (photos.length === 0) {
+        gallery.innerHTML = '<p class="empty-state" style="padding:30px 20px;">写真はまだありません</p>';
+        return;
+    }
+
+    gallery.innerHTML = photos.map((p, i) => `
+        <div class="photo-item">
+            <img src="${escapeAttr(p.url)}" alt="${escapeAttr(p.name || '')}" loading="lazy">
+            ${api.isAdmin() ? `<button class="photo-delete" onclick="deletePhoto(${i})" title="削除">✕</button>` : ''}
+        </div>
+    `).join('');
+}
+
+function openPhotoUpload() {
+    if (!api.isAdmin()) {
+        showAdminAuthModal(() => openPhotoUpload());
+        return;
+    }
+    let photos = [];
+    try { photos = JSON.parse(currentExp.Photos || '[]'); } catch (_) {}
+    if (photos.length >= 5) { toast('写真は最大5枚までです', 'error'); return; }
+    document.getElementById('photo-file-input').click();
+}
+
+async function handlePhotoSelect(input) {
+    const files = Array.from(input.files);
+    input.value = '';
+    if (!files.length) return;
+
+    let photos = [];
+    try { photos = JSON.parse(currentExp.Photos || '[]'); } catch (_) {}
+    const remaining = 5 - photos.length;
+    const toUpload = files.slice(0, remaining);
+
+    for (const file of toUpload) {
+        if (file.size > 10 * 1024 * 1024) { toast(file.name + ' は10MBを超えています', 'error'); continue; }
+        toast('アップロード中: ' + file.name, 'info', 2000);
+        try {
+            const result = await api.uploadFile(file, currentExp.ID);
+            photos.push({ name: file.name, url: result.url, size: file.size });
+        } catch (e) {
+            toast('アップロード失敗: ' + e.message, 'error');
+        }
+    }
+
+    currentExp.Photos = JSON.stringify(photos);
+    try {
+        const saved = await api.save('experiments', { ...currentExp, _baseUpdatedAt: currentExp.UpdatedAt || '' });
+        Object.assign(currentExp, saved);
+        const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
+        if (idx >= 0) allExperiments[idx] = currentExp;
+        api.saveCache('experiments', allExperiments);
+        renderPhotos();
+        toast('写真を保存しました', 'success');
+    } catch (e) {
+        toast('保存失敗: ' + e.message, 'error');
+    }
+}
+
+async function deletePhoto(index) {
+    if (!api.isAdmin()) { showAdminAuthModal(() => deletePhoto(index)); return; }
+    let photos = [];
+    try { photos = JSON.parse(currentExp.Photos || '[]'); } catch (_) {}
+    if (index < 0 || index >= photos.length) return;
+
+    photos.splice(index, 1);
+    currentExp.Photos = JSON.stringify(photos);
+
+    try {
+        const saved = await api.save('experiments', { ...currentExp, _baseUpdatedAt: currentExp.UpdatedAt || '' });
+        Object.assign(currentExp, saved);
+        const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
+        if (idx >= 0) allExperiments[idx] = currentExp;
+        api.saveCache('experiments', allExperiments);
+        renderPhotos();
+        toast('写真を削除しました', 'success');
+    } catch (e) {
+        toast('削除失敗: ' + e.message, 'error');
     }
 }
