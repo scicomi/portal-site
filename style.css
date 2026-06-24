@@ -2213,3 +2213,130 @@ textarea:focus {
     .exp-fb-row { flex-direction: column; gap: 4px; }
     .exp-fb-row label { width: auto; padding-top: 0; }
 }
+
+/* ========== Tag Input Component (searchable multi-select) ========== */
+.tag-input {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    background: #f8f9fa;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    padding: 4px 8px;
+    min-height: 38px;
+    cursor: text;
+    transition: border 0.2s, box-shadow 0.2s;
+    position: relative;
+}
+.tag-input:focus-within {
+    border-color: var(--primary-color);
+    background: white;
+    box-shadow: 0 0 0 3px rgba(70, 71, 117, 0.1);
+}
+.tag-input-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: #e8e6f0;
+    color: #464775;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.tag-input-remove {
+    background: none;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0 2px;
+}
+.tag-input-remove:hover { color: #c92a2a; }
+.tag-input-field {
+    border: none !important;
+    background: transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
+    padding: 4px !important;
+    font-size: 0.9rem;
+    flex: 1;
+    min-width: 80px;
+    width: auto !important;
+}
+.tag-input-dropdown {
+    position: absolute;
+    top: 100%;
+    left: -1px;
+    right: -1px;
+    background: white;
+    border: 1px solid #ced4da;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 100;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+.tag-input-option {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+.tag-input-option:hover,
+.tag-input-option.highlighted { background: #f0f0f8; }
+.tag-input-empty {
+    padding: 8px 12px;
+    color: #999;
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+/* ========== Furigana Display ========== */
+.member-furigana {
+    display: block;
+    font-size: 0.6rem;
+    color: #aaa;
+    line-height: 1.2;
+    letter-spacing: 0.05em;
+    font-weight: 400;
+}
+
+/* ========== Experiment Row (flat, no parts) ========== */
+.experiment-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+    align-items: flex-start;
+    background: #f8f9fa;
+    border: 1px solid #e1dfdd;
+    border-radius: 8px;
+    padding: 12px;
+}
+.experiment-row .exp-name-col { flex: 2; min-width: 0; }
+.experiment-row .exp-presenter-col { flex: 3; min-width: 0; }
+.experiment-row .exp-name-col > label,
+.experiment-row .exp-presenter-col > label {
+    display: block;
+    font-size: 0.78rem;
+    color: #888;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+.experiment-row .btn-del {
+    margin-top: 22px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+    .experiment-row {
+        flex-direction: column;
+    }
+    .experiment-row .btn-del {
+        margin-top: 0;
+        align-self: flex-end;
+    }
+}

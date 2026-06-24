@@ -166,7 +166,7 @@ function renderMembers() {
 
     if (memberSearchKw) {
         base = base.filter(m => {
-            const hay = [m.Name, m.Role, m.Affiliation, m.StudentID, m.Note, m.Email].filter(Boolean).join(' ').toLowerCase();
+            const hay = [m.Name, m.Furigana, m.Role, m.Affiliation, m.StudentID, m.Note, m.Email].filter(Boolean).join(' ').toLowerCase();
             return hay.includes(memberSearchKw);
         });
     }
@@ -195,6 +195,7 @@ function renderMembers() {
             <tr data-id="${m.ID}" ${rowStyle}>
                 <td>${escapeHtml(m.StudentID || '')}</td>
                 <td class="cell-name">
+                    ${m.Furigana ? '<span class="member-furigana">' + escapeHtml(m.Furigana) + '</span>' : ''}
                     <span class="member-name-text">${escapeHtml(m.Name || '')}</span>
                     ${isSub ? '<span class="cat-badge" style="background:' + catDef.color + ';margin-left:6px;font-size:0.7rem;">' + escapeHtml(catDef.label) + '</span>' : ''}
                     ${isInactive ? '<span class="cat-badge" style="background:#9ca3af;margin-left:6px;font-size:0.7rem;">卒業・退会</span>' : ''}
@@ -226,7 +227,7 @@ function populateFiscalYearModal() {
 function openMemberModal() {
     editingMemberId = null;
     document.getElementById('member-modal-title').textContent = 'メンバー追加';
-    ['mb-name', 'mb-role', 'mb-student-id', 'mb-affiliation', 'mb-note', 'mb-email'].forEach(id => {
+    ['mb-name', 'mb-furigana', 'mb-role', 'mb-student-id', 'mb-affiliation', 'mb-note', 'mb-email'].forEach(id => {
         document.getElementById(id).value = '';
     });
     document.getElementById('mb-category').value = 'member';
@@ -243,6 +244,7 @@ function editMember(id) {
     editingMemberId = id;
     document.getElementById('member-modal-title').textContent = 'メンバー編集';
     document.getElementById('mb-name').value = m.Name || '';
+    document.getElementById('mb-furigana').value = m.Furigana || '';
     document.getElementById('mb-category').value = m.Category || 'member';
     document.getElementById('mb-role').value = m.Role || '';
     document.getElementById('mb-student-id').value = m.StudentID || '';
@@ -267,6 +269,7 @@ async function saveMember() {
     const item = {
         ID: editingMemberId || '',
         Name: name,
+        Furigana: document.getElementById('mb-furigana').value.trim(),
         Category: document.getElementById('mb-category').value,
         Role: document.getElementById('mb-role').value.trim(),
         StudentID: document.getElementById('mb-student-id').value.trim(),

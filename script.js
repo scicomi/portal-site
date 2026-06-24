@@ -576,79 +576,48 @@ function populateFields(cardElement, eventData) {
         if (selEnd && e) selEnd.value = e.trim();
     }
 
-    // Dynamic List for Experiments & Presenters (Parts Based)
+    // Dynamic List for Experiments & Presenters (flat format)
     const expDisplay = cardElement.querySelector('.display-mode[data-field="Experiments_Display"]');
-    const partsContainer = cardElement.querySelector('.parts-container');
+    const expContainer = cardElement.querySelector('.experiments-container');
+    const expList = parsePartsList(eventData.PartsList);
 
-    // Data parsing assumption: JSON string of parts or simple string
-    // For now we map legacy "Experiments" to "一部"
-    let partsData = [];
-    try {
-        if (eventData.PartsList) {
-            partsData = JSON.parse(eventData.PartsList);
-        } else if (eventData.Experiments) {
-            // Legacy fallack
-            const expArray = eventData.Experiments.split(',');
-            const preArray = (eventData.Presenters || "").split(',');
-            const exps = expArray.map((e, i) => ({ name: e.trim(), presenter: (preArray[i] || '').trim() }));
-            partsData = [{ partName: "一部", items: exps }];
-        } else {
-            partsData = [{ partName: "一部", items: [{ name: "", presenter: "" }] }];
-        }
-    } catch (e) {
-        partsData = [{ partName: "一部", items: [{ name: "", presenter: "" }] }];
-    }
-
-    if (expDisplay && partsContainer) {
-        // Render Display Mode (Tabular format groups tags by Part)
-        // ※ 全てのユーザー入力は escapeHtml で安全化（XSS・表示崩れ防止）
-        // ※ 実験名は実験ページへのリンクに（A3：相互リンク）
+    if (expDisplay) {
         let displayHtml = '';
-        partsData.forEach(p => {
-            if (p.items.length === 0 || (p.items.length === 1 && !p.items[0].name && !p.items[0].presenter)) return;
-            displayHtml += `<div class="part-title">【${escapeHtml(p.partName || '部なし')}】</div><div style="margin-bottom: 10px;">`;
-            p.items.forEach(item => {
-                if (!item.name && !item.presenter) return;
-                let expName;
-                if (item.name) {
-                    const allExp = (api.loadCache('experiments') || {}).items || [];
-                    const match = allExp.find(e => e.Name === item.name);
-                    const href = match
-                        ? `experiment-detail.html?id=${encodeURIComponent(match.ID)}`
-                        : `experiments.html?focus=${encodeURIComponent(item.name)}`;
-                    expName = `<a href="${href}" class="exp-link-inline" title="実験内容を見る">${escapeHtml(item.name)}</a>`;
-                } else {
-                    expName = '(未定)';
-                }
-                displayHtml += `<span class="tag tag-exp">${expName} <span class="tag-presenter">(${escapeHtml(item.presenter || '未定')})</span></span>`;
-            });
-            displayHtml += `</div>`;
+        expList.forEach(item => {
+            if (!item.name && item.presenters.length === 0) return;
+            let expNameHtml;
+            if (item.name) {
+                const allExp = (api.loadCache('experiments') || {}).items || [];
+                const match = allExp.find(e => e.Name === item.name);
+                const href = match
+                    ? `experiment-detail.html?id=${encodeURIComponent(match.ID)}`
+                    : `experiments.html?focus=${encodeURIComponent(item.name)}`;
+                expNameHtml = `<a href="${href}" class="exp-link-inline" title="実験内容を見る">${escapeHtml(item.name)}</a>`;
+            } else {
+                expNameHtml = '(未定)';
+            }
+            const presenterText = item.presenters.length > 0
+                ? item.presenters.map(p => escapeHtml(p)).join(', ')
+                : '未定';
+            displayHtml += `<span class="tag tag-exp">${expNameHtml} <span class="tag-presenter">(${presenterText})</span></span>`;
         });
         expDisplay.innerHTML = displayHtml || '---';
+    }
 
-        // Render Edit Mode Inputs（担当者欄は member-datalist 連携：A1）
-        partsContainer.innerHTML = '';
-        partsData.forEach(p => {
-            const block = document.createElement('div');
-            block.className = 'part-block';
-            const itemsToRender = p.items.length > 0 ? p.items : [{ name: '', presenter: '' }];
-            let rowsHtml = itemsToRender.map(item => buildDynamicRow(item.name, item.presenter)).join('');
-            block.innerHTML = `
-                <div class="part-header">
-                    <div>
-                        <input type="text" class="e1-input part-name-input" value="${escapeAttr(p.partName)}" placeholder="部の名前 (例: 一部)">
-                    </div>
-                    <div class="part-actions">
-                        <button class="btn btn-secondary btn-sm" onclick="copyDynamicPart(this)" type="button">部のコピー</button>
-                        <button class="btn btn-danger-text btn-sm" onclick="removeDynamicPart(this)" type="button">部の削除</button>
-                    </div>
-                </div>
-                <div class="dynamic-wrapper">${rowsHtml}</div>
-                <button class="btn-add-exp" onclick="addDynamicItem(this)" type="button">＋ 実験を追加</button>
-            `;
-            partsContainer.appendChild(block);
+    if (expContainer) {
+        expContainer.innerHTML = '';
+        expList.forEach(item => {
+            expContainer.appendChild(buildExperimentRow(item.name, item.presenters));
         });
     }
+
+    // Initialize admin tag inputs
+    cardElement.querySelectorAll('.admin-tag-container').forEach(container => {
+        const field = container.dataset.adminField;
+        const currentVal = eventData[field] || '';
+        const vals = currentVal ? currentVal.split(',').map(s => s.trim()).filter(Boolean) : [];
+        initTagInput(container, vals, '担当者を検索...');
+    });
 
     // Title mapping overrides for Meeting Mode
     const titleDisplay = cardElement.querySelector('.display-mode[data-field="Title_Display"]');
@@ -668,36 +637,19 @@ function populateFields(cardElement, eventData) {
         meetingTitleInput.value = eventData.Title || '';
     }
 
-    // Experiment feedback display (per-experiment links to detail pages)
-    const expFbDisplay = cardElement.querySelector('.display-mode[data-field="ExpFeedback_Display"]');
-    if (expFbDisplay) {
-        const expNames = new Set();
-        partsData.forEach(p => (p.items || []).forEach(it => { if (it.name) expNames.add(it.name); }));
-        if (expNames.size > 0) {
-            const experiments = (api.loadCache('experiments') || {}).items || [];
-            expFbDisplay.innerHTML = [...expNames].map(name => {
-                const exp = experiments.find(e => e.Name === name);
-                if (!exp) return `<div class="expfb-display-item"><span class="exp-name">${escapeHtml(name)}</span><span class="exp-count">未登録</span></div>`;
-                const cnt = parseFeedbackEntries(exp.Positives).length + parseFeedbackEntries(exp.Reflections).length;
-                return `<div class="expfb-display-item">
-                    <span class="exp-name">${escapeHtml(name)}</span>
-                    <span class="exp-count">振り返り ${cnt}件</span>
-                    <a href="experiment-detail.html?id=${encodeURIComponent(exp.ID)}">詳細を見る &rarr;</a>
-                </div>`;
-            }).join('');
-        } else {
-            expFbDisplay.innerHTML = '<span style="color:#999;font-size:0.9rem;">実験が登録されていません</span>';
-        }
-    }
+    // Populate feedback tab
+    const fbTabPositives = cardElement.querySelector('.fb-tab-positives');
+    const fbTabReflections = cardElement.querySelector('.fb-tab-reflections');
+    if (fbTabPositives) fbTabPositives.value = eventData.Positives || '';
+    if (fbTabReflections) fbTabReflections.value = eventData.Reflections || '';
 
-    // Experiment feedback edit cards
-    const expFbEdit = cardElement.querySelector('[data-field="ExpFeedback_Edit"]');
-    if (expFbEdit) {
+    const expFbTab = cardElement.querySelector('[data-field="ExpFeedback_Tab"]');
+    if (expFbTab) {
         const expNames = new Set();
-        partsData.forEach(p => (p.items || []).forEach(it => { if (it.name) expNames.add(it.name); }));
+        expList.forEach(it => { if (it.name) expNames.add(it.name); });
         if (expNames.size > 0) {
             const experiments = (api.loadCache('experiments') || {}).items || [];
-            expFbEdit.innerHTML = [...expNames].map(name => {
+            expFbTab.innerHTML = [...expNames].map(name => {
                 const exp = experiments.find(e => e.Name === name);
                 const detailLink = exp
                     ? `<a href="experiment-detail.html?id=${encodeURIComponent(exp.ID)}" target="_blank" onclick="event.stopPropagation();">${escapeHtml(name)}</a>`
@@ -715,7 +667,7 @@ function populateFields(cardElement, eventData) {
                 </div>`;
             }).join('');
         } else {
-            expFbEdit.innerHTML = '<p style="color:#999; font-size:0.85rem;">実験が登録されていないため、実験の振り返りは入力できません。</p>';
+            expFbTab.innerHTML = '<p style="color:#999; font-size:0.85rem;">実験が登録されていないため、実験の振り返りは入力できません。</p>';
         }
     }
 
@@ -752,84 +704,167 @@ function populateFields(cardElement, eventData) {
 //     保存  → saveEventFromModal()
 //     削除  → deleteModalEvent()
 
-// Dynamic List Actions
+// ---- タグ入力コンポーネント（検索可能な複数選択） ----
 
-/**
- * 実験1行のHTMLを生成（実験名・担当者）。
- * 担当者欄は member-datalist と紐付け、実験名欄は experiment-datalist と紐付ける（A1）。
- * 値は escapeAttr で必ず安全化する。
- */
-function buildDynamicRow(expName, presenter) {
-    return `
-        <div class="dynamic-row">
-            <input type="text" class="e1-input experiment-name" style="flex:5" value="${escapeAttr(expName || '')}" placeholder="実験名" list="experiment-datalist">
-            <input type="text" class="e1-input presenter-name" style="flex:3" value="${escapeAttr(presenter || '')}" placeholder="担当者" list="member-datalist">
-            <button class="btn-del" onclick="removeDynamicItem(this)" type="button">✖</button>
-        </div>
-    `;
+function getActiveMembers() {
+    const cached = (api.loadCache('members') || {}).items || [];
+    return cached.filter(m => m.Active !== 'false' && m.Name);
 }
 
-function addDynamicPart(btn) {
-    const container = btn.parentElement.querySelector('.parts-container');
-    const block = document.createElement('div');
-    block.className = 'part-block';
-    block.innerHTML = `
-        <div class="part-header">
-            <div>
-                <input type="text" class="e1-input part-name-input" value="新規の部" placeholder="部の名前 (例: 一部)">
-            </div>
-            <div class="part-actions">
-                <button class="btn btn-secondary btn-sm" onclick="copyDynamicPart(this)" type="button">部のコピー</button>
-                <button class="btn btn-danger-text btn-sm" onclick="removeDynamicPart(this)" type="button">部の削除</button>
-            </div>
-        </div>
-        <div class="dynamic-wrapper">${buildDynamicRow('', '')}</div>
-        <button class="btn-add-exp" onclick="addDynamicItem(this)" type="button">＋ 実験を追加</button>
-    `;
-    container.appendChild(block);
-}
+function initTagInput(container, selectedValues, placeholder) {
+    container.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'tag-input';
 
-function removeDynamicPart(btn) {
-    const block = btn.closest('.part-block');
-    if (block) {
-        block.remove();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'tag-input-field';
+    input.placeholder = placeholder || 'メンバーを検索...';
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'tag-input-dropdown hidden';
+
+    wrapper.appendChild(dropdown);
+    wrapper.insertBefore(input, dropdown);
+    container.appendChild(wrapper);
+
+    let values = [...(selectedValues || [])];
+
+    function renderTags() {
+        wrapper.querySelectorAll('.tag-input-tag').forEach(t => t.remove());
+        values.forEach(v => {
+            const tag = document.createElement('span');
+            tag.className = 'tag-input-tag';
+            tag.dataset.value = v;
+            tag.innerHTML = `${escapeHtml(v)}<button class="tag-input-remove" type="button">&times;</button>`;
+            wrapper.insertBefore(tag, input);
+        });
     }
-}
 
-function copyDynamicPart(btn) {
-    const original = btn.closest('.part-block');
-    const clone = original.cloneNode(true);
-    // Append clone after original
-    original.parentNode.insertBefore(clone, original.nextSibling);
-
-    // Increment the part name
-    const nameInput = clone.querySelector('.part-name-input');
-    if (nameInput) {
-        const kanjiList = ['一部', '二部', '三部', '四部', '五部', '六部', '七部', '八部', '九部', '十部'];
-        let currentVal = nameInput.value.replace(/\s*\(コピー\)$/, '');
-        let idx = kanjiList.indexOf(currentVal);
-        if (idx !== -1 && idx < kanjiList.length - 1) {
-            nameInput.value = kanjiList[idx + 1];
+    function showDropdown() {
+        const query = input.value.toLowerCase().trim();
+        const members = getActiveMembers();
+        const filtered = members.filter(m => {
+            if (values.includes(m.Name)) return false;
+            if (!query) return true;
+            return (m.Name || '').toLowerCase().includes(query) ||
+                   (m.Furigana || '').toLowerCase().includes(query);
+        });
+        if (filtered.length === 0) {
+            dropdown.innerHTML = query
+                ? '<div class="tag-input-empty">候補なし（Enterで自由入力）</div>'
+                : '<div class="tag-input-empty">候補なし</div>';
         } else {
-            nameInput.value = currentVal + " (コピー)";
+            dropdown.innerHTML = filtered.slice(0, 15).map(m =>
+                `<div class="tag-input-option" data-value="${escapeAttr(m.Name)}">${escapeHtml(m.Name)}${m.Furigana ? ' <span style="color:#999;font-size:0.8em;">(' + escapeHtml(m.Furigana) + ')</span>' : ''}</div>`
+            ).join('');
         }
+        dropdown.classList.remove('hidden');
     }
+
+    function hideDropdown() { dropdown.classList.add('hidden'); }
+
+    function addValue(val) {
+        val = (val || '').trim();
+        if (val && !values.includes(val)) { values.push(val); renderTags(); }
+        input.value = '';
+        hideDropdown();
+    }
+
+    input.addEventListener('focus', showDropdown);
+    input.addEventListener('input', showDropdown);
+    input.addEventListener('blur', () => setTimeout(hideDropdown, 200));
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); if (input.value.trim()) addValue(input.value); }
+        if (e.key === 'Backspace' && !input.value && values.length > 0) { values.pop(); renderTags(); showDropdown(); }
+    });
+    dropdown.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const opt = e.target.closest('.tag-input-option');
+        if (opt) addValue(opt.dataset.value);
+    });
+    wrapper.addEventListener('click', (e) => {
+        const removeBtn = e.target.closest('.tag-input-remove');
+        if (removeBtn) {
+            e.stopPropagation();
+            const tag = removeBtn.closest('.tag-input-tag');
+            values = values.filter(v => v !== tag.dataset.value);
+            renderTags();
+            return;
+        }
+        input.focus();
+    });
+
+    renderTags();
+    container._tagInput = {
+        getValues: () => [...values],
+        setValues: (vals) => { values = [...vals]; renderTags(); }
+    };
+    return container._tagInput;
 }
 
-function addDynamicItem(btn) {
-    const wrapper = btn.closest('.part-block').querySelector('.dynamic-wrapper');
-    const temp = document.createElement('div');
-    temp.innerHTML = buildDynamicRow('', '');
-    wrapper.appendChild(temp.firstElementChild);
+// ---- PartsList 新旧フォーマット変換 ----
+// 旧: [{partName:"一部", items:[{name:"スライム", presenter:"太田"}]}]
+// 新: [{name:"スライム", presenters:["太田","鈴木"]}]
+function parsePartsList(raw) {
+    let data = [];
+    if (!raw) return [{ name: '', presenters: [] }];
+    try {
+        data = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
+    } catch (_) { return [{ name: '', presenters: [] }]; }
+    if (!Array.isArray(data) || data.length === 0) return [{ name: '', presenters: [] }];
+
+    if (data[0] && data[0].partName !== undefined) {
+        const flat = [];
+        data.forEach(p => (p.items || []).forEach(it => {
+            if (!it.name && !it.presenter) return;
+            const existing = flat.find(f => f.name === it.name);
+            if (existing && it.presenter && !existing.presenters.includes(it.presenter)) {
+                existing.presenters.push(it.presenter);
+            } else if (!existing) {
+                flat.push({ name: it.name || '', presenters: it.presenter ? [it.presenter] : [] });
+            }
+        }));
+        return flat.length > 0 ? flat : [{ name: '', presenters: [] }];
+    }
+
+    return data.map(item => ({
+        name: item.name || '',
+        presenters: Array.isArray(item.presenters) ? item.presenters : (item.presenter ? [item.presenter] : [])
+    }));
 }
 
-function removeDynamicItem(btn) {
-    const item = btn.closest('.dynamic-row');
-    const wrapper = item.parentElement;
-    item.remove();
-    // Ensure at least one remains
-    if (wrapper.children.length === 0) {
-        addDynamicItem(wrapper.parentElement.querySelector('.btn-add-exp'));
+// ---- 実験行の生成・追加・削除 ----
+
+function buildExperimentRow(expName, presenters) {
+    const row = document.createElement('div');
+    row.className = 'experiment-row';
+    row.innerHTML = `
+        <div class="exp-name-col">
+            <label>実験内容</label>
+            <input type="text" class="e1-input experiment-name" value="${escapeAttr(expName || '')}" placeholder="実験名を検索..." list="experiment-datalist">
+        </div>
+        <div class="exp-presenter-col">
+            <label>発表者</label>
+            <div class="presenter-tag-container"></div>
+        </div>
+        <button class="btn-del" onclick="removeExperimentRow(this)" type="button">✖</button>
+    `;
+    initTagInput(row.querySelector('.presenter-tag-container'), presenters || [], '発表者を検索...');
+    return row;
+}
+
+function addExperimentRow(btn) {
+    const container = btn.closest('.e1-group').querySelector('.experiments-container');
+    container.appendChild(buildExperimentRow('', []));
+}
+
+function removeExperimentRow(btn) {
+    const row = btn.closest('.experiment-row');
+    const container = row.parentElement;
+    row.remove();
+    if (container.children.length === 0) {
+        addExperimentRow(container.closest('.e1-group').querySelector('.btn-add-exp'));
     }
 }
 

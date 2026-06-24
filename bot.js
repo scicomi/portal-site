@@ -609,6 +609,32 @@ async function handleBotError(e, text, isRetry) {
       fallbackToKeyword(text);
       break;
 
+    // モデルの一時的な過負荷（503/500）。少し待てば回復するので一度だけ自動再試行。
+    case 'MODEL_OVERLOADED':
+    case 'API_ERROR_503': // 後方互換
+    case 'API_ERROR_500':
+      if (!isRetry) {
+        const wsec = Math.min(Math.max(parseInt(e.retrySec, 10) || 15, 5), 30);
+        addMessage('bot', `AIモデルが一時的に混雑しています。${wsec}秒後に自動で再試行します…`);
+        await sleep(wsec * 1000);
+        await processQuery(text, true);
+        return;
+      }
+      addMessage('bot', 'AIモデルの混雑が解消しませんでした（しばらくすると回復します）。\nキーワード検索に切り替えます。' + detailNote);
+      fallbackToKeyword(text);
+      break;
+
+    // GASに接続できない（デプロイのアクセス権／URL設定など）。キャッシュでキーワード検索は可能。
+    case 'GAS_NOT_PUBLIC':
+      addMessage('bot', 'サーバー(GAS)に接続できません。管理者は GAS のデプロイ設定（アクセスできるユーザー＝「全員」）と config.js の API_URL を確認してください。\nキャッシュ済みデータでキーワード検索に切り替えます。');
+      fallbackToKeyword(text);
+      break;
+
+    case 'NETWORK_UNREACHABLE':
+      addMessage('bot', 'ネットワークに接続できません。通信環境を確認してください。\nキャッシュ済みデータでキーワード検索に切り替えます。');
+      fallbackToKeyword(text);
+      break;
+
     // 1日あたりの無料枠を使い切った（再試行しても当日は回復しない）
     case 'RATE_LIMIT_DAILY':
     case 'DAILY_LIMIT': // 後方互換

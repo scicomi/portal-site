@@ -24,7 +24,7 @@
     <main class="container">
         <div class="page-section-actions">
             <h1 class="page-title" style="margin: 0; flex: 1;">イベント管理</h1>
-            <input id="event-search" class="search-input" type="text" placeholder="タイトル・場所・担当者で検索" oninput="onSearchChange()">
+            <input id="event-search" class="search-input" type="text" placeholder="タイトル・場所・発表者で検索" oninput="onSearchChange()">
             <button class="btn btn-primary" onclick="openNewEventModal()" style="background: #464775; color: white; border: 1px solid #464775;">+ 新規イベント</button>
         </div>
         <div class="page-section-actions">
@@ -87,7 +87,11 @@
 
             <div class="event-details collapsed">
                 <div class="details-content">
-                    <section class="detail-section top-section">
+                    <div class="event-tab-bar hidden">
+                        <button class="event-tab active" data-tab="details" onclick="switchEventTab(this)">イベント詳細</button>
+                        <button class="event-tab" data-tab="feedback" onclick="switchEventTab(this)">振り返り</button>
+                    </div>
+                    <section class="detail-section top-section event-tab-pane" data-tab-pane="details">
                         <!-- Meeting Mode Title -->
                         <div class="field-group full-width meeting-only-section">
                             <label>ミーティング名</label>
@@ -137,7 +141,7 @@
                                 </td>
                             </tr>
                             <tr class="event-only-section">
-                                <th>実験・担当</th>
+                                <th>実験内容・発表者</th>
                                 <td>
                                     <div class="field-value display-mode" data-field="Experiments_Display"></div>
                                 </td>
@@ -181,31 +185,6 @@
                                 <th>関連ファイル</th>
                                 <td>
                                     <div class="file-list display-mode" data-field="Files_Display"></div>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th colspan="2" class="feedback-section-th event-fb-th">イベント・会場の振り返り</th>
-                            </tr>
-                            <tr>
-                                <th>良かった点</th>
-                                <td>
-                                    <div class="field-value display-mode text-area-view" data-field="Positives"
-                                        style="white-space: pre-wrap;"></div>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th>改善点</th>
-                                <td>
-                                    <div class="field-value display-mode text-area-view" data-field="Reflections"
-                                        style="white-space: pre-wrap;"></div>
-                                </td>
-                            </tr>
-                            <tr class="event-only-section">
-                                <th colspan="2" class="feedback-section-th exp-fb-th">実験の振り返り</th>
-                            </tr>
-                            <tr class="event-only-section">
-                                <td colspan="2">
-                                    <div class="field-value display-mode" data-field="ExpFeedback_Display"></div>
                                 </td>
                             </tr>
                         </table>
@@ -306,9 +285,9 @@
                                 style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
 
                             <div class="e1-group event-only-section">
-                                <label class="e1-label">実験・担当者</label>
-                                <div class="parts-container" data-field="PartsList"></div>
-                                <button class="btn-add-part" type="button" onclick="addDynamicPart(this)">+ 新しい部を追加</button>
+                                <label class="e1-label">実験内容・発表者</label>
+                                <div class="experiments-container" data-field="PartsList"></div>
+                                <button class="btn-add-exp" onclick="addExperimentRow(this)" type="button">＋ 実験を追加</button>
                             </div>
 
                             <hr class="event-only-section"
@@ -321,15 +300,13 @@
                                         <label
                                             style="font-size:0.85rem; color:#666; display:block; margin-bottom:4px;">許可願
                                             (担当)</label>
-                                        <input type="text" class="e1-input edit-mode" data-field="Admin_Kyoka"
-                                            placeholder="担当者">
+                                        <div class="admin-tag-container edit-mode" data-admin-field="Admin_Kyoka"></div>
                                     </div>
                                     <div>
                                         <label
                                             style="font-size:0.85rem; color:#666; display:block; margin-bottom:4px;">報告書
                                             (担当)</label>
-                                        <input type="text" class="e1-input edit-mode" data-field="Admin_Houkoku"
-                                            placeholder="担当者">
+                                        <div class="admin-tag-container edit-mode" data-admin-field="Admin_Houkoku"></div>
                                     </div>
                                 </div>
                             </div>
@@ -349,24 +326,6 @@
                                 <textarea class="e1-input edit-mode" data-field="Remarks" rows="4"></textarea>
                             </div>
 
-                            <h3 class="feedback-section-label event-feedback-label">イベント・会場の振り返り</h3>
-                            <div class="e1-group">
-                                <label class="e1-label">良かった点</label>
-                                <textarea class="e1-input edit-mode" data-field="Positives" rows="3" placeholder="会場・運営で良かったこと"></textarea>
-                            </div>
-                            <div class="e1-group">
-                                <label class="e1-label">改善点</label>
-                                <textarea class="e1-input edit-mode" data-field="Reflections" rows="3" placeholder="会場・運営の改善点"></textarea>
-                            </div>
-
-                            <div class="event-only-section">
-                                <h3 class="feedback-section-label exp-feedback-label">実験の振り返り</h3>
-                                <p style="font-size:0.82rem; color:#888; margin:0 0 10px;">
-                                    各実験の気づきを記録できます。入力した内容は実験の詳細ページに蓄積されます。
-                                </p>
-                                <div class="exp-feedback-container" data-field="ExpFeedback_Edit"></div>
-                            </div>
-
                             <div class="e1-group event-only-section">
                                 <label class="e1-label">関連ファイル</label>
                                 <div class="file-upload-area">
@@ -384,6 +343,28 @@
                                 </div>
                             </div>
 
+                        </div>
+                    </section>
+
+                    <section class="event-tab-pane hidden" data-tab-pane="feedback">
+                        <h3 class="feedback-section-label event-feedback-label">イベント・会場の振り返り</h3>
+                        <div class="e1-group">
+                            <label class="e1-label">良かった点</label>
+                            <textarea class="e1-input fb-tab-positives" rows="3" placeholder="会場・運営で良かったこと"></textarea>
+                        </div>
+                        <div class="e1-group">
+                            <label class="e1-label">改善点</label>
+                            <textarea class="e1-input fb-tab-reflections" rows="3" placeholder="会場・運営の改善点"></textarea>
+                        </div>
+                        <div class="event-only-section">
+                            <h3 class="feedback-section-label exp-feedback-label">実験の振り返り</h3>
+                            <p style="font-size:0.82rem; color:#888; margin:0 0 10px;">
+                                各実験の気づきを記録できます。入力した内容は実験の詳細ページに蓄積されます。
+                            </p>
+                            <div class="exp-feedback-container" data-field="ExpFeedback_Tab"></div>
+                        </div>
+                        <div style="margin-top:20px; text-align:right;">
+                            <button class="btn btn-primary-solid" style="width:auto; padding:8px 24px;" onclick="saveFeedbackFromTab()">振り返りを保存</button>
                         </div>
                     </section>
                 </div>

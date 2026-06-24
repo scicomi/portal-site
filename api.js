@@ -304,17 +304,58 @@ const api = {
   },
 
   async _post(payload) {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(payload)
-    });
-    const text = await res.text();
+    let res, text;
+    try {
+      res = await fetch(API_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+      });
+      text = await res.text();
+    } catch (e) {
+      // ネットワーク不通・CORS 失敗など
+      const err = new Error('NETWORK_UNREACHABLE');
+      err.code = 'NETWORK_UNREACHABLE';
+      throw err;
+    }
     try {
       return JSON.parse(text);
     } catch (_) {
-      throw new Error('GAS response parse error: ' + text.slice(0, 200));
+      // GAS が JSON でなく HTML を返した場合 = ほぼ「デプロイのアクセス権」設定ミス。
+      // 匿名リクエストが Google のサインインページへリダイレクトされている状態。
+      const looksHtml = /^\s*<(!doctype|html)/i.test(text || '');
+      const looksLogin = /accounts\.google\.com|ServiceLogin|ウェブ ワープロ|docs\.google\.com/i.test(text || '')
+        || (res && res.url && /accounts\.google\.com|ServiceLogin/i.test(res.url));
+      if (looksHtml || looksLogin) {
+        const err = new Error('GAS_NOT_PUBLIC');
+        err.code = 'GAS_NOT_PUBLIC';
+        throw err;
+      }
+      const err = new Error('BAD_RESPONSE');
+      err.code = 'BAD_RESPONSE';
+      err.detail = (text || '').slice(0, 120);
+      throw err;
     }
   }
 };
+
+// ---- API エラーを人間向けの日本語に変換（UI 表示用） ----
+function humanizeApiError(e) {
+  const code = (e && (e.code || e.message)) || '';
+  switch (code) {
+    case 'GAS_NOT_PUBLIC':
+      return 'サーバー(GAS)がログイン画面を返しました。多くの場合 API_URL の問題です。'
+        + '①config.js の API_URL が「/exec」で終わっているか（「/dev」はログイン必須のため不可）'
+        + '②「デプロイを管理→アクセスできるユーザー＝全員」か'
+        + '③ブラウザの強制再読込（Ctrl+Shift+R）で古い設定が残っていないか、を確認してください。';
+    case 'NETWORK_UNREACHABLE':
+      return 'ネットワークに接続できません。通信環境を確認してください。';
+    case 'unauthorized':
+      return 'セッションの有効期限が切れました。再ログインしてください。';
+    case 'BAD_RESPONSE':
+      return 'サーバーからの応答を解釈できませんでした。' + (e.detail ? '（' + e.detail + '…）' : '');
+    default:
+      return (e && e.message) ? e.message : String(e);
+  }
+}
