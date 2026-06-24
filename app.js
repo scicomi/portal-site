@@ -195,7 +195,7 @@ function showAdminAuthModal(onSuccess) {
         input.select();
       }
     } catch (e) {
-      errEl.textContent = '通信エラー: ' + e.message;
+      errEl.textContent = humanizeApiError(e);
       submitBtn.disabled = false;
       submitBtn.textContent = '認証';
     }
@@ -265,7 +265,7 @@ function showPasswordModal(onSuccess) {
         input.select();
       }
     } catch (e) {
-      errEl.textContent = '通信エラー: ' + e.message;
+      errEl.textContent = humanizeApiError(e);
       submitBtn.disabled = false;
       submitBtn.textContent = 'ログイン';
     }
@@ -296,7 +296,12 @@ function updateSyncStatus(state, timestamp, errMsg) {
     'error':           `<span class="sync-dot error"></span>同期エラー`
   };
   el.innerHTML = labels[state] || '';
-  if (state === 'error') el.title = errMsg || '';
+  // エラー詳細（ツールチップ）は既知のコードを日本語へ変換して表示する
+  if (state === 'error') {
+    el.title = errMsg
+      ? (typeof humanizeApiError === 'function' ? humanizeApiError({ code: errMsg, message: errMsg }) : errMsg)
+      : '';
+  }
 }
 
 // ====== トースト通知 ======

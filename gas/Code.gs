@@ -1305,6 +1305,16 @@ function handleGeminiProxy(body) {
         // モデル名が無効／廃止。管理者がモデルを切り替えれば直る。
         return jsonResponse({ success: false, error: 'MODEL_NOT_FOUND', detail: 'model=' + model });
       }
+      // 500/502/503/504 はモデル過負荷など一時的なサーバー側エラー。
+      // 一度だけ即リトライし、それでもダメならクライアントへ「過負荷」を返してフォールバックさせる。
+      if (code === 500 || code === 502 || code === 503 || code === 504) {
+        if (attempt < maxRetries) {
+          Utilities.sleep(1500);
+          continue;
+        }
+        return jsonResponse({ success: false, error: 'MODEL_OVERLOADED', scope: 'minute',
+          retrySec: 20, detail: shortErr.slice(0, 300) });
+      }
       return jsonResponse({ success: false, error: 'API_ERROR_' + code, detail: shortErr });
     } catch (e) {
       if (attempt < maxRetries) {
