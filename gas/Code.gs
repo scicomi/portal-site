@@ -1074,11 +1074,11 @@ function buildBotSystemPrompt_() {
 
 ### members（メンバー）
 - Name: 氏名
-- Category: adviser(アドバイザー), coordinator(コーディネーター), member(メンバー)
-- Role: 役職（例: プロジェクトリーダー）
+- Category: adviser/coordinator/member（Role から自動導出。後方互換用）
+- Role: 役職（アドバイザー, コーディネーター, プロジェクトリーダー 等）
 - StudentID: 学籍番号。先頭2文字が学年コース（例: 4C, 5C, 6C）
-- Active: "true"=在籍, "false"=卒業
-- FiscalYear: 登録年度
+- Active: 常に"true"（後方互換用。年度管理に移行済み）
+- FiscalYear: 登録年度（年度ごとにメンバーを管理）
 - Note: メモ
 
 ### experiments（実験ネタ）

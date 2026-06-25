@@ -14,13 +14,13 @@
         <div class="page-section-actions">
             <h1 class="page-title" style="margin:0; flex:1;">メンバーリスト</h1>
             <input id="member-search" class="search-input" type="text" placeholder="名前・役職で検索" oninput="onMemberSearch()">
-            <button class="btn-primary-solid" style="width: auto; padding: 8px 16px;" onclick="openMemberModal()">+ メンバー追加</button>
+            <button id="add-member-btn" class="btn-primary-solid" style="width: auto; padding: 8px 16px;" onclick="openMemberModal()">+ メンバー追加</button>
         </div>
 
         <div class="page-section-actions">
             <select id="fiscal-year-select" class="e1-input" style="width:auto; padding:6px 12px;" onchange="onFiscalYearChange()"></select>
-            <button class="filter-chip" id="toggle-adviser-btn" onclick="toggleCategoryFilter('adviser')">アドバイザーも表示</button>
-            <button class="filter-chip" id="toggle-coordinator-btn" onclick="toggleCategoryFilter('coordinator')">コーディネーターも表示</button>
+            <button class="filter-chip admin-only" onclick="openYearCopyModal()">新年度一括登録</button>
+            <button class="filter-chip admin-only" id="edit-mode-btn" onclick="toggleEditMode()">編集</button>
         </div>
 
         <div class="page-section-actions" id="grade-filter-row" style="display:none;">
@@ -34,15 +34,15 @@
                     <tr>
                         <th>学籍/教職員番号</th>
                         <th>名前</th>
-                        <th>役職/所属</th>
+                        <th>所属</th>
                         <th class="hide-mobile">メールアドレス</th>
-                        <th style="width:120px;">操作</th>
                     </tr>
                 </thead>
                 <tbody id="members-tbody"></tbody>
             </table>
         </div>
 
+        <!-- メンバー追加/編集モーダル -->
         <div id="member-modal" class="modal-overlay hidden">
             <div class="modal-content" style="max-width: 500px;">
                 <h2 id="member-modal-title">メンバー追加</h2>
@@ -55,20 +55,12 @@
                     <input id="mb-furigana" class="e1-input" type="text" placeholder="例: やまだ たろう">
                 </div>
                 <div class="e1-group">
-                    <label class="e1-label">カテゴリ *</label>
-                    <select id="mb-category" class="e1-input">
-                        <option value="member">メンバー</option>
-                        <option value="coordinator">コーディネーター</option>
-                        <option value="adviser">アドバイザー</option>
-                    </select>
+                    <label class="e1-label">役職</label>
+                    <select id="mb-role" class="e1-input" onchange="onRoleSelectChange()"></select>
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">メールアドレス</label>
                     <input id="mb-email" class="e1-input" type="email" placeholder="例: name@example.com">
-                </div>
-                <div class="e1-group">
-                    <label class="e1-label">役職・担当</label>
-                    <input id="mb-role" class="e1-input" type="text" placeholder="例: プロジェクトリーダー">
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">学生証番号 / 教職員番号</label>
@@ -83,19 +75,39 @@
                     <select id="mb-fiscal-year" class="e1-input"></select>
                 </div>
                 <div class="e1-group">
-                    <label class="e1-label">在籍状況</label>
-                    <select id="mb-active" class="e1-input">
-                        <option value="true">在籍</option>
-                        <option value="false">卒業・退会（アーカイブ）</option>
-                    </select>
-                </div>
-                <div class="e1-group">
                     <label class="e1-label">メモ</label>
                     <textarea id="mb-note" class="e1-input" rows="2"></textarea>
                 </div>
                 <div class="action-buttons">
+                    <button id="mb-delete-btn" class="btn btn-text hidden" style="color:#c92a2a;" onclick="deleteMemberFromModal()">削除</button>
+                    <span style="flex:1;"></span>
                     <button class="btn btn-text" onclick="closeMemberModal()">キャンセル</button>
                     <button class="btn btn-primary-solid" style="width:auto;" onclick="saveMember()">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 年度一括登録モーダル -->
+        <div id="year-copy-modal" class="modal-overlay hidden">
+            <div class="modal-content" style="max-width: 600px;">
+                <h2>新年度メンバー登録</h2>
+                <p style="color:#666; font-size:0.9rem; margin-top:0;">前年度のメンバーを新年度に引き継ぎます。</p>
+                <div class="e1-group">
+                    <label class="e1-label">コピー元年度</label>
+                    <select id="yc-source-year" class="e1-input" onchange="renderYearCopyMembers()"></select>
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">登録先年度</label>
+                    <select id="yc-target-year" class="e1-input"></select>
+                </div>
+                <div style="margin:12px 0; display:flex; gap:8px;">
+                    <button class="tbl-btn" onclick="yearCopySelectAll(true)">全選択</button>
+                    <button class="tbl-btn" onclick="yearCopySelectAll(false)">全解除</button>
+                </div>
+                <div id="yc-member-list" style="max-height:300px; overflow-y:auto; border:1px solid #eee; border-radius:8px;"></div>
+                <div class="action-buttons" style="margin-top:16px;">
+                    <button class="btn btn-text" onclick="closeYearCopyModal()">キャンセル</button>
+                    <button class="btn btn-primary-solid" style="width:auto;" onclick="executeYearCopy()">登録</button>
                 </div>
             </div>
         </div>

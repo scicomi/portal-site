@@ -114,13 +114,19 @@ const CONFIG = {
     other:    { label: 'その他',     color: '#8b5cf6' }
   },
 
-  // ===== メンバーカテゴリ =====
-  // hasEmail: true のカテゴリにはメールアドレス欄が表示される
+  // ===== メンバーカテゴリ（後方互換用） =====
   MEMBER_CATEGORIES: {
     adviser:     { label: 'アドバイザー',     color: '#f59e0b', hasEmail: true },
     coordinator: { label: 'コーディネーター', color: '#10b981', hasEmail: true },
     member:      { label: 'メンバー',         color: '#6264a7', hasEmail: true }
-  }
+  },
+
+  // ===== メンバー役職（統合表示） =====
+  MEMBER_ROLES: [
+    { value: 'アドバイザー',       color: '#f59e0b', category: 'adviser',     order: 0 },
+    { value: 'コーディネーター',   color: '#10b981', category: 'coordinator', order: 1 },
+    { value: 'プロジェクトリーダー', color: '#8b5cf6', category: 'member',    order: 2 },
+  ]
 };
 
 // ---- ヘルパー（定義から派生する便利関数） ----
@@ -133,6 +139,12 @@ function getExperimentCategory(key) {
 }
 function getMemberCategory(key) {
   return CONFIG.MEMBER_CATEGORIES[key] || CONFIG.MEMBER_CATEGORIES.member;
+}
+function getRoleDisplay(role) {
+  if (!role) return null;
+  const r = CONFIG.MEMBER_ROLES.find(x => x.value === role);
+  if (r) return r;
+  return { value: role, color: '#6b7280', category: 'member', order: 10 };
 }
 function getPasswordCategory(key) {
   return CONFIG.PASSWORD_CATEGORIES[key] || CONFIG.PASSWORD_CATEGORIES.other;

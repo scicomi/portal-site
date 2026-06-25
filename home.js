@@ -66,7 +66,8 @@ function renderStats(all) {
     const upcomingCount = (all.events || []).filter(e => (e.DateEnd || e.Date) >= today).length;
     document.getElementById('stat-events').textContent = (all.events || []).length;
     document.getElementById('stat-upcoming').textContent = upcomingCount;
-    document.getElementById('stat-members').textContent = (all.members || []).filter(m => m.Active !== 'false').length;
+    const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
+    document.getElementById('stat-members').textContent = (all.members || []).filter(m => parseInt(m.FiscalYear || curFY) === curFY).length;
     document.getElementById('stat-experiments').textContent = (all.experiments || []).length;
 }
 
@@ -149,16 +150,27 @@ function deadlineUrgency(dateISO) {
 
 function renderMembersCard(members) {
     const container = document.getElementById('member-summary');
-    const advisers = members.filter(m => m.Category === 'adviser' && m.Active !== 'false');
-    const coordinators = members.filter(m => m.Category === 'coordinator' && m.Active !== 'false');
-    const regular = members.filter(m => m.Category === 'member' && m.Active !== 'false');
+    const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
+    const fy = members.filter(m => parseInt(m.FiscalYear || curFY) === curFY);
+
+    function effectiveRole(m) {
+        if (m.Role) return m.Role;
+        if (m.Category === 'adviser') return 'アドバイザー';
+        if (m.Category === 'coordinator') return 'コーディネーター';
+        return '';
+    }
+
+    const advisers = fy.filter(m => effectiveRole(m) === 'アドバイザー');
+    const coordinators = fy.filter(m => effectiveRole(m) === 'コーディネーター');
+    const regular = fy.filter(m => { const r = effectiveRole(m); return r !== 'アドバイザー' && r !== 'コーディネーター'; });
+    const withRole = regular.filter(m => effectiveRole(m));
 
     container.innerHTML = `
         <li><span class="dl-date">アドバイザー</span><span class="dl-title">${advisers.length}名</span></li>
         <li><span class="dl-date">コーディネーター</span><span class="dl-title">${coordinators.length}名</span></li>
         <li><span class="dl-date">メンバー</span><span class="dl-title">${regular.length}名</span></li>
-        ${regular.filter(m => m.Role).slice(0, 4).map(m => `
-            <li><span class="dl-date" style="min-width:90px;">${escapeHtml(m.Role || '')}</span><span class="dl-title">${escapeHtml(m.Name)}</span></li>
+        ${withRole.slice(0, 4).map(m => `
+            <li><span class="dl-date" style="min-width:90px;">${escapeHtml(effectiveRole(m))}</span><span class="dl-title">${escapeHtml(m.Name)}</span></li>
         `).join('')}
     `;
 }
