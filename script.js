@@ -16,6 +16,9 @@ function gasToUi(g) {
     u.Kyoka_Deadline = g.KyokaDeadline || '';
     u.Houkoku_Deadline = g.HoukokuDeadline || '';
     u.Meeting_Number = g.MeetingNumber || '';
+    u.Gather_Time = g.GatherTime || '';
+    u.Dismiss_Time = g.DismissTime || '';
+    u.Accompany = g.Accompany || '';
     u.PartsList = Array.isArray(g.PartsList) ? JSON.stringify(g.PartsList) : (g.PartsList || '');
     u.Files = Array.isArray(g.Files)
         ? g.Files.map(f => typeof f === 'string' ? { name: '', url: f } : f)
@@ -46,6 +49,9 @@ function uiToGas(u) {
         TimeStart: (time[0] || '').trim(),
         TimeEnd: (time[1] || '').trim(),
         MeetingNumber: u.Meeting_Number || '',
+        GatherTime: u.Gather_Time || '',
+        DismissTime: u.Dismiss_Time || '',
+        Accompany: u.Accompany || '',
         PartsList: partsList,
         AdminKyoka: u.Admin_Kyoka || '',
         AdminHoukoku: u.Admin_Houkoku || '',
@@ -159,9 +165,13 @@ async function populateDatalists() {
     }
 
     if (memberDl && members) {
+        const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
         memberDl.innerHTML = members
-            .filter(m => m.Active !== 'false' && m.Name)
-            .map(m => `<option value="${escapeAttr(m.Name)}">${escapeAttr(m.Role || getMemberCategory(m.Category).label)}</option>`)
+            .filter(m => parseInt(m.FiscalYear || curFY) === curFY && m.Name)
+            .map(m => {
+                const role = m.Role || (m.Category === 'adviser' ? 'アドバイザー' : m.Category === 'coordinator' ? 'コーディネーター' : '');
+                return `<option value="${escapeAttr(m.Name)}">${escapeAttr(role || 'メンバー')}</option>`;
+            })
             .join('');
     }
     if (expDl && experiments) {
@@ -712,7 +722,8 @@ function populateFields(cardElement, eventData) {
 
 function getActiveMembers() {
     const cached = (api.loadCache('members') || {}).items || [];
-    return cached.filter(m => m.Active !== 'false' && m.Name);
+    const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
+    return cached.filter(m => parseInt(m.FiscalYear || curFY) === curFY && m.Name);
 }
 
 function initTagInput(container, selectedValues, placeholder) {
@@ -1153,41 +1164,58 @@ async function saveEventFromModal() {
         tempNewEvent.Houkoku_Deadline = deadLines.houkoku;
     }
 
-    // GASに保存（編集時は競合検知用に読み込み時の版を添える）
     const gasItem = uiToGas(tempNewEvent);
     if (eventIndex > -1) gasItem._baseUpdatedAt = tempNewEvent.UpdatedAt || '';
-    let savedEvent;
-    try {
-        const savedGas = await api.save('events', gasItem);
-        savedEvent = gasToUi(savedGas);
-    } catch (e) {
-        if (String(e.message).includes('conflict')) {
-            toast('他の人がこのイベントを編集しました。最新の内容を読み込みます。', 'error', 5000);
-            closeModal();
-            tempNewEvent = null;
-            await refreshData();
-            return;
-        }
-        toast('保存失敗: ' + e.message, 'error');
-        return;
-    }
+
+    // Collect experiment feedback from DOM before closing modal
+    const feedbackData = [];
+    card.querySelectorAll('.exp-fb-card').forEach(fbCard => {
+        const expName = fbCard.dataset.expName;
+        const posText = (fbCard.querySelector('.exp-fb-positive')?.value || '').trim();
+        const refText = (fbCard.querySelector('.exp-fb-reflection')?.value || '').trim();
+        if (posText || refText) feedbackData.push({ expName, posText, refText });
+    });
+
+    // --- Optimistic UI update ---
+    const snapshot = JSON.parse(JSON.stringify(eventsData));
+    const optimisticItem = { ...tempNewEvent };
 
     if (eventIndex > -1) {
-        eventsData[eventIndex] = savedEvent;
+        eventsData[eventIndex] = optimisticItem;
     } else {
-        eventsData.unshift(savedEvent);
+        eventsData.unshift(optimisticItem);
     }
     api.saveCache('events', eventsData);
-
     renderEvents();
     refreshCalendar();
-
-    // Save experiment feedback (if any)
-    await saveExperimentFeedback(card, savedEvent);
 
     closeModal();
     tempNewEvent = null;
     toast('保存しました', 'success');
+
+    // Background API call (no await — optimistic UI)
+    api.save('events', gasItem).then(savedGas => {
+        const savedEvent = gasToUi(savedGas);
+        const idx = eventsData.findIndex(e => e.ID === optimisticItem.ID);
+        if (idx >= 0) {
+            eventsData[idx] = savedEvent;
+            api.saveCache('events', eventsData);
+        }
+        if (feedbackData.length > 0) {
+            processExperimentFeedbackBg(feedbackData, savedEvent);
+        }
+    }).catch(e => {
+        eventsData.splice(0, eventsData.length, ...snapshot);
+        api.saveCache('events', eventsData);
+        renderEvents();
+        refreshCalendar();
+        if (String(e.message).includes('conflict')) {
+            toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', 5000);
+            refreshData();
+        } else {
+            toast('保存失敗: ' + e.message, 'error');
+        }
+    });
 }
 
 async function saveExperimentFeedback(card, eventData) {
@@ -1243,6 +1271,58 @@ async function saveExperimentFeedback(card, eventData) {
                 if (idx >= 0) experiments[idx] = saved;
             } catch (e) {
                 console.warn('Experiment feedback save failed for', expName, e);
+            }
+        }
+    }
+
+    api.saveCache('experiments', experiments);
+}
+
+async function processExperimentFeedbackBg(feedbackData, eventData) {
+    let experiments = (api.loadCache('experiments') || {}).items;
+    if (!experiments) {
+        try { experiments = await api.list('experiments'); api.saveCache('experiments', experiments); } catch (_) { return; }
+    }
+
+    for (const fb of feedbackData) {
+        const exp = experiments.find(e => e.Name === fb.expName);
+        if (!exp) continue;
+
+        let changed = false;
+
+        if (fb.posText) {
+            const entries = parseFeedbackEntries(exp.Positives);
+            entries.push({
+                id: genFeedbackId(),
+                date: eventData.Date || todayISO(),
+                eventId: eventData.ID || '',
+                eventTitle: eventData.Title || '',
+                text: fb.posText
+            });
+            exp.Positives = stringifyFeedbackEntries(entries);
+            changed = true;
+        }
+
+        if (fb.refText) {
+            const entries = parseFeedbackEntries(exp.Reflections);
+            entries.push({
+                id: genFeedbackId(),
+                date: eventData.Date || todayISO(),
+                eventId: eventData.ID || '',
+                eventTitle: eventData.Title || '',
+                text: fb.refText
+            });
+            exp.Reflections = stringifyFeedbackEntries(entries);
+            changed = true;
+        }
+
+        if (changed) {
+            try {
+                const saved = await api.save('experiments', { ...exp, _baseUpdatedAt: exp.UpdatedAt || '' });
+                const idx = experiments.findIndex(e => e.ID === exp.ID);
+                if (idx >= 0) experiments[idx] = saved;
+            } catch (e) {
+                console.warn('Experiment feedback save failed for', fb.expName, e);
             }
         }
     }

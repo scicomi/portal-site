@@ -135,15 +135,47 @@
                                 </td>
                             </tr>
                             <tr>
-                                <th>時間</th>
+                                <th>イベント時間</th>
                                 <td>
                                     <div class="field-value display-mode" data-field="Event_Time"></div>
+                                </td>
+                            </tr>
+                            <tr class="event-only-section">
+                                <th>集合・解散</th>
+                                <td>
+                                    <div class="field-value display-mode" data-field="Gather_Dismiss_Display"></div>
                                 </td>
                             </tr>
                             <tr class="event-only-section">
                                 <th>実験内容・発表者</th>
                                 <td>
                                     <div class="field-value display-mode" data-field="Experiments_Display"></div>
+                                </td>
+                            </tr>
+                            <tr class="event-only-section">
+                                <th>スケジュール<br>運搬</th>
+                                <td>
+                                    <div class="field-value display-mode text-area-view" data-field="Meeting_Logistics"
+                                        style="white-space: pre-wrap;"></div>
+                                </td>
+                            </tr>
+                            <tr class="event-only-section">
+                                <th>帯同</th>
+                                <td>
+                                    <div class="field-value display-mode" data-field="Accompany"></div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><span class="remarks-label-view">備考</span></th>
+                                <td>
+                                    <div class="field-value display-mode text-area-view" data-field="Remarks"
+                                        style="white-space: pre-wrap;"></div>
+                                </td>
+                            </tr>
+                            <tr class="event-only-section">
+                                <th>関連ファイル</th>
+                                <td>
+                                    <div class="file-list display-mode" data-field="Files_Display"></div>
                                 </td>
                             </tr>
                             <tr class="event-only-section">
@@ -158,33 +190,6 @@
                                                 style="margin-left: 10px;">期限: <span class="tag-deadline"
                                                     data-field="Houkoku_Deadline"></span></span></li>
                                     </ul>
-                                </td>
-                            </tr>
-                            <tr class="event-only-section">
-                                <th>スケジュール<br>運搬</th>
-                                <td>
-                                    <div class="field-value display-mode text-area-view" data-field="Meeting_Logistics"
-                                        style="white-space: pre-wrap;"></div>
-                                </td>
-                            </tr>
-                            <tr class="event-only-section">
-                                <th>持ち物</th>
-                                <td>
-                                    <div class="field-value display-mode text-area-view" data-field="Belongings"
-                                        style="white-space: pre-wrap;"></div>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th><span class="remarks-label-view">備考</span></th>
-                                <td>
-                                    <div class="field-value display-mode text-area-view" data-field="Remarks"
-                                        style="white-space: pre-wrap;"></div>
-                                </td>
-                            </tr>
-                            <tr class="event-only-section">
-                                <th>関連ファイル</th>
-                                <td>
-                                    <div class="file-list display-mode" data-field="Files_Display"></div>
                                 </td>
                             </tr>
                         </table>
@@ -209,18 +214,19 @@
                                 </div>
                             </div>
 
+                            <div class="e1-group">
+                                <label class="e1-label">日にち</label>
+                                <div class="date-range-picker-wrapper">
+                                    <input type="text" class="e1-input date-range-display edit-mode" readonly placeholder="クリックして日にちを選択">
+                                    <input type="hidden" class="edit-mode" data-field="Date">
+                                    <input type="hidden" class="edit-mode" data-field="Date_End">
+                                    <div class="date-range-popup hidden"></div>
+                                </div>
+                            </div>
+
                             <div class="flex-row">
                                 <div class="e1-group" style="flex:1;">
-                                    <label class="e1-label">開始日</label>
-                                    <input type="date" class="e1-input edit-mode" data-field="Date"
-                                        onchange="updateDeadlines(this)">
-                                </div>
-                                <div class="e1-group" style="flex:1;">
-                                    <label class="e1-label">終了日</label>
-                                    <input type="date" class="e1-input edit-mode" data-field="Date_End">
-                                </div>
-                                <div class="e1-group" style="flex:1;">
-                                    <label class="e1-label">時間</label>
+                                    <label class="e1-label">イベント時間</label>
                                     <div class="time-select-group">
                                         <select class="e1-input time-start-select" data-field="Time_Start">
                                             <option>09:00</option>
@@ -279,6 +285,48 @@
                                     </div>
                                     <input type="hidden" data-field="Event_Time">
                                 </div>
+                                <div class="e1-group event-only-section" style="flex:1;">
+                                    <label class="e1-label">集合時間</label>
+                                    <select class="e1-input edit-mode gather-time-select" data-field="Gather_Time">
+                                        <option value="">--</option>
+                                        <option value="07:00">07:00</option><option value="07:30">07:30</option>
+                                        <option value="08:00">08:00</option><option value="08:30">08:30</option>
+                                        <option value="09:00">09:00</option><option value="09:30">09:30</option>
+                                        <option value="10:00">10:00</option><option value="10:30">10:30</option>
+                                        <option value="11:00">11:00</option><option value="11:30">11:30</option>
+                                        <option value="12:00">12:00</option><option value="12:30">12:30</option>
+                                        <option value="13:00">13:00</option><option value="13:30">13:30</option>
+                                        <option value="14:00">14:00</option><option value="14:30">14:30</option>
+                                        <option value="15:00">15:00</option><option value="15:30">15:30</option>
+                                        <option value="16:00">16:00</option><option value="16:30">16:30</option>
+                                        <option value="17:00">17:00</option><option value="17:30">17:30</option>
+                                        <option value="18:00">18:00</option><option value="18:30">18:30</option>
+                                        <option value="19:00">19:00</option><option value="19:30">19:30</option>
+                                        <option value="20:00">20:00</option><option value="20:30">20:30</option>
+                                        <option value="21:00">21:00</option>
+                                    </select>
+                                </div>
+                                <div class="e1-group event-only-section" style="flex:1;">
+                                    <label class="e1-label">解散時間</label>
+                                    <select class="e1-input edit-mode dismiss-time-select" data-field="Dismiss_Time">
+                                        <option value="">--</option>
+                                        <option value="07:00">07:00</option><option value="07:30">07:30</option>
+                                        <option value="08:00">08:00</option><option value="08:30">08:30</option>
+                                        <option value="09:00">09:00</option><option value="09:30">09:30</option>
+                                        <option value="10:00">10:00</option><option value="10:30">10:30</option>
+                                        <option value="11:00">11:00</option><option value="11:30">11:30</option>
+                                        <option value="12:00">12:00</option><option value="12:30">12:30</option>
+                                        <option value="13:00">13:00</option><option value="13:30">13:30</option>
+                                        <option value="14:00">14:00</option><option value="14:30">14:30</option>
+                                        <option value="15:00">15:00</option><option value="15:30">15:30</option>
+                                        <option value="16:00">16:00</option><option value="16:30">16:30</option>
+                                        <option value="17:00">17:00</option><option value="17:30">17:30</option>
+                                        <option value="18:00">18:00</option><option value="18:30">18:30</option>
+                                        <option value="19:00">19:00</option><option value="19:30">19:30</option>
+                                        <option value="20:00">20:00</option><option value="20:30">20:30</option>
+                                        <option value="21:00">21:00</option>
+                                    </select>
+                                </div>
                             </div>
 
                             <hr class="event-only-section"
@@ -294,31 +342,13 @@
                                 style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
 
                             <div class="e1-group event-only-section">
-                                <label class="e1-label">書類期限（日付は自動計算されます）</label>
-                                <div class="deadline-grid">
-                                    <div>
-                                        <label
-                                            style="font-size:0.85rem; color:#666; display:block; margin-bottom:4px;">許可願
-                                            (担当)</label>
-                                        <div class="admin-tag-container edit-mode" data-admin-field="Admin_Kyoka"></div>
-                                    </div>
-                                    <div>
-                                        <label
-                                            style="font-size:0.85rem; color:#666; display:block; margin-bottom:4px;">報告書
-                                            (担当)</label>
-                                        <div class="admin-tag-container edit-mode" data-admin-field="Admin_Houkoku"></div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="e1-group event-only-section">
                                 <label class="e1-label">スケジュール・運搬</label>
                                 <textarea class="e1-input edit-mode" data-field="Meeting_Logistics" rows="5"></textarea>
                             </div>
 
                             <div class="e1-group event-only-section">
-                                <label class="e1-label">持ち物（1行1つ）</label>
-                                <textarea class="e1-input edit-mode" data-field="Belongings" rows="3" placeholder="スリッパ&#10;名札&#10;ポロシャツ"></textarea>
+                                <label class="e1-label">帯同（コーディネーター・アドバイザー）</label>
+                                <div class="admin-tag-container edit-mode" data-admin-field="Accompany"></div>
                             </div>
 
                             <div class="e1-group">
@@ -340,6 +370,24 @@
                                     </div>
                                     <input type="file" class="file-input-hidden" multiple style="display:none;" onchange="handleFileSelect(this)">
                                     <div class="file-list-edit"></div>
+                                </div>
+                            </div>
+
+                            <div class="e1-group event-only-section">
+                                <label class="e1-label">書類期限（日付は自動計算されます）</label>
+                                <div class="deadline-grid">
+                                    <div>
+                                        <label
+                                            style="font-size:0.85rem; color:#666; display:block; margin-bottom:4px;">許可願
+                                            (担当)</label>
+                                        <div class="admin-tag-container edit-mode" data-admin-field="Admin_Kyoka"></div>
+                                    </div>
+                                    <div>
+                                        <label
+                                            style="font-size:0.85rem; color:#666; display:block; margin-bottom:4px;">報告書
+                                            (担当)</label>
+                                        <div class="admin-tag-container edit-mode" data-admin-field="Admin_Houkoku"></div>
+                                    </div>
                                 </div>
                             </div>
 

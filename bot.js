@@ -90,7 +90,12 @@ const queryEngine = {
   // --- メンバー検索 ---
   findMembers(p) {
     let items = allData.members;
-    if (p.active_only !== false) items = items.filter(m => m.Active !== 'false');
+    if (p.fiscal_year) {
+      items = items.filter(m => String(m.FiscalYear) === String(p.fiscal_year));
+    } else if (p.active_only !== false) {
+      const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
+      items = items.filter(m => parseInt(m.FiscalYear || curFY) === curFY);
+    }
     if (p.grade) items = items.filter(m => (m.StudentID || '').toUpperCase().startsWith(p.grade.toUpperCase()));
     if (p.member_category) items = items.filter(m => m.Category === p.member_category);
     if (p.name) items = items.filter(m => (m.Name || '').includes(p.name));
@@ -150,7 +155,9 @@ const queryEngine = {
 
   // --- 書類未担当メンバー ---
   membersWithoutDocs(p) {
-    let members = allData.members.filter(m => m.Active !== 'false' && m.Category === 'member');
+    const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
+    const targetFY = p.fiscal_year ? parseInt(p.fiscal_year) : curFY;
+    let members = allData.members.filter(m => parseInt(m.FiscalYear || curFY) === targetFY && (m.Category || 'member') === 'member');
     if (p.grade) members = members.filter(m => (m.StudentID || '').toUpperCase().startsWith(p.grade.toUpperCase()));
 
     let events = allData.events.filter(e => e.Category === 'normal' || e.Category === 'other');
@@ -216,7 +223,12 @@ const queryEngine = {
     const r = p.resource || 'events';
     let items = allData[r] || [];
     if (r === 'members') {
-      if (p.active_only !== false) items = items.filter(m => m.Active !== 'false');
+      if (p.fiscal_year) {
+        items = items.filter(m => String(m.FiscalYear) === String(p.fiscal_year));
+      } else if (p.active_only !== false) {
+        const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
+        items = items.filter(m => parseInt(m.FiscalYear || curFY) === curFY);
+      }
       if (p.grade) items = items.filter(m => (m.StudentID || '').toUpperCase().startsWith(p.grade.toUpperCase()));
       if (p.member_category) items = items.filter(m => m.Category === p.member_category);
     }
@@ -248,16 +260,15 @@ const queryEngine = {
   // --- 結果フォーマット ---
   _formatMembers(items) {
     if (items.length === 0) return '<div class="bot-empty">該当するメンバーが見つかりませんでした。</div>';
-    const catLabels = { adviser: 'アドバイザー', coordinator: 'コーディネーター', member: 'メンバー' };
     return `<div class="bot-result-count">${items.length}人</div>
       <div class="bot-result-list">${items.map(m => {
         const grade = (m.StudentID || '').slice(0, 2);
-        const cat = catLabels[m.Category] || m.Category;
-        const role = m.Role ? ` / ${escapeHtml(m.Role)}` : '';
-        const badge = m.Active === 'false' ? ' <span class="grad-badge">卒業</span>' : '';
+        const role = m.Role || (m.Category === 'adviser' ? 'アドバイザー' : m.Category === 'coordinator' ? 'コーディネーター' : '');
+        const roleStr = role ? ` / ${escapeHtml(role)}` : '';
+        const fy = m.FiscalYear ? ` (${m.FiscalYear}年度)` : '';
         return `<div class="bot-result-item member-item">
-          <div class="bot-ri-main">${escapeHtml(m.Name)}${badge}</div>
-          <div class="bot-ri-sub">${escapeHtml(grade)} ${escapeHtml(cat)}${role}</div>
+          <div class="bot-ri-main">${escapeHtml(m.Name)}</div>
+          <div class="bot-ri-sub">${escapeHtml(grade)}${roleStr}${fy}</div>
         </div>`;
       }).join('')}</div>`;
   },
@@ -450,7 +461,7 @@ function keywordSearch(text) {
   const kw = text.toLowerCase().replace(/[？?。、！!]/g, '').trim();
   if (!kw) return { html: '', response_text: '質問を入力してください。' };
 
-  const memberHits = allData.members.filter(m => m.Active !== 'false' &&
+  const memberHits = allData.members.filter(m =>
     [m.Name, m.Role, m.StudentID, m.Note, m.Affiliation].some(v => (v || '').toLowerCase().includes(kw))
   );
   const eventHits = allData.events.filter(e =>

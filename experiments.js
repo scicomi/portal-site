@@ -241,8 +241,9 @@ async function saveExp() {
     if (!name) { toast('実験名を入力してください', 'error'); return; }
 
     const existing = editingExpId ? expData.find(x => x.ID === editingExpId) : null;
+    const isNew = !editingExpId;
     const item = {
-        ID: editingExpId || '',
+        ID: editingExpId || genId('ex_'),
         Name: name,
         Category: document.getElementById('ex-category').value,
         Materials: document.getElementById('ex-materials').value,
@@ -255,30 +256,38 @@ async function saveExp() {
         Active: existing ? (existing.Active || 'true') : 'true'
     };
 
-    // 編集時は競合検知用に読み込み時の版を添える
     if (editingExpId && existing) item._baseUpdatedAt = existing.UpdatedAt || '';
 
-    try {
-        const saved = await api.save('experiments', item);
-        if (editingExpId) {
-            const idx = expData.findIndex(x => x.ID === editingExpId);
-            if (idx >= 0) expData[idx] = saved;
-        } else {
-            expData.push(saved);
-        }
+    // --- Optimistic UI update ---
+    const snapshot = JSON.parse(JSON.stringify(expData));
+
+    if (isNew) {
+        expData.push({ ...item });
+    } else {
+        const idx = expData.findIndex(x => x.ID === editingExpId);
+        if (idx >= 0) expData[idx] = { ...expData[idx], ...item };
+    }
+    api.saveCache('experiments', expData);
+    render();
+    closeExpEdit();
+    toast('保存しました', 'success');
+
+    // Background API call (no await — optimistic UI)
+    api.save('experiments', item).then(saved => {
+        const idx = expData.findIndex(x => x.ID === item.ID);
+        if (idx >= 0) expData[idx] = saved;
+        api.saveCache('experiments', expData);
+    }).catch(e => {
+        expData.splice(0, expData.length, ...snapshot);
         api.saveCache('experiments', expData);
         render();
-        closeExpEdit();
-        toast('保存しました', 'success');
-    } catch (e) {
         if (String(e.message).includes('conflict')) {
             toast('他の人がこの実験を編集しました。最新を読み込みます。', 'error', 5000);
-            closeExpEdit();
-            await refreshData();
-            return;
+            refreshData();
+        } else {
+            toast('保存失敗: ' + e.message, 'error');
         }
-        toast('保存失敗: ' + e.message, 'error');
-    }
+    });
 }
 
 async function deleteExp(id) {

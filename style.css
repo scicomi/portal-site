@@ -1682,6 +1682,11 @@ textarea:focus {
     letter-spacing: 0.02em;
 }
 .admin-hidden { display: none !important; }
+.admin-only { display: none; }
+
+/* 編集モード */
+.data-table.edit-mode tbody tr.clickable-row { cursor: pointer; }
+.data-table.edit-mode tbody tr.clickable-row:hover { background: #eef0ff; }
 .admin-settings-section {
     border: 1px solid #e5e7eb;
     border-radius: 8px;
