@@ -553,7 +553,7 @@ function trimAuditLog(keepDays) {
 // ====== スキーマ駆動リソースレジストリ ======
 // 新しいリソース追加時はここに1エントリ足すだけでCRUD全対応
 const RESOURCE_REGISTRY = {
-  events:      { sheet: EVENTS_SHEET,      idPrefix: 'ev_', jsonFields: ['PartsList', 'Files'], timeFields: ['TimeStart', 'TimeEnd'] },
+  events:      { sheet: EVENTS_SHEET,      idPrefix: 'ev_', jsonFields: ['PartsList', 'Files'], timeFields: ['TimeStart', 'TimeEnd', 'GatherTime', 'DismissTime'] },
   members:     { sheet: MEMBERS_SHEET,     idPrefix: 'mb_', jsonFields: [], timeFields: [] },
   experiments: { sheet: EXPERIMENTS_SHEET, idPrefix: 'ex_', jsonFields: [], timeFields: [] },
   // パスワード一覧（外部サービスの認証情報）: 閲覧・編集とも管理者専用
@@ -665,16 +665,28 @@ function saveResource(resource, item) {
     }
 
     const createdAtCol = headers.indexOf('CreatedAt');
+    // 新規判定は「ID の有無」ではなく「シートに既存行があるか」で行う。
+    // フロントは全リソースで ID をクライアント採番して送る（genId）ため、ID 有無で判定すると
+    // 新規行に CreatedAt が一切入らない不具合になる。existingRow で判定して取りこぼしを防ぐ。
+    const isNewRow = existingRow < 0;
 
     if (!item.ID) {
       item.ID = getIdPrefix(resource) + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-      if (createdAtCol >= 0) item.CreatedAt = now;
-    } else if (existingRow > 0 && createdAtCol >= 0) {
-      // 更新時：クライアントが CreatedAt を送ってこなくても既存値を消さない
-      if (item.CreatedAt === undefined || item.CreatedAt === null || item.CreatedAt === '') {
-        const existingCreated = sheet.getRange(existingRow, createdAtCol + 1).getValue();
-        if (existingCreated !== '' && existingCreated !== null && existingCreated !== undefined) {
-          item.CreatedAt = (existingCreated instanceof Date) ? existingCreated.toISOString() : existingCreated;
+    }
+    if (createdAtCol >= 0) {
+      if (isNewRow) {
+        // 新規行：CreatedAt が未指定なら now を入れる。
+        // 削除UNDOの再作成など、クライアントが元の作成日時を送ってきた場合はそれを尊重する。
+        if (item.CreatedAt === undefined || item.CreatedAt === null || item.CreatedAt === '') {
+          item.CreatedAt = now;
+        }
+      } else {
+        // 更新時：クライアントが CreatedAt を送ってこなくても既存値を消さない
+        if (item.CreatedAt === undefined || item.CreatedAt === null || item.CreatedAt === '') {
+          const existingCreated = sheet.getRange(existingRow, createdAtCol + 1).getValue();
+          if (existingCreated !== '' && existingCreated !== null && existingCreated !== undefined) {
+            item.CreatedAt = (existingCreated instanceof Date) ? existingCreated.toISOString() : existingCreated;
+          }
         }
       }
     }
@@ -740,20 +752,20 @@ function deleteResource(resource, id) {
 
 const EVENTS_HEADERS = [
   'ID', 'Date', 'DateEnd', 'Title', 'Category', 'Location', 'Audience',
-  'TimeStart', 'TimeEnd', 'MeetingNumber', 'PartsList',
+  'TimeStart', 'TimeEnd', 'GatherTime', 'DismissTime', 'MeetingNumber', 'PartsList',
   'AdminKyoka', 'AdminHoukoku', 'KyokaDeadline', 'HoukokuDeadline',
-  'Logistics', 'Remarks', 'Files', 'Belongings',
+  'Logistics', 'Remarks', 'Files', 'Belongings', 'Accompany',
   'SeriesKey', 'Positives', 'Reflections',
   'CreatedAt', 'UpdatedAt', 'UpdatedBy'
 ];
 const MEMBERS_HEADERS = [
-  'ID', 'Name', 'Category', 'Role', 'StudentID', 'Affiliation',
+  'ID', 'Name', 'Furigana', 'Category', 'Role', 'StudentID', 'Affiliation',
   'Email', 'Note', 'FiscalYear', 'Active',
   'CreatedAt', 'UpdatedAt'
 ];
 const EXPERIMENTS_HEADERS = [
   'ID', 'Name', 'Category', 'Materials', 'Preparation', 'Flow', 'Notes',
-  'SlidesURL', 'Reflections', 'Positives', 'Active', 'CreatedAt', 'UpdatedAt'
+  'SlidesURL', 'Photos', 'Reflections', 'Positives', 'Active', 'CreatedAt', 'UpdatedAt'
 ];
 // パスワード一覧（外部サービスの認証情報）。管理者専用。
 const PASSWORDS_HEADERS = [
