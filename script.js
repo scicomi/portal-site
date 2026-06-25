@@ -567,6 +567,9 @@ function populateFields(cardElement, eventData) {
         });
     });
 
+    // 日付レンジピッカー（クリックでカレンダーを開く）を初期化
+    initDateRangePicker(cardElement);
+
     // Deadlines & Admins Special Handling
     const adminFields = ['Admin_Kyoka', 'Admin_Houkoku', 'Kyoka_Deadline', 'Houkoku_Deadline'];
     adminFields.forEach(field => {
@@ -630,7 +633,12 @@ function populateFields(cardElement, eventData) {
         const field = container.dataset.adminField;
         const currentVal = eventData[field] || '';
         const vals = currentVal ? currentVal.split(',').map(s => s.trim()).filter(Boolean) : [];
-        initTagInput(container, vals, '担当者を検索...');
+        // 帯同(Accompany)はコーディネーター・アドバイザーのみ。
+        // 許可願・報告書の担当はそれ以外のメンバーのみ。
+        const isAccompany = field === 'Accompany';
+        const filterFn = isAccompany ? isStaffMember : isRegularMember;
+        const ph = isAccompany ? 'コーディネーター・アドバイザーを検索...' : '担当者を検索...';
+        initTagInput(container, vals, ph, filterFn);
     });
 
     // Title mapping overrides for Meeting Mode
@@ -718,6 +726,128 @@ function populateFields(cardElement, eventData) {
 //     保存  → saveEventFromModal()
 //     削除  → deleteModalEvent()
 
+// ---- 日付レンジピッカー（クリックでカレンダーを開く） ----
+// events.html の .date-range-picker-wrapper を駆動する。
+// 表示用の readonly input をクリックするとポップアップ暦が開き、
+// 開始日→終了日の順にクリックすると hidden の Date / Date_End に反映される。
+function initDateRangePicker(card) {
+    const wrapper = card.querySelector('.date-range-picker-wrapper');
+    if (!wrapper) return;
+    const display = wrapper.querySelector('.date-range-display');
+    const startInput = wrapper.querySelector('[data-field="Date"]');
+    const endInput = wrapper.querySelector('[data-field="Date_End"]');
+    const popup = wrapper.querySelector('.date-range-popup');
+    if (!display || !startInput || !endInput || !popup) return;
+
+    const state = {
+        start: startInput.value || '',
+        end: endInput.value || '',
+        view: parseISODate(startInput.value || todayISO())
+    };
+    const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+
+    function syncDisplay() {
+        if (state.start && state.end && state.end !== state.start) {
+            display.value = `${state.start} (${dayOfWeekJP(state.start)}) 〜 ${state.end} (${dayOfWeekJP(state.end)})`;
+        } else if (state.start) {
+            display.value = `${state.start} (${dayOfWeekJP(state.start)})`;
+        } else {
+            display.value = '';
+        }
+        startInput.value = state.start;
+        endInput.value = (state.end && state.end !== state.start) ? state.end : '';
+        // 開始日が変わると書類期限の表示も更新する
+        if (typeof updateDeadlines === 'function') updateDeadlines(startInput);
+    }
+
+    function renderCal() {
+        const y = state.view.getFullYear();
+        const m = state.view.getMonth();
+        const startWeekday = new Date(y, m, 1).getDay();
+        const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+        let cells = '';
+        for (let i = 0; i < startWeekday; i++) cells += '<span class="drp-day drp-empty"></span>';
+        for (let d = 1; d <= daysInMonth; d++) {
+            const iso = toISODate(new Date(y, m, d));
+            const dow = new Date(y, m, d).getDay();
+            const cls = ['drp-day'];
+            if (dow === 0) cls.push('drp-sun');
+            if (dow === 6) cls.push('drp-sat');
+            if (holidaysData[iso]) cls.push('drp-holiday');
+            if (iso === todayISO()) cls.push('drp-today');
+            if (iso === state.start) cls.push('drp-start');
+            if (state.end && iso === state.end) cls.push('drp-end');
+            if (state.start && state.end && iso > state.start && iso < state.end) cls.push('drp-inrange');
+            cells += `<button type="button" class="${cls.join(' ')}" data-iso="${iso}">${d}</button>`;
+        }
+
+        popup.innerHTML = `
+            <div class="drp-header">
+                <button type="button" class="drp-nav" data-nav="-1">‹</button>
+                <span class="drp-title">${y}年 ${m + 1}月</span>
+                <button type="button" class="drp-nav" data-nav="1">›</button>
+            </div>
+            <div class="drp-weekdays">${weekdays.map((w, i) => `<span class="${i === 0 ? 'drp-sun' : i === 6 ? 'drp-sat' : ''}">${w}</span>`).join('')}</div>
+            <div class="drp-grid">${cells}</div>
+            <div class="drp-footer">
+                <span class="drp-hint">開始日→終了日の順にクリック</span>
+                <button type="button" class="drp-clear">クリア</button>
+                <button type="button" class="drp-close">完了</button>
+            </div>
+        `;
+    }
+
+    function openPopup() {
+        state.view = parseISODate(state.start || todayISO());
+        renderCal();
+        popup.classList.remove('hidden');
+        setTimeout(() => document.addEventListener('mousedown', onOutside), 0);
+    }
+    function closePopup() {
+        popup.classList.add('hidden');
+        document.removeEventListener('mousedown', onOutside);
+    }
+    function onOutside(e) {
+        if (!wrapper.contains(e.target)) closePopup();
+    }
+
+    display.addEventListener('click', () => {
+        if (popup.classList.contains('hidden')) openPopup(); else closePopup();
+    });
+
+    popup.addEventListener('click', (e) => {
+        const nav = e.target.closest('.drp-nav');
+        if (nav) {
+            state.view = new Date(state.view.getFullYear(), state.view.getMonth() + parseInt(nav.dataset.nav), 1);
+            renderCal();
+            return;
+        }
+        if (e.target.closest('.drp-clear')) {
+            state.start = ''; state.end = '';
+            syncDisplay(); renderCal();
+            return;
+        }
+        if (e.target.closest('.drp-close')) { closePopup(); return; }
+
+        const day = e.target.closest('.drp-day');
+        if (day && day.dataset.iso) {
+            const iso = day.dataset.iso;
+            if (!state.start || (state.start && state.end) || iso < state.start) {
+                // 新しい開始日として設定（終了日はリセット）
+                state.start = iso; state.end = '';
+            } else {
+                // 終了日を設定
+                state.end = iso;
+            }
+            syncDisplay(); renderCal();
+            if (state.start && state.end) closePopup();
+        }
+    });
+
+    syncDisplay();
+}
+
 // ---- タグ入力コンポーネント（検索可能な複数選択） ----
 
 function getActiveMembers() {
@@ -726,7 +856,19 @@ function getActiveMembers() {
     return cached.filter(m => parseInt(m.FiscalYear || curFY) === curFY && m.Name);
 }
 
-function initTagInput(container, selectedValues, placeholder) {
+// メンバーの役職判定（Role 優先、無ければ旧 Category から導出）
+function memberRole(m) {
+    return m.Role || (m.Category === 'adviser' ? 'アドバイザー' : m.Category === 'coordinator' ? 'コーディネーター' : '');
+}
+function isStaffMember(m) {
+    const r = memberRole(m);
+    return r === 'アドバイザー' || r === 'コーディネーター';
+}
+function isRegularMember(m) {
+    return !isStaffMember(m);
+}
+
+function initTagInput(container, selectedValues, placeholder, filterFn) {
     container.innerHTML = '';
     const wrapper = document.createElement('div');
     wrapper.className = 'tag-input';
@@ -758,7 +900,7 @@ function initTagInput(container, selectedValues, placeholder) {
 
     function showDropdown() {
         const query = input.value.toLowerCase().trim();
-        const members = getActiveMembers();
+        const members = filterFn ? getActiveMembers().filter(filterFn) : getActiveMembers();
         const filtered = members.filter(m => {
             if (values.includes(m.Name)) return false;
             if (!query) return true;
@@ -865,7 +1007,8 @@ function buildExperimentRow(expName, presenters) {
         </div>
         <button class="btn-del" onclick="removeExperimentRow(this)" type="button">✖</button>
     `;
-    initTagInput(row.querySelector('.presenter-tag-container'), presenters || [], '発表者を検索...');
+    // 発表者の候補はコーディネーター・アドバイザーを除いたメンバーのみ
+    initTagInput(row.querySelector('.presenter-tag-container'), presenters || [], '発表者を検索...', isRegularMember);
     return row;
 }
 
@@ -938,7 +1081,7 @@ function startNewEvent(category, template) {
 
     let newEvent;
     if (template) {
-        // 過去イベントから複製（日付・IDだけリセット）
+        // 過去イベントから複製（日付・IDをリセットし、前回固有の情報は引き継がない）
         newEvent = { ...template };
         newEvent.ID = newId;
         newEvent.Date = startDate;
@@ -946,6 +1089,14 @@ function startNewEvent(category, template) {
         newEvent.Title = (template.Title || '') + ' (複製)';
         newEvent.Kyoka_Deadline = '';
         newEvent.Houkoku_Deadline = '';
+        // 前回イベント固有のデータは複製しない（振り返り・添付ファイル・更新履歴）。
+        // 特に Files を引き継ぐと複製元と同じ Drive ファイルを共有してしまい、削除時に混乱する。
+        newEvent.Positives = '';
+        newEvent.Reflections = '';
+        newEvent.Files = [];
+        newEvent.CreatedAt = '';
+        newEvent.UpdatedAt = '';
+        newEvent.UpdatedBy = '';
         toast('過去イベントを複製しました。日付などを編集してください', 'info', 4000);
     } else {
         newEvent = {
@@ -1167,6 +1318,9 @@ async function saveEventFromModal() {
     const gasItem = uiToGas(tempNewEvent);
     if (eventIndex > -1) gasItem._baseUpdatedAt = tempNewEvent.UpdatedAt || '';
 
+    // 一覧から外したファイルの Drive 実削除はサーバー保存成功後に行う（参照が外れてから消す）
+    const filesToDelete = Array.isArray(tempNewEvent._filesToDelete) ? tempNewEvent._filesToDelete.slice() : [];
+
     // Collect experiment feedback from DOM before closing modal
     const feedbackData = [];
     card.querySelectorAll('.exp-fb-card').forEach(fbCard => {
@@ -1179,6 +1333,7 @@ async function saveEventFromModal() {
     // --- Optimistic UI update ---
     const snapshot = JSON.parse(JSON.stringify(eventsData));
     const optimisticItem = { ...tempNewEvent };
+    delete optimisticItem._filesToDelete; // 内部用フィールドはキャッシュ／表示に残さない
 
     if (eventIndex > -1) {
         eventsData[eventIndex] = optimisticItem;
@@ -1201,6 +1356,10 @@ async function saveEventFromModal() {
             eventsData[idx] = savedEvent;
             api.saveCache('events', eventsData);
         }
+        // 参照が外れたので、不要になった Drive ファイルを削除する。
+        // メンバー（非管理者）は削除権限が無く失敗するが、その場合は「孤児ファイル」として
+        // 月次クリーンアップ（cleanupOrphanedFiles）が後で回収するため握りつぶしてよい。
+        filesToDelete.forEach(driveId => { api.deleteFile(driveId).catch(() => {}); });
         if (feedbackData.length > 0) {
             processExperimentFeedbackBg(feedbackData, savedEvent);
         }
@@ -1478,26 +1637,18 @@ async function uploadFiles(fileList) {
     }
 }
 
-async function removeFile(index) {
+function removeFile(index) {
     if (!tempNewEvent || !Array.isArray(tempNewEvent.Files)) return;
     const file = tempNewEvent.Files[index];
     if (!file) return;
 
+    // Drive 上の実ファイル削除は「イベント保存時」にまとめて行う（saveEventFromModal）。
+    // ここで即削除すると、モーダルをキャンセルした場合に「イベントは参照しているのに
+    // ファイルだけ消えている」不整合が起きる（保存して初めて参照が外れるため）。
+    // 一覧からの除去（参照外し）はメンバーでも可能。実削除は保存後に管理者権限で実行する。
     if (file.driveId) {
-        if (!api.isAdmin()) {
-            showAdminAuthModal(() => removeFile(index));
-            return;
-        }
-        try {
-            await api.deleteFile(file.driveId);
-        } catch (e) {
-            if (e.message === 'ADMIN_REQUIRED') {
-                showAdminAuthModal(() => removeFile(index));
-                return;
-            }
-            console.warn('Drive file deletion failed:', e);
-            toast('Driveファイルの削除に失敗しました（参照のみ解除します）', 'error', 4000);
-        }
+        if (!Array.isArray(tempNewEvent._filesToDelete)) tempNewEvent._filesToDelete = [];
+        tempNewEvent._filesToDelete.push(file.driveId);
     }
     tempNewEvent.Files.splice(index, 1);
     refreshEditFileList();

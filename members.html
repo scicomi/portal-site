@@ -23,6 +23,13 @@
             <button class="filter-chip admin-only" id="edit-mode-btn" onclick="toggleEditMode()">編集</button>
         </div>
 
+        <div class="page-section-actions" id="role-filter-row">
+            <span style="font-size:0.85rem; color:#888;">区分で絞り込み:</span>
+            <button class="filter-chip active" data-role="member" onclick="setRoleFilter('member')">メンバー</button>
+            <button class="filter-chip" data-role="coordinator" onclick="setRoleFilter('coordinator')">コーディネーター</button>
+            <button class="filter-chip" data-role="adviser" onclick="setRoleFilter('adviser')">アドバイザー</button>
+        </div>
+
         <div class="page-section-actions" id="grade-filter-row" style="display:none;">
             <span style="font-size:0.85rem; color:#888;">学年で絞り込み:</span>
             <span id="grade-filter-chips" style="display:flex; gap:8px; flex-wrap:wrap;"></span>

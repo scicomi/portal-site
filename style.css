@@ -2300,6 +2300,65 @@ textarea:focus {
     font-style: italic;
 }
 
+/* ===== 日付レンジピッカー ===== */
+.date-range-picker-wrapper { position: relative; }
+.date-range-display { cursor: pointer; }
+.date-range-popup {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 200;
+    width: 280px;
+    max-width: calc(100vw - 40px);
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+    padding: 10px;
+}
+.date-range-popup.hidden { display: none; }
+.drp-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+}
+.drp-title { font-weight: 600; color: #464775; }
+.drp-nav {
+    background: none; border: 1px solid #ddd; border-radius: 6px;
+    width: 28px; height: 28px; cursor: pointer; font-size: 1rem;
+    line-height: 1; color: #464775;
+}
+.drp-nav:hover { background: #f0f0f8; }
+.drp-weekdays {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    text-align: center; font-size: 0.72rem; color: #888; margin-bottom: 4px;
+}
+.drp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.drp-day {
+    border: none; background: none; cursor: pointer;
+    height: 32px; border-radius: 6px; font-size: 0.85rem; color: #333;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+}
+.drp-day:hover { background: #e8e6f0; }
+.drp-empty { visibility: hidden; cursor: default; }
+.drp-sun { color: #d9480f; }
+.drp-sat { color: #1971c2; }
+.drp-holiday { color: #d9480f; }
+.drp-today { outline: 1px solid #464775; }
+.drp-inrange { background: #e8e6f0; border-radius: 0; }
+.drp-start, .drp-end { background: #464775 !important; color: #fff !important; }
+.drp-footer {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee;
+}
+.drp-hint { font-size: 0.7rem; color: #999; flex: 1; }
+.drp-clear, .drp-close {
+    background: none; border: 1px solid #ddd; border-radius: 6px;
+    padding: 4px 10px; cursor: pointer; font-size: 0.8rem;
+}
+.drp-close { background: #464775; color: #fff; border-color: #464775; }
+.drp-clear:hover { background: #f5f5f5; }
+
 /* ========== Event Modal Tabs ========== */
 .event-tab-bar {
     display: flex;

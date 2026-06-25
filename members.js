@@ -9,6 +9,7 @@ let memberSearchKw = '';
 let editingMemberId = null;
 let selectedFiscalYear = currentFiscalYear();
 let gradeFilter = null;
+let roleFilter = 'member'; // 'member' | 'coordinator' | 'adviser'（既定はメンバーのみ表示）
 let isEditMode = false;
 
 function gradeOf(m) {
@@ -107,9 +108,10 @@ function buildGradeChips(fyMembers) {
     fyMembers.forEach(m => {
         const role = getEffectiveRole(m);
         if (role === 'アドバイザー' || role === 'コーディネーター') return;
+        // 院生は学年（5C 等）に含めず「院生」だけに分類する
+        if (isGradStudent(m)) { hasGrad = true; return; }
         const g = gradeOf(m);
         if (g && /^\d[A-Z]$/.test(g)) grades.add(g);
-        if (isGradStudent(m)) hasGrad = true;
     });
     const list = [...grades].sort();
     if (hasGrad) list.push('院生');
@@ -129,6 +131,14 @@ function setGradeFilter(g) {
     renderMembers();
 }
 
+function setRoleFilter(r) {
+    roleFilter = r;
+    gradeFilter = null; // 区分を変えたら学年絞り込みはリセット
+    document.querySelectorAll('#role-filter-row .filter-chip').forEach(c =>
+        c.classList.toggle('active', c.dataset.role === r));
+    renderMembers();
+}
+
 function onMemberSearch() {
     memberSearchKw = (document.getElementById('member-search').value || '').toLowerCase();
     renderMembers();
@@ -140,15 +150,32 @@ function getMemberFiscalYear(m) {
 }
 
 function renderMembers() {
-    const fyMembers = membersData.filter(m => getMemberFiscalYear(m) === selectedFiscalYear);
-    buildGradeChips(fyMembers);
+    let fyMembers = membersData.filter(m => getMemberFiscalYear(m) === selectedFiscalYear);
+
+    // 区分（メンバー / コーディネーター / アドバイザー）で絞り込み
+    fyMembers = fyMembers.filter(m => {
+        const role = getEffectiveRole(m);
+        if (roleFilter === 'coordinator') return role === 'コーディネーター';
+        if (roleFilter === 'adviser') return role === 'アドバイザー';
+        return role !== 'コーディネーター' && role !== 'アドバイザー'; // member（既定）
+    });
+
+    // 学年チップ・学年絞り込みはメンバー区分のときだけ
+    if (roleFilter === 'member') {
+        buildGradeChips(fyMembers);
+    } else {
+        const row = document.getElementById('grade-filter-row');
+        if (row) row.style.display = 'none';
+        gradeFilter = null;
+    }
 
     let base;
-    if (gradeFilter) {
+    if (gradeFilter && roleFilter === 'member') {
         if (gradeFilter === '院生') {
             base = fyMembers.filter(isGradStudent);
         } else {
-            base = fyMembers.filter(m => gradeOf(m) === gradeFilter);
+            // 院生（5CSKM012 等）は学年（5C 等）に含めない
+            base = fyMembers.filter(m => gradeOf(m) === gradeFilter && !isGradStudent(m));
         }
     } else {
         base = fyMembers;
@@ -179,8 +206,9 @@ function renderMembers() {
 
     // Admin buttons
     const isAdmin = api.isAdmin();
+    // 空文字だと CSS の .admin-only { display:none } に戻ってしまうため明示的に値を指定する
     document.querySelectorAll('.admin-only').forEach(el => {
-        el.style.display = isAdmin ? '' : 'none';
+        el.style.display = isAdmin ? 'inline-block' : 'none';
     });
 
     if (sorted.length === 0) {
