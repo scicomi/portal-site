@@ -303,6 +303,24 @@ const api = {
     return res;
   },
 
+  // 文章生成（要約など）。instruction=依頼文 / context=要約対象の本文（個人情報を除いた実験・イベント内容）。
+  async geminiGenerate(instruction, context) {
+    const res = await this._post({
+      action: 'geminiGenerate',
+      token: this.getToken(),
+      instruction,
+      context
+    });
+    if (!res.success) {
+      const err = new Error(res.error || 'gemini generate failed');
+      err.retrySec = res.retrySec;
+      err.detail = res.detail;
+      err.scope = res.scope;
+      throw err;
+    }
+    return res; // { success, text, usage, limit }
+  },
+
   async _post(payload) {
     let res, text;
     try {

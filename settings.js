@@ -46,16 +46,6 @@ async function loadSettings() {
         document.getElementById('cfg-deadline-kyoka').value = kyokaDays;
         document.getElementById('cfg-deadline-houkoku').value = houkokuDays;
 
-        // アラート閾値
-        const alertDanger = cfg.deadline_alert_danger != null ? parseInt(cfg.deadline_alert_danger) : CONFIG.DEADLINE_ALERT.danger;
-        const alertWarning = cfg.deadline_alert_warning != null ? parseInt(cfg.deadline_alert_warning) : CONFIG.DEADLINE_ALERT.warning;
-        document.getElementById('cfg-alert-danger').value = alertDanger;
-        document.getElementById('cfg-alert-warning').value = alertWarning;
-
-        // リマインダー日数
-        const reminderDays = cfg.reminder_days || CONFIG.REMINDER.days.join(', ');
-        document.getElementById('cfg-reminder-days').value = reminderDays;
-
         // 設定キャッシュを更新（他ページで applySiteSettings が即座に反映できるように）
         localStorage.setItem('scicomi_site_settings', JSON.stringify({ data: cfg, ts: Date.now() }));
 
@@ -167,52 +157,6 @@ async function saveDeadlineRules() {
         CONFIG.DEADLINE_RULES.kyoka = -kyoka;
         CONFIG.DEADLINE_RULES.houkoku = houkoku;
         toast('期限ルールを保存しました', 'success');
-    } catch (e) {
-        toast('保存失敗: ' + e.message, 'error');
-    }
-}
-
-// --- アラート閾値保存 ---
-
-async function saveAlertThresholds() {
-    const danger = parseInt(document.getElementById('cfg-alert-danger').value);
-    const warning = parseInt(document.getElementById('cfg-alert-warning').value);
-    if (isNaN(danger) || danger < 0 || isNaN(warning) || warning < 1) {
-        toast('有効な日数を入力してください', 'error');
-        return;
-    }
-    if (danger >= warning) {
-        toast('注意（黄）は危険（赤）より大きい日数にしてください', 'error');
-        return;
-    }
-    try {
-        await api.adminSetConfig('deadline_alert_danger', String(danger));
-        await api.adminSetConfig('deadline_alert_warning', String(warning));
-        invalidateSettingsCache();
-        CONFIG.DEADLINE_ALERT.danger = danger;
-        CONFIG.DEADLINE_ALERT.warning = warning;
-        toast('アラート設定を保存しました', 'success');
-    } catch (e) {
-        toast('保存失敗: ' + e.message, 'error');
-    }
-}
-
-// --- リマインダー日数保存 ---
-
-async function saveReminderDays() {
-    const raw = document.getElementById('cfg-reminder-days').value.trim();
-    const days = raw.split(/[,\s]+/).map(Number).filter(n => n > 0 && !isNaN(n));
-    if (days.length === 0) {
-        toast('有効な日数を入力してください（例: 7, 3, 1）', 'error');
-        return;
-    }
-    days.sort((a, b) => b - a);
-    try {
-        await api.adminSetConfig('reminder_days', days.join(', '));
-        invalidateSettingsCache();
-        CONFIG.REMINDER.days = days;
-        document.getElementById('cfg-reminder-days').value = days.join(', ');
-        toast('リマインダー設定を保存しました', 'success');
     } catch (e) {
         toast('保存失敗: ' + e.message, 'error');
     }

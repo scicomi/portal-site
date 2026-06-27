@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
     <title>設定 | SciComi Portal</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
@@ -64,55 +65,6 @@
                 </div>
             </div>
 
-            <!-- 期限アラート設定 -->
-            <div class="settings-section">
-                <div class="settings-section-header">
-                    <h2>期限アラートの閾値</h2>
-                    <p class="settings-section-desc">ホーム画面で期限カードの色分けに使う日数です。</p>
-                </div>
-                <div class="settings-card">
-                    <div class="settings-row-grid">
-                        <div class="e1-group">
-                            <label class="e1-label"><span style="color:#991b1b;">&#9679;</span> 危険（赤）</label>
-                            <p class="settings-hint">残り日数がこの値以下で赤表示</p>
-                            <div style="display:flex;gap:8px;align-items:center;">
-                                <input type="number" id="cfg-alert-danger" class="e1-input" min="0" max="30" style="width:100px;">
-                                <span style="color:#666;">日以内</span>
-                            </div>
-                        </div>
-                        <div class="e1-group">
-                            <label class="e1-label"><span style="color:#92400e;">&#9679;</span> 注意（黄）</label>
-                            <p class="settings-hint">残り日数がこの値以下で黄表示</p>
-                            <div style="display:flex;gap:8px;align-items:center;">
-                                <input type="number" id="cfg-alert-warning" class="e1-input" min="1" max="60" style="width:100px;">
-                                <span style="color:#666;">日以内</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div style="margin-top:8px;">
-                        <button class="btn btn-primary-solid" onclick="saveAlertThresholds()" style="width:auto;padding:8px 20px;">アラート設定を保存</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- リマインダー設定 -->
-            <div class="settings-section">
-                <div class="settings-section-header">
-                    <h2>リマインダー送信日</h2>
-                    <p class="settings-section-desc">期限の何日前にリマインダーメールを送信するかを設定します。</p>
-                </div>
-                <div class="settings-card">
-                    <div class="e1-group">
-                        <label class="e1-label">送信タイミング（日前）</label>
-                        <p class="settings-hint">カンマ区切りで複数指定できます（例: 7, 3, 1）</p>
-                        <div style="display:flex;gap:8px;">
-                            <input type="text" id="cfg-reminder-days" class="e1-input" placeholder="7, 3, 1" style="flex:1;max-width:300px;">
-                            <button class="btn btn-primary-solid" onclick="saveReminderDays()" style="width:auto;padding:8px 20px;">保存</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- パスワード管理 -->
             <div class="settings-section">
                 <div class="settings-section-header">
@@ -167,7 +119,8 @@
                     </div>
                     <div class="e1-group">
                         <label class="e1-label">使用モデル</label>
-                        <p class="settings-hint">「レート制限」が頻発する場合、無料枠に余裕のあるモデルへ切り替えてください。</p>
+                        <p class="settings-hint">「レート制限」が頻発する場合、無料枠に余裕のあるモデルへ切り替えてください。<br>
+                        ※ 指定したモデルが将来廃止された場合は、サーバーが利用可能なモデルを自動検出して切り替えます（コード変更不要）。空欄相当でも自動選択されます。</p>
                         <div style="display:flex;gap:8px;">
                             <select id="cfg-gemini-model" class="e1-input" style="flex:1;">
                                 <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite（軽量・推奨）</option>

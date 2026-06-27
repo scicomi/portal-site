@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
     <title>実験詳細 | SciComi Portal</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
@@ -18,7 +19,8 @@
         <div id="exp-loading" class="empty-state">読み込み中...</div>
 
         <div id="exp-content" class="hidden">
-            <!-- Experiment Info Card -->
+            <!-- Experiment Info Card（タイトル・バッジ・編集のみのコンパクト表示。
+                 使用物品/事前準備/発表の流れ/注意事項は「実験情報」タブへ移動） -->
             <div class="expd-info-card">
                 <div class="expd-info-header">
                     <h1 id="expd-name" class="expd-title"></h1>
@@ -28,7 +30,6 @@
                         <button class="tbl-btn" onclick="goEdit()">編集</button>
                     </div>
                 </div>
-                <div id="expd-info-body"></div>
             </div>
 
             <!-- Tab Bar -->
@@ -38,8 +39,11 @@
                 <button class="expd-tab" data-tab="photos" onclick="switchExpTab(this)">写真</button>
             </div>
 
-            <!-- Tab: Info -->
+            <!-- Tab: Info（使用物品・事前準備・発表の流れ・注意事項をここで表示） -->
             <div class="expd-tab-pane" data-tab-pane="info">
+                <div class="expd-section">
+                    <div id="expd-info-body"></div>
+                </div>
                 <div id="expd-events-section" class="expd-section hidden">
                     <h2 class="expd-section-title">実施イベント</h2>
                     <div id="expd-events-list"></div>

@@ -64,9 +64,18 @@ function uiToGas(u) {
         SeriesKey: u.SeriesKey || '',
         Positives: u.Positives || '',
         Reflections: u.Reflections || '',
+        ReportStatus: u.ReportStatus || '',  // 報告書ステータスをイベント編集保存でも保持する
         UpdatedBy: u.UpdatedBy || '',
         CreatedAt: u.CreatedAt || ''  // 既存の作成日時を保持（更新・UNDO再作成で消さない）
     };
+}
+
+// ---- キャッシュ読込の正規化 ----
+// 'events' キャッシュは、イベントページが UI形（Event_Time 等）、home/bot/詳細ページが
+// GAS形（DateEnd/TimeStart 等）を書き込むため、同じキーに2スキーマが混在しうる。
+// 直前に別ページが GAS形で書いていても破綻しないよう、UI形でなければ gasToUi で変換する。
+function cacheItemsToUi(items) {
+    return (items || []).map(e => (e && 'Event_Time' in e) ? e : gasToUi(e));
 }
 
 // ---- 開催回数（同名イベントの紐付け） ----
@@ -129,19 +138,43 @@ document.addEventListener('DOMContentLoaded', () => {
 async function init() {
     holidaysData = await api.loadHolidaysCached();
 
-    // キャッシュ即表示
+    // キャッシュ即表示（GAS形で書かれていても UI形へ正規化してから使う）
     const cached = api.loadCache('events');
     if (cached && cached.items && cached.items.length > 0) {
-        eventsData = cached.items;
+        eventsData = cacheItemsToUi(cached.items);
     }
 
     populateDatalists();
-    renderEvents();
+    // キャッシュがある時だけ即描画。無い時は HTML の「読み込み中...」行を残し、
+    // refreshData 完了後に renderEvents で置き換える（空表示と読込中を取り違えない）。
+    if (cached && cached.items && cached.items.length > 0) {
+        renderEvents();
+        focusEventFromUrl();
+    }
 
     if (cached) updateSyncStatus('cached', cached.timestamp);
     else updateSyncStatus('initial-loading');
 
     refreshData();
+}
+
+// ホーム等から ?event=<ID>（&tab=feedback）で来た場合、そのイベントの詳細モーダルを開く。
+// データ未取得のうちは何もせず、refreshData 後に再度試みる（focusHandled で一度だけ実行）。
+let eventFocusHandled = false;
+function focusEventFromUrl() {
+    if (eventFocusHandled) return;
+    const params = new URLSearchParams(location.search);
+    const id = params.get('event');
+    if (!id) return;
+    const ev = eventsData.find(e => e.ID === id);
+    if (!ev) return; // まだ読み込まれていない → リフレッシュ後に再試行
+    eventFocusHandled = true;
+    viewEventInModal(id);
+    if (params.get('tab') === 'feedback') {
+        const container = document.getElementById('new-event-form-container');
+        const fbBtn = container && container.querySelector('.event-tab[data-tab="feedback"]');
+        if (fbBtn) switchEventTab(fbBtn);
+    }
 }
 
 /**
@@ -189,6 +222,7 @@ async function refreshData(isManual = false) {
         eventsData = list.map(gasToUi);
         api.saveCache('events', eventsData);
         renderEvents();
+        focusEventFromUrl();
         if (calendarVisible) refreshCalendar();
         updateSyncStatus('fresh', Date.now());
     } catch (e) {

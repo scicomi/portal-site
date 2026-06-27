@@ -1,4 +1,8 @@
 :root {
+    /* このサイトはライト配色専用。color-scheme を明示することで、
+       ブラウザの「強制ダークモード（Auto Dark Theme）」による自動色反転を無効化し、
+       設計どおりの配色（例: 通常イベントの淡いバッジ）が見えなくなるのを防ぐ。 */
+    color-scheme: light;
     --primary-color: #464775;
     /* Teams Purple-ish */
     --primary-light: #6264a7;
@@ -805,6 +809,8 @@ textarea:focus {
     max-width: 800px;
     max-height: 90vh;
     overflow-y: auto;
+    /* padding を幅に含めて横方向のはみ出しを防ぐ（特にスマホのフルスクリーン時） */
+    box-sizing: border-box;
 }
 
 /* Full Screen Modal for Event Edit */
@@ -860,6 +866,12 @@ textarea:focus {
         padding: 0;
         display: flex;
         flex-direction: column;
+    }
+
+    /* modal-header / modal-body 構造を持たない素のモーダル（メンバー追加・編集、
+       年度一括登録など）は、padding:0 にすると内容が画面端に貼り付くため余白を復活させる。 */
+    .modal-content:not(.large-modal) {
+        padding: 1.25rem;
     }
 
     .modal-body {
@@ -1059,6 +1071,23 @@ textarea:focus {
 /* 期限の緊急度アクセント */
 .deadline-row.urgent { background: linear-gradient(90deg, #fff5f5 0%, transparent 60%); }
 .deadline-row.soon { background: linear-gradient(90deg, #fffbeb 0%, transparent 60%); }
+
+/* 報告書ステータス行（ホーム「期限が近い報告書」） */
+.report-row .dl-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.report-event-link { color: var(--primary-light); text-decoration: none; font-weight: 600; }
+.report-event-link:hover { text-decoration: underline; }
+.report-admin { font-size: 0.75rem; color: #888; }
+.report-overdue {
+    margin-left: 6px; font-size: 0.68rem; color: #b45309;
+    background: #fef3c7; padding: 1px 5px; border-radius: 8px;
+}
+.report-status-select {
+    flex-shrink: 0; font-size: 0.78rem; padding: 4px 6px;
+    border: 1px solid var(--border-color); border-radius: 6px;
+    background: #fff; color: var(--text-color); max-width: 46%; cursor: pointer;
+}
+.report-status-select.status-coordinator { border-color: #f59e0b; color: #92400e; background: #fffbeb; }
+.report-status-select.status-clc { border-color: #10b981; color: #166534; background: #f0fdf4; }
 
 .dash-stats {
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
@@ -1624,6 +1653,28 @@ textarea:focus {
 }
 .bot-count span { font-size: 1rem; font-weight: 600; color: var(--text-secondary); }
 
+/* Bot の生成文（要約など） */
+.bot-generated {
+    background: #f7f7fb;
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--primary-light);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-top: 6px;
+}
+.bot-generated-head {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 8px;
+}
+.bot-generated .exp-text {
+    font-size: 0.9rem;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    color: var(--text-color);
+}
+
 /* 回答ソース表示（AI / キーワード検索）*/
 .bot-msg-meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; padding: 0 4px; }
 .bot-msg-meta .bot-msg-time { margin-top: 0; padding: 0; }
@@ -1687,6 +1738,7 @@ textarea:focus {
 /* 編集モード */
 .data-table.edit-mode tbody tr.clickable-row { cursor: pointer; }
 .data-table.edit-mode tbody tr.clickable-row:hover { background: #eef0ff; }
+.edit-row-icon { color: var(--primary-light); font-size: 0.85rem; }
 .admin-settings-section {
     border: 1px solid #e5e7eb;
     border-radius: 8px;
@@ -2450,6 +2502,11 @@ textarea:focus {
     aspect-ratio: 4/3;
     background: #f0f0f0;
     border: 1px solid #e1dfdd;
+}
+.photo-item a {
+    display: block;
+    width: 100%;
+    height: 100%;
 }
 .photo-item img {
     width: 100%;
