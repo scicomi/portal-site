@@ -68,11 +68,7 @@ async function refreshData(isManual = false) {
         renderMembers();
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
-        if (String(e).includes('unauthorized')) {
-            api.clearToken(); api.clearAllCache();
-            location.reload();
-            return;
-        }
+        if (e.handled) return;
         updateSyncStatus('error', null, e.message);
     }
 }
@@ -331,6 +327,7 @@ function openMemberModal() {
     document.getElementById('mb-fiscal-year').value = selectedFiscalYear || currentFiscalYear();
     document.getElementById('mb-delete-btn').classList.add('hidden');
     document.getElementById('member-modal').classList.remove('hidden');
+    bindModalEscape(document.getElementById('member-modal'), closeMemberModal);
     setTimeout(() => document.getElementById('mb-name').focus(), 50);
 }
 
@@ -350,6 +347,7 @@ function editMember(id) {
     document.getElementById('mb-fiscal-year').value = m.FiscalYear || currentFiscalYear();
     document.getElementById('mb-delete-btn').classList.remove('hidden');
     document.getElementById('member-modal').classList.remove('hidden');
+    bindModalEscape(document.getElementById('member-modal'), closeMemberModal);
 }
 
 function closeMemberModal() {
@@ -491,6 +489,7 @@ function openYearCopyModal() {
 
     renderYearCopyMembers();
     document.getElementById('year-copy-modal').classList.remove('hidden');
+    bindModalEscape(document.getElementById('year-copy-modal'), closeYearCopyModal);
 }
 
 function renderYearCopyMembers() {

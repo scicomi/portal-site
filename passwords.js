@@ -114,12 +114,8 @@ async function refreshData(isManual = false) {
         renderPasswords();
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
+        if (e.handled) return;
         const msg = String(e.message || e);
-        if (msg.includes('unauthorized')) {
-            api.clearToken(); api.clearAllCache();
-            location.reload();
-            return;
-        }
         if (msg.includes('ADMIN_REQUIRED')) {
             api.adminLogout();
             showAdminGate();
@@ -288,6 +284,7 @@ function openPwModal() {
     document.getElementById('pw-f-password').type = 'password';
     document.getElementById('pw-f-password-group').style.display = '';
     document.getElementById('pw-modal-edit').classList.remove('hidden');
+    bindModalEscape(document.getElementById('pw-modal-edit'), closePwModal);
     setTimeout(() => document.getElementById('pw-f-name').focus(), 50);
 }
 
@@ -307,6 +304,7 @@ function editPwEntry(id) {
     // ソーシャルログインの場合はパスワード欄を非表示
     document.getElementById('pw-f-password-group').style.display = isSocialLogin(p.LoginType) ? 'none' : '';
     document.getElementById('pw-modal-edit').classList.remove('hidden');
+    bindModalEscape(document.getElementById('pw-modal-edit'), closePwModal);
 }
 
 function closePwModal() {

@@ -124,7 +124,7 @@ function renderEventsSection() {
 
     document.getElementById('expd-events-list').innerHTML = related.map(ev => {
         const cat = getEventCategory(ev.Category || 'normal');
-        return `<a href="events.html" class="expd-event-chip" title="${escapeAttr(ev.Title)}">
+        return `<a href="events.html?event=${encodeURIComponent(ev.ID)}" class="expd-event-chip" title="${escapeAttr(ev.Title)}">
             <span class="expd-event-date">${escapeHtml(ev.Date || '')}</span>
             <span class="expd-event-title">${escapeHtml(ev.Title || '(無題)')}</span>
             <span class="cat-badge" style="background:${cat.bg};color:${cat.text};font-size:0.65rem;">${cat.short}</span>
@@ -241,6 +241,7 @@ function openAddFeedback() {
     document.getElementById('fb-event').value = '';
     document.getElementById('fb-text').value = '';
     document.getElementById('feedback-modal').classList.remove('hidden');
+    bindModalEscape(document.getElementById('feedback-modal'), closeFeedbackModal);
     setTimeout(() => document.getElementById('fb-text').focus(), 50);
 }
 

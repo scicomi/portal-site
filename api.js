@@ -332,16 +332,28 @@ const api = {
       });
       text = await res.text();
     } catch (e) {
-      // ネットワーク不通・CORS 失敗など
       const err = new Error('NETWORK_UNREACHABLE');
       err.code = 'NETWORK_UNREACHABLE';
       throw err;
     }
     try {
-      return JSON.parse(text);
-    } catch (_) {
-      // GAS が JSON でなく HTML を返した場合 = ほぼ「デプロイのアクセス権」設定ミス。
-      // 匿名リクエストが Google のサインインページへリダイレクトされている状態。
+      const parsed = JSON.parse(text);
+      if (!parsed.success && parsed.error === 'unauthorized') {
+        this.clearToken();
+        this.clearAllCache();
+        if (typeof showPasswordModal === 'function') {
+          showPasswordModal(() => location.reload());
+        } else {
+          location.reload();
+        }
+        const err = new Error('unauthorized');
+        err.code = 'unauthorized';
+        err.handled = true;
+        throw err;
+      }
+      return parsed;
+    } catch (e) {
+      if (e.code === 'unauthorized') throw e;
       const looksHtml = /^\s*<(!doctype|html)/i.test(text || '');
       const looksLogin = /accounts\.google\.com|ServiceLogin|ウェブ ワープロ|docs\.google\.com/i.test(text || '')
         || (res && res.url && /accounts\.google\.com|ServiceLogin/i.test(res.url));

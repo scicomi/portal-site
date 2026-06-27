@@ -13,7 +13,7 @@
 
     <main class="container">
         <h1 class="page-title">設定</h1>
-        <div id="settings-loading" style="text-align:center;padding:40px;color:#888;">読み込み中...</div>
+        <div id="settings-loading" class="loading-text">読み込み中</div>
         <div id="settings-content" style="display:none;">
 
             <!-- 表示カスタマイズ -->
@@ -77,10 +77,12 @@
                         <p class="settings-hint">メンバー全員が使うログインパスワード</p>
                         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
                             <span style="color:#666;font-size:0.9rem;">現在:</span>
-                            <code id="cfg-password-current" style="background:#f0f0f0;padding:4px 10px;border-radius:4px;font-size:0.9rem;"></code>
+                            <code id="cfg-password-current" data-revealed="false" style="background:#f0f0f0;padding:4px 10px;border-radius:4px;font-size:0.9rem;"></code>
+                            <button class="btn btn-secondary" onclick="toggleSettingsPwVisibility('cfg-password-current')" style="width:auto;padding:4px 10px;font-size:0.8rem;">表示</button>
                         </div>
                         <div style="display:flex;gap:8px;">
-                            <input type="text" id="cfg-password-new" class="e1-input" placeholder="新しいパスワード（変更する場合）" style="flex:1;">
+                            <input type="password" id="cfg-password-new" class="e1-input" placeholder="新しいパスワード（変更する場合）" autocomplete="new-password" style="flex:1;">
+                            <button class="btn btn-secondary" onclick="toggleVisibility('cfg-password-new')" style="width:auto;padding:8px 12px;" title="表示切替">&#128065;</button>
                             <button class="btn btn-primary-solid" onclick="savePassword('password')" style="width:auto;padding:8px 20px;">変更</button>
                         </div>
                     </div>
@@ -92,10 +94,12 @@
                         <p class="settings-hint">管理者認証に使うパスワード</p>
                         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
                             <span style="color:#666;font-size:0.9rem;">現在:</span>
-                            <code id="cfg-admin-password-current" style="background:#f0f0f0;padding:4px 10px;border-radius:4px;font-size:0.9rem;"></code>
+                            <code id="cfg-admin-password-current" data-revealed="false" style="background:#f0f0f0;padding:4px 10px;border-radius:4px;font-size:0.9rem;"></code>
+                            <button class="btn btn-secondary" onclick="toggleSettingsPwVisibility('cfg-admin-password-current')" style="width:auto;padding:4px 10px;font-size:0.8rem;">表示</button>
                         </div>
                         <div style="display:flex;gap:8px;">
-                            <input type="text" id="cfg-admin-password-new" class="e1-input" placeholder="新しい幹部パスワード（変更する場合）" style="flex:1;">
+                            <input type="password" id="cfg-admin-password-new" class="e1-input" placeholder="新しい幹部パスワード（変更する場合）" autocomplete="new-password" style="flex:1;">
+                            <button class="btn btn-secondary" onclick="toggleVisibility('cfg-admin-password-new')" style="width:auto;padding:8px 12px;" title="表示切替">&#128065;</button>
                             <button class="btn btn-primary-solid" onclick="savePassword('admin_password')" style="width:auto;padding:8px 20px;">変更</button>
                         </div>
                     </div>
