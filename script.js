@@ -130,6 +130,31 @@ let filterState = {
     period: 'upcoming'
 };
 
+// ---- 時刻選択肢を動的生成 ----
+function populateTimeSelects() {
+    function genOpts(startH, endH, withEmpty) {
+        let html = withEmpty ? '<option value="">--</option>' : '';
+        for (let h = startH; h <= endH; h++) {
+            for (let m = 0; m < 60; m += 30) {
+                if (h === endH && m > 0) break;
+                const v = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+                html += `<option value="${v}">${v}</option>`;
+            }
+        }
+        return html;
+    }
+    const modal = document.getElementById('new-event-form-container');
+    if (!modal) return;
+    const startSel = modal.querySelector('.time-start-select');
+    const endSel = modal.querySelector('.time-end-select');
+    if (startSel) { startSel.innerHTML = genOpts(9, 21, false); startSel.value = '13:00'; }
+    if (endSel) { endSel.innerHTML = genOpts(9, 21, false); endSel.value = '16:00'; }
+    const gatherSel = modal.querySelector('.gather-time-select');
+    const dismissSel = modal.querySelector('.dismiss-time-select');
+    if (gatherSel) gatherSel.innerHTML = genOpts(7, 21, true);
+    if (dismissSel) dismissSel.innerHTML = genOpts(7, 21, true);
+}
+
 // ---- 起動 ----
 document.addEventListener('DOMContentLoaded', () => {
     bootPage('events', init);
@@ -137,6 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function init() {
     holidaysData = await api.loadHolidaysCached();
+    populateTimeSelects();
 
     // キャッシュ即表示（GAS形で書かれていても UI形へ正規化してから使う）
     const cached = api.loadCache('events');
@@ -226,12 +252,7 @@ async function refreshData(isManual = false) {
         if (calendarVisible) refreshCalendar();
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
-        if (String(e).includes('unauthorized')) {
-            api.clearToken();
-            api.clearAllCache();
-            location.reload();
-            return;
-        }
+        if (e.handled) return;
         updateSyncStatus('error', null, e.message);
     }
 }
@@ -334,10 +355,11 @@ function initFullCalendar() {
             endObj.setDate(endObj.getDate() - 1);
             const endDateStr = toISODate(endObj);
 
-            // Open modal with pre-filled dates
+            _modalPrevFocus = document.activeElement;
             document.getElementById('category-selection-modal').classList.remove('hidden');
             document.getElementById('new-event-edit-modal').classList.add('hidden');
             document.getElementById('modal-overlay').classList.remove('hidden');
+            bindModalEscape(document.getElementById('modal-overlay'), closeModal);
 
             // Set global temp dates
             window.tempStart = info.startStr;
@@ -431,7 +453,9 @@ function viewEventInModal(id) {
     const eventData = eventsData.find(e => e.ID === id);
     if (!eventData) return;
 
+    _modalPrevFocus = document.activeElement;
     document.getElementById('modal-overlay').classList.remove('hidden');
+    bindModalEscape(document.getElementById('modal-overlay'), closeModal);
     const catModal = document.getElementById('category-selection-modal');
     if (catModal) catModal.classList.add('hidden');
     document.getElementById('new-event-edit-modal').classList.remove('hidden');
@@ -1063,9 +1087,11 @@ function removeExperimentRow(btn) {
 // --- Modal & New Event Logic ---
 
 function openNewEventModal() {
+    _modalPrevFocus = document.activeElement;
     document.getElementById('modal-overlay').classList.remove('hidden');
     document.getElementById('category-selection-modal').classList.remove('hidden');
     document.getElementById('new-event-edit-modal').classList.add('hidden');
+    bindModalEscape(document.getElementById('modal-overlay'), closeModal);
     populateTemplateDropdown();
 }
 
@@ -1091,7 +1117,9 @@ function onTemplateSelect(sourceId) {
 
 function closeModal() {
     document.getElementById('modal-overlay').classList.add('hidden');
+    if (_modalPrevFocus) { _modalPrevFocus.focus(); _modalPrevFocus = null; }
 }
+let _modalPrevFocus = null;
 
 function startNewEvent(category, template) {
     // Hide category selection, show edit form

@@ -89,14 +89,14 @@ const CONFIG = {
 
   // ===== ナビゲーション =====
   NAV_ITEMS: [
-    { href: 'index.html',       label: 'ホーム',   page: 'home' },
-    { href: 'events.html',      label: 'イベント', page: 'events' },
-    { href: 'members.html',     label: 'メンバー', page: 'members' },
-    { href: 'experiments.html', label: '実験内容', page: 'experiments' },
-    { href: 'bot.html',         label: 'Bot',      page: 'bot' },
-    // 管理者ログイン時のみ表示
-    { href: 'passwords.html',   label: 'パスワード一覧', page: 'passwords', adminOnly: true },
-    { href: 'settings.html',    label: '設定',           page: 'settings',  adminOnly: true }
+    { href: 'index.html',       label: 'ホーム',     page: 'home' },
+    { href: 'events.html',      label: 'イベント',   page: 'events' },
+    { href: 'members.html',     label: 'メンバー',   page: 'members' },
+    { href: 'experiments.html', label: '実験ネタ',   page: 'experiments' },
+    { href: 'bot.html',         label: 'AI検索',     page: 'bot' },
+    // 管理者ログイン時のみ表示（セパレーター付き）
+    { href: 'passwords.html',   label: 'パスワード', page: 'passwords', adminOnly: true, adminFirst: true },
+    { href: 'settings.html',    label: '設定',       page: 'settings',  adminOnly: true }
   ],
 
   // ===== イベントカテゴリ =====

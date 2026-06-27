@@ -142,6 +142,14 @@ function renderHeader(activePage) {
   const header = document.querySelector('.app-header');
   if (!header) return;
   const isAdmin = api.isAdmin();
+
+  const navItems = CONFIG.NAV_ITEMS.filter(item => !item.adminOnly || isAdmin);
+  let navHtml = '';
+  navItems.forEach(item => {
+    if (item.adminFirst) navHtml += '<span class="nav-separator"></span>';
+    navHtml += `<a href="${item.href}" class="nav-link ${item.page === activePage ? 'active' : ''}">${item.label}</a>`;
+  });
+
   header.innerHTML = `
     <div class="header-top">
       <div class="header-brand">
@@ -156,25 +164,56 @@ function renderHeader(activePage) {
           ? `<span class="admin-badge">管理者</span>`
           : `<button class="btn btn-text-light" onclick="showAdminAuthModal()">管理者</button>`
         }
-        <button class="btn btn-text-light" onclick="confirmLogout()">ログアウト</button>
+        <button class="btn btn-text-light" id="logout-btn" onclick="handleLogout(this)">ログアウト</button>
       </div>
     </div>
     <nav class="app-nav">
-      ${CONFIG.NAV_ITEMS.filter(item => !item.adminOnly || isAdmin).map(item => `
-        <a href="${item.href}" class="nav-link ${item.page === activePage ? 'active' : ''}">
-          ${item.label}
-        </a>
-      `).join('')}
+      ${navHtml}
     </nav>
   `;
 }
 
-function confirmLogout() {
-  if (!confirm('ログアウトしますか？')) return;
-  api.clearToken();
-  api.clearAdminToken();
-  api.clearAllCache();
-  location.href = 'index.html';
+function handleLogout(btn) {
+  if (btn.dataset.confirming) {
+    api.clearToken();
+    api.clearAdminToken();
+    api.clearAllCache();
+    location.href = 'index.html';
+    return;
+  }
+  btn.dataset.confirming = '1';
+  btn.textContent = 'ログアウトする？';
+  btn.style.color = '#e74c3c';
+  setTimeout(() => {
+    if (btn.dataset.confirming) {
+      delete btn.dataset.confirming;
+      btn.textContent = 'ログアウト';
+      btn.style.color = '';
+    }
+  }, 3000);
+}
+
+// ====== モーダル アクセシビリティ ======
+
+function trapFocus(modal) {
+  const focusable = modal.querySelectorAll('input, button, select, textarea, a[href], [tabindex]:not([tabindex="-1"])');
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  modal.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+}
+
+function bindModalEscape(modal, closeFn) {
+  const handler = (e) => {
+    if (e.key === 'Escape') { closeFn(); document.removeEventListener('keydown', handler); }
+  };
+  document.addEventListener('keydown', handler);
 }
 
 // ====== 管理者認証モーダル ======
@@ -187,11 +226,11 @@ function showAdminAuthModal(onSuccess) {
   modal.id = 'admin-auth-modal';
   modal.innerHTML = `
     <div class="pw-overlay">
-      <div class="pw-box">
-        <h2>管理者認証</h2>
+      <div class="pw-box" role="dialog" aria-modal="true" aria-labelledby="admin-auth-title">
+        <h2 id="admin-auth-title">管理者認証</h2>
         <p>幹部パスワードを入力してください。</p>
         <input id="admin-pw-input" type="password" placeholder="幹部パスワード" autofocus>
-        <div id="admin-pw-error" class="pw-error"></div>
+        <div id="admin-pw-error" class="pw-error" role="alert"></div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
           <button id="admin-pw-cancel" class="btn btn-secondary">キャンセル</button>
           <button id="admin-pw-submit" class="btn btn-primary-solid">認証</button>
@@ -201,10 +240,13 @@ function showAdminAuthModal(onSuccess) {
   `;
   document.body.appendChild(modal);
 
+  const box = modal.querySelector('.pw-box');
   const input = modal.querySelector('#admin-pw-input');
   const errEl = modal.querySelector('#admin-pw-error');
   const submitBtn = modal.querySelector('#admin-pw-submit');
   const cancelBtn = modal.querySelector('#admin-pw-cancel');
+  trapFocus(box);
+  bindModalEscape(modal, () => modal.remove());
   setTimeout(() => input.focus(), 50);
 
   const tryAdminLogin = async () => {
@@ -258,22 +300,24 @@ function showPasswordModal(onSuccess) {
   modal.id = 'pw-modal';
   modal.innerHTML = `
     <div class="pw-overlay">
-      <div class="pw-box">
-        <h2>ログイン</h2>
+      <div class="pw-box" role="dialog" aria-modal="true" aria-labelledby="pw-modal-title">
+        <h2 id="pw-modal-title">ログイン</h2>
         <p>パスワードを入力してください。<br>
           <span style="font-size:0.8rem;color:#888;">幹部パスワードを入力すると、自動的に管理者モードになります。</span>
         </p>
         <input id="pw-input" type="password" placeholder="パスワード" autofocus>
-        <div id="pw-error" class="pw-error"></div>
+        <div id="pw-error" class="pw-error" role="alert"></div>
         <button id="pw-submit" class="btn btn-primary-solid">ログイン</button>
       </div>
     </div>
   `;
   document.body.appendChild(modal);
 
+  const box = modal.querySelector('.pw-box');
   const input = modal.querySelector('#pw-input');
   const errEl = modal.querySelector('#pw-error');
   const submitBtn = modal.querySelector('#pw-submit');
+  trapFocus(box);
   setTimeout(() => input.focus(), 50);
 
   const tryLogin = async () => {
@@ -284,13 +328,8 @@ function showPasswordModal(onSuccess) {
       const result = await api.login(input.value);
       if (result.ok) {
         modal.remove();
-        if (result.role === 'admin') {
-          // 幹部パスワード → 自動で管理者モード。パスワード一覧ページへ。
-          toast('管理者としてログインしました', 'success');
-          location.href = 'passwords.html';
-        } else {
-          await onSuccess();
-        }
+        toast(result.role === 'admin' ? '管理者としてログインしました' : 'ログインしました', 'success');
+        await onSuccess();
       } else {
         errEl.textContent = 'パスワードが違います';
         submitBtn.disabled = false;

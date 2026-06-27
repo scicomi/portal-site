@@ -36,11 +36,7 @@ async function refreshData(isManual = false) {
         focusFromUrl();
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
-        if (String(e).includes('unauthorized')) {
-            api.clearToken(); api.clearAllCache();
-            location.reload();
-            return;
-        }
+        if (e.handled) return;
         updateSyncStatus('error', null, e.message);
     }
 }
@@ -197,6 +193,7 @@ function viewExp(id) {
     `;
 
     document.getElementById('exp-detail-modal').classList.remove('hidden');
+    bindModalEscape(document.getElementById('exp-detail-modal'), closeExpDetail);
 }
 
 function closeExpDetail() {
@@ -228,6 +225,7 @@ function openExpModal() {
     // 新規追加時は削除ボタンを隠す
     document.getElementById('ex-delete-btn').classList.add('hidden');
     document.getElementById('exp-edit-modal').classList.remove('hidden');
+    bindModalEscape(document.getElementById('exp-edit-modal'), closeExpEdit);
     setTimeout(() => document.getElementById('ex-name').focus(), 50);
 }
 
@@ -246,6 +244,7 @@ function editExp(id) {
     // 削除ボタンは管理者のみ表示（編集自体は全員可）
     document.getElementById('ex-delete-btn').classList.toggle('hidden', !api.isAdmin());
     document.getElementById('exp-edit-modal').classList.remove('hidden');
+    bindModalEscape(document.getElementById('exp-edit-modal'), closeExpEdit);
 }
 
 function closeExpEdit() {

@@ -347,6 +347,7 @@ function openExpDetailFromBot(id) {
   const link = document.getElementById('bot-exp-detail-link');
   if (link) link.href = 'experiments.html?focus=' + encodeURIComponent(e.Name || '');
   document.getElementById('bot-exp-detail-modal').classList.remove('hidden');
+  bindModalEscape(document.getElementById('bot-exp-detail-modal'), closeBotExpDetail);
 }
 
 function closeBotExpDetail() {
@@ -437,6 +438,7 @@ function openEventDetailFromBot(id) {
   document.getElementById('bot-event-detail-title').textContent = title;
   document.getElementById('bot-event-detail-body').innerHTML = buildEventDetailBody(e);
   document.getElementById('bot-event-detail-modal').classList.remove('hidden');
+  bindModalEscape(document.getElementById('bot-event-detail-modal'), closeBotEventDetail);
 }
 
 function closeBotEventDetail() {
@@ -854,12 +856,7 @@ async function refreshData(isManual = false) {
     });
     updateSyncStatus('fresh', Date.now());
   } catch (e) {
-    if (String(e).includes('unauthorized')) {
-      api.clearToken();
-      api.clearAllCache();
-      showPasswordModal(() => location.reload());
-      return;
-    }
+    if (e.handled) return;
     updateSyncStatus('error', null, e.message);
   }
 }

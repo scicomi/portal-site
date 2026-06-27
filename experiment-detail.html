@@ -16,7 +16,7 @@
             <a href="experiments.html" class="back-link">&larr; 実験一覧に戻る</a>
         </div>
 
-        <div id="exp-loading" class="empty-state">読み込み中...</div>
+        <div id="exp-loading" class="loading-text">読み込み中</div>
 
         <div id="exp-content" class="hidden">
             <!-- Experiment Info Card（タイトル・バッジ・編集のみのコンパクト表示。
@@ -84,7 +84,7 @@
 
         <!-- Add Feedback Modal -->
         <div id="feedback-modal" class="modal-overlay hidden">
-            <div class="modal-content" style="max-width:520px;">
+            <div class="modal-content" style="max-width:520px;" role="dialog" aria-modal="true" aria-labelledby="fb-modal-title">
                 <div class="modal-header">
                     <h2 id="fb-modal-title">振り返りを追加</h2>
                 </div>

@@ -31,9 +31,8 @@ async function init() {
     // latestEvents（報告書ステータス保存に使う）は GAS正準形のときだけ採用する。
     // 表示用カードは新旧どちらのキャッシュでも動くよう各 render 側で吸収する。
     if (cachedEv && looksGasForm(cachedEv.items)) latestEvents = cachedEv.items || [];
-    if (cachedEv) { renderEventsCard(cachedEv.items || []); renderFeedbackPending(cachedEv.items || []); }
+    if (cachedEv) { renderEventsCard(cachedEv.items || []); renderFeedbackPending(cachedEv.items || []); updateActionNeeded(); }
     if (cachedMb) renderMembersCard(cachedMb.items || []);
-    if (cachedEx) renderExperimentsCard(cachedEx.items || []);
     renderStats({
         events: cachedEv ? cachedEv.items : [],
         members: cachedMb ? cachedMb.items : [],
@@ -57,17 +56,12 @@ async function refreshData(isManual = false) {
         latestEvents = all.events;  // 正準形を保持（報告書ステータス保存に使う）
         renderEventsCard(all.events);
         renderFeedbackPending(all.events);
+        updateActionNeeded();
         renderMembersCard(all.members);
-        renderExperimentsCard(all.experiments);
         renderStats(all);
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
-        if (String(e).includes('unauthorized')) {
-            api.clearToken();
-            api.clearAllCache();
-            location.reload();
-            return;
-        }
+        if (e.handled) return;
         updateSyncStatus('error', null, e.message);
     }
 }
@@ -84,9 +78,7 @@ function renderWelcome() {
 
 function renderStats(all) {
     const today = todayISO();
-    // 終了日は GAS形(DateEnd) / UI形(Date_End) のどちらでも拾う
     const upcomingCount = (all.events || []).filter(e => (e.DateEnd || e.Date_End || e.Date) >= today).length;
-    document.getElementById('stat-events').textContent = (all.events || []).length;
     document.getElementById('stat-upcoming').textContent = upcomingCount;
     const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
     document.getElementById('stat-members').textContent = (all.members || []).filter(m => parseInt(m.FiscalYear || curFY) === curFY).length;
@@ -103,7 +95,7 @@ function renderEventsCard(events) {
         .slice(0, 5);
 
     if (upcoming.length === 0) {
-        container.innerHTML = '<li style="color:#999;justify-content:center;">予定なし</li>';
+        container.innerHTML = '<li class="empty-state"><span class="empty-text">予定なし</span></li>';
     } else {
         container.innerHTML = upcoming.map(e => {
             const c = getEventCategory(e.Category);
@@ -152,7 +144,7 @@ function renderReportsCard(events) {
     reports.sort((a, b) => a.date.localeCompare(b.date));
 
     if (reports.length === 0) {
-        container.innerHTML = '<li style="color:#999;justify-content:center;">提出が必要な報告書はありません</li>';
+        container.innerHTML = '';
         return;
     }
 
@@ -246,7 +238,7 @@ function renderFeedbackPending(events) {
         .slice(0, 5);
 
     if (pending.length === 0) {
-        container.innerHTML = '<li style="color:#999;justify-content:center;">未記入のイベントはありません</li>';
+        container.innerHTML = '';
         return;
     }
     container.innerHTML = pending.map(e => {
@@ -258,16 +250,12 @@ function renderFeedbackPending(events) {
     }).join('');
 }
 
-function renderExperimentsCard(experiments) {
-    const container = document.getElementById('exp-summary');
-    const workshop = experiments.filter(e => e.Category === 'workshop');
-    const show = experiments.filter(e => e.Category === 'show');
-    const other = experiments.filter(e => e.Category === 'other');
-
-    // 種類（カテゴリ）ごとの件数のみを表示する（個別の実験名は一覧ページで確認）。
-    container.innerHTML = `
-        <li><span class="dl-date">工作</span><span class="dl-title">${workshop.length}種類</span></li>
-        <li><span class="dl-date">実験ショー</span><span class="dl-title">${show.length}種類</span></li>
-        <li><span class="dl-date">その他</span><span class="dl-title">${other.length}種類</span></li>
-    `;
+function updateActionNeeded() {
+    const section = document.getElementById('action-needed');
+    if (!section) return;
+    const deadlines = document.getElementById('upcoming-deadlines');
+    const feedback = document.getElementById('feedback-pending');
+    const hasContent = (deadlines && deadlines.children.length > 0) || (feedback && feedback.children.length > 0);
+    section.style.display = hasContent ? '' : 'none';
 }
+

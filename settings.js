@@ -2,6 +2,8 @@
  * 設定ページ（管理者専用）
  */
 
+let _settingsPwValues = {};
+
 document.addEventListener('DOMContentLoaded', () => {
     bootPage('settings', init);
 });
@@ -22,9 +24,11 @@ async function loadSettings() {
     try {
         const cfg = await api.adminGetConfig();
 
-        // パスワード
-        document.getElementById('cfg-password-current').textContent = cfg.password || '';
-        document.getElementById('cfg-admin-password-current').textContent = cfg.admin_password || '';
+        // パスワード（マスク表示。実値はメモリのみに保持）
+        _settingsPwValues['cfg-password-current'] = cfg.password || '';
+        _settingsPwValues['cfg-admin-password-current'] = cfg.admin_password || '';
+        document.getElementById('cfg-password-current').textContent = maskPw(cfg.password);
+        document.getElementById('cfg-admin-password-current').textContent = maskPw(cfg.admin_password);
 
         // Gemini
         document.getElementById('cfg-gemini-key').value = cfg.gemini_api_key || '';
@@ -98,6 +102,27 @@ function toggleVisibility(inputId) {
     el.type = el.type === 'password' ? 'text' : 'password';
 }
 
+function maskPw(val) {
+    if (!val) return '';
+    return '•'.repeat(Math.min(val.length, 12));
+}
+
+function toggleSettingsPwVisibility(codeId) {
+    const el = document.getElementById(codeId);
+    if (!el) return;
+    const revealed = el.getAttribute('data-revealed') === 'true';
+    const realVal = _settingsPwValues[codeId] || '';
+    if (revealed) {
+        el.textContent = maskPw(realVal);
+        el.setAttribute('data-revealed', 'false');
+        el.nextElementSibling.textContent = '表示';
+    } else {
+        el.textContent = realVal;
+        el.setAttribute('data-revealed', 'true');
+        el.nextElementSibling.textContent = '隠す';
+    }
+}
+
 // --- パスワード変更 ---
 
 async function savePassword(key) {
@@ -108,9 +133,8 @@ async function savePassword(key) {
         return;
     }
 
-    // 幹部=一般 が同一になると、ログインした全員が自動的に管理者になる事故を防ぐ
     const otherId = key === 'password' ? 'cfg-admin-password-current' : 'cfg-password-current';
-    const otherVal = (document.getElementById(otherId).textContent || '').trim();
+    const otherVal = (_settingsPwValues[otherId] || '').trim();
     if (otherVal && value === otherVal) {
         const ok = confirm(
             '一般パスワードと幹部パスワードが同一になります。\n' +
@@ -125,13 +149,15 @@ async function savePassword(key) {
         toast('パスワードを変更しました', 'success');
         document.getElementById(inputId).value = '';
         if (key === 'password') {
-            document.getElementById('cfg-password-current').textContent = value;
-            // 自分の現在のメンバートークンは epoch 失効した。新パスワードで取り直して
-            // ログアウトされないようにする（管理者トークンは有効なまま）。
+            _settingsPwValues['cfg-password-current'] = value;
+            document.getElementById('cfg-password-current').textContent = maskPw(value);
+            document.getElementById('cfg-password-current').setAttribute('data-revealed', 'false');
             try { await api.auth(value); } catch (_) {}
         }
         if (key === 'admin_password') {
-            document.getElementById('cfg-admin-password-current').textContent = value;
+            _settingsPwValues['cfg-admin-password-current'] = value;
+            document.getElementById('cfg-admin-password-current').textContent = maskPw(value);
+            document.getElementById('cfg-admin-password-current').setAttribute('data-revealed', 'false');
             api.adminLogout();
             toast('幹部パスワードが変更されました。再認証してください。', 'info', 5000);
             setTimeout(() => location.reload(), 2000);
