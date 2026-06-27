@@ -6,11 +6,31 @@ document.addEventListener('DOMContentLoaded', () => {
     bootPage('home', init);
 });
 
+// 報告書ステータス（''=未提出 / coordinator / clc）
+const REPORT_STATUS = {
+    '':            { label: '未提出',                color: '#9ca3af' },
+    'coordinator': { label: 'コーディネーター提出済', color: '#f59e0b' },
+    'clc':         { label: 'CLC提出済',            color: '#10b981' }
+};
+
+// 報告書ステータスの保存に使う、GAS 正準形（listAll 由来）のイベント配列。
+// UI形（イベントページが書いたキャッシュ）を誤って保存して列がずれるのを防ぐため、
+// 正準形と判定できる場合のみセットする。
+let latestEvents = [];
+function looksGasForm(items) {
+    if (!items || items.length === 0) return true;
+    const e = items[0];
+    return ('HoukokuDeadline' in e) && !('Houkoku_Deadline' in e);
+}
+
 async function init() {
     const cachedEv = api.loadCache('events');
     const cachedMb = api.loadCache('members');
     const cachedEx = api.loadCache('experiments');
 
+    // latestEvents（報告書ステータス保存に使う）は GAS正準形のときだけ採用する。
+    // 表示用カードは新旧どちらのキャッシュでも動くよう各 render 側で吸収する。
+    if (cachedEv && looksGasForm(cachedEv.items)) latestEvents = cachedEv.items || [];
     if (cachedEv) { renderEventsCard(cachedEv.items || []); renderFeedbackPending(cachedEv.items || []); }
     if (cachedMb) renderMembersCard(cachedMb.items || []);
     if (cachedEx) renderExperimentsCard(cachedEx.items || []);
@@ -34,6 +54,7 @@ async function refreshData(isManual = false) {
         api.saveCache('members', all.members);
         api.saveCache('experiments', all.experiments);
 
+        latestEvents = all.events;  // 正準形を保持（報告書ステータス保存に使う）
         renderEventsCard(all.events);
         renderFeedbackPending(all.events);
         renderMembersCard(all.members);
@@ -63,7 +84,8 @@ function renderWelcome() {
 
 function renderStats(all) {
     const today = todayISO();
-    const upcomingCount = (all.events || []).filter(e => (e.DateEnd || e.Date) >= today).length;
+    // 終了日は GAS形(DateEnd) / UI形(Date_End) のどちらでも拾う
+    const upcomingCount = (all.events || []).filter(e => (e.DateEnd || e.Date_End || e.Date) >= today).length;
     document.getElementById('stat-events').textContent = (all.events || []).length;
     document.getElementById('stat-upcoming').textContent = upcomingCount;
     const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
@@ -76,7 +98,7 @@ function renderEventsCard(events) {
     const today = todayISO();
 
     const upcoming = (events || [])
-        .filter(e => (e.DateEnd || e.Date) >= today)
+        .filter(e => (e.DateEnd || e.Date_End || e.Date) >= today)
         .sort((a, b) => (a.Date || '').localeCompare(b.Date || ''))
         .slice(0, 5);
 
@@ -86,11 +108,12 @@ function renderEventsCard(events) {
         container.innerHTML = upcoming.map(e => {
             const c = getEventCategory(e.Category);
             let title = e.Title || '(無題)';
-            if (c.isMeeting && e.MeetingNumber) {
-                title = `第${e.MeetingNumber}回 ${title}`;
+            const meetingNo = e.MeetingNumber || e.Meeting_Number;
+            if (c.isMeeting && meetingNo) {
+                title = `第${meetingNo}回 ${title}`;
             }
             return `
-                <li onclick="location.href='events.html'" style="cursor:pointer;">
+                <li onclick="location.href='events.html?event=${encodeURIComponent(e.ID)}'" style="cursor:pointer;">
                     <span class="dl-date">${shortDate(e.Date)}</span>
                     <span class="dl-title">${escapeHtml(title)}</span>
                     <span class="dl-badge" style="background:${c.bg};color:${c.text};">${c.short}</span>
@@ -99,53 +122,86 @@ function renderEventsCard(events) {
         }).join('');
     }
 
-    renderDeadlinesCard(events);
+    renderReportsCard(events);
 }
 
-function renderDeadlinesCard(events) {
+// 「期限が近い報告書」カード。報告書（HoukokuDeadline）だけを対象に、
+// 締切日・担当者・イベント名を表示し、タップで提出ステータス（未提出→コーディネーター→CLC）を管理する。
+// ※ 期限アラートの色分け／残り日数バッジは廃止（書類アラート不要のため）。
+function renderReportsCard(events) {
     const container = document.getElementById('upcoming-deadlines');
+    if (!container) return;
     const today = todayISO();
     const in30 = toISODate((() => { const d = new Date(); d.setDate(d.getDate() + 30); return d; })());
+    const past90 = toISODate((() => { const d = new Date(); d.setDate(d.getDate() - 90); return d; })());
 
-    const deadlines = [];
+    const reports = [];
     (events || []).forEach(e => {
-        // ミーティング（全体MTG/幹部MTG）には書類期限が無いので除外
+        // ミーティング（全体MTG/幹部MTG）には報告書が無いので除外
         if (e.Category === 'general' || e.Category === 'admin') return;
-        if (e.KyokaDeadline && e.KyokaDeadline >= today && e.KyokaDeadline <= in30) {
-            deadlines.push({ date: e.KyokaDeadline, type: '許可願', event: e.Title, admin: e.AdminKyoka });
-        }
-        if (e.HoukokuDeadline && e.HoukokuDeadline >= today && e.HoukokuDeadline <= in30) {
-            deadlines.push({ date: e.HoukokuDeadline, type: '報告書', event: e.Title, admin: e.AdminHoukoku });
-        }
+        // 報告書期限は GAS形(HoukokuDeadline) / UI形(Houkoku_Deadline) のどちらでも拾う。
+        // これが GAS形のみ参照だったため、イベントページが書いた UI形キャッシュだと空表示になっていた。
+        const deadline = e.HoukokuDeadline || e.Houkoku_Deadline || '';
+        if (!deadline) return;
+        const status = e.ReportStatus || '';
+        // CLC提出済（完了）は表示しない。締切が直近30日以内、または過去90日以内の未完了分を表示。
+        if (status === 'clc') return;
+        if (deadline > in30 || deadline < past90) return;
+        reports.push({ id: e.ID, date: deadline, event: e.Title, admin: e.AdminHoukoku || e.Admin_Houkoku || '', status });
     });
-    deadlines.sort((a, b) => a.date.localeCompare(b.date));
+    reports.sort((a, b) => a.date.localeCompare(b.date));
 
-    if (deadlines.length === 0) {
-        container.innerHTML = '<li style="color:#999;justify-content:center;">30日以内の期限なし</li>';
+    if (reports.length === 0) {
+        container.innerHTML = '<li style="color:#999;justify-content:center;">提出が必要な報告書はありません</li>';
         return;
     }
 
-    container.innerHTML = deadlines.slice(0, 6).map(d => {
-        const u = deadlineUrgency(d.date);
+    container.innerHTML = reports.slice(0, 8).map(r => {
+        const overdue = r.date < today;
+        const options = Object.keys(REPORT_STATUS).map(v =>
+            `<option value="${v}" ${v === r.status ? 'selected' : ''}>${REPORT_STATUS[v].label}</option>`
+        ).join('');
         return `
-        <li class="deadline-row ${u.cls}">
-            <span class="dl-date">${shortDate(d.date)}</span>
-            <span class="dl-title">${escapeHtml(d.type)} <span style="color:#999;">(${escapeHtml(d.event)})</span></span>
-            <span class="dl-badge" style="background:${u.bg};color:${u.text};">${u.daysLabel}</span>
+        <li class="report-row">
+            <span class="dl-date">${shortDate(r.date)}${overdue ? '<span class="report-overdue">超過</span>' : ''}</span>
+            <span class="dl-title">
+                <a href="events.html?event=${encodeURIComponent(r.id)}&tab=feedback" class="report-event-link">${escapeHtml(r.event || '(無題)')}</a>
+                ${r.admin ? `<span class="report-admin">担当: ${escapeHtml(r.admin)}</span>` : ''}
+            </span>
+            <select class="report-status-select status-${r.status || 'none'}" onchange="setReportStatus('${r.id}', this.value)" title="提出ステータスを変更">
+                ${options}
+            </select>
         </li>`;
     }).join('');
 }
 
-function deadlineUrgency(dateISO) {
-    const days = daysBetween(todayISO(), dateISO);
-    const A = CONFIG.DEADLINE_ALERT;
-    if (days <= A.danger) {
-        return { cls: 'urgent', bg: '#fee2e2', text: '#991b1b', daysLabel: days <= 0 ? '今日!' : `あと${days}日` };
+// 報告書ステータスを更新（楽観的UI + 競合検知）。GAS 正準形イベントに対してのみ実行する。
+async function setReportStatus(id, value) {
+    const ev = latestEvents.find(e => e.ID === id);
+    if (!ev) { toast('データを読み込み中です。少し待ってから操作してください。', 'info', 3000); return; }
+    const prev = ev.ReportStatus || '';
+    if (prev === value) return;
+
+    ev.ReportStatus = value;
+    api.saveCache('events', latestEvents);
+    renderReportsCard(latestEvents);
+
+    const label = (REPORT_STATUS[value] || REPORT_STATUS['']).label;
+    try {
+        const saved = await api.save('events', { ...ev, _baseUpdatedAt: ev.UpdatedAt || '' });
+        Object.assign(ev, saved);
+        api.saveCache('events', latestEvents);
+        toast(`報告書ステータスを「${label}」にしました`, 'success', 2000);
+    } catch (e) {
+        ev.ReportStatus = prev;
+        renderReportsCard(latestEvents);
+        if (String(e.message).includes('conflict')) {
+            toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', 4000);
+            refreshData();
+        } else {
+            toast('保存失敗: ' + e.message, 'error');
+        }
     }
-    if (days <= A.warning) {
-        return { cls: 'soon', bg: '#fef3c7', text: '#92400e', daysLabel: `あと${days}日` };
-    }
-    return { cls: '', bg: '#dcfce7', text: '#166534', daysLabel: `あと${days}日` };
 }
 
 function renderMembersCard(members) {
@@ -194,8 +250,7 @@ function renderFeedbackPending(events) {
         return;
     }
     container.innerHTML = pending.map(e => {
-        const c = getEventCategory(e.Category);
-        return `<li onclick="location.href='events.html'" style="cursor:pointer;">
+        return `<li onclick="location.href='events.html?event=${encodeURIComponent(e.ID)}&tab=feedback'" style="cursor:pointer;">
             <span class="dl-date">${shortDate(e.Date)}</span>
             <span class="dl-title">${escapeHtml(e.Title || '(無題)')}</span>
             <span class="dl-badge" style="background:#fef3c7;color:#92400e;">未記入</span>
@@ -209,15 +264,10 @@ function renderExperimentsCard(experiments) {
     const show = experiments.filter(e => e.Category === 'show');
     const other = experiments.filter(e => e.Category === 'other');
 
+    // 種類（カテゴリ）ごとの件数のみを表示する（個別の実験名は一覧ページで確認）。
     container.innerHTML = `
         <li><span class="dl-date">工作</span><span class="dl-title">${workshop.length}種類</span></li>
         <li><span class="dl-date">実験ショー</span><span class="dl-title">${show.length}種類</span></li>
         <li><span class="dl-date">その他</span><span class="dl-title">${other.length}種類</span></li>
-        ${experiments.slice(0, 4).map(e => `
-            <li>
-                <span class="dl-date" style="min-width:70px;">${escapeHtml(getExperimentCategory(e.Category).label)}</span>
-                <span class="dl-title">${escapeHtml(e.Name)}</span>
-            </li>
-        `).join('')}
     `;
 }

@@ -103,6 +103,39 @@ function formatFileSize(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+// リンク href に使える URL だけを返す（http/https 以外＝javascript: 等は空にして無害化）。
+// escapeAttr は引用符しかエスケープせずスキームを検証しないため、URL は必ずこれを通す。
+function safeHttpUrl(u) {
+  u = String(u === null || u === undefined ? '' : u).trim();
+  return /^https?:\/\//i.test(u) ? u : '';
+}
+
+// PartsList を新旧どちらの形式でも {name, presenters:[]} の配列に正規化する（読み取り専用用途）。
+//   旧形式: [{partName:"一部", items:[{name, presenter}]}]
+//   新形式: [{name, presenters:[]}]
+// ※ 編集UIで使う script.js の parsePartsList は空時に空行プレースホルダを返す仕様のため別物。
+//   集計・表示（bot 等）はこちらを使う。空・不正は [] を返す。
+function normalizeParts(raw) {
+  let data = raw;
+  if (data === null || data === undefined || data === '') return [];
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch (_) { return []; }
+  }
+  if (!Array.isArray(data)) return [];
+  if (data[0] && data[0].partName !== undefined) {
+    const flat = [];
+    data.forEach(p => (p.items || []).forEach(it => {
+      if (!it.name && !it.presenter) return;
+      flat.push({ name: it.name || '', presenters: it.presenter ? [it.presenter] : [] });
+    }));
+    return flat;
+  }
+  return data.map(it => ({
+    name: it.name || '',
+    presenters: Array.isArray(it.presenters) ? it.presenters : (it.presenter ? [it.presenter] : [])
+  }));
+}
+
 // ====== ナビゲーション ======
 
 function renderHeader(activePage) {

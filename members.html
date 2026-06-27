@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
     <title>メンバー | SciComi Portal</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
@@ -13,14 +14,14 @@
     <main class="container">
         <div class="page-section-actions">
             <h1 class="page-title" style="margin:0; flex:1;">メンバーリスト</h1>
-            <input id="member-search" class="search-input" type="text" placeholder="名前・役職で検索" oninput="onMemberSearch()">
-            <button id="add-member-btn" class="btn-primary-solid" style="width: auto; padding: 8px 16px;" onclick="openMemberModal()">+ メンバー追加</button>
+            <button class="filter-chip admin-only" onclick="openYearCopyModal()">新年度一括登録</button>
+            <button class="filter-chip admin-only" id="edit-mode-btn" onclick="toggleEditMode()">編集</button>
         </div>
 
         <div class="page-section-actions">
             <select id="fiscal-year-select" class="e1-input" style="width:auto; padding:6px 12px;" onchange="onFiscalYearChange()"></select>
-            <button class="filter-chip admin-only" onclick="openYearCopyModal()">新年度一括登録</button>
-            <button class="filter-chip admin-only" id="edit-mode-btn" onclick="toggleEditMode()">編集</button>
+            <input id="member-search" class="search-input" type="text" placeholder="名前・役職で検索" oninput="onMemberSearch()" style="flex:1;">
+            <button id="add-member-btn" class="btn-primary-solid" style="width: auto; padding: 8px 16px;" onclick="openMemberModal()">+ メンバー追加</button>
         </div>
 
         <div class="page-section-actions" id="role-filter-row">
@@ -45,7 +46,7 @@
                         <th class="hide-mobile">メールアドレス</th>
                     </tr>
                 </thead>
-                <tbody id="members-tbody"></tbody>
+                <tbody id="members-tbody"><tr><td colspan="4" class="empty-state">読み込み中...</td></tr></tbody>
             </table>
         </div>
 
@@ -65,7 +66,7 @@
                     <label class="e1-label">役職</label>
                     <select id="mb-role" class="e1-input" onchange="onRoleSelectChange()"></select>
                 </div>
-                <div class="e1-group">
+                <div class="e1-group" id="mb-email-group">
                     <label class="e1-label">メールアドレス</label>
                     <input id="mb-email" class="e1-input" type="email" placeholder="例: name@example.com">
                 </div>
@@ -73,7 +74,7 @@
                     <label class="e1-label">学生証番号 / 教職員番号</label>
                     <input id="mb-student-id" class="e1-input" type="text" placeholder="例: 5CSC1234">
                 </div>
-                <div class="e1-group">
+                <div class="e1-group" id="mb-affiliation-group">
                     <label class="e1-label">所属</label>
                     <input id="mb-affiliation" class="e1-input" type="text" placeholder="例: 理系教育センター">
                 </div>

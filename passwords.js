@@ -205,7 +205,7 @@ function renderPasswords() {
                 <div class="pw-row">
                     <span class="pw-row-label">ID / メール</span>
                     <span class="pw-row-value pw-mono">${escapeHtml(p.LoginID || '—')}</span>
-                    ${p.LoginID ? `<button class="pw-copy-btn" onclick="copyPwValue('${escapeAttr(p.LoginID)}', this)" title="コピー">コピー</button>` : ''}
+                    ${p.LoginID ? `<button class="pw-copy-btn" onclick="copyPwField('${escapeAttr(p.ID)}', 'LoginID', this)" title="コピー">コピー</button>` : ''}
                 </div>
                 ${isSocialLogin(p.LoginType) ? `
                 <div class="pw-row">
@@ -217,7 +217,7 @@ function renderPasswords() {
                     <span class="pw-row-value pw-mono pw-secret" id="pw-secret-${p.ID}" data-revealed="false">${p.Password ? '••••••••' : '—'}</span>
                     ${p.Password ? `
                     <button class="pw-copy-btn" onclick="toggleSecret('${p.ID}', this)" title="表示切替">👁 表示</button>
-                    <button class="pw-copy-btn" onclick="copyPwValue('${escapeAttr(p.Password)}', this)" title="コピー">コピー</button>` : ''}
+                    <button class="pw-copy-btn" onclick="copyPwField('${escapeAttr(p.ID)}', 'Password', this)" title="コピー">コピー</button>` : ''}
                 </div>`}
                 ${p.Note ? `<div class="pw-row pw-row-note"><span class="pw-row-label">メモ</span><span class="pw-row-value pw-note-body">${noteToHtml(p.Note)}</span></div>` : ''}
                 <div class="pw-card-actions">
@@ -252,7 +252,12 @@ function toggleSecret(id, btn) {
     }
 }
 
-async function copyPwValue(value, btn) {
+// シークレットは HTML 属性に出さず、ID と項目名から pwData を引いてコピーする。
+// （以前は onclick に値を直書きしており、値に ' を含むと JS 文字列を抜け出して壊れる/実行される問題があった）
+async function copyPwField(id, field, btn) {
+    const p = pwData.find(x => x.ID === id);
+    if (!p) return;
+    const value = p[field] || '';
     try {
         await navigator.clipboard.writeText(value);
         const orig = btn.textContent;

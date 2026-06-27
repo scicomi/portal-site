@@ -267,15 +267,17 @@ function populateFiscalYearModal() {
     ).join('');
 }
 
+// 役職の選択肢は「アドバイザー / コーディネーター / (なし) / 自由入力」に限定。既定は (なし)。
+// 既存データに別の役職（旧プロジェクトリーダー等）があれば、その値は専用 option として保持する。
+const MEMBER_ROLE_PRESETS = ['アドバイザー', 'コーディネーター'];
+
 function populateRoleSelect(currentRole) {
     const sel = document.getElementById('mb-role');
     if (!sel) return;
     const options = [{ value: '', label: '(なし)' }];
-    CONFIG.MEMBER_ROLES.forEach(r => {
-        options.push({ value: r.value, label: r.value });
-    });
+    MEMBER_ROLE_PRESETS.forEach(r => options.push({ value: r, label: r }));
 
-    const isCustom = currentRole && !CONFIG.MEMBER_ROLES.find(r => r.value === currentRole);
+    const isCustom = currentRole && !MEMBER_ROLE_PRESETS.includes(currentRole);
 
     let html = options.map(o =>
         `<option value="${escapeAttr(o.value)}" ${!isCustom && o.value === currentRole ? 'selected' : ''}>${escapeHtml(o.label)}</option>`
@@ -286,6 +288,8 @@ function populateRoleSelect(currentRole) {
     }
     html += '<option value="__custom__">その他（自由入力）</option>';
     sel.innerHTML = html;
+
+    updateMemberFieldVisibility();
 }
 
 function onRoleSelectChange() {
@@ -302,6 +306,18 @@ function onRoleSelectChange() {
             sel.value = '';
         }
     }
+    updateMemberFieldVisibility();
+}
+
+// 役職が (なし) のときはメールアドレス・所属の入力欄を隠す（一般メンバーには不要なため）。
+function updateMemberFieldVisibility() {
+    const sel = document.getElementById('mb-role');
+    if (!sel) return;
+    const hide = sel.value === ''; // (なし)
+    const emailG = document.getElementById('mb-email-group');
+    const affG = document.getElementById('mb-affiliation-group');
+    if (emailG) emailG.style.display = hide ? 'none' : '';
+    if (affG) affG.style.display = hide ? 'none' : '';
 }
 
 function openMemberModal() {

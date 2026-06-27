@@ -10,6 +10,7 @@ let expCurrentTab = 'workshop';
 let expSearchKw = '';
 let currentExpId = null;
 let editingExpId = null;
+let isExpEditMode = false; // メンバーページと同様の編集モード（編集は全員可、削除のみ管理者）
 
 document.addEventListener('DOMContentLoaded', () => {
     bootPage('experiments', init);
@@ -110,32 +111,42 @@ function render() {
     }
 
     const tbody = document.getElementById('experiments-tbody');
+    const table = document.getElementById('experiments-table');
+    if (table) table.classList.toggle('edit-mode', isExpEditMode);
 
     if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">該当する実験はありません</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="3" class="empty-state">該当する実験はありません</td></tr>';
         return;
     }
 
+    // 編集モードでは行クリックで編集モーダル、通常は詳細ページへ。
     tbody.innerHTML = items.map(e => {
         const snippet = (e.Materials || '').split('\n').slice(0, 2).join(', ') || '-';
-        const hasSlides = e.SlidesURL && e.SlidesURL.trim();
+        const safeSlides = safeHttpUrl(e.SlidesURL);
         const fbCount = countFeedback(e);
+        const onClick = isExpEditMode ? `editExp('${e.ID}')` : `goToDetail('${e.ID}')`;
         return `
-            <tr class="clickable-row" onclick="goToDetail('${e.ID}')">
+            <tr class="clickable-row" onclick="${onClick}">
                 <td class="cell-name">
-                    ${escapeHtml(e.Name || '(無題)')}
+                    ${isExpEditMode ? '<span class="edit-row-icon" title="クリックで編集">✎</span> ' : ''}${escapeHtml(e.Name || '(無題)')}
                     ${fbCount > 0 ? `<span style="color:#10b981;margin-left:4px;font-size:0.72rem;" title="振り返り ${fbCount}件">${fbCount}件</span>` : ''}
                 </td>
                 <td class="hide-mobile cell-snippet">${escapeHtml(snippet)}</td>
-                <td class="hide-mobile">${hasSlides ? `<a href="${escapeAttr(e.SlidesURL)}" target="_blank" onclick="event.stopPropagation()" class="tbl-link">資料を開く</a>` : '-'}</td>
-                <td class="cell-actions" onclick="event.stopPropagation()">
-                    <button class="tbl-btn" onclick="goToDetail('${e.ID}')">詳細</button>
-                    <button class="tbl-btn" onclick="editExp('${e.ID}')">編集</button>
-                    <button class="tbl-btn tbl-btn-danger${api.isAdmin() ? '' : ' admin-hidden'}" onclick="deleteExp('${e.ID}')">削除</button>
-                </td>
+                <td class="hide-mobile">${safeSlides ? `<a href="${escapeAttr(safeSlides)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="tbl-link">資料を開く</a>` : '-'}</td>
             </tr>
         `;
     }).join('');
+}
+
+// ---- 編集モード（メンバーページと同じ操作感。編集は全員可、削除のみ管理者） ----
+function toggleExpEditMode() {
+    isExpEditMode = !isExpEditMode;
+    const btn = document.getElementById('exp-edit-mode-btn');
+    if (btn) {
+        btn.textContent = isExpEditMode ? '完了' : '編集';
+        btn.classList.toggle('active', isExpEditMode);
+    }
+    render();
 }
 
 function goToDetail(id) {
@@ -167,10 +178,11 @@ function viewExp(id) {
     };
 
     const cat = getExperimentCategory(e.Category);
+    const safeSlides = safeHttpUrl(e.SlidesURL);
     body.innerHTML = `
         <div style="margin-bottom:12px;">
             <span class="cat-badge" style="background:${cat.color};">${escapeHtml(cat.label)}</span>
-            ${e.SlidesURL ? ` &nbsp;<a class="tbl-link" href="${escapeAttr(e.SlidesURL)}" target="_blank">資料を開く</a>` : ''}
+            ${safeSlides ? ` &nbsp;<a class="tbl-link" href="${escapeAttr(safeSlides)}" target="_blank" rel="noopener">資料を開く</a>` : ''}
         </div>
         ${section('使用物品', e.Materials, true)}
         ${section('事前準備', e.Preparation, true)}
@@ -213,6 +225,8 @@ function openExpModal() {
         document.getElementById(id).value = '';
     });
     document.getElementById('ex-category').value = expCurrentTab;
+    // 新規追加時は削除ボタンを隠す
+    document.getElementById('ex-delete-btn').classList.add('hidden');
     document.getElementById('exp-edit-modal').classList.remove('hidden');
     setTimeout(() => document.getElementById('ex-name').focus(), 50);
 }
@@ -229,11 +243,21 @@ function editExp(id) {
     document.getElementById('ex-flow').value = e.Flow || '';
     document.getElementById('ex-notes').value = e.Notes || '';
     document.getElementById('ex-slides').value = e.SlidesURL || '';
+    // 削除ボタンは管理者のみ表示（編集自体は全員可）
+    document.getElementById('ex-delete-btn').classList.toggle('hidden', !api.isAdmin());
     document.getElementById('exp-edit-modal').classList.remove('hidden');
 }
 
 function closeExpEdit() {
     document.getElementById('exp-edit-modal').classList.add('hidden');
+}
+
+// 編集モーダルからの削除（管理者のみ。deleteExp 内でも管理者ガードあり）
+function deleteCurrentExpFromEdit() {
+    if (!editingExpId) return;
+    const id = editingExpId;
+    closeExpEdit();
+    deleteExp(id);
 }
 
 async function saveExp() {

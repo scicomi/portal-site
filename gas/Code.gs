@@ -321,9 +321,14 @@ function doPost(e) {
       return jsonResponse({ success: ok });
     }
 
-    // --- Gemini プロキシ ---
+    // --- Gemini プロキシ（意図解析） ---
     if (action === 'geminiProxy') {
       return handleGeminiProxy(body);
+    }
+
+    // --- Gemini 文章生成（要約など。実験/イベント本文のみを context で受け取る） ---
+    if (action === 'geminiGenerate') {
+      return handleGeminiGenerate(body);
     }
 
     // --- 公開設定の読み取り（メンバーも可・表示系のみ） ---
@@ -756,6 +761,9 @@ const EVENTS_HEADERS = [
   'AdminKyoka', 'AdminHoukoku', 'KyokaDeadline', 'HoukokuDeadline',
   'Logistics', 'Remarks', 'Files', 'Belongings', 'Accompany',
   'SeriesKey', 'Positives', 'Reflections',
+  // 報告書の提出ステータス（''=未提出 / coordinator=コーディネーター提出済 / clc=CLC提出済）。
+  // ホーム画面の「期限が近い報告書」カードから段階的に更新する。
+  'ReportStatus',
   'CreatedAt', 'UpdatedAt', 'UpdatedBy'
 ];
 const MEMBERS_HEADERS = [
@@ -988,13 +996,31 @@ function cleanupOrphanedFiles() {
     return;
   }
 
-  // 全イベントが参照している driveId を集める
+  // 参照されている driveId を集める。
+  // driveId が無い旧エントリは url から Drive ファイルIDを救済抽出する。
   var referenced = {};
+  function refId_(id) { if (id) referenced[id] = true; }
+  function idFromUrl_(u) {
+    var m = String(u || '').match(/[-\w]{25,}/);
+    return m ? m[0] : '';
+  }
+
+  // イベント添付ファイル
   listResource('events').forEach(function (ev) {
     var fs = ev.Files;
     if (typeof fs === 'string') { try { fs = JSON.parse(fs); } catch (_) { fs = []; } }
     (fs || []).forEach(function (f) {
-      if (f && f.driveId) referenced[f.driveId] = true;
+      if (f) refId_(f.driveId || idFromUrl_(f.url));
+    });
+  });
+
+  // 実験写真（experiments.Photos）。これを参照集合に入れていなかったため、
+  // 実験写真が「孤児」と誤判定され、アップロード30日後に削除されていた。
+  listResource('experiments').forEach(function (ex) {
+    var ph = ex.Photos;
+    if (typeof ph === 'string') { try { ph = JSON.parse(ph); } catch (_) { ph = []; } }
+    (ph || []).forEach(function (p) {
+      if (p) refId_(p.driveId || idFromUrl_(p.url));
     });
   });
 
@@ -1112,9 +1138,9 @@ function buildBotSystemPrompt_() {
 ## 返答JSON形式（必ずこの形式のJSONのみ返す）
 
 {
-  "intent": "find_members|find_events|find_experiments|members_docs|member_activity|upcoming|count|general|unknown",
+  "intent": "find_members|find_events|find_experiments|members_docs|member_activity|upcoming|count|summarize|general|unknown",
   "params": {
-    "name": "人名（部分一致検索用）",
+    "name": "人名 または 実験名/イベント名（部分一致検索用）",
     "grade": "学年コード（例:6C）",
     "member_category": "adviser|coordinator|member",
     "event_category": "normal|other|general|admin",
@@ -1125,12 +1151,22 @@ function buildBotSystemPrompt_() {
     "active_only": true,
     "doc_type": "kyoka|houkoku|both",
     "include_in": "parts|admin|both",
+    "target": "experiment|event（summarize のとき要約対象がどちらか）",
+    "instruction": "summarize のとき、生成してほしい内容の具体的な指示（例: 振り返りを3点で要約）",
     "fiscal_year": ${fy}
   },
   "response_text": "検索内容を説明する日本語文（結果の前に表示される）"
 }
 
 paramsは必要なものだけ含めてください。不要なものは省略。
+
+## 要約・文章生成（summarize）について
+「〜を要約して」「〜のまとめを作って」「〜の振り返りをまとめて」「〜について教えて（説明文がほしい）」のように、
+検索結果の一覧ではなく文章生成を求めている場合は intent="summarize" を使う。
+- 実験の振り返り/内容の要約 → target="experiment"、name に実験名（推測できなければ keyword）。
+- イベントの要約/振り返り → target="event"、name にイベント名（または date_from/date_to）。
+- instruction には「振り返りを3点で」「初心者向けに説明」など、ユーザーの意図を簡潔に入れる。
+- 実際の本文（実験内容・振り返り）はサーバーがローカルデータから渡すので、ここでは対象の特定だけ行う。
 
 ## 例
 
@@ -1148,6 +1184,12 @@ A: {"intent":"find_events","params":{"event_category":"general","date_from":"${t
 
 Q: 「工作の実験ネタ」
 A: {"intent":"find_experiments","params":{"exp_category":"workshop"},"response_text":"工作カテゴリの実験ネタ一覧です。"}
+
+Q: 「スライムの実験の振り返りを要約して」
+A: {"intent":"summarize","params":{"target":"experiment","name":"スライム","instruction":"振り返り（良かった点・改善点）を簡潔に要約"},"response_text":"「スライム」の振り返りを要約します。"}
+
+Q: 「文化祭イベントのまとめを作って」
+A: {"intent":"summarize","params":{"target":"event","name":"文化祭","instruction":"当日の内容と振り返りを要約"},"response_text":"「文化祭」イベントの内容を要約します。"}
 
 Q: 「こんにちは」
 A: {"intent":"general","params":{},"response_text":"こんにちは！イベント・メンバー・実験に関する質問をどうぞ。\\n\\n例:\\n・来月のイベントは？\\n・6Cで書類を書いていないメンバーは？\\n・工作の実験ネタを教えて\\n・田中さんの参加イベント"}
@@ -1210,138 +1252,198 @@ function parseGemini429_(bodyText) {
   return info;
 }
 
-function handleGeminiProxy(body) {
+// ====================================================================
+// モデルの長期運用対応（何十年でも動くように）
+//
+// 方針: モデル名は年々変わり、いつか廃止される。コード変更なしで自己修復するため、
+//   1) Config の gemini_model を最優先で使う（管理画面から手動切替も可）
+//   2) 空 or 廃止モデルなら、ListModels API で「今そのキーで使えるモデル」を動的取得し、
+//      軽量・新しいものを自動選択して Config に保存する
+//   3) リクエストが 404（モデル廃止/未対応）になったら、その場で再検出して1度だけ自動リトライ
+//   これにより、将来 Google が全モデルを入れ替えても、人手のコード修正なしに動き続ける。
+// ====================================================================
+
+// 利用可能なモデルを動的取得（generateContent 対応のみ）。6時間キャッシュ。失敗時は空配列。
+function listGeminiModels_(apiKey) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var cached = cache.get('gemini_models_cache');
+    if (cached) { try { return JSON.parse(cached); } catch (_) {} }
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' + encodeURIComponent(apiKey);
+    var res = UrlFetchApp.fetch(url, { method: 'get', muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) return [];
+    var data = JSON.parse(res.getContentText());
+    var models = (data.models || [])
+      .filter(function (m) { return (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0; })
+      .map(function (m) { return String(m.name || '').replace(/^models\//, ''); });
+    cache.put('gemini_models_cache', JSON.stringify(models), 21600);
+    return models;
+  } catch (e) { return []; }
+}
+
+// 軽量・安価・新しいモデルを優先して1つ選ぶ。avoid は除外したい現行モデル。
+function pickBestGeminiModel_(models, avoid) {
+  if (!models || !models.length) return '';
+  function usable(n) {
+    n = n.toLowerCase();
+    return n.indexOf('gemini') >= 0
+      && n.indexOf('embedding') < 0 && n.indexOf('aqa') < 0 && n.indexOf('vision') < 0
+      && n.indexOf('image') < 0 && n.indexOf('tts') < 0 && n.indexOf('audio') < 0
+      && n.indexOf('preview') < 0 && n.indexOf('-exp') < 0 && n.indexOf('thinking') < 0
+      && !DEPRECATED_GEMINI_MODELS[n];
+  }
+  function score(n) {
+    n = n.toLowerCase();
+    if (n.indexOf('flash-lite') >= 0) return 100;  // 最軽量・無料枠が一番広い
+    if (n.indexOf('flash') >= 0) return 80;
+    if (n.indexOf('pro') >= 0) return 40;
+    return 10;
+  }
+  function ver(n) { var mm = n.match(/(\d+(?:\.\d+)?)/); return mm ? parseFloat(mm[1]) : 0; }
+  var ranked = models.filter(usable).filter(function (n) { return n !== avoid; }).sort(function (a, b) {
+    var d = score(b) - score(a); if (d) return d;
+    return ver(b) - ver(a);
+  });
+  return ranked.length ? ranked[0] : '';
+}
+
+// 使用するモデルを決定。Config 優先、空/廃止なら自動検出して保存。
+function resolveGeminiModel_(apiKey) {
+  var configured = (getConfig('gemini_model') || '').trim();
+  if (configured && !DEPRECATED_GEMINI_MODELS[configured]) return configured;
+  var auto = pickBestGeminiModel_(listGeminiModels_(apiKey), '');
+  if (auto) { try { setConfig('gemini_model', auto); } catch (_) {} return auto; }
+  return GEMINI_MODEL; // 最後の保険（定数の既定）
+}
+
+// ====================================================================
+// Gemini 呼び出しの共有コア（意図解析プロキシ・文章生成の両方が使う）
+// 戻り値は jsonResponse に渡す前のプレーンオブジェクト。
+//   success 時: { success:true, data, model, usage, limit }
+//   失敗時:     { success:false, error, ... }（クライアントが解釈するエラーコード）
+// opts: { token, systemPrompt, userText, wantJson }
+// ====================================================================
+function geminiInvoke_(opts) {
   var apiKey = (getConfig('gemini_api_key') || '').trim();
-  if (!apiKey) {
-    return jsonResponse({ success: false, error: 'gemini_key_not_configured' });
-  }
-
-  var message = body.message || '';
-  if (!message) {
-    return jsonResponse({ success: false, error: 'empty_message' });
-  }
-  if (message.length > 2000) {
-    message = message.slice(0, 2000); // 過大入力を切り詰め（コスト・悪用対策）
-  }
-
-  // 使用モデルは Config の gemini_model で差し替え可能（キーがそのモデルの無料枠を
-  // 持たない／モデルが廃止された場合に、コード変更なしで別モデルへ切り替えるため）。
-  var model = (getConfig('gemini_model') || '').trim() || GEMINI_MODEL;
-  // 廃止モデルが設定に残っていたら、自己修復して現行の既定モデルへ切り替える。
-  if (DEPRECATED_GEMINI_MODELS[model]) {
-    model = GEMINI_MODEL;
-    try { setConfig('gemini_model', model); } catch (_) {}
-  }
-
-  // システムプロンプトはサーバー側で固定生成する。
-  // クライアントから渡された systemPrompt は信用しない（API キーの汎用 LLM 化を防止）。
-  var systemPrompt = buildBotSystemPrompt_();
+  if (!apiKey) return { success: false, error: 'gemini_key_not_configured' };
 
   var cache = CacheService.getScriptCache();
 
   // セッション単位の毎分レート制限（1セッションが全体枠を使い切るのを防ぐ）。
-  // 無料枠の実上限（gemini-2.0-flash-lite で 15 RPM/プロジェクト全体）に合わせる。
-  var th = body.token ? hmacHex_(body.token).slice(0, 16) : 'anon';
+  var th = opts.token ? hmacHex_(opts.token).slice(0, 16) : 'anon';
   var rlKey = 'gemini_rl_' + th + '_' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMMddHHmm');
   var rlCount = (parseInt(cache.get(rlKey), 10) || 0) + 1;
   cache.put(rlKey, String(rlCount), 120);
   if (rlCount > 12) {
-    return jsonResponse({ success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute', retrySec: 30,
-      detail: '短時間に送信が集中したため、このセッションを一時的に制限しました。' });
+    return { success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute', retrySec: 30,
+      detail: '短時間に送信が集中したため、このセッションを一時的に制限しました。' };
   }
 
-  // 日次使用量チェック（全体枠）。
-  // CacheService は揮発するとカウンタが 0 に戻り上限が機能しなくなるため、
-  // ScriptProperties（永続）に {date, count} で保持する。
+  // 日次使用量チェック（ScriptProperties に永続化）。
   var today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
   var usage = geminiUsageGet_(today);
   if (usage >= GEMINI_DAILY_LIMIT) {
-    return jsonResponse({ success: false, error: 'RATE_LIMIT_DAILY', scope: 'day', usage: usage, limit: GEMINI_DAILY_LIMIT });
+    return { success: false, error: 'RATE_LIMIT_DAILY', scope: 'day', usage: usage, limit: GEMINI_DAILY_LIMIT };
   }
 
-  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey);
-  var payload = {
-    contents: [{ role: 'user', parts: [{ text: message }] }],
-    generationConfig: { responseMimeType: 'application/json' }
-  };
-  if (systemPrompt) {
-    payload.systemInstruction = { parts: [{ text: systemPrompt }] };
-  }
+  var model = resolveGeminiModel_(apiKey);
 
-  // サーバー側は短い再試行のみ（ブラウザ側 fetch を長く待たせない）。
-  // 1分枠(RPM)の本格的な待機はクライアントに retrySec を返して任せる。
-  var maxRetries = 1;
+  var payload = { contents: [{ role: 'user', parts: [{ text: opts.userText }] }] };
+  if (opts.wantJson) payload.generationConfig = { responseMimeType: 'application/json' };
+  if (opts.systemPrompt) payload.systemInstruction = { parts: [{ text: opts.systemPrompt }] };
+
+  var maxAttempts = 3;     // 過負荷再試行 + モデル再検出のための余裕
   var last429 = null;
-  for (var attempt = 0; attempt <= maxRetries; attempt++) {
+  var rediscovered = false;
+  for (var attempt = 0; attempt < maxAttempts; attempt++) {
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey);
     try {
       var res = UrlFetchApp.fetch(url, {
-        method: 'post',
-        contentType: 'application/json',
-        payload: JSON.stringify(payload),
-        muteHttpExceptions: true
+        method: 'post', contentType: 'application/json',
+        payload: JSON.stringify(payload), muteHttpExceptions: true
       });
-
       var code = res.getResponseCode();
       if (code === 200) {
         var newUsage = geminiUsageInc_(today);
-        var data = JSON.parse(res.getContentText());
-        return jsonResponse({ success: true, data: data, usage: newUsage, limit: GEMINI_DAILY_LIMIT });
+        return { success: true, data: JSON.parse(res.getContentText()), model: model, usage: newUsage, limit: GEMINI_DAILY_LIMIT };
       }
-
       var errText = res.getContentText() || '';
 
       if (code === 429) {
         last429 = parseGemini429_(errText);
-        // 1分枠かつ短い待機で済むなら、サーバー側で一度だけ即リトライ
-        if (last429.scope !== 'day' && attempt < maxRetries) {
+        if (last429.scope !== 'day' && attempt < maxAttempts - 1) {
           Utilities.sleep(Math.min((last429.retrySec || 2) * 1000, 3000));
           continue;
         }
         if (last429.scope === 'day') {
-          return jsonResponse({ success: false, error: 'RATE_LIMIT_DAILY', scope: 'day',
-            retrySec: last429.retrySec, detail: last429.detail.slice(0, 300) });
+          return { success: false, error: 'RATE_LIMIT_DAILY', scope: 'day', retrySec: last429.retrySec, detail: last429.detail.slice(0, 300) };
         }
-        return jsonResponse({ success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute',
-          retrySec: last429.retrySec || 30, detail: last429.detail.slice(0, 300) });
+        return { success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute', retrySec: last429.retrySec || 30, detail: last429.detail.slice(0, 300) };
       }
 
       var shortErr = errText.slice(0, 500);
-      if (code === 400 && shortErr.indexOf('API_KEY_INVALID') >= 0) {
-        return jsonResponse({ success: false, error: 'API_KEY_INVALID' });
-      }
-      if (code === 403) {
-        // 権限・APIの有効化漏れ・地域制限など。本文をそのまま返して原因究明できるように。
-        return jsonResponse({ success: false, error: 'API_FORBIDDEN', detail: shortErr });
-      }
+      if (code === 400 && shortErr.indexOf('API_KEY_INVALID') >= 0) return { success: false, error: 'API_KEY_INVALID' };
+      if (code === 403) return { success: false, error: 'API_FORBIDDEN', detail: shortErr };
       if (code === 404) {
-        // モデル名が無効／廃止。管理者がモデルを切り替えれば直る。
-        return jsonResponse({ success: false, error: 'MODEL_NOT_FOUND', detail: 'model=' + model });
-      }
-      // 500/502/503/504 はモデル過負荷など一時的なサーバー側エラー。
-      // 一度だけ即リトライし、それでもダメならクライアントへ「過負荷」を返してフォールバックさせる。
-      if (code === 500 || code === 502 || code === 503 || code === 504) {
-        if (attempt < maxRetries) {
-          Utilities.sleep(1500);
-          continue;
+        // モデル廃止/未対応 → 動的に別モデルを検出して1度だけ自動リトライ（自己修復）。
+        if (!rediscovered) {
+          rediscovered = true;
+          var alt = pickBestGeminiModel_(listGeminiModels_(apiKey), model);
+          if (alt && alt !== model) {
+            model = alt;
+            try { setConfig('gemini_model', alt); } catch (_) {}
+            continue;
+          }
         }
-        return jsonResponse({ success: false, error: 'MODEL_OVERLOADED', scope: 'minute',
-          retrySec: 20, detail: shortErr.slice(0, 300) });
+        return { success: false, error: 'MODEL_NOT_FOUND', detail: 'model=' + model };
       }
-      return jsonResponse({ success: false, error: 'API_ERROR_' + code, detail: shortErr });
+      if (code === 500 || code === 502 || code === 503 || code === 504) {
+        if (attempt < maxAttempts - 1) { Utilities.sleep(1500); continue; }
+        return { success: false, error: 'MODEL_OVERLOADED', scope: 'minute', retrySec: 20, detail: shortErr.slice(0, 300) };
+      }
+      return { success: false, error: 'API_ERROR_' + code, detail: shortErr };
     } catch (e) {
-      if (attempt < maxRetries) {
-        Utilities.sleep(1500);
-        continue;
-      }
-      return jsonResponse({ success: false, error: 'NETWORK_ERROR', detail: String(e).slice(0, 200) });
+      if (attempt < maxAttempts - 1) { Utilities.sleep(1500); continue; }
+      return { success: false, error: 'NETWORK_ERROR', detail: String(e).slice(0, 200) };
     }
   }
-  // ループを抜けた = 429 リトライ後も回復せず
-  if (last429) {
-    return jsonResponse({ success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute',
-      retrySec: last429.retrySec || 30, detail: last429.detail.slice(0, 300) });
-  }
-  return jsonResponse({ success: false, error: 'NETWORK_ERROR' });
+  if (last429) return { success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute', retrySec: last429.retrySec || 30, detail: last429.detail.slice(0, 300) };
+  return { success: false, error: 'NETWORK_ERROR' };
+}
+
+// 意図解析プロキシ（質問文 → 検索クエリJSON）。本文の個人情報は送らない。
+function handleGeminiProxy(body) {
+  var message = body.message || '';
+  if (!message) return jsonResponse({ success: false, error: 'empty_message' });
+  if (message.length > 2000) message = message.slice(0, 2000); // 過大入力を切り詰め
+
+  // システムプロンプトはサーバー側で固定生成（クライアント指定の prompt は信用しない）。
+  var r = geminiInvoke_({ token: body.token, systemPrompt: buildBotSystemPrompt_(), userText: message, wantJson: true });
+  return jsonResponse(r); // success 時の {data, usage, limit} はクライアントが従来どおり読む
+}
+
+// 文章生成（要約など）。クライアントが個人情報を除いた context（実験/イベント本文）を渡す。
+function handleGeminiGenerate(body) {
+  var apiKey = (getConfig('gemini_api_key') || '').trim();
+  if (!apiKey) return jsonResponse({ success: false, error: 'gemini_key_not_configured' });
+
+  var instruction = String(body.instruction || '').slice(0, 1000);
+  var context = String(body.context || '').slice(0, 12000); // コンテキスト上限（コスト・悪用対策）
+  if (!context.trim()) return jsonResponse({ success: false, error: 'empty_context' });
+
+  var sys = 'あなたは大学のサイエンスコミュニケーターサークルの記録アシスタントです。'
+    + '与えられた「資料」だけを根拠に、日本語で分かりやすく回答・要約してください。'
+    + '資料に書かれていないことは推測せず、その旨を述べてください。'
+    + '万一、個人名やメールアドレス等の個人情報が含まれていても、出力には含めないでください。'
+    + '出力は簡潔に、必要に応じて箇条書きを使ってください（Markdown見出しは使わない）。';
+  var userText = '【依頼】\n' + (instruction || 'この内容を要約してください。') + '\n\n【資料】\n' + context;
+
+  var r = geminiInvoke_({ token: body.token, systemPrompt: sys, userText: userText, wantJson: false });
+  if (!r.success) return jsonResponse(r);
+  var text = '';
+  try { text = (r.data.candidates[0].content.parts[0].text || '').trim(); } catch (e) { text = ''; }
+  if (!text) return jsonResponse({ success: false, error: 'EMPTY_RESPONSE' });
+  return jsonResponse({ success: true, text: text, usage: r.usage, limit: r.limit });
 }
 
 // ====================================================================
@@ -1587,20 +1689,11 @@ function generateAnnualReport(fiscalYear) {
     catCounts[cat] = (catCounts[cat] || 0) + 1;
   });
 
-  // 使用された実験名を集計
+  // 使用された実験名を集計（新旧 PartsList 両対応）
   const expUsage = {};
   yearEvents.forEach(ev => {
-    if (!ev.PartsList) return;
-    let parts = ev.PartsList;
-    if (typeof parts === 'string') {
-      try { parts = JSON.parse(parts); } catch (_) { return; }
-    }
-    (parts || []).forEach(p => {
-      (p.items || []).forEach(item => {
-        if (item.name) {
-          expUsage[item.name] = (expUsage[item.name] || 0) + 1;
-        }
-      });
+    normalizePartsList_(ev.PartsList).forEach(function (it) {
+      if (it.name) expUsage[it.name] = (expUsage[it.name] || 0) + 1;
     });
   });
 
@@ -1711,6 +1804,35 @@ function parseDateLocal(str) {
   const parts = String(str).split('-');
   if (parts.length < 3) return null;
   return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
+}
+
+// PartsList を新旧どちらの形式でも [{name, presenters:[]}] に正規化する（集計用）。
+//   旧形式: [{partName, items:[{name, presenter}]}]
+//   新形式: [{name, presenters:[]}]
+// フロント app.js の normalizeParts と同じ規則。空・不正は [] を返す。
+function normalizePartsList_(raw) {
+  var data = raw;
+  if (data === null || data === undefined || data === '') return [];
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch (_) { return []; }
+  }
+  if (!Array.isArray(data)) return [];
+  if (data[0] && data[0].partName !== undefined) {
+    var flat = [];
+    data.forEach(function (p) {
+      (p.items || []).forEach(function (it) {
+        if (!it.name && !it.presenter) return;
+        flat.push({ name: it.name || '', presenters: it.presenter ? [it.presenter] : [] });
+      });
+    });
+    return flat;
+  }
+  return data.map(function (it) {
+    return {
+      name: it.name || '',
+      presenters: Array.isArray(it.presenters) ? it.presenters : (it.presenter ? [it.presenter] : [])
+    };
+  });
 }
 
 // ====== トリガー設置 ======

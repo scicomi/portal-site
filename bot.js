@@ -240,19 +240,11 @@ const queryEngine = {
     return { html: `<div class="bot-count">${items.length}<span>件</span></div>`, count: items.length };
   },
 
-  // --- PartsList から担当者名を抽出 ---
+  // --- PartsList から担当者名を抽出（新旧フォーマット両対応） ---
   _getPresenters(event) {
-    let parts = event.PartsList;
-    if (!parts) return [];
-    if (typeof parts === 'string') {
-      try { parts = JSON.parse(parts); } catch { return []; }
-    }
-    if (!Array.isArray(parts)) return [];
     const names = [];
-    parts.forEach(part => {
-      (part.items || []).forEach(item => {
-        if (item.presenter) names.push(item.presenter.trim());
-      });
+    normalizeParts(event.PartsList).forEach(it => {
+      it.presenters.forEach(p => { if (p) names.push(String(p).trim()); });
     });
     return names;
   },
@@ -331,10 +323,11 @@ function buildExpDetailBody(e) {
   };
   const cat = getExperimentCategory(e.Category);
   const hasReview = (e.Positives && e.Positives.trim()) || (e.Reflections && e.Reflections.trim());
+  const safeSlides = safeHttpUrl(e.SlidesURL);
   return `
     <div style="margin-bottom:12px;">
       <span class="cat-badge" style="background:${cat.color};">${escapeHtml(cat.label)}</span>
-      ${e.SlidesURL ? ` &nbsp;<a class="tbl-link" href="${escapeAttr(e.SlidesURL)}" target="_blank" rel="noopener">資料を開く</a>` : ''}
+      ${safeSlides ? ` &nbsp;<a class="tbl-link" href="${escapeAttr(safeSlides)}" target="_blank" rel="noopener">資料を開く</a>` : ''}
     </div>
     ${section('使用物品', e.Materials, true)}
     ${section('事前準備', e.Preparation, true)}
@@ -377,23 +370,19 @@ function buildEventDetailBody(e) {
   if (e.DateEnd && e.DateEnd !== e.Date) dateStr += ` 〜 ${e.DateEnd} (${dayOfWeekJP(e.DateEnd)})`;
   const timeStr = (e.TimeStart && e.TimeEnd) ? `${e.TimeStart} - ${e.TimeEnd}` : (e.TimeStart || '');
 
-  // 部ごとの実験・担当者
-  let parts = e.PartsList;
-  if (typeof parts === 'string') { try { parts = JSON.parse(parts); } catch (_) { parts = []; } }
+  // 実験・担当者（新旧フォーマット両対応。新形式は部の概念が無いためフラットに表示）
   let partsHtml = '';
-  if (Array.isArray(parts)) {
-    parts.forEach(p => {
-      const items = (p.items || []).filter(it => it.name || it.presenter);
-      if (items.length === 0) return;
-      partsHtml += `<div class="part-title">【${escapeHtml(p.partName || '部なし')}】</div><div style="margin-bottom:10px;">`;
-      items.forEach(it => {
-        const name = it.name
-          ? `<a href="experiments.html?focus=${encodeURIComponent(it.name)}" class="exp-link-inline">${escapeHtml(it.name)}</a>`
-          : '(未定)';
-        partsHtml += `<span class="tag tag-exp">${name} <span class="tag-presenter">(${escapeHtml(it.presenter || '未定')})</span></span>`;
-      });
-      partsHtml += `</div>`;
+  const normParts = normalizeParts(e.PartsList).filter(it => it.name || it.presenters.length);
+  if (normParts.length) {
+    partsHtml += `<div style="margin-bottom:10px;">`;
+    normParts.forEach(it => {
+      const name = it.name
+        ? `<a href="experiments.html?focus=${encodeURIComponent(it.name)}" class="exp-link-inline">${escapeHtml(it.name)}</a>`
+        : '(未定)';
+      const pres = it.presenters.length ? it.presenters.map(escapeHtml).join(', ') : '未定';
+      partsHtml += `<span class="tag tag-exp">${name} <span class="tag-presenter">(${pres})</span></span>`;
     });
+    partsHtml += `</div>`;
   }
 
   // 書類（担当・期限）
@@ -578,6 +567,16 @@ async function processQuery(text, isRetry) {
   showTyping();
   try {
     const query = await gemini.parseIntent(text);
+
+    // 要約・文章生成は、対象本文をサーバーへ送って文章を生成する別ルート。
+    if (query.intent === 'summarize') {
+      const out = await runSummarize(query.params || {});
+      hideTyping();
+      addMessage('bot', out.intro || query.response_text || '', out.html || '', 'ai');
+      renderGauge();
+      return;
+    }
+
     const result = queryEngine.execute(query.intent, query.params || {});
     hideTyping();
     addMessage('bot', query.response_text || '', result.html || '', 'ai');
@@ -586,6 +585,109 @@ async function processQuery(text, isRetry) {
     hideTyping();
     await handleBotError(e, text, isRetry);
   }
+}
+
+// ====== 要約・文章生成 ======
+// 対象（実験/イベント）をローカルキャッシュから特定し、個人情報を除いた本文を
+// サーバー(geminiGenerate)へ送って文章を生成する。生成不可ならリンク表示にフォールバック。
+async function runSummarize(params) {
+  const target = params.target === 'event' ? 'event' : 'experiment';
+
+  if (target === 'event') {
+    const ev = findEventForSummary(params);
+    if (!ev) return { intro: '要約対象のイベントが見つかりませんでした。イベント名を含めてお試しください。' };
+    const context = buildEventContext(ev);
+    return await generateSummary(params, context, `「${ev.Title || '(無題)'}」の要約`, () => openEventDetailFromBot(ev.ID));
+  }
+
+  const exp = findExperimentForSummary(params);
+  if (!exp) return { intro: '要約対象の実験が見つかりませんでした。実験名を含めてお試しください。' };
+  const context = buildExperimentContext(exp);
+  return await generateSummary(params, context, `「${exp.Name}」の要約`, () => openExpDetailFromBot(exp.ID));
+}
+
+async function generateSummary(params, context, heading, _openDetail) {
+  const instruction = params.instruction || '次の内容を分かりやすく要約してください。';
+  try {
+    const res = await api.geminiGenerate(instruction, context);
+    if (res.usage !== undefined) usageTracker.setFromServer(res.usage, res.limit);
+    const html = `<div class="bot-generated"><div class="bot-generated-head">${escapeHtml(heading)}</div>${formatGeneratedText(res.text)}</div>`;
+    return { intro: '', html };
+  } catch (e) {
+    // 生成が使えない場合は、対象の本文をそのまま整形して表示（リンク同等の情報提供）。
+    const fallback = `<div class="bot-generated"><div class="bot-generated-head">${escapeHtml(heading)}（AI生成が使えないため内容を表示）</div><div class="exp-text">${escapeHtml(context)}</div></div>`;
+    return { intro: '', html: fallback };
+  }
+}
+
+function findExperimentForSummary(p) {
+  const items = (allData.experiments || []).filter(x => x.Active !== 'false');
+  const probe = (p.name || p.keyword || '').toLowerCase();
+  if (probe) {
+    return items.find(x => (x.Name || '').toLowerCase() === probe)
+        || items.find(x => (x.Name || '').toLowerCase().includes(probe))
+        || items.find(x => (x.Materials || '').toLowerCase().includes(probe))
+        || null;
+  }
+  return null;
+}
+
+function findEventForSummary(p) {
+  let items = (allData.events || []).slice();
+  if (p.date_from) items = items.filter(e => (e.Date || '') >= p.date_from);
+  if (p.date_to) items = items.filter(e => (e.Date || '') <= p.date_to);
+  const probe = (p.name || p.keyword || '').toLowerCase();
+  if (probe) {
+    const hit = items.find(e => (e.Title || '').toLowerCase().includes(probe));
+    if (hit) return hit;
+  }
+  // 名前指定が無く日付範囲のみなら、最新の1件を対象にする
+  if (!probe && items.length) {
+    return items.sort((a, b) => (b.Date || '').localeCompare(a.Date || ''))[0];
+  }
+  return null;
+}
+
+// 実験の本文（個人情報なし）。振り返りはテキストのみ抽出して送る。
+function buildExperimentContext(exp) {
+  const lines = [];
+  lines.push('実験名: ' + (exp.Name || ''));
+  lines.push('種類: ' + getExperimentCategory(exp.Category).label);
+  if (exp.Materials)    lines.push('使用物品:\n' + exp.Materials);
+  if (exp.Preparation)  lines.push('事前準備:\n' + exp.Preparation);
+  if (exp.Flow)         lines.push('発表の流れ:\n' + exp.Flow);
+  if (exp.Notes)        lines.push('注意事項:\n' + exp.Notes);
+  const pos = parseFeedbackEntries(exp.Positives).map(f => '・' + (f.text || '')).filter(s => s.length > 1).join('\n');
+  const ref = parseFeedbackEntries(exp.Reflections).map(f => '・' + (f.text || '')).filter(s => s.length > 1).join('\n');
+  if (pos) lines.push('振り返り（良かった点）:\n' + pos);
+  if (ref) lines.push('振り返り（改善点）:\n' + ref);
+  return lines.join('\n\n');
+}
+
+// イベントの本文（担当者など個人名は含めない）。
+function buildEventContext(ev) {
+  const lines = [];
+  lines.push('イベント名: ' + (ev.Title || ''));
+  if (ev.Date) lines.push('日程: ' + ev.Date + (ev.DateEnd && ev.DateEnd !== ev.Date ? ' 〜 ' + ev.DateEnd : ''));
+  if (ev.Location) lines.push('場所: ' + ev.Location);
+  if (ev.Audience) lines.push('対象: ' + ev.Audience);
+  const expNames = eventExperimentNames(ev);
+  if (expNames.length) lines.push('実施した実験: ' + expNames.join(', '));
+  if (ev.Remarks)   lines.push('備考:\n' + ev.Remarks);
+  if (ev.Logistics) lines.push('当日運営:\n' + ev.Logistics);
+  if ((ev.Positives || '').trim())   lines.push('振り返り（良かった点）:\n' + ev.Positives);
+  if ((ev.Reflections || '').trim()) lines.push('振り返り（改善点）:\n' + ev.Reflections);
+  return lines.join('\n\n');
+}
+
+// PartsList から実験名だけ抽出（担当者名は除外。新旧フォーマット両対応）
+function eventExperimentNames(ev) {
+  return normalizeParts(ev.PartsList).map(it => it.name).filter(Boolean);
+}
+
+// 生成テキストを安全にHTML化（XSS対策のうえ改行を反映）
+function formatGeneratedText(text) {
+  return '<div class="exp-text">' + escapeHtml(text || '').replace(/\n/g, '<br>') + '</div>';
 }
 
 function fallbackToKeyword(text) {
@@ -733,7 +835,7 @@ async function init() {
   updateSyncStatus(hasCache ? 'cached' : 'initial-loading', hasCache ? Date.now() : null);
 
   // ウェルカムメッセージ
-  addMessage('bot', 'こんにちは！SciComi Bot です。\nイベント・メンバー・実験に関する質問をどうぞ。\n\n例:\n・来月のイベントは？\n・6Cで書類を書いていないメンバーは？\n・工作の実験ネタを教えて\n・田中さんの参加イベント');
+  addMessage('bot', 'こんにちは！SciComi Bot です。\nイベント・メンバー・実験に関する質問や、振り返りの要約ができます。\n\n例:\n・来月のイベントは？\n・6Cで書類を書いていないメンバーは？\n・工作の実験ネタを教えて\n・田中さんの参加イベント\n・スライムの実験の振り返りを要約して');
 
   // APIキー未設定時のメッセージはサーバー応答で判定するため、ここでは出さない
 

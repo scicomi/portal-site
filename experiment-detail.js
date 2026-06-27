@@ -73,8 +73,9 @@ function renderPage() {
     badge.style.background = cat.color;
 
     const slidesLink = document.getElementById('expd-slides-link');
-    if (e.SlidesURL && e.SlidesURL.trim()) {
-        slidesLink.href = e.SlidesURL;
+    const safeSlides = safeHttpUrl(e.SlidesURL);
+    if (safeSlides) {
+        slidesLink.href = safeSlides;
         slidesLink.classList.remove('hidden');
     } else {
         slidesLink.classList.add('hidden');
@@ -363,12 +364,30 @@ function renderPhotos() {
         return;
     }
 
-    gallery.innerHTML = photos.map((p, i) => `
+    // Google Drive の getUrl() は「閲覧ページ」URLのため <img> では表示できない（ファイル名だけ出てしまう）。
+    // ファイルIDから thumbnail エンドポイントの直リンクを作って表示する。失敗時は uc?export=view を試す。
+    gallery.innerHTML = photos.map((p, i) => {
+        const id = p.driveId || extractDriveId(p.url);
+        const thumb = id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1600` : p.url;
+        const fallback = id ? `https://drive.google.com/uc?export=view&id=${id}` : p.url;
+        const openUrl = p.url || thumb;
+        return `
         <div class="photo-item">
-            <img src="${escapeAttr(p.url)}" alt="${escapeAttr(p.name || '')}" loading="lazy">
-            ${api.isAdmin() ? `<button class="photo-delete" onclick="deletePhoto(${i})" title="削除">✕</button>` : ''}
-        </div>
-    `).join('');
+            <a href="${escapeAttr(openUrl)}" target="_blank" rel="noopener" title="${escapeAttr(p.name || '')}">
+                <img src="${escapeAttr(thumb)}" alt="${escapeAttr(p.name || '')}" loading="lazy"
+                     referrerpolicy="no-referrer"
+                     onerror="this.onerror=null; this.src='${escapeAttr(fallback)}';">
+            </a>
+            ${api.isAdmin() ? `<button class="photo-delete" onclick="event.preventDefault(); deletePhoto(${i})" title="削除">✕</button>` : ''}
+        </div>`;
+    }).join('');
+}
+
+// Drive の各種URL形式（/d/<id>/view, ?id=<id>, uc?id=<id> 等）からファイルIDを取り出す。
+function extractDriveId(url) {
+    if (!url) return '';
+    const m = String(url).match(/\/d\/([-\w]{20,})/) || String(url).match(/[?&]id=([-\w]{20,})/);
+    return m ? m[1] : '';
 }
 
 function openPhotoUpload() {
@@ -397,7 +416,8 @@ async function handlePhotoSelect(input) {
         toast('アップロード中: ' + file.name, 'info', 2000);
         try {
             const result = await api.uploadFile(file, currentExp.ID);
-            photos.push({ name: file.name, url: result.url, size: file.size });
+            // driveId を保存しておくと、表示時に確実にサムネイル直リンクを生成できる。
+            photos.push({ name: file.name, url: result.url, driveId: result.driveId, size: file.size });
         } catch (e) {
             toast('アップロード失敗: ' + e.message, 'error');
         }
