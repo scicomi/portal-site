@@ -47,7 +47,7 @@
                             <p class="settings-hint">イベント日の何日前？（例: 10 → 10日前）</p>
                             <div style="display:flex;gap:8px;align-items:center;">
                                 <input type="number" id="cfg-deadline-kyoka" class="e1-input" min="1" max="90" style="width:100px;">
-                                <span style="color:#666;">日前</span>
+                                <span class="text-label">日前</span>
                             </div>
                         </div>
                         <div class="e1-group">
@@ -55,7 +55,7 @@
                             <p class="settings-hint">イベント日の何日後？（例: 7 → 7日後）</p>
                             <div style="display:flex;gap:8px;align-items:center;">
                                 <input type="number" id="cfg-deadline-houkoku" class="e1-input" min="1" max="90" style="width:100px;">
-                                <span style="color:#666;">日後</span>
+                                <span class="text-label">日後</span>
                             </div>
                         </div>
                     </div>
@@ -76,8 +76,8 @@
                         <label class="e1-label">サービスパスワード</label>
                         <p class="settings-hint">メンバー全員が使うログインパスワード</p>
                         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-                            <span style="color:#666;font-size:0.9rem;">現在:</span>
-                            <code id="cfg-password-current" data-revealed="false" style="background:#f0f0f0;padding:4px 10px;border-radius:4px;font-size:0.9rem;"></code>
+                            <span class="text-label" style="font-size:0.9rem;">現在:</span>
+                            <code id="cfg-password-current" data-revealed="false" class="code-display"></code>
                             <button class="btn btn-secondary" onclick="toggleSettingsPwVisibility('cfg-password-current')" style="width:auto;padding:4px 10px;font-size:0.8rem;">表示</button>
                         </div>
                         <div style="display:flex;gap:8px;">
@@ -87,14 +87,14 @@
                         </div>
                     </div>
 
-                    <hr style="border:none;border-top:1px solid #eee;margin:20px 0;">
+                    <hr class="divider">
 
                     <div class="e1-group">
                         <label class="e1-label">幹部パスワード</label>
                         <p class="settings-hint">管理者認証に使うパスワード</p>
                         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-                            <span style="color:#666;font-size:0.9rem;">現在:</span>
-                            <code id="cfg-admin-password-current" data-revealed="false" style="background:#f0f0f0;padding:4px 10px;border-radius:4px;font-size:0.9rem;"></code>
+                            <span class="text-label" style="font-size:0.9rem;">現在:</span>
+                            <code id="cfg-admin-password-current" data-revealed="false" class="code-display"></code>
                             <button class="btn btn-secondary" onclick="toggleSettingsPwVisibility('cfg-admin-password-current')" style="width:auto;padding:4px 10px;font-size:0.8rem;">表示</button>
                         </div>
                         <div style="display:flex;gap:8px;">
@@ -147,7 +147,7 @@
                 </div>
                 <div class="settings-card" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
                     <button class="btn btn-secondary" onclick="doAdminLogoutFromSettings()" style="padding:10px 24px;">管理者モードを解除</button>
-                    <span style="color:#888;font-size:0.85rem;">管理者モードを解除して通常メンバーに戻ります。</span>
+                    <span class="text-muted" style="font-size:0.85rem;">管理者モードを解除して通常メンバーに戻ります。</span>
                 </div>
             </div>
 

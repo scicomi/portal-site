@@ -17,6 +17,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function init() {
+    bindOverlayClose(document.getElementById('exp-detail-modal'), closeExpDetail);
+    bindOverlayClose(document.getElementById('exp-edit-modal'), closeExpEdit);
+
     const cached = api.loadCache('experiments');
     if (cached && cached.items) {
         expData = cached.items;
@@ -125,7 +128,7 @@ function render() {
             <tr class="clickable-row" onclick="${onClick}">
                 <td class="cell-name">
                     ${isExpEditMode ? '<span class="edit-row-icon" title="クリックで編集">✎</span> ' : ''}${escapeHtml(e.Name || '(無題)')}
-                    ${fbCount > 0 ? `<span style="color:#10b981;margin-left:4px;font-size:0.72rem;" title="振り返り ${fbCount}件">${fbCount}件</span>` : ''}
+                    ${fbCount > 0 ? `<span class="badge-fb-count" title="振り返り ${fbCount}件">${fbCount}件</span>` : ''}
                 </td>
                 <td class="hide-mobile cell-snippet">${escapeHtml(snippet)}</td>
                 <td class="hide-mobile">${safeSlides ? `<a href="${escapeAttr(safeSlides)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="tbl-link">資料を開く</a>` : '-'}</td>
@@ -184,7 +187,7 @@ function viewExp(id) {
         ${section('事前準備', e.Preparation, true)}
         ${section('発表の流れ', e.Flow, true)}
         ${section('注意事項', e.Notes, true)}
-        <hr style="border:0;border-top:1px solid #eee;margin:20px 0;">
+        <hr class="divider">
         <div style="text-align:center; padding: 8px 0;">
             <a href="experiment-detail.html?id=${encodeURIComponent(e.ID)}" class="tbl-link" style="font-size:0.95rem; font-weight:600;">
                 振り返り・詳細ページを開く &rarr;

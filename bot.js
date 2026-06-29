@@ -333,7 +333,7 @@ function buildExpDetailBody(e) {
     ${section('事前準備', e.Preparation, true)}
     ${section('発表の流れ', e.Flow, true)}
     ${section('注意事項', e.Notes, true)}
-    ${hasReview ? '<hr style="border:0;border-top:1px solid #eee;margin:20px 0;">' : ''}
+    ${hasReview ? '<hr class="divider">' : ''}
     ${section('良かった点', e.Positives, false)}
     ${section('反省点', e.Reflections, false)}
   `;
@@ -403,7 +403,7 @@ function buildEventDetailBody(e) {
       const name = escapeHtml((f && f.name) || ('ファイル ' + (i + 1)));
       return /^https?:\/\//i.test(url)
         ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="tbl-link" style="display:block;margin:2px 0;">${name}</a>`
-        : `<span style="display:block;margin:2px 0;color:#999;">${name}（リンク切れ）</span>`;
+        : `<span class="text-hint" style="display:block;margin:2px 0;">${name}（リンク切れ）</span>`;
     }).join('');
   }
 
@@ -423,7 +423,7 @@ function buildEventDetailBody(e) {
     ${textSec(isMeeting ? '議題 / 備考' : '備考', [e.Remarks, e.Belongings].filter(s => s && String(s).trim()).join('\n'))}
     ${textSec('当日運営・ロジ', e.Logistics)}
     ${filesHtml ? sec('ファイル', filesHtml) : ''}
-    ${(e.Positives && e.Positives.trim()) || (e.Reflections && e.Reflections.trim()) ? '<hr style="border:0;border-top:1px solid #eee;margin:20px 0;">' : ''}
+    ${(e.Positives && e.Positives.trim()) || (e.Reflections && e.Reflections.trim()) ? '<hr class="divider">' : ''}
     ${textSec('良かった点', e.Positives)}
     ${textSec('反省点', e.Reflections)}
   `;
@@ -815,14 +815,8 @@ async function init() {
   });
   document.getElementById('bot-settings-btn').addEventListener('click', openSettings);
 
-  // 詳細モーダル: オーバーレイ外側クリック / Esc で閉じる
-  ['bot-exp-detail-modal', 'bot-event-detail-modal'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('click', ev => { if (ev.target === el) el.classList.add('hidden'); });
-  });
-  document.addEventListener('keydown', ev => {
-    if (ev.key === 'Escape') { closeBotExpDetail(); closeBotEventDetail(); }
-  });
+  bindOverlayClose(document.getElementById('bot-exp-detail-modal'), closeBotExpDetail);
+  bindOverlayClose(document.getElementById('bot-event-detail-modal'), closeBotEventDetail);
 
   // ゲージ初期描画
   renderGauge();

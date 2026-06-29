@@ -216,6 +216,12 @@ function bindModalEscape(modal, closeFn) {
   document.addEventListener('keydown', handler);
 }
 
+function bindOverlayClose(overlayEl, closeFn) {
+  overlayEl.addEventListener('click', (e) => {
+    if (e.target === overlayEl) closeFn();
+  });
+}
+
 // ====== 管理者認証モーダル ======
 
 function showAdminAuthModal(onSuccess) {
@@ -303,7 +309,7 @@ function showPasswordModal(onSuccess) {
       <div class="pw-box" role="dialog" aria-modal="true" aria-labelledby="pw-modal-title">
         <h2 id="pw-modal-title">ログイン</h2>
         <p>パスワードを入力してください。<br>
-          <span style="font-size:0.8rem;color:#888;">幹部パスワードを入力すると、自動的に管理者モードになります。</span>
+          <span class="text-muted" style="font-size:0.8rem;">幹部パスワードを入力すると、自動的に管理者モードになります。</span>
         </p>
         <input id="pw-input" type="password" placeholder="パスワード" autofocus>
         <div id="pw-error" class="pw-error" role="alert"></div>
@@ -383,6 +389,8 @@ function toast(message, type = 'info', duration = 3000) {
   if (!container) {
     container = document.createElement('div');
     container.id = 'toast-container';
+    container.setAttribute('aria-live', 'polite');
+    container.setAttribute('role', 'status');
     document.body.appendChild(container);
   }
   const t = document.createElement('div');
@@ -401,6 +409,8 @@ function toastUndo(message, onUndo, onCommit, delay = 5000) {
   if (!container) {
     container = document.createElement('div');
     container.id = 'toast-container';
+    container.setAttribute('aria-live', 'polite');
+    container.setAttribute('role', 'status');
     document.body.appendChild(container);
   }
   const t = document.createElement('div');

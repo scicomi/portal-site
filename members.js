@@ -49,6 +49,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function init() {
+    bindOverlayClose(document.getElementById('member-modal'), closeMemberModal);
+    bindOverlayClose(document.getElementById('year-copy-modal'), closeYearCopyModal);
+
     const cached = api.loadCache('members');
     if (cached && cached.items) {
         membersData = cached.items;
@@ -214,7 +217,7 @@ function renderMembers() {
             const role = getEffectiveRole(m);
             const roleInfo = role ? getRoleDisplay(role) : null;
             const isStaff = role === 'アドバイザー' || role === 'コーディネーター';
-            const rowStyle = isStaff ? 'style="background:#faf9f8;"' : '';
+            const rowStyle = isStaff ? 'style="background:var(--hover-bg);"' : '';
             const clickHandler = isEditMode ? `onclick="editMember('${m.ID}')"` : '';
             const roleBadge = roleInfo
                 ? `<span class="cat-badge" style="background:${roleInfo.color};margin-left:6px;font-size:0.7rem;">${escapeHtml(role)}</span>`
@@ -509,7 +512,7 @@ function renderYearCopyMembers() {
 
     const list = document.getElementById('yc-member-list');
     if (members.length === 0) {
-        list.innerHTML = '<p style="color:#999; text-align:center; padding:20px;">この年度にメンバーがいません</p>';
+        list.innerHTML = '<p class="text-hint" style="text-align:center; padding:20px;">この年度にメンバーがいません</p>';
         return;
     }
     list.innerHTML = members.map(m => {
@@ -518,10 +521,10 @@ function renderYearCopyMembers() {
         const badge = roleInfo
             ? `<span class="cat-badge" style="background:${roleInfo.color};font-size:0.7rem;">${escapeHtml(role)}</span>`
             : '';
-        return `<label style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid #f5f5f5; cursor:pointer;">
+        return `<label style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid var(--bg-muted); cursor:pointer;">
             <input type="checkbox" value="${m.ID}" checked class="yc-check">
             <span style="flex:1;">${escapeHtml(m.Name || '')} ${badge}</span>
-            <span style="font-size:0.8rem; color:#999;">${escapeHtml(m.StudentID || '')}</span>
+            <span class="text-hint" style="font-size:0.8rem;">${escapeHtml(m.StudentID || '')}</span>
         </label>`;
     }).join('');
 }

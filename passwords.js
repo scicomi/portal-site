@@ -33,6 +33,7 @@ async function init() {
         return;
     }
     showAdminBody();
+    bindOverlayClose(document.getElementById('pw-modal-edit'), closePwModal);
     buildCategoryDropdown();
     buildLoginTypeDropdown();
     buildCategoryFilter();
