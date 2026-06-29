@@ -25,14 +25,14 @@
         </div>
 
         <div class="page-section-actions" id="role-filter-row">
-            <span style="font-size:0.85rem; color:#888;">区分で絞り込み:</span>
+            <span class="text-muted" style="font-size:0.85rem;">区分で絞り込み:</span>
             <button class="filter-chip active" data-role="member" onclick="setRoleFilter('member')">メンバー</button>
             <button class="filter-chip" data-role="coordinator" onclick="setRoleFilter('coordinator')">コーディネーター</button>
             <button class="filter-chip" data-role="adviser" onclick="setRoleFilter('adviser')">アドバイザー</button>
         </div>
 
         <div class="page-section-actions" id="grade-filter-row" style="display:none;">
-            <span style="font-size:0.85rem; color:#888;">学年で絞り込み:</span>
+            <span class="text-muted" style="font-size:0.85rem;">学年で絞り込み:</span>
             <span id="grade-filter-chips" style="display:flex; gap:8px; flex-wrap:wrap;"></span>
         </div>
 
@@ -87,7 +87,7 @@
                     <textarea id="mb-note" class="e1-input" rows="2"></textarea>
                 </div>
                 <div class="action-buttons">
-                    <button id="mb-delete-btn" class="btn btn-text hidden" style="color:#c92a2a;" onclick="deleteMemberFromModal()">削除</button>
+                    <button id="mb-delete-btn" class="btn btn-text text-danger hidden" onclick="deleteMemberFromModal()">削除</button>
                     <span style="flex:1;"></span>
                     <button class="btn btn-text" onclick="closeMemberModal()">キャンセル</button>
                     <button class="btn btn-primary-solid" style="width:auto;" onclick="saveMember()">保存</button>
@@ -99,7 +99,7 @@
         <div id="year-copy-modal" class="modal-overlay hidden">
             <div class="modal-content" style="max-width: 600px;" role="dialog" aria-modal="true" aria-labelledby="year-copy-title">
                 <h2 id="year-copy-title">新年度メンバー登録</h2>
-                <p style="color:#666; font-size:0.9rem; margin-top:0;">前年度のメンバーを新年度に引き継ぎます。</p>
+                <p class="text-label" style="font-size:0.9rem; margin-top:0;">前年度のメンバーを新年度に引き継ぎます。</p>
                 <div class="e1-group">
                     <label class="e1-label">コピー元年度</label>
                     <select id="yc-source-year" class="e1-input" onchange="renderYearCopyMembers()"></select>
@@ -112,7 +112,7 @@
                     <button class="tbl-btn" onclick="yearCopySelectAll(true)">全選択</button>
                     <button class="tbl-btn" onclick="yearCopySelectAll(false)">全解除</button>
                 </div>
-                <div id="yc-member-list" style="max-height:300px; overflow-y:auto; border:1px solid #eee; border-radius:8px;"></div>
+                <div id="yc-member-list" style="max-height:300px; overflow-y:auto; border:1px solid var(--border-light); border-radius:8px;"></div>
                 <div class="action-buttons" style="margin-top:16px;">
                     <button class="btn btn-text" onclick="closeYearCopyModal()">キャンセル</button>
                     <button class="btn btn-primary-solid" style="width:auto;" onclick="executeYearCopy()">登録</button>

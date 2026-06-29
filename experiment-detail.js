@@ -15,6 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function init() {
+    bindOverlayClose(document.getElementById('feedback-modal'), closeFeedbackModal);
+
     const id = new URLSearchParams(location.search).get('id');
     if (!id) {
         document.getElementById('exp-loading').textContent = '実験IDが指定されていません';
@@ -95,7 +97,7 @@ function renderPage() {
         section('事前準備', e.Preparation) +
         section('発表の流れ', e.Flow) +
         section('注意事項', e.Notes) ||
-        '<p style="color:#888; padding:12px;">詳細情報はまだ登録されていません。</p>';
+        '<p class="text-muted" style="padding:12px;">詳細情報はまだ登録されていません。</p>';
 
     renderEventsSection();
     renderFeedback();

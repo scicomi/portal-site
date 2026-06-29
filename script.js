@@ -161,6 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function init() {
+    bindOverlayClose(document.getElementById('modal-overlay'), closeModal);
     holidaysData = await api.loadHolidaysCached();
     populateTimeSelects();
 
@@ -537,8 +538,8 @@ function renderEvents() {
         return `
             <tr class="clickable-row" onclick="viewEventInModal('${event.ID}')">
                 <td class="cell-name" style="white-space:nowrap;">
-                    ${escapeHtml(event.Date || '')} <span style="color:#888;">(${dayOfWeekJP(event.Date)})</span>
-                    ${event.Date_End && event.Date_End !== event.Date ? '<br><span style="color:#888;font-size:0.8rem;">〜 ' + escapeHtml(event.Date_End) + '</span>' : ''}
+                    ${escapeHtml(event.Date || '')} <span class="text-muted">(${dayOfWeekJP(event.Date)})</span>
+                    ${event.Date_End && event.Date_End !== event.Date ? '<br><span class="text-muted" style="font-size:0.8rem;">〜 ' + escapeHtml(event.Date_End) + '</span>' : ''}
                 </td>
                 <td>
                     <span style="font-weight:600;">${escapeHtml(displayTitle)}</span>
@@ -703,9 +704,9 @@ function populateFields(cardElement, eventData) {
     const titleDisplay = cardElement.querySelector('.display-mode[data-field="Title_Display"]');
     if (titleDisplay) {
         if (isMeeting) {
-            titleDisplay.innerHTML = `<span style="font-size: 1.25rem; font-weight: bold; color: #464775;">回数：[ ${eventData.Meeting_Number || '?'} ] [ ${eventData.Title || ''} ]</span>`;
+            titleDisplay.innerHTML = `<span class="text-primary" style="font-size: 1.25rem;">回数：[ ${eventData.Meeting_Number || '?'} ] [ ${eventData.Title || ''} ]</span>`;
         } else {
-            titleDisplay.innerHTML = `<span style="font-size: 1.25rem; font-weight: bold; color: #464775;">${eventData.Title || ''}</span>`;
+            titleDisplay.innerHTML = `<span class="text-primary" style="font-size: 1.25rem;">${eventData.Title || ''}</span>`;
         }
     }
     const meetingNumInput = cardElement.querySelector('#meeting-num-input');
@@ -747,7 +748,7 @@ function populateFields(cardElement, eventData) {
                 </div>`;
             }).join('');
         } else {
-            expFbTab.innerHTML = '<p style="color:#999; font-size:0.85rem;">実験が登録されていないため、実験の振り返りは入力できません。</p>';
+            expFbTab.innerHTML = '<p class="text-hint" style="font-size:0.85rem;">実験が登録されていないため、実験の振り返りは入力できません。</p>';
         }
     }
 
@@ -765,10 +766,10 @@ function populateFields(cardElement, eventData) {
                 if (/^https?:\/\//i.test(url)) {
                     return `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="file-link">${name}${size}</a>`;
                 }
-                return `<span class="file-link" style="color:#999;">${name} (リンク切れ)</span>`;
+                return `<span class="file-link text-hint">${name} (リンク切れ)</span>`;
             }).join('');
         } else {
-            fileContainer.innerHTML = '<span style="color:#999;font-size:0.9rem;">なし</span>';
+            fileContainer.innerHTML = '<span class="text-hint" style="font-size:0.9rem;">なし</span>';
         }
     }
 
@@ -971,7 +972,7 @@ function initTagInput(container, selectedValues, placeholder, filterFn) {
                 : '<div class="tag-input-empty">候補なし</div>';
         } else {
             dropdown.innerHTML = filtered.slice(0, 15).map(m =>
-                `<div class="tag-input-option" data-value="${escapeAttr(m.Name)}">${escapeHtml(m.Name)}${m.Furigana ? ' <span style="color:#999;font-size:0.8em;">(' + escapeHtml(m.Furigana) + ')</span>' : ''}</div>`
+                `<div class="tag-input-option" data-value="${escapeAttr(m.Name)}">${escapeHtml(m.Name)}${m.Furigana ? ' <span class="text-hint" style="font-size:0.8em;">(' + escapeHtml(m.Furigana) + ')</span>' : ''}</div>`
             ).join('');
         }
         dropdown.classList.remove('hidden');

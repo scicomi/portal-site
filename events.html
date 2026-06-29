@@ -91,10 +91,10 @@
                             <div class="field-value display-mode" data-field="Title_Display"></div>
                             <div class="edit-mode hidden title-input-wrapper"
                                 style="display:flex; align-items:center; gap: 10px;">
-                                <span style="font-weight:bold; color:#464775; white-space:nowrap;">回数:</span>
+                                <span class="text-primary" style="white-space:nowrap;">回数:</span>
                                 <input type="number" class="e1-input edit-mode" id="meeting-num-input"
                                     data-field="Meeting_Number" style="width:70px; flex:none;" placeholder="3">
-                                <span style="font-weight:bold; color:#464775; white-space:nowrap;">名称:</span>
+                                <span class="text-primary" style="white-space:nowrap;">名称:</span>
                                 <input type="text" class="e1-input edit-mode" id="meeting-name-input" data-field="Title"
                                     style="flex:1;" placeholder="イベント振り返りなど">
                             </div>
@@ -106,7 +106,7 @@
                                 <th style="width: 140px;">イベント名</th>
                                 <td>
                                     <div class="field-value display-mode" data-field="Title"
-                                        style="font-size: 1.25rem; font-weight: bold; color: #464775;"></div>
+                                        class="text-primary" style="font-size: 1.25rem;"></div>
                                 </td>
                             </tr>
                             <tr class="event-only-section">
@@ -284,13 +284,13 @@
                                 <div class="deadline-grid">
                                     <div>
                                         <label
-                                            style="font-size:0.85rem; color:#666; display:block; margin-bottom:4px;">許可願
+                                            class="text-label" style="font-size:0.85rem; display:block; margin-bottom:4px;">許可願
                                             (担当)</label>
                                         <div class="admin-tag-container edit-mode" data-admin-field="Admin_Kyoka"></div>
                                     </div>
                                     <div>
                                         <label
-                                            style="font-size:0.85rem; color:#666; display:block; margin-bottom:4px;">報告書
+                                            class="text-label" style="font-size:0.85rem; display:block; margin-bottom:4px;">報告書
                                             (担当)</label>
                                         <div class="admin-tag-container edit-mode" data-admin-field="Admin_Houkoku"></div>
                                     </div>
@@ -312,7 +312,7 @@
                         </div>
                         <div class="event-only-section">
                             <h3 class="feedback-section-label exp-feedback-label">実験の振り返り</h3>
-                            <p style="font-size:0.82rem; color:#888; margin:0 0 10px;">
+                            <p class="text-muted" style="font-size:0.82rem; margin:0 0 10px;">
                                 各実験の気づきを記録できます。入力した内容は実験の詳細ページに蓄積されます。
                             </p>
                             <div class="exp-feedback-container" data-field="ExpFeedback_Tab"></div>
@@ -338,7 +338,7 @@
                 <button class="btn btn-category cat-admin-btn" onclick="startNewEvent('admin')">幹部ミーティング</button>
             </div>
 
-            <div style="margin: 20px 0; text-align: center; color: #999;">または</div>
+            <div class="text-center-or">または</div>
 
             <div class="e1-group">
                 <label class="e1-label">過去イベントから複製</label>

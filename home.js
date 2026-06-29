@@ -245,7 +245,7 @@ function renderFeedbackPending(events) {
         return `<li onclick="location.href='events.html?event=${encodeURIComponent(e.ID)}&tab=feedback'" style="cursor:pointer;">
             <span class="dl-date">${shortDate(e.Date)}</span>
             <span class="dl-title">${escapeHtml(e.Title || '(無題)')}</span>
-            <span class="dl-badge" style="background:#fef3c7;color:#92400e;">未記入</span>
+            <span class="dl-badge badge-warning">未記入</span>
         </li>`;
     }).join('');
 }
