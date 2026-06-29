@@ -1,5 +1,5 @@
 /**
- * SciComi Portal - Google Apps Script Backend API (v4)
+ * SciComi Portal - Google Apps Script Backend API (v4)!!
  *
  * 3つのリソースに対応:
  *   - events:      イベントカレンダー
