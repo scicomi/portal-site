@@ -26,7 +26,6 @@
         <div class="page-header">
             <h1 class="page-title" style="margin:0; flex:1;">イベント管理</h1>
             <input id="event-search" class="search-input" type="text" placeholder="タイトル・場所・発表者で検索" oninput="onSearchChange()">
-            <button class="btn btn-primary" onclick="openNewEventModal()">+ 新規イベント</button>
         </div>
         <div class="page-filters">
             <button class="filter-chip active" data-cat="all" onclick="onCategoryFilter('all')">全部</button>
@@ -54,7 +53,7 @@
                         <th>イベント名</th>
                         <th class="hide-mobile">場所</th>
                         <th class="hide-mobile">時間</th>
-                        <th style="width:80px;">操作</th>
+                        <th style="width:1px;"></th>
                     </tr>
                 </thead>
                 <tbody id="events-tbody"><tr><td colspan="5" class="loading-text">読み込み中</td></tr></tbody>
@@ -364,6 +363,9 @@
             </div>
         </div>
     </div>
+
+    <!-- FAB -->
+    <button class="fab" onclick="openNewEventModal()" title="新規イベント" aria-label="新規イベント">+</button>
 
     <script src="config.js"></script>
     <script src="api.js"></script>

@@ -1,8 +1,8 @@
 /**
  * 実験内容ページ
  * カテゴリタブ（工作/実験ショー/その他）+ 検索。
- * 行クリックで詳細モーダルを開く。
- * 各実験に反省点・良かった点を記録可能。
+ * 行クリックで詳細ページへ遷移。行ホバーで編集・削除ボタン表示。
+ * 新規作成・編集はステップウィザード形式。
  */
 
 let expData = [];
@@ -10,7 +10,13 @@ let expCurrentTab = 'workshop';
 let expSearchKw = '';
 let currentExpId = null;
 let editingExpId = null;
-let isExpEditMode = false; // メンバーページと同様の編集モード（編集は全員可、削除のみ管理者）
+let wizardStep = 0;
+
+const EXP_WIZARD_STEPS = [
+    { label: '基本情報', fields: ['name', 'category'] },
+    { label: '準備', fields: ['materials', 'preparation'] },
+    { label: '実施・その他', fields: ['flow', 'notes', 'slides'] }
+];
 
 document.addEventListener('DOMContentLoaded', () => {
     bootPage('experiments', init);
@@ -18,7 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function init() {
     bindOverlayClose(document.getElementById('exp-detail-modal'), closeExpDetail);
-    bindOverlayClose(document.getElementById('exp-edit-modal'), closeExpEdit);
 
     const cached = api.loadCache('experiments');
     if (cached && cached.items) {
@@ -55,7 +60,7 @@ function focusFromUrl() {
         if (match) {
             focusHandled = true;
             switchExpTab(match.Category || 'other');
-            editExp(match.ID);
+            openExpWizard(match.ID);
         }
         return;
     }
@@ -98,7 +103,6 @@ function render() {
     document.getElementById('tab-cnt-show').textContent = expData.filter(e => e.Category === 'show').length;
     document.getElementById('tab-cnt-other').textContent = expData.filter(e => e.Category === 'other').length;
 
-    // 検索語がある時は全カテゴリ横断、無い時は現在タブのみ表示
     let items;
     if (expSearchKw) {
         items = expData.filter(e => {
@@ -110,42 +114,38 @@ function render() {
     }
 
     const tbody = document.getElementById('experiments-tbody');
-    const table = document.getElementById('experiments-table');
-    if (table) table.classList.toggle('edit-mode', isExpEditMode);
 
     if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="empty-state">該当する実験はありません</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="4" class="empty-state">
+            <span class="empty-icon">&#x1F52C;</span>
+            <span class="empty-text">実験がまだありません</span>
+            <span class="empty-hint">右下の＋ボタンから追加できます</span>
+        </td></tr>`;
         return;
     }
 
-    // 編集モードでは行クリックで編集モーダル、通常は詳細ページへ。
+    const isAdmin = api.isAdmin();
     tbody.innerHTML = items.map(e => {
         const snippet = (e.Materials || '').split('\n').slice(0, 2).join(', ') || '-';
         const safeSlides = safeHttpUrl(e.SlidesURL);
         const fbCount = countFeedback(e);
-        const onClick = isExpEditMode ? `editExp('${e.ID}')` : `goToDetail('${e.ID}')`;
         return `
-            <tr class="clickable-row" onclick="${onClick}">
+            <tr class="clickable-row" onclick="goToDetail('${e.ID}')">
                 <td class="cell-name">
-                    ${isExpEditMode ? '<span class="edit-row-icon" title="クリックで編集">✎</span> ' : ''}${escapeHtml(e.Name || '(無題)')}
+                    ${escapeHtml(e.Name || '(無題)')}
                     ${fbCount > 0 ? `<span class="badge-fb-count" title="振り返り ${fbCount}件">${fbCount}件</span>` : ''}
                 </td>
                 <td class="hide-mobile cell-snippet">${escapeHtml(snippet)}</td>
                 <td class="hide-mobile">${safeSlides ? `<a href="${escapeAttr(safeSlides)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="tbl-link">資料を開く</a>` : '-'}</td>
+                <td onclick="event.stopPropagation()">
+                    <div class="inline-actions">
+                        <button class="inline-action-btn" onclick="openExpWizard('${e.ID}')" title="編集">&#9998;</button>
+                        ${isAdmin ? `<button class="inline-action-btn danger" onclick="confirmDeleteExp('${e.ID}')" title="削除">&#x2715;</button>` : ''}
+                    </div>
+                </td>
             </tr>
         `;
     }).join('');
-}
-
-// ---- 編集モード（メンバーページと同じ操作感。編集は全員可、削除のみ管理者） ----
-function toggleExpEditMode() {
-    isExpEditMode = !isExpEditMode;
-    const btn = document.getElementById('exp-edit-mode-btn');
-    if (btn) {
-        btn.textContent = isExpEditMode ? '完了' : '編集';
-        btn.classList.toggle('active', isExpEditMode);
-    }
-    render();
 }
 
 function goToDetail(id) {
@@ -206,64 +206,166 @@ function closeExpDetail() {
 
 function editCurrentExp() {
     if (!currentExpId) return;
-    closeExpDetail();
-    editExp(currentExpId);
-}
-
-function deleteCurrentExp() {
-    if (!currentExpId) return;
     const id = currentExpId;
     closeExpDetail();
-    deleteExp(id);
+    openExpWizard(id);
 }
 
-// ---- 編集モーダル ----
-function openExpModal() {
+// ---- ウィザード形式の新規作成・編集 ----
+
+function openExpWizard(editId) {
+    editingExpId = editId || null;
+    wizardStep = 0;
+
+    const e = editingExpId ? expData.find(x => x.ID === editingExpId) : null;
+    const isEdit = !!e;
+    const isAdmin = api.isAdmin();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'exp-wizard-overlay';
+    overlay.className = 'wizard-overlay';
+    overlay.onclick = (ev) => { if (ev.target === overlay) closeExpWizard(); };
+
+    overlay.innerHTML = `
+        <div class="wizard-panel" role="dialog" aria-modal="true">
+            <div class="wizard-header">
+                <h2 class="wizard-title">${isEdit ? '実験を編集' : '実験を追加'}</h2>
+                <p class="wizard-subtitle">${isEdit ? e.Name : 'ステップに沿って入力してください'}</p>
+            </div>
+            <div class="wizard-progress">
+                ${EXP_WIZARD_STEPS.map((s, i) => `
+                    ${i > 0 ? '<div class="wizard-step-line" data-line="' + i + '"></div>' : ''}
+                    <div class="wizard-step-dot${i === 0 ? ' active' : ''}" data-dot="${i}" title="${s.label}">${i + 1}</div>
+                `).join('')}
+            </div>
+            <div class="wizard-body">
+                <!-- Step 1: 基本情報 -->
+                <div class="wizard-step active" data-step="0">
+                    <div class="wizard-step-label">Step 1 / ${EXP_WIZARD_STEPS.length} &mdash; ${EXP_WIZARD_STEPS[0].label}</div>
+                    <div class="e1-group">
+                        <label class="e1-label">実験名 *</label>
+                        <input id="wz-ex-name" class="e1-input" type="text" placeholder="例: スライム" value="${escapeAttr(e ? e.Name : '')}">
+                    </div>
+                    <div class="e1-group">
+                        <label class="e1-label">カテゴリ</label>
+                        <select id="wz-ex-category" class="e1-input">
+                            <option value="workshop" ${(e ? e.Category : expCurrentTab) === 'workshop' ? 'selected' : ''}>工作</option>
+                            <option value="show" ${(e ? e.Category : expCurrentTab) === 'show' ? 'selected' : ''}>実験ショー</option>
+                            <option value="other" ${(e ? e.Category : expCurrentTab) === 'other' ? 'selected' : ''}>その他</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Step 2: 準備 -->
+                <div class="wizard-step" data-step="1">
+                    <div class="wizard-step-label">Step 2 / ${EXP_WIZARD_STEPS.length} &mdash; ${EXP_WIZARD_STEPS[1].label}</div>
+                    <div class="e1-group">
+                        <label class="e1-label">使用物品（1行1つ）</label>
+                        <textarea id="wz-ex-materials" class="e1-input" rows="5" placeholder="アルギン酸ナトリウム&#10;乳酸カルシウム&#10;...">${escapeHtml(e ? e.Materials : '')}</textarea>
+                    </div>
+                    <div class="e1-group">
+                        <label class="e1-label">事前準備</label>
+                        <textarea id="wz-ex-preparation" class="e1-input" rows="4" placeholder="前日にやること、当日朝にやることなど">${escapeHtml(e ? e.Preparation : '')}</textarea>
+                    </div>
+                </div>
+
+                <!-- Step 3: 実施・その他 -->
+                <div class="wizard-step" data-step="2">
+                    <div class="wizard-step-label">Step 3 / ${EXP_WIZARD_STEPS.length} &mdash; ${EXP_WIZARD_STEPS[2].label}</div>
+                    <div class="e1-group">
+                        <label class="e1-label">発表の流れ</label>
+                        <textarea id="wz-ex-flow" class="e1-input" rows="4" placeholder="導入 → 説明 → 実演 → 体験">${escapeHtml(e ? e.Flow : '')}</textarea>
+                    </div>
+                    <div class="e1-group">
+                        <label class="e1-label">注意事項</label>
+                        <textarea id="wz-ex-notes" class="e1-input" rows="3" placeholder="安全面で気をつけることなど">${escapeHtml(e ? e.Notes : '')}</textarea>
+                    </div>
+                    <div class="e1-group">
+                        <label class="e1-label">スライド/資料URL</label>
+                        <input id="wz-ex-slides" class="e1-input" type="text" placeholder="https://..." value="${escapeAttr(e ? (e.SlidesURL || '') : '')}">
+                    </div>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                ${isEdit && isAdmin ? '<button class="btn btn-danger" onclick="deleteFromWizard()">削除</button>' : ''}
+                <div class="wizard-footer-spacer"></div>
+                <button class="btn btn-text" onclick="closeExpWizard()">キャンセル</button>
+                <button id="wz-prev-btn" class="btn btn-secondary" onclick="wizardPrev()" style="display:none;">戻る</button>
+                <button id="wz-next-btn" class="btn btn-primary" onclick="wizardNext()">次へ</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+    bindModalEscape(overlay, closeExpWizard);
+    setTimeout(() => document.getElementById('wz-ex-name').focus(), 80);
+}
+
+function closeExpWizard() {
+    const overlay = document.getElementById('exp-wizard-overlay');
+    if (overlay) overlay.remove();
     editingExpId = null;
-    document.getElementById('exp-edit-title').textContent = '実験を追加';
-    ['ex-name', 'ex-materials', 'ex-preparation', 'ex-flow', 'ex-notes', 'ex-slides'].forEach(id => {
-        document.getElementById(id).value = '';
+    wizardStep = 0;
+}
+
+function updateWizardUI() {
+    const total = EXP_WIZARD_STEPS.length;
+    const isLast = wizardStep === total - 1;
+
+    document.querySelectorAll('#exp-wizard-overlay .wizard-step').forEach(el => {
+        el.classList.toggle('active', parseInt(el.dataset.step) === wizardStep);
     });
-    document.getElementById('ex-category').value = expCurrentTab;
-    // 新規追加時は削除ボタンを隠す
-    document.getElementById('ex-delete-btn').classList.add('hidden');
-    document.getElementById('exp-edit-modal').classList.remove('hidden');
-    bindModalEscape(document.getElementById('exp-edit-modal'), closeExpEdit);
-    setTimeout(() => document.getElementById('ex-name').focus(), 50);
+
+    document.querySelectorAll('#exp-wizard-overlay .wizard-step-dot').forEach(el => {
+        const i = parseInt(el.dataset.dot);
+        el.classList.toggle('active', i === wizardStep);
+        el.classList.toggle('done', i < wizardStep);
+    });
+    document.querySelectorAll('#exp-wizard-overlay .wizard-step-line').forEach(el => {
+        const i = parseInt(el.dataset.line);
+        el.classList.toggle('done', i <= wizardStep);
+    });
+
+    const prevBtn = document.getElementById('wz-prev-btn');
+    const nextBtn = document.getElementById('wz-next-btn');
+    if (prevBtn) prevBtn.style.display = wizardStep > 0 ? '' : 'none';
+    if (nextBtn) nextBtn.textContent = isLast ? '保存' : '次へ';
 }
 
-function editExp(id) {
-    const e = expData.find(x => x.ID === id);
-    if (!e) return;
-    editingExpId = id;
-    document.getElementById('exp-edit-title').textContent = '実験を編集';
-    document.getElementById('ex-name').value = e.Name || '';
-    document.getElementById('ex-category').value = e.Category || 'other';
-    document.getElementById('ex-materials').value = e.Materials || '';
-    document.getElementById('ex-preparation').value = e.Preparation || '';
-    document.getElementById('ex-flow').value = e.Flow || '';
-    document.getElementById('ex-notes').value = e.Notes || '';
-    document.getElementById('ex-slides').value = e.SlidesURL || '';
-    // 削除ボタンは管理者のみ表示（編集自体は全員可）
-    document.getElementById('ex-delete-btn').classList.toggle('hidden', !api.isAdmin());
-    document.getElementById('exp-edit-modal').classList.remove('hidden');
-    bindModalEscape(document.getElementById('exp-edit-modal'), closeExpEdit);
+function wizardPrev() {
+    if (wizardStep > 0) {
+        wizardStep--;
+        updateWizardUI();
+    }
 }
 
-function closeExpEdit() {
-    document.getElementById('exp-edit-modal').classList.add('hidden');
-}
+function wizardNext() {
+    const total = EXP_WIZARD_STEPS.length;
 
-// 編集モーダルからの削除（管理者のみ。deleteExp 内でも管理者ガードあり）
-function deleteCurrentExpFromEdit() {
-    if (!editingExpId) return;
-    const id = editingExpId;
-    closeExpEdit();
-    deleteExp(id);
+    if (wizardStep === 0) {
+        const name = document.getElementById('wz-ex-name').value.trim();
+        if (!name) {
+            toast('実験名を入力してください', 'error');
+            document.getElementById('wz-ex-name').focus();
+            return;
+        }
+    }
+
+    if (wizardStep < total - 1) {
+        wizardStep++;
+        updateWizardUI();
+        const step = document.querySelector('#exp-wizard-overlay .wizard-step.active');
+        if (step) {
+            const firstInput = step.querySelector('input, textarea, select');
+            if (firstInput) setTimeout(() => firstInput.focus(), 100);
+        }
+    } else {
+        saveExp();
+    }
 }
 
 async function saveExp() {
-    const name = document.getElementById('ex-name').value.trim();
+    const name = document.getElementById('wz-ex-name').value.trim();
     if (!name) { toast('実験名を入力してください', 'error'); return; }
 
     const existing = editingExpId ? expData.find(x => x.ID === editingExpId) : null;
@@ -271,12 +373,12 @@ async function saveExp() {
     const item = {
         ID: editingExpId || genId('ex_'),
         Name: name,
-        Category: document.getElementById('ex-category').value,
-        Materials: document.getElementById('ex-materials').value,
-        Preparation: document.getElementById('ex-preparation').value,
-        Flow: document.getElementById('ex-flow').value,
-        Notes: document.getElementById('ex-notes').value,
-        SlidesURL: document.getElementById('ex-slides').value.trim(),
+        Category: document.getElementById('wz-ex-category').value,
+        Materials: document.getElementById('wz-ex-materials').value,
+        Preparation: document.getElementById('wz-ex-preparation').value,
+        Flow: document.getElementById('wz-ex-flow').value,
+        Notes: document.getElementById('wz-ex-notes').value,
+        SlidesURL: document.getElementById('wz-ex-slides').value.trim(),
         Positives: existing ? existing.Positives : '',
         Reflections: existing ? existing.Reflections : '',
         Active: existing ? (existing.Active || 'true') : 'true'
@@ -284,7 +386,6 @@ async function saveExp() {
 
     if (editingExpId && existing) item._baseUpdatedAt = existing.UpdatedAt || '';
 
-    // --- Optimistic UI update ---
     const snapshot = JSON.parse(JSON.stringify(expData));
 
     if (isNew) {
@@ -295,10 +396,9 @@ async function saveExp() {
     }
     api.saveCache('experiments', expData);
     render();
-    closeExpEdit();
+    closeExpWizard();
     toast('保存しました', 'success');
 
-    // Background API call (no await — optimistic UI)
     api.save('experiments', item).then(saved => {
         const idx = expData.findIndex(x => x.ID === item.ID);
         if (idx >= 0) expData[idx] = saved;
@@ -316,6 +416,45 @@ async function saveExp() {
     });
 }
 
+// ---- 削除（ウィザード内から） ----
+function deleteFromWizard() {
+    if (!editingExpId) return;
+    const id = editingExpId;
+    closeExpWizard();
+    confirmDeleteExp(id);
+}
+
+// ---- 削除（確認ダイアログ） ----
+function confirmDeleteExp(id) {
+    if (!api.isAdmin()) {
+        showAdminAuthModal(() => confirmDeleteExp(id));
+        return;
+    }
+    const e = expData.find(x => x.ID === id);
+    if (!e) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-dialog-overlay';
+    overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+    overlay.innerHTML = `
+        <div class="confirm-dialog">
+            <h3>「${escapeHtml(e.Name)}」を削除</h3>
+            <p>この操作は元に戻せます（削除直後のみ）。</p>
+            <div class="confirm-dialog-actions">
+                <button class="btn btn-secondary" onclick="this.closest('.confirm-dialog-overlay').remove()">キャンセル</button>
+                <button class="btn btn-danger" id="confirm-del-btn">削除する</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    bindModalEscape(overlay, () => overlay.remove());
+
+    overlay.querySelector('#confirm-del-btn').onclick = () => {
+        overlay.remove();
+        deleteExp(id);
+    };
+}
+
 async function deleteExp(id) {
     if (!api.isAdmin()) {
         showAdminAuthModal(() => deleteExp(id));
@@ -325,12 +464,10 @@ async function deleteExp(id) {
     if (idx < 0) return;
     const backup = expData[idx];
 
-    // UIから即削除（楽観的表示）
     expData.splice(idx, 1);
     api.saveCache('experiments', expData);
     render();
 
-    // サーバー削除を即時実行（ページ離脱でも確実に確定する）
     try {
         await api.delete('experiments', id);
     } catch (e) {
@@ -341,7 +478,6 @@ async function deleteExp(id) {
         return;
     }
 
-    // 削除確定後、UNDO（同一IDで再作成）を提示
     toastUndo(
         `「${backup.Name}」を削除しました`,
         async () => {
@@ -355,7 +491,7 @@ async function deleteExp(id) {
                 toast('復元に失敗しました: ' + e.message, 'error');
             }
         },
-        () => {},   // 確定処理は不要（既にサーバー削除済み）
+        () => {},
         5000
     );
 }

@@ -14,15 +14,13 @@
     <main class="container">
         <div class="page-section-actions">
             <h1 class="page-title" style="margin:0; flex:1;">実験内容</h1>
-            <button class="filter-chip" id="exp-edit-mode-btn" onclick="toggleExpEditMode()">編集</button>
-            <button class="btn-primary-solid" style="width: auto; padding: 8px 16px;" onclick="openExpModal()">+ 実験を追加</button>
+            <input id="exp-search" class="search-input" type="text" placeholder="名前・材料で検索" oninput="onExpSearch()">
         </div>
 
         <div class="page-section-actions">
             <button class="filter-chip active" data-cat="workshop" onclick="switchExpTab('workshop')">工作 <span id="tab-cnt-workshop">0</span></button>
             <button class="filter-chip" data-cat="show" onclick="switchExpTab('show')">実験ショー <span id="tab-cnt-show">0</span></button>
             <button class="filter-chip" data-cat="other" onclick="switchExpTab('other')">その他 <span id="tab-cnt-other">0</span></button>
-            <input id="exp-search" class="search-input" type="text" placeholder="名前・材料で検索" oninput="onExpSearch()" style="margin-left:auto;">
         </div>
 
         <div class="table-wrapper">
@@ -32,9 +30,10 @@
                         <th>実験名</th>
                         <th class="hide-mobile">使用物品</th>
                         <th class="hide-mobile">資料</th>
+                        <th style="width:1px;"></th>
                     </tr>
                 </thead>
-                <tbody id="experiments-tbody"><tr><td colspan="3" class="loading-text">読み込み中</td></tr></tbody>
+                <tbody id="experiments-tbody"><tr><td colspan="4" class="loading-text">読み込み中</td></tr></tbody>
             </table>
         </div>
 
@@ -46,62 +45,15 @@
                     <div class="action-buttons-top">
                         <button class="btn btn-text" onclick="closeExpDetail()">閉じる</button>
                         <button class="btn btn-secondary" onclick="editCurrentExp()">編集</button>
-                        <button class="btn btn-danger" onclick="deleteCurrentExp()">削除</button>
                     </div>
                 </div>
                 <div class="modal-body" id="exp-detail-body"></div>
             </div>
         </div>
-
-        <!-- 編集モーダル -->
-        <div id="exp-edit-modal" class="modal-overlay hidden">
-            <div class="modal-content large-modal" role="dialog" aria-modal="true" aria-labelledby="exp-edit-title">
-                <div class="modal-header">
-                    <h2 id="exp-edit-title">実験を追加</h2>
-                </div>
-                <div class="modal-body">
-                    <div class="e1-group">
-                        <label class="e1-label">実験名 *</label>
-                        <input id="ex-name" class="e1-input" type="text" placeholder="例: スライム">
-                    </div>
-                    <div class="e1-group">
-                        <label class="e1-label">カテゴリ *</label>
-                        <select id="ex-category" class="e1-input">
-                            <option value="workshop">工作</option>
-                            <option value="show">実験ショー</option>
-                            <option value="other">その他</option>
-                        </select>
-                    </div>
-                    <div class="e1-group">
-                        <label class="e1-label">使用物品（1行1つ）</label>
-                        <textarea id="ex-materials" class="e1-input" rows="5" placeholder="アルギン酸ナトリウム&#10;乳酸カルシウム&#10;..."></textarea>
-                    </div>
-                    <div class="e1-group">
-                        <label class="e1-label">事前準備</label>
-                        <textarea id="ex-preparation" class="e1-input" rows="4"></textarea>
-                    </div>
-                    <div class="e1-group">
-                        <label class="e1-label">発表の流れ</label>
-                        <textarea id="ex-flow" class="e1-input" rows="4"></textarea>
-                    </div>
-                    <div class="e1-group">
-                        <label class="e1-label">注意事項</label>
-                        <textarea id="ex-notes" class="e1-input" rows="4"></textarea>
-                    </div>
-                    <div class="e1-group">
-                        <label class="e1-label">スライド/資料URL</label>
-                        <input id="ex-slides" class="e1-input" type="text" placeholder="https://...">
-                    </div>
-                    <div class="action-buttons">
-                        <button id="ex-delete-btn" class="btn btn-text text-danger hidden" onclick="deleteCurrentExpFromEdit()">削除</button>
-                        <span style="flex:1;"></span>
-                        <button class="btn btn-text" onclick="closeExpEdit()">キャンセル</button>
-                        <button class="btn btn-primary-solid" style="width:auto;" onclick="saveExp()">保存</button>
-                    </div>
-                </div>
-            </div>
-        </div>
     </main>
+
+    <!-- FAB -->
+    <button class="fab" onclick="openExpWizard()" title="実験を追加" aria-label="実験を追加">+</button>
 
     <script src="config.js"></script>
     <script src="api.js"></script>
