@@ -501,7 +501,7 @@ function renderMessages() {
     const timeStr = msg.time.getHours().toString().padStart(2, '0') + ':' + msg.time.getMinutes().toString().padStart(2, '0');
     if (msg.role === 'user') {
       return `<div class="bot-msg bot-msg-user">
-        <div class="bot-msg-bubble user-bubble">${escapeHtml(msg.text)}</div>
+        <div class="bot-msg-bubble user-bubble">${escapeHtml(msg.text).replace(/\n/g, '<br>')}</div>
         <div class="bot-msg-time">${timeStr}</div>
       </div>`;
     }
@@ -509,12 +509,39 @@ function renderMessages() {
       <div class="bot-msg-avatar">SC</div>
       <div class="bot-msg-content">
         <div class="bot-msg-bubble bot-bubble">${msg.text ? escapeHtml(msg.text).replace(/\n/g, '<br>') : ''}${msg.html || ''}</div>
-        <div class="bot-msg-meta">${sourceBadge(msg.source)}<span class="bot-msg-time">${timeStr}</span></div>
+        <div class="bot-msg-meta">
+          ${sourceBadge(msg.source)}
+          <span class="bot-msg-time">${timeStr}</span>
+          <button class="bot-copy-btn" data-idx="${i}" title="コピー">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 11V3a1.5 1.5 0 011.5-1.5H11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+        </div>
       </div>
     </div>`;
   }).join('');
 
+  container.querySelectorAll('.bot-copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => copyBotMessage(parseInt(btn.dataset.idx)));
+  });
+
   container.scrollTop = container.scrollHeight;
+}
+
+function copyBotMessage(idx) {
+  const msg = chatHistory[idx];
+  if (!msg) return;
+  let text = msg.text || '';
+  if (msg.html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = msg.html;
+    const htmlText = tmp.textContent || tmp.innerText || '';
+    if (htmlText.trim()) text = text ? text + '\n' + htmlText : htmlText;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    toast('コピーしました', 'success', 1500);
+  }).catch(() => {
+    toast('コピーに失敗しました', 'error');
+  });
 }
 
 function showTyping() {
@@ -560,6 +587,7 @@ async function handleSend() {
   if (!text) return;
 
   input.value = '';
+  input.style.height = 'auto';
   addMessage('user', text);
   await processQuery(text, false);
 }
@@ -791,16 +819,6 @@ async function handleBotError(e, text, isRetry) {
   }
 }
 
-// ====== 設定（管理者専用 → 設定ページへ誘導） ======
-
-function openSettings() {
-  if (api.isAdmin()) {
-    location.href = 'settings.html';
-  } else {
-    showAdminAuthModal(() => { location.href = 'settings.html'; });
-  }
-}
-
 // ====== 起動 ======
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -810,16 +828,43 @@ document.addEventListener('DOMContentLoaded', () => {
 async function init() {
   // イベントリスナー
   document.getElementById('bot-send-btn').addEventListener('click', handleSend);
-  document.getElementById('bot-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.isComposing) handleSend();
+
+  const botInput = document.getElementById('bot-input');
+  botInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.isComposing) {
+      if (e.shiftKey || e.altKey) {
+        return; // Shift+Enter / Alt(Option)+Enter → 改行（デフォルト動作）
+      }
+      e.preventDefault();
+      handleSend();
+    }
   });
-  document.getElementById('bot-settings-btn').addEventListener('click', openSettings);
+  botInput.addEventListener('input', () => {
+    botInput.style.height = 'auto';
+    botInput.style.height = Math.min(botInput.scrollHeight, 120) + 'px';
+  });
+
+  // ヘルプボタン
+  document.getElementById('bot-help-btn').addEventListener('click', () => {
+    document.getElementById('bot-help-modal').classList.remove('hidden');
+    bindModalEscape(document.getElementById('bot-help-modal'), () => document.getElementById('bot-help-modal').classList.add('hidden'));
+  });
+  bindOverlayClose(document.getElementById('bot-help-modal'), () => document.getElementById('bot-help-modal').classList.add('hidden'));
 
   bindOverlayClose(document.getElementById('bot-exp-detail-modal'), closeBotExpDetail);
   bindOverlayClose(document.getElementById('bot-event-detail-modal'), closeBotEventDetail);
 
   // ゲージ初期描画
   renderGauge();
+
+  // サーバーのレート上限を取得してゲージを正確に表示する（CONFIG.GEMINI.DAILY_LIMIT はフォールバック値）
+  api.getPublicConfig().then(function(cfg) {
+    var lim = parseInt(cfg && cfg.gemini_daily_limit);
+    if (isFinite(lim) && lim > 0) {
+      var stored = usageTracker.get();
+      if (stored.limit !== lim) usageTracker.setFromServer(stored.count, lim);
+    }
+  }).catch(function() {});  // 取得失敗は無視（フォールバック値で継続）
 
   // キャッシュからデータ読み込み
   RESOURCE_NAMES.forEach(r => {

@@ -1,5 +1,5 @@
 /**
- * SciComi Portal - Google Apps Script Backend API (v4)!!
+ * SciComi Portal - Google Apps Script Backend API (v4)
  *
  * 3つのリソースに対応:
  *   - events:      イベントカレンダー
@@ -80,6 +80,13 @@ function defaultConfigValue_(key) {
   return DEFAULT_CONFIG[key];
 }
 
+// 整数設定値を取得。parseInt(...) || fallback だと 0 が有効値でもフォールバックに戻る副作用があるため
+// isFinite で未設定(NaN)のみを検出する。
+function getConfigInt_(key, fallback) {
+  var v = parseInt(getConfig(key), 10);
+  return isFinite(v) ? v : fallback;
+}
+
 // 公開設定（getPublicConfig）。未設定キーは DEFAULT_CONFIG にフォールバック。
 function publicConfig_() {
   var cfg = {};
@@ -87,6 +94,8 @@ function publicConfig_() {
     var v = getConfig(k);
     cfg[k] = (v === '' || v === null || v === undefined) ? String(DEFAULT_CONFIG[k]) : v;
   });
+  // GEMINI_DAILY_LIMIT は Config シート外の定数。クライアントと二重定義を避けるためここで公開する。
+  cfg.gemini_daily_limit = String(GEMINI_DAILY_LIMIT);
   return cfg;
 }
 
@@ -557,12 +566,14 @@ function trimAuditLog(keepDays) {
 
 // ====== スキーマ駆動リソースレジストリ ======
 // 新しいリソース追加時はここに1エントリ足すだけでCRUD全対応
+// fileFields: Drive ファイル({driveId,url,...} の配列)を持つ列。孤児ファイル整理の参照収集に使う。
+// 新リソースでファイル列を増やしたら、ここに fileFields を足すだけで cleanupOrphanedFiles が保護する。
 const RESOURCE_REGISTRY = {
-  events:      { sheet: EVENTS_SHEET,      idPrefix: 'ev_', jsonFields: ['PartsList', 'Files'], timeFields: ['TimeStart', 'TimeEnd', 'GatherTime', 'DismissTime'] },
-  members:     { sheet: MEMBERS_SHEET,     idPrefix: 'mb_', jsonFields: [], timeFields: [] },
-  experiments: { sheet: EXPERIMENTS_SHEET, idPrefix: 'ex_', jsonFields: [], timeFields: [] },
+  events:      { sheet: EVENTS_SHEET,      idPrefix: 'ev_', jsonFields: ['PartsList', 'Files'], timeFields: ['TimeStart', 'TimeEnd', 'GatherTime', 'DismissTime'], fileFields: ['Files'] },
+  members:     { sheet: MEMBERS_SHEET,     idPrefix: 'mb_', jsonFields: [], timeFields: [], fileFields: [] },
+  experiments: { sheet: EXPERIMENTS_SHEET, idPrefix: 'ex_', jsonFields: [], timeFields: [], fileFields: ['Photos'] },
   // パスワード一覧（外部サービスの認証情報）: 閲覧・編集とも管理者専用
-  passwords:   { sheet: PASSWORDS_SHEET,   idPrefix: 'pw_', jsonFields: [], timeFields: [], adminOnly: true }
+  passwords:   { sheet: PASSWORDS_SHEET,   idPrefix: 'pw_', jsonFields: [], timeFields: [], fileFields: [], adminOnly: true }
 };
 
 // 機密リソース（メンバーには公開せず、管理者トークン必須）。
@@ -583,6 +594,7 @@ function getSheetName(resource) { return getResourceDef(resource).sheet; }
 function getJsonFields(resource) { return getResourceDef(resource).jsonFields; }
 function getIdPrefix(resource) { return getResourceDef(resource).idPrefix; }
 function getTimeFields(resource) { return getResourceDef(resource).timeFields || []; }
+function getFileFields(resource) { return getResourceDef(resource).fileFields || []; }
 
 // ====== 汎用CRUD ======
 
@@ -626,7 +638,15 @@ function listResource(resource) {
 
 // listResource と同じ規則でセル値を文字列化する（競合検知の版比較用）。
 function cellToCompareStr_(val) {
-  if (val instanceof Date) return Utilities.formatDate(val, 'Asia/Tokyo', 'yyyy-MM-dd');
+  if (val instanceof Date) {
+    // 時刻成分が非ゼロ = 時刻型セル（TimeStart/TimeEnd 等が将来 版管理に使われる場合）→ HH:mm で比較。
+    // 日付のみのカラムは 00:00:00 で返るため yyyy-MM-dd を維持する。
+    var h = val.getHours(), m = val.getMinutes(), s = val.getSeconds();
+    if (h !== 0 || m !== 0 || s !== 0) {
+      return Utilities.formatDate(val, 'Asia/Tokyo', 'HH:mm');
+    }
+    return Utilities.formatDate(val, 'Asia/Tokyo', 'yyyy-MM-dd');
+  }
   if (typeof val === 'boolean') return String(val);
   return (val === '' || val === null || val === undefined) ? '' : String(val);
 }
@@ -676,6 +696,7 @@ function saveResource(resource, item) {
     const isNewRow = existingRow < 0;
 
     if (!item.ID) {
+      // app.js genId と同形式(prefix + epoch + '_' + random4)。クライアントが ID を省略した場合のみ実行。
       item.ID = getIdPrefix(resource) + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
     }
     if (createdAtCol >= 0) {
@@ -924,7 +945,7 @@ function uploadFileToDrive(fileData) {
   const decoded = Utilities.base64Decode(fileData.base64);
   const sizeMB = decoded.length / (1024 * 1024);
   // クライアント(config.js FILE_UPLOAD.maxSizeMB)と同じ上限をサーバーでも強制する
-  const maxMB = parseInt(getConfig('file_max_mb')) || 10;
+  const maxMB = getConfigInt_('file_max_mb', 10);
 
   if (sizeMB > maxMB) {
     throw new Error('ファイルサイズが上限(' + maxMB + 'MB)を超えています');
@@ -960,7 +981,7 @@ function deleteFileFromDrive(driveId) {
  * installTriggers() で毎月1日に自動実行される。
  */
 function cleanupOldFiles() {
-  const retentionYears = parseInt(getConfig('file_retention_years')) || 5;
+  const retentionYears = getConfigInt_('file_retention_years', 5);
   const cutoff = new Date();
   cutoff.setFullYear(cutoff.getFullYear() - retentionYears);
 
@@ -1005,22 +1026,18 @@ function cleanupOrphanedFiles() {
     return m ? m[0] : '';
   }
 
-  // イベント添付ファイル
-  listResource('events').forEach(function (ev) {
-    var fs = ev.Files;
-    if (typeof fs === 'string') { try { fs = JSON.parse(fs); } catch (_) { fs = []; } }
-    (fs || []).forEach(function (f) {
-      if (f) refId_(f.driveId || idFromUrl_(f.url));
-    });
-  });
-
-  // 実験写真（experiments.Photos）。これを参照集合に入れていなかったため、
-  // 実験写真が「孤児」と誤判定され、アップロード30日後に削除されていた。
-  listResource('experiments').forEach(function (ex) {
-    var ph = ex.Photos;
-    if (typeof ph === 'string') { try { ph = JSON.parse(ph); } catch (_) { ph = []; } }
-    (ph || []).forEach(function (p) {
-      if (p) refId_(p.driveId || idFromUrl_(p.url));
+  // ファイル列を持つ全リソースを RESOURCE_REGISTRY の fileFields から走査して参照IDを集める。
+  // （以前は events.Files のみで experiments.Photos が抜け、実験写真が孤児削除されていた。
+  //   レジストリ駆動にし、リソース／ファイル列が増えても取りこぼさないようにする。）
+  Object.keys(RESOURCE_REGISTRY).forEach(function (res) {
+    var fields = getFileFields(res);
+    if (!fields.length) return;
+    listResource(res).forEach(function (row) {
+      fields.forEach(function (fld) {
+        var arr = row[fld];
+        if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch (_) { arr = []; } }
+        (arr || []).forEach(function (it) { if (it) refId_(it.driveId || idFromUrl_(it.url)); });
+      });
     });
   });
 
@@ -1046,7 +1063,7 @@ function cleanupOrphanedFiles() {
  * installTriggers() で毎月実行される。手動実行も可。
  */
 function backupSpreadsheet() {
-  var keepCount = parseInt(getConfig('backup_keep_count')) || 6;
+  var keepCount = getConfigInt_('backup_keep_count', 6);
   var src = DriveApp.getFileById(SHEET_ID);
   var folderName = 'SciComi_Portal_Backups';
   var folders = DriveApp.getFoldersByName(folderName);
@@ -1902,7 +1919,7 @@ function installTriggers() {
  */
 function monthlyMaintenance() {
   try { cleanupOrphanedFiles(); } catch (e) { Logger.log('cleanupOrphanedFiles failed: ' + e); }
-  try { trimAuditLog(parseInt(getConfig('audit_keep_days')) || 365); } catch (e) { Logger.log('trimAuditLog failed: ' + e); }
+  try { trimAuditLog(getConfigInt_('audit_keep_days', 365)); } catch (e) { Logger.log('trimAuditLog failed: ' + e); }
 }
 
 /**

@@ -418,7 +418,7 @@ async function handlePhotoSelect(input) {
         if (file.size > 10 * 1024 * 1024) { toast(file.name + ' は10MBを超えています', 'error'); continue; }
         toast('アップロード中: ' + file.name, 'info', 2000);
         try {
-            const result = await api.uploadFile(file, currentExp.ID);
+            const result = await api.uploadFile(file);  // api.uploadFile は引数1つ（第2引数は無効だったため削除）
             // driveId を保存しておくと、表示時に確実にサムネイル直リンクを生成できる。
             photos.push({ name: file.name, url: result.url, driveId: result.driveId, size: file.size });
         } catch (e) {

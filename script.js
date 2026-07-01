@@ -66,7 +66,8 @@ function uiToGas(u) {
         Reflections: u.Reflections || '',
         ReportStatus: u.ReportStatus || '',  // 報告書ステータスをイベント編集保存でも保持する
         UpdatedBy: u.UpdatedBy || '',
-        CreatedAt: u.CreatedAt || ''  // 既存の作成日時を保持（更新・UNDO再作成で消さない）
+        CreatedAt: u.CreatedAt || '',  // 既存の作成日時を保持（更新・UNDO再作成で消さない）
+        UpdatedAt: u.UpdatedAt || ''   // GAS形キャッシュ統一を将来行うための準備。サーバーは送信値を上書きする。
     };
 }
 
@@ -544,7 +545,7 @@ function renderEvents() {
                 <td>
                     <span style="font-weight:600;">${escapeHtml(displayTitle)}</span>
                     <span class="cat-badge" style="background:${cat.bg};color:${cat.text};margin-left:6px;">${cat.short}</span>
-                    ${occ ? `<span class="occ-badge" title="通算${occ.total}回">${occ.num}回目</span>` : ''}
+                    ${occ ? `<a href="event-series.html?key=${encodeURIComponent(eventSeriesKey(event))}" class="occ-badge occ-link" title="通算${occ.total}回 — シリーズ履歴を見る" onclick="event.stopPropagation();">${occ.num}回目</a>` : ''}
                 </td>
                 <td class="hide-mobile">${escapeHtml(event.Location || '')}</td>
                 <td class="hide-mobile">${escapeHtml(event.Event_Time || '')}</td>
@@ -612,9 +613,12 @@ function populateFields(cardElement, eventData) {
         }
         const occ = occurrenceInfo(eventData);
         if (occ) {
-            const b = document.createElement('span');
-            b.className = 'occ-badge';
+            const b = document.createElement('a');
+            b.className = 'occ-badge occ-link';
+            b.href = `event-series.html?key=${encodeURIComponent(eventSeriesKey(eventData))}`;
+            b.title = 'シリーズ履歴を見る';
             b.textContent = `${occ.num}回目 / 通算${occ.total}回`;
+            b.onclick = (e) => e.stopPropagation();
             dateDisplayEl.appendChild(b);
         }
     }
@@ -717,6 +721,9 @@ function populateFields(cardElement, eventData) {
     if (meetingTitleInput && isMeeting) {
         meetingTitleInput.value = eventData.Title || '';
     }
+
+    // Populate series feedback history
+    renderSeriesFeedback(cardElement, eventData);
 
     // Populate feedback tab
     const fbTabPositives = cardElement.querySelector('.fb-tab-positives');
@@ -1315,6 +1322,18 @@ async function deleteModalEvent() {
 }
 
 async function saveEventFromModal() {
+    if (!tempNewEvent) return;
+
+    // アップロード中のファイルがある場合は保存を阻止
+    if (Array.isArray(tempNewEvent.Files) && tempNewEvent.Files.some(f => f._uploading)) {
+        toast('ファイルのアップロードが完了するまでお待ちください', 'error');
+        return;
+    }
+    // 失敗ファイルは保存時に除外
+    if (Array.isArray(tempNewEvent.Files)) {
+        tempNewEvent.Files = tempNewEvent.Files.filter(f => !f._failed);
+    }
+
     const eventIndex = eventsData.findIndex(e => e.ID === tempNewEvent.ID);
     const container = document.getElementById('new-event-form-container');
     const card = container.querySelector('.event-card');
@@ -1552,6 +1571,75 @@ async function processExperimentFeedbackBg(feedbackData, eventData) {
     api.saveCache('experiments', experiments);
 }
 
+// ---- シリーズ過去振り返り表示 ----
+
+function renderSeriesFeedback(cardElement, eventData) {
+    const container = cardElement.querySelector('[data-field="SeriesFeedback"]');
+    if (!container) return;
+
+    const key = eventSeriesKey(eventData);
+    if (!key) { container.classList.add('hidden'); return; }
+
+    const series = eventsData
+        .filter(x => eventSeriesKey(x) === key && x.ID !== eventData.ID && x.Date)
+        .sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
+
+    if (series.length === 0) { container.classList.add('hidden'); return; }
+
+    const currentFy = getFiscalYear(todayISO());
+    const grouped = {};
+    series.forEach(ev => {
+        const fy = getFiscalYear(ev.Date);
+        const label = fy ? `${fy}年度` : '日付なし';
+        if (!grouped[label]) grouped[label] = [];
+        grouped[label].push(ev);
+    });
+
+    const fyKeys = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+    const seriesKeyEncoded = encodeURIComponent(key);
+
+    let html = `<div class="sfb-header">
+        <span class="sfb-title">過去の振り返り（通算${series.length + 1}回）</span>
+        <a href="event-series.html?key=${escapeAttr(seriesKeyEncoded)}" class="sfb-link">シリーズ全履歴を見る &rarr;</a>
+    </div>`;
+
+    html += fyKeys.map((fy, fyIdx) => {
+        const events = grouped[fy];
+        const isRecent = fyIdx < 2;
+
+        return events.map(ev => {
+            const expList = parsePartsList(ev.PartsList);
+            const expNames = expList.map(it => it.name).filter(Boolean);
+            const pos = (ev.Positives || '').trim();
+            const ref = (ev.Reflections || '').trim();
+            const hasFeedback = pos || ref;
+
+            return `<div class="sfb-year-group">
+                <div class="sfb-year-header ${isRecent ? 'open' : ''}" onclick="this.classList.toggle('open'); this.nextElementSibling.classList.toggle('hidden');">
+                    <span class="sfb-toggle">${isRecent ? '&#9660;' : '&#9654;'}</span>
+                    <span class="sfb-year-label">${escapeHtml(fy)}</span>
+                    <span class="sfb-event-date">${escapeHtml(ev.Date)} (${dayOfWeekJP(ev.Date)})</span>
+                    ${!hasFeedback ? '<span class="sfb-no-fb">振り返りなし</span>' : ''}
+                </div>
+                <div class="sfb-year-body ${isRecent ? '' : 'hidden'}">
+                    <div class="sfb-meta">
+                        ${ev.Location ? `<span>場所: ${escapeHtml(ev.Location)}</span>` : ''}
+                        ${ev.Audience ? `<span>対象: ${escapeHtml(ev.Audience)}</span>` : ''}
+                        ${expNames.length > 0 ? `<span>実験: ${expNames.map(n => escapeHtml(n)).join(', ')}</span>` : ''}
+                    </div>
+                    ${pos ? `<div class="sfb-entry sfb-positive"><span class="sfb-icon">&#9675;</span><span class="sfb-label">良かった点</span><span class="sfb-text">${escapeHtml(pos)}</span></div>` : ''}
+                    ${ref ? `<div class="sfb-entry sfb-reflection"><span class="sfb-icon">&#9651;</span><span class="sfb-label">改善点</span><span class="sfb-text">${escapeHtml(ref)}</span></div>` : ''}
+                    ${!hasFeedback ? '<p class="sfb-empty">この年度の振り返りは未記入です</p>' : ''}
+                    <a href="events.html?event=${encodeURIComponent(ev.ID)}&tab=feedback" class="sfb-detail-link" onclick="event.stopPropagation();">このイベントの詳細 &rarr;</a>
+                </div>
+            </div>`;
+        }).join('');
+    }).join('');
+
+    container.innerHTML = html;
+    container.classList.remove('hidden');
+}
+
 // ---- タブ切り替え ----
 
 function switchEventTab(btn) {
@@ -1679,12 +1767,13 @@ async function uploadFiles(fileList) {
         if (!tempNewEvent) continue;
         if (!Array.isArray(tempNewEvent.Files)) tempNewEvent.Files = [];
 
-        tempNewEvent.Files.push({ name: file.name, size: file.size, _uploading: true });
+        const placeholder = { name: file.name, size: file.size, _uploading: true };
+        tempNewEvent.Files.push(placeholder);
         refreshEditFileList();
 
         try {
             const result = await api.uploadFile(file);
-            const idx = tempNewEvent.Files.findIndex(f => f._uploading && f.name === file.name);
+            const idx = tempNewEvent.Files.indexOf(placeholder);
             if (idx >= 0) {
                 tempNewEvent.Files[idx] = result;
             } else {
@@ -1693,8 +1782,10 @@ async function uploadFiles(fileList) {
             toast(`「${file.name}」をアップロードしました`, 'success', 2000);
         } catch (e) {
             toast(`「${file.name}」のアップロード失敗: ${e.message}`, 'error');
-            const idx = tempNewEvent.Files.findIndex(f => f._uploading && f.name === file.name);
-            if (idx >= 0) tempNewEvent.Files.splice(idx, 1);
+            const idx = tempNewEvent.Files.indexOf(placeholder);
+            if (idx >= 0) {
+                tempNewEvent.Files[idx] = { name: file.name, size: file.size, _failed: true };
+            }
         }
         refreshEditFileList();
     }
@@ -1705,10 +1796,6 @@ function removeFile(index) {
     const file = tempNewEvent.Files[index];
     if (!file) return;
 
-    // Drive 上の実ファイル削除は「イベント保存時」にまとめて行う（saveEventFromModal）。
-    // ここで即削除すると、モーダルをキャンセルした場合に「イベントは参照しているのに
-    // ファイルだけ消えている」不整合が起きる（保存して初めて参照が外れるため）。
-    // 一覧からの除去（参照外し）はメンバーでも可能。実削除は保存後に管理者権限で実行する。
     if (file.driveId) {
         if (!Array.isArray(tempNewEvent._filesToDelete)) tempNewEvent._filesToDelete = [];
         tempNewEvent._filesToDelete.push(file.driveId);
@@ -1733,13 +1820,19 @@ function renderEditFileList(container, files) {
         const name = escapeHtml(f.name || ('ファイル ' + (i + 1)));
         const size = f.size ? formatFileSize(f.size) : '';
         const uploading = f._uploading;
+        const failed = f._failed;
+        let statusCls = '';
+        let statusLabel = '';
+        if (uploading) { statusCls = ' uploading'; statusLabel = ' (アップロード中...)'; }
+        if (failed) { statusCls = ' upload-failed'; statusLabel = ' (アップロード失敗)'; }
         return `
-            <div class="file-item${uploading ? ' uploading' : ''}" data-index="${i}">
-                <span class="file-name">${name}${uploading ? ' (アップロード中...)' : ''}</span>
+            <div class="file-item${statusCls}" data-index="${i}">
+                <span class="file-name">${name}${statusLabel}</span>
                 <span class="file-size">${size}</span>
                 <div class="file-actions">
-                    ${!uploading && f.url ? `<a href="${escapeAttr(f.url)}" target="_blank" rel="noopener" class="tbl-btn">開く</a>` : ''}
+                    ${!uploading && !failed && f.url ? `<a href="${escapeAttr(f.url)}" target="_blank" rel="noopener" class="tbl-btn">開く</a>` : ''}
                     ${!uploading ? `<button class="tbl-btn tbl-btn-danger" onclick="removeFile(${i})" type="button">削除</button>` : ''}
+                    ${uploading ? `<button class="tbl-btn tbl-btn-danger" onclick="removeFile(${i})" type="button">キャンセル</button>` : ''}
                 </div>
             </div>
         `;

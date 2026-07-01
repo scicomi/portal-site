@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <title>イベントシリーズ | SciComi Portal</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="app-header"></header>
+
+    <main class="container">
+        <div style="margin-bottom: 16px;">
+            <a href="events.html" class="back-link">&larr; イベント一覧に戻る</a>
+        </div>
+
+        <div id="series-loading" class="loading-text">読み込み中</div>
+
+        <div id="series-content" class="hidden">
+            <div class="series-header-card">
+                <h1 id="series-title" class="series-title"></h1>
+                <p id="series-subtitle" class="series-subtitle"></p>
+            </div>
+
+            <div class="expd-tab-bar">
+                <button class="expd-tab active" data-tab="overview" onclick="switchSeriesTab(this)">概要</button>
+                <button class="expd-tab" data-tab="feedback" onclick="switchSeriesTab(this)">振り返りタイムライン</button>
+                <button class="expd-tab" data-tab="stats" onclick="switchSeriesTab(this)">統計</button>
+            </div>
+
+            <!-- Tab: Overview -->
+            <div class="expd-tab-pane" data-tab-pane="overview">
+                <div id="series-overview-list"></div>
+            </div>
+
+            <!-- Tab: Feedback Timeline -->
+            <div class="expd-tab-pane hidden" data-tab-pane="feedback">
+                <div class="expd-section">
+                    <div class="expd-feedback-filters">
+                        <button class="filter-chip active" data-fb="all" onclick="filterSeriesFb('all')">全て</button>
+                        <button class="filter-chip" data-fb="positive" onclick="filterSeriesFb('positive')">良かった点</button>
+                        <button class="filter-chip" data-fb="reflection" onclick="filterSeriesFb('reflection')">改善点</button>
+                    </div>
+                    <div id="series-feedback-timeline"></div>
+                </div>
+            </div>
+
+            <!-- Tab: Stats -->
+            <div class="expd-tab-pane hidden" data-tab-pane="stats">
+                <div id="series-stats"></div>
+            </div>
+        </div>
+    </main>
+
+    <script src="config.js"></script>
+    <script src="api.js"></script>
+    <script src="app.js"></script>
+    <script src="event-series.js"></script>
+</body>
+</html>
