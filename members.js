@@ -1,7 +1,7 @@
 /**
  * メンバーリストページ
  * 年度別表示。全メンバー（アドバイザー・コーディネーター含む）を統一表示。
- * 編集・削除は管理者のみ（編集モード）。
+ * 新規作成・編集はステップウィザード形式。行ホバーで編集・削除ボタン表示。
  */
 
 let membersData = [];
@@ -9,8 +9,13 @@ let memberSearchKw = '';
 let editingMemberId = null;
 let selectedFiscalYear = currentFiscalYear();
 let gradeFilter = null;
-let roleFilter = 'member'; // 'member' | 'coordinator' | 'adviser'（既定はメンバーのみ表示）
-let isEditMode = false;
+let roleFilter = 'member';
+let mbWizardStep = 0;
+
+const MB_WIZARD_STEPS = [
+    { label: '基本情報' },
+    { label: '所属・連絡先' }
+];
 
 function gradeOf(m) {
     const id = (m.StudentID || '').trim();
@@ -28,7 +33,6 @@ function currentFiscalYear() {
     return (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
 }
 
-// 後方互換: 古いデータの Category から Role を導出
 function getEffectiveRole(m) {
     if (m.Role) return m.Role;
     const cat = m.Category || 'member';
@@ -37,7 +41,6 @@ function getEffectiveRole(m) {
     return '';
 }
 
-// Role から Category を導出（バックエンド互換用）
 function deriveCategoryFromRole(role) {
     if (role === 'アドバイザー') return 'adviser';
     if (role === 'コーディネーター') return 'coordinator';
@@ -49,7 +52,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function init() {
-    bindOverlayClose(document.getElementById('member-modal'), closeMemberModal);
     bindOverlayClose(document.getElementById('year-copy-modal'), closeYearCopyModal);
 
     const cached = api.loadCache('members');
@@ -107,7 +109,6 @@ function buildGradeChips(fyMembers) {
     fyMembers.forEach(m => {
         const role = getEffectiveRole(m);
         if (role === 'アドバイザー' || role === 'コーディネーター') return;
-        // 院生は学年（5C 等）に含めず「院生」だけに分類する
         if (isGradStudent(m)) { hasGrad = true; return; }
         const g = gradeOf(m);
         if (g && /^\d[A-Z]$/.test(g)) grades.add(g);
@@ -132,7 +133,7 @@ function setGradeFilter(g) {
 
 function setRoleFilter(r) {
     roleFilter = r;
-    gradeFilter = null; // 区分を変えたら学年絞り込みはリセット
+    gradeFilter = null;
     document.querySelectorAll('#role-filter-row .filter-chip').forEach(c =>
         c.classList.toggle('active', c.dataset.role === r));
     renderMembers();
@@ -151,15 +152,13 @@ function getMemberFiscalYear(m) {
 function renderMembers() {
     let fyMembers = membersData.filter(m => getMemberFiscalYear(m) === selectedFiscalYear);
 
-    // 区分（メンバー / コーディネーター / アドバイザー）で絞り込み
     fyMembers = fyMembers.filter(m => {
         const role = getEffectiveRole(m);
         if (roleFilter === 'coordinator') return role === 'コーディネーター';
         if (roleFilter === 'adviser') return role === 'アドバイザー';
-        return role !== 'コーディネーター' && role !== 'アドバイザー'; // member（既定）
+        return role !== 'コーディネーター' && role !== 'アドバイザー';
     });
 
-    // 学年チップ・学年絞り込みはメンバー区分のときだけ
     if (roleFilter === 'member') {
         buildGradeChips(fyMembers);
     } else {
@@ -173,7 +172,6 @@ function renderMembers() {
         if (gradeFilter === '院生') {
             base = fyMembers.filter(isGradStudent);
         } else {
-            // 院生（5CSKM012 等）は学年（5C 等）に含めない
             base = fyMembers.filter(m => gradeOf(m) === gradeFilter && !isGradStudent(m));
         }
     } else {
@@ -200,30 +198,25 @@ function renderMembers() {
     });
 
     const tbody = document.getElementById('members-tbody');
-    const table = document.getElementById('members-table');
-    table.classList.toggle('edit-mode', isEditMode);
-
-    // Admin buttons
     const isAdmin = api.isAdmin();
-    // 空文字だと CSS の .admin-only { display:none } に戻ってしまうため明示的に値を指定する
+
     document.querySelectorAll('.admin-only').forEach(el => {
         el.style.display = isAdmin ? 'inline-block' : 'none';
     });
 
     if (sorted.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">該当するメンバーはいません</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">該当するメンバーはいません</td></tr>';
     } else {
         tbody.innerHTML = sorted.map(m => {
             const role = getEffectiveRole(m);
             const roleInfo = role ? getRoleDisplay(role) : null;
             const isStaff = role === 'アドバイザー' || role === 'コーディネーター';
             const rowStyle = isStaff ? 'style="background:var(--hover-bg);"' : '';
-            const clickHandler = isEditMode ? `onclick="editMember('${m.ID}')"` : '';
             const roleBadge = roleInfo
                 ? `<span class="cat-badge" style="background:${roleInfo.color};margin-left:6px;font-size:0.7rem;">${escapeHtml(role)}</span>`
                 : '';
             return `
-            <tr data-id="${m.ID}" ${rowStyle} ${clickHandler} class="${isEditMode ? 'clickable-row' : ''}">
+            <tr data-id="${m.ID}" ${rowStyle}>
                 <td>${escapeHtml(m.StudentID || '')}</td>
                 <td class="cell-name">
                     ${m.Furigana ? '<span class="member-furigana">' + escapeHtml(m.Furigana) + '</span>' : ''}
@@ -232,67 +225,132 @@ function renderMembers() {
                 </td>
                 <td>${escapeHtml(m.Affiliation || '')}</td>
                 <td class="hide-mobile">${m.Email ? `<a href="mailto:${escapeAttr(m.Email)}">${escapeHtml(m.Email)}</a>` : ''}</td>
+                <td onclick="event.stopPropagation()">
+                    <div class="inline-actions">
+                        ${isAdmin ? `<button class="inline-action-btn" onclick="openMemberWizard('${m.ID}')" title="編集">&#9998;</button>` : ''}
+                        ${isAdmin ? `<button class="inline-action-btn danger" onclick="confirmDeleteMember('${m.ID}')" title="削除">&#x2715;</button>` : ''}
+                    </div>
+                </td>
             </tr>`;
         }).join('');
     }
 }
 
-// ---- 編集モード ----
+// ---- ウィザード形式の新規作成・編集 ----
 
-function toggleEditMode() {
-    if (!isEditMode && !api.isAdmin()) {
-        showAdminAuthModal(() => toggleEditMode());
-        return;
-    }
-    isEditMode = !isEditMode;
-    const btn = document.getElementById('edit-mode-btn');
-    if (btn) {
-        btn.textContent = isEditMode ? '完了' : '編集';
-        btn.classList.toggle('active', isEditMode);
-    }
-    renderMembers();
-}
-
-// ---- モーダル ----
-
-function populateFiscalYearModal() {
-    const sel = document.getElementById('mb-fiscal-year');
-    if (!sel) return;
-    const curFY = currentFiscalYear();
-    const years = [];
-    for (let y = curFY + 1; y >= curFY - 5; y--) years.push(y);
-    sel.innerHTML = years.map(y =>
-        `<option value="${y}" ${y === curFY ? 'selected' : ''}>${y}年度</option>`
-    ).join('');
-}
-
-// 役職の選択肢は「アドバイザー / コーディネーター / (なし) / 自由入力」に限定。既定は (なし)。
-// 既存データに別の役職（旧プロジェクトリーダー等）があれば、その値は専用 option として保持する。
 const MEMBER_ROLE_PRESETS = ['アドバイザー', 'コーディネーター'];
 
-function populateRoleSelect(currentRole) {
-    const sel = document.getElementById('mb-role');
-    if (!sel) return;
-    const options = [{ value: '', label: '(なし)' }];
-    MEMBER_ROLE_PRESETS.forEach(r => options.push({ value: r, label: r }));
+function openMemberWizard(editId) {
+    editingMemberId = editId || null;
+    mbWizardStep = 0;
 
-    const isCustom = currentRole && !MEMBER_ROLE_PRESETS.includes(currentRole);
+    const m = editingMemberId ? membersData.find(x => x.ID === editingMemberId) : null;
+    const isEdit = !!m;
+    const isAdmin = api.isAdmin();
+    const currentRole = isEdit ? getEffectiveRole(m) : '';
+    const isCustomRole = currentRole && !MEMBER_ROLE_PRESETS.includes(currentRole) && currentRole !== '';
 
-    let html = options.map(o =>
-        `<option value="${escapeAttr(o.value)}" ${!isCustom && o.value === currentRole ? 'selected' : ''}>${escapeHtml(o.label)}</option>`
-    ).join('');
+    const roleOptions = [
+        `<option value="" ${!currentRole ? 'selected' : ''}>(なし)</option>`,
+        ...MEMBER_ROLE_PRESETS.map(r => `<option value="${escapeAttr(r)}" ${currentRole === r ? 'selected' : ''}>${escapeHtml(r)}</option>`),
+        isCustomRole ? `<option value="${escapeAttr(currentRole)}" selected>${escapeHtml(currentRole)}</option>` : '',
+        `<option value="__custom__">その他（自由入力）</option>`
+    ].join('');
 
-    if (isCustom) {
-        html += `<option value="${escapeAttr(currentRole)}" selected>${escapeHtml(currentRole)}</option>`;
-    }
-    html += '<option value="__custom__">その他（自由入力）</option>';
-    sel.innerHTML = html;
+    const fyOptions = (() => {
+        const curFY = currentFiscalYear();
+        const years = [];
+        for (let y = curFY + 1; y >= curFY - 5; y--) years.push(y);
+        const sel = isEdit ? (m.FiscalYear || curFY) : (selectedFiscalYear || curFY);
+        return years.map(y => `<option value="${y}" ${y == sel ? 'selected' : ''}>${y}年度</option>`).join('');
+    })();
 
-    updateMemberFieldVisibility();
+    const showContactFields = currentRole !== '';
+
+    const overlay = document.createElement('div');
+    overlay.id = 'mb-wizard-overlay';
+    overlay.className = 'wizard-overlay';
+    overlay.onclick = (ev) => { if (ev.target === overlay) closeMemberWizard(); };
+
+    overlay.innerHTML = `
+        <div class="wizard-panel" role="dialog" aria-modal="true">
+            <div class="wizard-header">
+                <h2 class="wizard-title">${isEdit ? 'メンバー編集' : 'メンバー追加'}</h2>
+                <p class="wizard-subtitle">${isEdit ? (m.Name || '') : 'ステップに沿って入力してください'}</p>
+            </div>
+            <div class="wizard-progress">
+                ${MB_WIZARD_STEPS.map((s, i) => `
+                    ${i > 0 ? '<div class="wizard-step-line" data-line="' + i + '"></div>' : ''}
+                    <div class="wizard-step-dot${i === 0 ? ' active' : ''}" data-dot="${i}" title="${s.label}">${i + 1}</div>
+                `).join('')}
+            </div>
+            <div class="wizard-body">
+                <!-- Step 1: 基本情報 -->
+                <div class="wizard-step active" data-step="0">
+                    <div class="wizard-step-label">Step 1 / ${MB_WIZARD_STEPS.length} &mdash; ${MB_WIZARD_STEPS[0].label}</div>
+                    <div class="e1-group">
+                        <label class="e1-label">名前 *</label>
+                        <input id="wz-mb-name" class="e1-input" type="text" placeholder="例: 山田 太郎" value="${escapeAttr(m ? m.Name : '')}">
+                    </div>
+                    <div class="e1-group">
+                        <label class="e1-label">ふりがな</label>
+                        <input id="wz-mb-furigana" class="e1-input" type="text" placeholder="例: やまだ たろう" value="${escapeAttr(m ? m.Furigana : '')}">
+                    </div>
+                    <div class="e1-group">
+                        <label class="e1-label">役職</label>
+                        <select id="wz-mb-role" class="e1-input" onchange="onWzRoleChange()">${roleOptions}</select>
+                    </div>
+                    <div class="e1-group">
+                        <label class="e1-label">年度</label>
+                        <select id="wz-mb-fiscal-year" class="e1-input">${fyOptions}</select>
+                    </div>
+                </div>
+
+                <!-- Step 2: 所属・連絡先 -->
+                <div class="wizard-step" data-step="1">
+                    <div class="wizard-step-label">Step 2 / ${MB_WIZARD_STEPS.length} &mdash; ${MB_WIZARD_STEPS[1].label}</div>
+                    <div class="e1-group">
+                        <label class="e1-label">学生証番号 / 教職員番号</label>
+                        <input id="wz-mb-student-id" class="e1-input" type="text" placeholder="例: 5CSC1234" value="${escapeAttr(m ? m.StudentID : '')}">
+                    </div>
+                    <div class="e1-group" id="wz-mb-affiliation-group" ${!showContactFields ? 'style="display:none;"' : ''}>
+                        <label class="e1-label">所属</label>
+                        <input id="wz-mb-affiliation" class="e1-input" type="text" placeholder="例: 理系教育センター" value="${escapeAttr(m ? m.Affiliation : '')}">
+                    </div>
+                    <div class="e1-group" id="wz-mb-email-group" ${!showContactFields ? 'style="display:none;"' : ''}>
+                        <label class="e1-label">メールアドレス</label>
+                        <input id="wz-mb-email" class="e1-input" type="email" placeholder="例: name@example.com" value="${escapeAttr(m ? m.Email : '')}">
+                    </div>
+                    <div class="e1-group">
+                        <label class="e1-label">メモ</label>
+                        <textarea id="wz-mb-note" class="e1-input" rows="2" placeholder="任意のメモ">${escapeHtml(m ? m.Note : '')}</textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                ${isEdit && isAdmin ? '<button class="btn btn-danger" onclick="deleteFromMbWizard()">削除</button>' : ''}
+                <div class="wizard-footer-spacer"></div>
+                <button class="btn btn-text" onclick="closeMemberWizard()">キャンセル</button>
+                <button id="wz-mb-prev-btn" class="btn btn-secondary" onclick="mbWizardPrev()" style="display:none;">戻る</button>
+                <button id="wz-mb-next-btn" class="btn btn-primary" onclick="mbWizardNext()">次へ</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+    bindModalEscape(overlay, closeMemberWizard);
+    setTimeout(() => document.getElementById('wz-mb-name').focus(), 80);
 }
 
-function onRoleSelectChange() {
-    const sel = document.getElementById('mb-role');
+function closeMemberWizard() {
+    const overlay = document.getElementById('mb-wizard-overlay');
+    if (overlay) overlay.remove();
+    editingMemberId = null;
+    mbWizardStep = 0;
+}
+
+function onWzRoleChange() {
+    const sel = document.getElementById('wz-mb-role');
     if (sel.value === '__custom__') {
         const custom = prompt('役職名を入力してください:');
         if (custom && custom.trim()) {
@@ -305,76 +363,86 @@ function onRoleSelectChange() {
             sel.value = '';
         }
     }
-    updateMemberFieldVisibility();
-}
-
-// 役職が (なし) のときはメールアドレス・所属の入力欄を隠す（一般メンバーには不要なため）。
-function updateMemberFieldVisibility() {
-    const sel = document.getElementById('mb-role');
-    if (!sel) return;
-    const hide = sel.value === ''; // (なし)
-    const emailG = document.getElementById('mb-email-group');
-    const affG = document.getElementById('mb-affiliation-group');
+    const hide = sel.value === '';
+    const emailG = document.getElementById('wz-mb-email-group');
+    const affG = document.getElementById('wz-mb-affiliation-group');
     if (emailG) emailG.style.display = hide ? 'none' : '';
     if (affG) affG.style.display = hide ? 'none' : '';
 }
 
-function openMemberModal() {
-    editingMemberId = null;
-    document.getElementById('member-modal-title').textContent = 'メンバー追加';
-    ['mb-name', 'mb-furigana', 'mb-student-id', 'mb-affiliation', 'mb-note', 'mb-email'].forEach(id => {
-        document.getElementById(id).value = '';
+function updateMbWizardUI() {
+    const total = MB_WIZARD_STEPS.length;
+    const isLast = mbWizardStep === total - 1;
+
+    document.querySelectorAll('#mb-wizard-overlay .wizard-step').forEach(el => {
+        el.classList.toggle('active', parseInt(el.dataset.step) === mbWizardStep);
     });
-    populateRoleSelect('');
-    populateFiscalYearModal();
-    document.getElementById('mb-fiscal-year').value = selectedFiscalYear || currentFiscalYear();
-    document.getElementById('mb-delete-btn').classList.add('hidden');
-    document.getElementById('member-modal').classList.remove('hidden');
-    bindModalEscape(document.getElementById('member-modal'), closeMemberModal);
-    setTimeout(() => document.getElementById('mb-name').focus(), 50);
+    document.querySelectorAll('#mb-wizard-overlay .wizard-step-dot').forEach(el => {
+        const i = parseInt(el.dataset.dot);
+        el.classList.toggle('active', i === mbWizardStep);
+        el.classList.toggle('done', i < mbWizardStep);
+    });
+    document.querySelectorAll('#mb-wizard-overlay .wizard-step-line').forEach(el => {
+        const i = parseInt(el.dataset.line);
+        el.classList.toggle('done', i <= mbWizardStep);
+    });
+
+    const prevBtn = document.getElementById('wz-mb-prev-btn');
+    const nextBtn = document.getElementById('wz-mb-next-btn');
+    if (prevBtn) prevBtn.style.display = mbWizardStep > 0 ? '' : 'none';
+    if (nextBtn) nextBtn.textContent = isLast ? '保存' : '次へ';
 }
 
-function editMember(id) {
-    const m = membersData.find(x => x.ID === id);
-    if (!m) return;
-    editingMemberId = id;
-    document.getElementById('member-modal-title').textContent = 'メンバー編集';
-    document.getElementById('mb-name').value = m.Name || '';
-    document.getElementById('mb-furigana').value = m.Furigana || '';
-    populateRoleSelect(getEffectiveRole(m));
-    document.getElementById('mb-student-id').value = m.StudentID || '';
-    document.getElementById('mb-affiliation').value = m.Affiliation || '';
-    document.getElementById('mb-note').value = m.Note || '';
-    document.getElementById('mb-email').value = m.Email || '';
-    populateFiscalYearModal();
-    document.getElementById('mb-fiscal-year').value = m.FiscalYear || currentFiscalYear();
-    document.getElementById('mb-delete-btn').classList.remove('hidden');
-    document.getElementById('member-modal').classList.remove('hidden');
-    bindModalEscape(document.getElementById('member-modal'), closeMemberModal);
+function mbWizardPrev() {
+    if (mbWizardStep > 0) {
+        mbWizardStep--;
+        updateMbWizardUI();
+    }
 }
 
-function closeMemberModal() {
-    document.getElementById('member-modal').classList.add('hidden');
+function mbWizardNext() {
+    const total = MB_WIZARD_STEPS.length;
+
+    if (mbWizardStep === 0) {
+        const name = document.getElementById('wz-mb-name').value.trim();
+        if (!name) {
+            toast('名前を入力してください', 'error');
+            document.getElementById('wz-mb-name').focus();
+            return;
+        }
+    }
+
+    if (mbWizardStep < total - 1) {
+        mbWizardStep++;
+        updateMbWizardUI();
+        const step = document.querySelector('#mb-wizard-overlay .wizard-step.active');
+        if (step) {
+            const firstInput = step.querySelector('input, textarea, select');
+            if (firstInput) setTimeout(() => firstInput.focus(), 100);
+        }
+    } else {
+        saveMember();
+    }
 }
 
 async function saveMember() {
-    const name = document.getElementById('mb-name').value.trim();
+    const name = document.getElementById('wz-mb-name').value.trim();
     if (!name) { toast('名前を入力してください', 'error'); return; }
 
     const existing = editingMemberId ? membersData.find(m => m.ID === editingMemberId) : null;
     const isNew = !editingMemberId;
-    const role = document.getElementById('mb-role').value === '__custom__' ? '' : document.getElementById('mb-role').value;
+    const role = document.getElementById('wz-mb-role').value === '__custom__' ? '' : document.getElementById('wz-mb-role').value;
     const item = {
         ID: editingMemberId || genId('mb_'),
         Name: name,
-        Furigana: document.getElementById('mb-furigana').value.trim(),
+        Furigana: document.getElementById('wz-mb-furigana').value.trim(),
         Category: deriveCategoryFromRole(role),
         Role: role,
-        StudentID: document.getElementById('mb-student-id').value.trim(),
-        Affiliation: document.getElementById('mb-affiliation').value.trim(),
-        Note: document.getElementById('mb-note').value.trim(),
-        Email: document.getElementById('mb-email').value.trim(),
-        FiscalYear: document.getElementById('mb-fiscal-year').value,
+        StudentID: document.getElementById('wz-mb-student-id').value.trim(),
+        Affiliation: document.getElementById('wz-mb-affiliation').value.trim(),
+        Note: document.getElementById('wz-mb-note').value.trim(),
+        Email: document.getElementById('wz-mb-email').value.trim(),
+        FiscalYear: document.getElementById('wz-mb-fiscal-year').value,
         Active: 'true'
     };
 
@@ -391,7 +459,7 @@ async function saveMember() {
     api.saveCache('members', membersData);
     buildFiscalYearSelect();
     renderMembers();
-    closeMemberModal();
+    closeMemberWizard();
     toast('保存しました', 'success');
 
     api.save('members', item).then(saved => {
@@ -412,10 +480,43 @@ async function saveMember() {
     });
 }
 
-function deleteMemberFromModal() {
+// ---- 削除 ----
+
+function deleteFromMbWizard() {
     if (!editingMemberId) return;
-    if (!confirm('このメンバーを削除しますか？')) return;
-    deleteMember(editingMemberId);
+    const id = editingMemberId;
+    closeMemberWizard();
+    confirmDeleteMember(id);
+}
+
+function confirmDeleteMember(id) {
+    if (!api.isAdmin()) {
+        showAdminAuthModal(() => confirmDeleteMember(id));
+        return;
+    }
+    const m = membersData.find(x => x.ID === id);
+    if (!m) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-dialog-overlay';
+    overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+    overlay.innerHTML = `
+        <div class="confirm-dialog">
+            <h3>「${escapeHtml(m.Name)}」を削除</h3>
+            <p>この操作は元に戻せます（削除直後のみ）。</p>
+            <div class="confirm-dialog-actions">
+                <button class="btn btn-secondary" onclick="this.closest('.confirm-dialog-overlay').remove()">キャンセル</button>
+                <button class="btn btn-danger" id="confirm-del-mb-btn">削除する</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    bindModalEscape(overlay, () => overlay.remove());
+
+    overlay.querySelector('#confirm-del-mb-btn').onclick = () => {
+        overlay.remove();
+        deleteMember(id);
+    };
 }
 
 async function deleteMember(id) {
@@ -430,7 +531,6 @@ async function deleteMember(id) {
     membersData.splice(idx, 1);
     api.saveCache('members', membersData);
     renderMembers();
-    closeMemberModal();
 
     try {
         await api.delete('members', id);
