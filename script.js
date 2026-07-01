@@ -496,6 +496,9 @@ function viewEventInModal(id) {
     const container = document.getElementById('new-event-form-container');
     const tabBar = container.querySelector('.event-tab-bar');
     if (tabBar) tabBar.classList.remove('hidden');
+
+    const voteLink = container.querySelector('[data-field="VoteLink"]');
+    if (voteLink) voteLink.href = 'vote.html?id=' + encodeURIComponent(id);
 }
 
 // Calendar toggle
@@ -566,6 +569,7 @@ function renderEvents() {
                 <td class="hide-mobile">${escapeHtml(ev.Event_Time || '')}</td>
                 <td onclick="event.stopPropagation()">
                     <div class="inline-actions">
+                        <a class="inline-action-btn" href="vote.html?id=${encodeURIComponent(ev.ID)}" title="参加投票" style="text-decoration:none;">&#x2714;</a>
                         <button class="inline-action-btn" onclick="openEventWizard('${ev.ID}')" title="編集">&#9998;</button>
                         ${isAdmin ? `<button class="inline-action-btn danger" onclick="confirmDeleteEvent('${ev.ID}')" title="削除">&#x2715;</button>` : ''}
                     </div>

@@ -247,6 +247,12 @@ function openMemberWizard(editId) {
     const m = editingMemberId ? membersData.find(x => x.ID === editingMemberId) : null;
     const isEdit = !!m;
     const isAdmin = api.isAdmin();
+
+    // 編集・削除は管理者のみ（新規追加は誰でも可）
+    if (isEdit && !isAdmin) {
+        showAdminAuthModal(() => openMemberWizard(editId));
+        return;
+    }
     const currentRole = isEdit ? getEffectiveRole(m) : '';
     const isCustomRole = currentRole && !MEMBER_ROLE_PRESETS.includes(currentRole) && currentRole !== '';
 
