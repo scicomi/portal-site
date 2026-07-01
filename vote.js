@@ -34,13 +34,19 @@ async function init() {
     ]);
 
     const events = allData.events || [];
-    allMembers = (allData.members || []).filter(m => m.Active !== 'false');
     currentEvent = events.find(e => e.ID === eventId);
 
     if (!currentEvent) {
       showError('イベントが見つかりません。');
       return;
     }
+
+    const eventFY = getFiscalYear(currentEvent.Date) || currentFiscalYear();
+    allMembers = (allData.members || []).filter(m => {
+      if (m.Active === 'false') return false;
+      const fy = m.FiscalYear ? parseInt(m.FiscalYear) : currentFiscalYear();
+      return fy === eventFY;
+    });
 
     currentVotes = votes;
     renderEventHeader();

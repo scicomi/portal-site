@@ -173,6 +173,29 @@ function populateTimeSelects() {
     if (dismissSel) dismissSel.innerHTML = genOpts(7, 21, true);
 }
 
+// ---- テーブル行のイベント委譲（XSS 対策: onclick に ID を埋め込まない） ----
+function _bindEventTableDelegation() {
+    const tbody = document.getElementById('events-tbody');
+    if (!tbody) return;
+    tbody.addEventListener('click', (e) => {
+        const actionEl = e.target.closest('[data-action]');
+        if (actionEl) {
+            const action = actionEl.dataset.action;
+            if (action === 'series' || action === 'vote') return; // <a> のデフォルト遷移に任せる
+            e.stopPropagation();
+            const row = actionEl.closest('tr[data-id]');
+            if (!row) return;
+            const id = row.dataset.id;
+            if (action === 'edit') openEventWizard(id);
+            else if (action === 'delete') confirmDeleteEvent(id);
+            return;
+        }
+        if (e.target.closest('[data-action-cell]')) return;
+        const row = e.target.closest('tr[data-id]');
+        if (row) viewEventInModal(row.dataset.id);
+    });
+}
+
 // ---- 起動 ----
 document.addEventListener('DOMContentLoaded', () => {
     bootPage('events', init);
@@ -180,6 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function init() {
     bindOverlayClose(document.getElementById('modal-overlay'), closeModal);
+    _bindEventTableDelegation();
     holidaysData = await api.loadHolidaysCached();
     populateTimeSelects();
 
@@ -243,7 +267,7 @@ async function populateDatalists() {
     }
 
     if (memberDl && members) {
-        const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
+        const curFY = currentFiscalYear();
         memberDl.innerHTML = members
             .filter(m => parseInt(m.FiscalYear || curFY) === curFY && m.Name)
             .map(m => {
@@ -486,7 +510,7 @@ function viewEventInModal(id) {
     if (actionButtons) {
         actionButtons.innerHTML = `
             <button class="btn btn-text" onclick="closeModal()">閉じる</button>
-            <button class="btn btn-secondary" onclick="closeModal(); openEventWizard('${id}')">編集</button>
+            <button class="btn btn-secondary" onclick="closeModal(); openEventWizard('${escapeAttr(id)}')">編集</button>
         `;
     }
 
@@ -555,7 +579,7 @@ function renderEvents() {
         }
         const occ = occurrenceInfo(ev);
         return `
-            <tr class="clickable-row" onclick="viewEventInModal('${ev.ID}')">
+            <tr class="clickable-row" data-id="${escapeAttr(ev.ID)}">
                 <td class="cell-name" style="white-space:nowrap;">
                     ${escapeHtml(ev.Date || '')} <span class="text-muted">(${dayOfWeekJP(ev.Date)})</span>
                     ${ev.Date_End && ev.Date_End !== ev.Date ? '<br><span class="text-muted" style="font-size:0.8rem;">〜 ' + escapeHtml(ev.Date_End) + '</span>' : ''}
@@ -563,15 +587,15 @@ function renderEvents() {
                 <td>
                     <span style="font-weight:600;">${escapeHtml(displayTitle)}</span>
                     <span class="cat-badge" style="background:${cat.bg};color:${cat.text};margin-left:6px;">${cat.short}</span>
-                    ${occ ? `<a href="event-series.html?key=${encodeURIComponent(eventSeriesKey(ev))}" class="occ-badge occ-link" title="通算${occ.total}回 — シリーズ履歴を見る" onclick="event.stopPropagation();">${occ.num}回目</a>` : ''}
+                    ${occ ? `<a href="event-series.html?key=${encodeURIComponent(eventSeriesKey(ev))}" class="occ-badge occ-link" title="通算${occ.total}回 — シリーズ履歴を見る" data-action="series">${occ.num}回目</a>` : ''}
                 </td>
                 <td class="hide-mobile">${escapeHtml(ev.Location || '')}</td>
                 <td class="hide-mobile">${escapeHtml(ev.Event_Time || '')}</td>
-                <td onclick="event.stopPropagation()">
+                <td data-action-cell>
                     <div class="inline-actions">
-                        <a class="inline-action-btn" href="vote.html?id=${encodeURIComponent(ev.ID)}" title="参加投票" style="text-decoration:none;">&#x2714;</a>
-                        <button class="inline-action-btn" onclick="openEventWizard('${ev.ID}')" title="編集">&#9998;</button>
-                        ${isAdmin ? `<button class="inline-action-btn danger" onclick="confirmDeleteEvent('${ev.ID}')" title="削除">&#x2715;</button>` : ''}
+                        <a class="inline-action-btn" href="vote.html?id=${encodeURIComponent(ev.ID)}" title="参加投票" style="text-decoration:none;" data-action="vote">&#x2714;</a>
+                        <button class="inline-action-btn" data-action="edit" title="編集">&#9998;</button>
+                        ${isAdmin ? `<button class="inline-action-btn danger" data-action="delete" title="削除">&#x2715;</button>` : ''}
                     </div>
                 </td>
             </tr>
@@ -939,7 +963,7 @@ function initDateRangePicker(card) {
 
 function getActiveMembers() {
     const cached = (api.loadCache('members') || {}).items || [];
-    const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
+    const curFY = currentFiscalYear();
     return cached.filter(m => parseInt(m.FiscalYear || curFY) === curFY && m.Name);
 }
 
@@ -999,9 +1023,14 @@ function initTagInput(container, selectedValues, placeholder, filterFn) {
                 ? '<div class="tag-input-empty">候補なし（Enterで自由入力）</div>'
                 : '<div class="tag-input-empty">候補なし</div>';
         } else {
-            dropdown.innerHTML = filtered.slice(0, 15).map(m =>
+            const maxShow = 30;
+            let html = filtered.slice(0, maxShow).map(m =>
                 `<div class="tag-input-option" data-value="${escapeAttr(m.Name)}">${escapeHtml(m.Name)}${m.Furigana ? ' <span class="text-hint" style="font-size:0.8em;">(' + escapeHtml(m.Furigana) + ')</span>' : ''}</div>`
             ).join('');
+            if (filtered.length > maxShow) {
+                html += `<div class="tag-input-empty">他 ${filtered.length - maxShow} 件（入力で絞り込み）</div>`;
+            }
+            dropdown.innerHTML = html;
         }
         dropdown.classList.remove('hidden');
     }
@@ -1425,6 +1454,7 @@ function openEventWizard(editId, category, templateSrc) {
 
     document.body.appendChild(overlay);
     bindModalEscape(overlay, closeEventWizard);
+    trapFocus(overlay.querySelector('.wizard-panel'));
 
     // Initialize time selects
     const tsEl = document.getElementById('wz-ev-time-start');
@@ -1805,7 +1835,8 @@ async function executeDeleteEvent(id) {
         async () => {
             try {
                 const restored = gasToUi(await api.save('events', uiToGas(backup)));
-                eventsData.splice(eventIndex, 0, restored);
+                const insertAt = eventsData.findIndex(e => (e.Date || '') > (restored.Date || ''));
+                eventsData.splice(insertAt >= 0 ? insertAt : eventsData.length, 0, restored);
                 api.saveCache('events', eventsData);
                 renderEvents();
                 if (calendarVisible) refreshCalendar();

@@ -93,7 +93,7 @@ const queryEngine = {
     if (p.fiscal_year) {
       items = items.filter(m => String(m.FiscalYear) === String(p.fiscal_year));
     } else if (p.active_only !== false) {
-      const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
+      const curFY = currentFiscalYear();
       items = items.filter(m => parseInt(m.FiscalYear || curFY) === curFY);
     }
     if (p.grade) items = items.filter(m => (m.StudentID || '').toUpperCase().startsWith(p.grade.toUpperCase()));
@@ -108,7 +108,6 @@ const queryEngine = {
         (m.Affiliation || '').toLowerCase().includes(kw)
       );
     }
-    if (p.fiscal_year) items = items.filter(m => String(m.FiscalYear) === String(p.fiscal_year));
     return { html: this._formatMembers(items), count: items.length };
   },
 
@@ -155,7 +154,7 @@ const queryEngine = {
 
   // --- 書類未担当メンバー ---
   membersWithoutDocs(p) {
-    const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
+    const curFY = currentFiscalYear();
     const targetFY = p.fiscal_year ? parseInt(p.fiscal_year) : curFY;
     let members = allData.members.filter(m => parseInt(m.FiscalYear || curFY) === targetFY && (m.Category || 'member') === 'member');
     if (p.grade) members = members.filter(m => (m.StudentID || '').toUpperCase().startsWith(p.grade.toUpperCase()));
@@ -226,7 +225,7 @@ const queryEngine = {
       if (p.fiscal_year) {
         items = items.filter(m => String(m.FiscalYear) === String(p.fiscal_year));
       } else if (p.active_only !== false) {
-        const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
+        const curFY = currentFiscalYear();
         items = items.filter(m => parseInt(m.FiscalYear || curFY) === curFY);
       }
       if (p.grade) items = items.filter(m => (m.StudentID || '').toUpperCase().startsWith(p.grade.toUpperCase()));

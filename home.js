@@ -80,7 +80,7 @@ function renderStats(all) {
     const today = todayISO();
     const upcomingCount = (all.events || []).filter(e => (e.DateEnd || e.Date_End || e.Date) >= today).length;
     document.getElementById('stat-upcoming').textContent = upcomingCount;
-    const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
+    const curFY = currentFiscalYear();
     document.getElementById('stat-members').textContent = (all.members || []).filter(m => parseInt(m.FiscalYear || curFY) === curFY).length;
     document.getElementById('stat-experiments').textContent = (all.experiments || []).length;
 }
@@ -160,11 +160,15 @@ function renderReportsCard(events) {
                 <a href="events.html?event=${encodeURIComponent(r.id)}&tab=feedback" class="report-event-link">${escapeHtml(r.event || '(無題)')}</a>
                 ${r.admin ? `<span class="report-admin">担当: ${escapeHtml(r.admin)}</span>` : ''}
             </span>
-            <select class="report-status-select status-${r.status || 'none'}" onchange="setReportStatus('${r.id}', this.value)" title="提出ステータスを変更">
+            <select class="report-status-select status-${r.status || 'none'}" data-event-id="${escapeAttr(r.id)}" title="提出ステータスを変更">
                 ${options}
             </select>
         </li>`;
     }).join('');
+
+    container.querySelectorAll('.report-status-select[data-event-id]').forEach(sel => {
+        sel.addEventListener('change', () => setReportStatus(sel.dataset.eventId, sel.value));
+    });
 }
 
 // 報告書ステータスを更新（楽観的UI + 競合検知）。GAS 正準形イベントに対してのみ実行する。
@@ -198,7 +202,7 @@ async function setReportStatus(id, value) {
 
 function renderMembersCard(members) {
     const container = document.getElementById('member-summary');
-    const curFY = (function(){ const n = new Date(); return (n.getMonth()+1) >= 4 ? n.getFullYear() : n.getFullYear()-1; })();
+    const curFY = currentFiscalYear();
     const fy = members.filter(m => parseInt(m.FiscalYear || curFY) === curFY);
 
     function effectiveRole(m) {

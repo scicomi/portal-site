@@ -40,6 +40,11 @@ function genFeedbackId() {
   return 'fb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
 }
 
+function currentFiscalYear() {
+  const now = new Date();
+  return (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
 // ====== 共通ユーティリティ ======
 
 function escapeHtml(s) {
@@ -217,9 +222,15 @@ function trapFocus(modal) {
 
 function bindModalEscape(modal, closeFn) {
   const handler = (e) => {
-    if (e.key === 'Escape') { closeFn(); document.removeEventListener('keydown', handler); }
+    if (e.key === 'Escape') closeFn();
   };
   document.addEventListener('keydown', handler);
+  const cleanup = () => document.removeEventListener('keydown', handler);
+  const observer = new MutationObserver(() => {
+    if (!document.contains(modal)) { cleanup(); observer.disconnect(); }
+  });
+  observer.observe(modal.parentNode || document.body, { childList: true, subtree: true });
+  return cleanup;
 }
 
 function bindOverlayClose(overlayEl, closeFn) {
@@ -476,10 +487,11 @@ async function applySiteSettings() {
 
 function _applyCfg(cfg) {
     if (!cfg) return;
-    if (cfg.deadline_kyoka != null && cfg.deadline_kyoka !== '') CONFIG.DEADLINE_RULES.kyoka = parseInt(cfg.deadline_kyoka);
-    if (cfg.deadline_houkoku != null && cfg.deadline_houkoku !== '') CONFIG.DEADLINE_RULES.houkoku = parseInt(cfg.deadline_houkoku);
-    if (cfg.deadline_alert_danger != null && cfg.deadline_alert_danger !== '') CONFIG.DEADLINE_ALERT.danger = parseInt(cfg.deadline_alert_danger);
-    if (cfg.deadline_alert_warning != null && cfg.deadline_alert_warning !== '') CONFIG.DEADLINE_ALERT.warning = parseInt(cfg.deadline_alert_warning);
+    const safeInt = (v, fallback) => { const n = parseInt(v, 10); return isNaN(n) ? fallback : n; };
+    if (cfg.deadline_kyoka != null && cfg.deadline_kyoka !== '') CONFIG.DEADLINE_RULES.kyoka = safeInt(cfg.deadline_kyoka, CONFIG.DEADLINE_RULES.kyoka);
+    if (cfg.deadline_houkoku != null && cfg.deadline_houkoku !== '') CONFIG.DEADLINE_RULES.houkoku = safeInt(cfg.deadline_houkoku, CONFIG.DEADLINE_RULES.houkoku);
+    if (cfg.deadline_alert_danger != null && cfg.deadline_alert_danger !== '') CONFIG.DEADLINE_ALERT.danger = safeInt(cfg.deadline_alert_danger, CONFIG.DEADLINE_ALERT.danger);
+    if (cfg.deadline_alert_warning != null && cfg.deadline_alert_warning !== '') CONFIG.DEADLINE_ALERT.warning = safeInt(cfg.deadline_alert_warning, CONFIG.DEADLINE_ALERT.warning);
     if (cfg.reminder_days) {
         const days = String(cfg.reminder_days).split(/[,\s]+/).map(Number).filter(n => n > 0);
         if (days.length) CONFIG.REMINDER.days = days;

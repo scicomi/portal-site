@@ -22,8 +22,31 @@ document.addEventListener('DOMContentLoaded', () => {
     bootPage('experiments', init);
 });
 
+function _bindExpTableDelegation() {
+    const tbody = document.getElementById('experiments-tbody');
+    if (!tbody) return;
+    tbody.addEventListener('click', (e) => {
+        const actionEl = e.target.closest('[data-action]');
+        if (actionEl) {
+            const action = actionEl.dataset.action;
+            if (action === 'slides') return;
+            e.stopPropagation();
+            const row = actionEl.closest('tr[data-id]');
+            if (!row) return;
+            const id = row.dataset.id;
+            if (action === 'edit') openExpWizard(id);
+            else if (action === 'delete') confirmDeleteExp(id);
+            return;
+        }
+        if (e.target.closest('[data-action-cell]')) return;
+        const row = e.target.closest('tr[data-id]');
+        if (row) goToDetail(row.dataset.id);
+    });
+}
+
 async function init() {
     bindOverlayClose(document.getElementById('exp-detail-modal'), closeExpDetail);
+    _bindExpTableDelegation();
 
     const cached = api.loadCache('experiments');
     if (cached && cached.items) {
@@ -130,17 +153,17 @@ function render() {
         const safeSlides = safeHttpUrl(e.SlidesURL);
         const fbCount = countFeedback(e);
         return `
-            <tr class="clickable-row" onclick="goToDetail('${e.ID}')">
+            <tr class="clickable-row" data-id="${escapeAttr(e.ID)}">
                 <td class="cell-name">
                     ${escapeHtml(e.Name || '(無題)')}
                     ${fbCount > 0 ? `<span class="badge-fb-count" title="振り返り ${fbCount}件">${fbCount}件</span>` : ''}
                 </td>
                 <td class="hide-mobile cell-snippet">${escapeHtml(snippet)}</td>
-                <td class="hide-mobile">${safeSlides ? `<a href="${escapeAttr(safeSlides)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="tbl-link">資料を開く</a>` : '-'}</td>
-                <td onclick="event.stopPropagation()">
+                <td class="hide-mobile">${safeSlides ? `<a href="${escapeAttr(safeSlides)}" target="_blank" rel="noopener" data-action="slides" class="tbl-link">資料を開く</a>` : '-'}</td>
+                <td data-action-cell>
                     <div class="inline-actions">
-                        <button class="inline-action-btn" onclick="openExpWizard('${e.ID}')" title="編集">&#9998;</button>
-                        ${isAdmin ? `<button class="inline-action-btn danger" onclick="confirmDeleteExp('${e.ID}')" title="削除">&#x2715;</button>` : ''}
+                        <button class="inline-action-btn" data-action="edit" title="編集">&#9998;</button>
+                        ${isAdmin ? `<button class="inline-action-btn danger" data-action="delete" title="削除">&#x2715;</button>` : ''}
                     </div>
                 </td>
             </tr>
@@ -483,7 +506,7 @@ async function deleteExp(id) {
         async () => {
             try {
                 const saved = await api.save('experiments', backup);
-                expData.splice(idx, 0, saved);
+                expData.push(saved);
                 api.saveCache('experiments', expData);
                 render();
                 toast('元に戻しました', 'success', 2000);

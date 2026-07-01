@@ -62,7 +62,7 @@ const api = {
 
   // ---- 管理者認証 ----
   getAdminToken() {
-    const ts = parseInt(localStorage.getItem(ADMIN_TOKEN_TS_KEY)) || 0;
+    const ts = parseInt(localStorage.getItem(ADMIN_TOKEN_TS_KEY), 10) || 0;
     if (Date.now() - ts > ADMIN_TOKEN_TTL) {
       this.clearAdminToken();
       return '';
