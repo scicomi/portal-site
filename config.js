@@ -61,7 +61,7 @@ const CONFIG = {
   //   gemini-2.0 系は 2026-06 に廃止されたため、現行の安定モデルを使うこと。
   GEMINI: {
     MODEL: 'gemini-2.5-flash-lite',
-    DAILY_LIMIT: 1500,
+    DAILY_LIMIT: 1500,  // API初回呼出前の表示用フォールバック。実際の上限はサーバー(GEMINI_DAILY_LIMIT)が正で、bot.js 起動時に上書きされる。
     USAGE_KEY: 'scicomi_bot_usage'
   },
 

@@ -103,11 +103,17 @@ function formatFileSize(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-// リンク href に使える URL だけを返す（http/https 以外＝javascript: 等は空にして無害化）。
+// リンク href に使える URL だけを返す（javascript: 等の危険スキームは空にして無害化）。
 // escapeAttr は引用符しかエスケープせずスキームを検証しないため、URL は必ずこれを通す。
+// 後方互換: スキーム省略の既存データ（例 "docs.google.com/.."）は https:// を補ってリンク可能に保つ。
 function safeHttpUrl(u) {
   u = String(u === null || u === undefined ? '' : u).trim();
-  return /^https?:\/\//i.test(u) ? u : '';
+  if (!u) return '';
+  if (/^https?:\/\//i.test(u)) return u;          // 既に http/https
+  if (u.indexOf('//') === 0) return 'https:' + u;  // プロトコル相対 //host/...
+  if (/^[a-z][a-z0-9+.\-]*:/i.test(u)) return '';  // 他スキーム(javascript:/data: 等)は拒否
+  if (u.charAt(0) === '/') return '';              // 相対パスは資料URLとして不正
+  return 'https://' + u;                            // スキーム無し → https を補う
 }
 
 // PartsList を新旧どちらの形式でも {name, presenters:[]} の配列に正規化する（読み取り専用用途）。

@@ -16,7 +16,9 @@
             <div class="bot-gauge-header">
                 <span class="bot-gauge-label">Gemini API 使用量</span>
                 <span class="bot-gauge-count" id="bot-gauge-count">— / —</span>
-                <button class="bot-settings-btn" id="bot-settings-btn" title="API設定">⚙</button>
+                <button class="bot-help-btn" id="bot-help-btn" title="AI検索について">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><text x="8" y="11.5" text-anchor="middle" font-size="10" font-weight="700" fill="currentColor">?</text></svg>
+                </button>
             </div>
             <div class="bot-gauge-track">
                 <div class="bot-gauge-fill" id="bot-gauge-fill"></div>
@@ -26,10 +28,43 @@
         <div class="bot-messages" id="bot-messages"></div>
 
         <div class="bot-input-area">
-            <input type="text" id="bot-input" class="bot-input" placeholder="質問・要約を入力… 例:「スライムの振り返りを要約して」" autocomplete="off">
+            <textarea id="bot-input" class="bot-input" placeholder="質問・要約を入力…&#10;Enter で送信 / Shift+Enter で改行" rows="1" autocomplete="off"></textarea>
             <button class="bot-send-btn" id="bot-send-btn">送信</button>
         </div>
     </main>
+
+    <!-- AI検索 ヘルプモーダル -->
+    <div id="bot-help-modal" class="modal-overlay hidden">
+        <div class="modal-content bot-help-modal-content" role="dialog" aria-modal="true" aria-labelledby="bot-help-title">
+            <div class="modal-header">
+                <h2 id="bot-help-title">AI検索について</h2>
+                <button class="btn btn-text" onclick="document.getElementById('bot-help-modal').classList.add('hidden')">閉じる</button>
+            </div>
+            <div class="modal-body bot-help-body">
+                <h3>仕組み</h3>
+                <p>AI検索は、Google の <strong>Gemini API</strong> を使って質問の「意図」を解析し、ローカルにキャッシュされたイベント・メンバー・実験データの中から最適な結果を返します。</p>
+                <p>個人情報や具体的なデータは AI に送信されません。送信されるのは質問文のみで、データ検索はすべてブラウザ内で行われます。</p>
+
+                <h3>安全性</h3>
+                <ul>
+                    <li>質問文のみがサーバー（GAS プロキシ）経由で Gemini API に送信されます</li>
+                    <li>メンバー名・個人情報は AI に送信されず、ブラウザ内で処理されます</li>
+                    <li>API キーはサーバー側で管理され、クライアントには公開されません</li>
+                    <li>1日あたりの使用回数に上限があり、不正利用を防止しています</li>
+                </ul>
+
+                <h3>API について</h3>
+                <p>Google Gemini API の無料枠を使用しています。1日あたりの上限に達すると、自動的にキーワード検索に切り替わります。上限は日本時間17時頃にリセットされます。</p>
+
+                <h3>使い方のヒント</h3>
+                <ul>
+                    <li><strong>Enter</strong> で送信、<strong>Shift + Enter</strong> または <strong>Option(Alt) + Enter</strong> で改行</li>
+                    <li>回答のコピーは、メッセージ横の「コピー」ボタンで可能です</li>
+                    <li>AI が使えない場合は自動でキーワード検索に切り替わります</li>
+                </ul>
+            </div>
+        </div>
+    </div>
 
     <!-- Gemini設定は管理者設定モーダル（app.js）で管理 -->
 
