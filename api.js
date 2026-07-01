@@ -321,6 +321,27 @@ const api = {
     return res; // { success, text, usage, limit }
   },
 
+  // ---- イベント投票 ----
+  async getEventVotes(eventId) {
+    const res = await this._post({
+      action: 'getEventVotes',
+      token: this.getToken(),
+      eventId
+    });
+    if (!res.success) throw new Error(res.error || 'getEventVotes failed');
+    return res.votes || [];
+  },
+
+  async submitVote(vote) {
+    const res = await this._post({
+      action: 'submitVote',
+      token: this.getToken(),
+      vote
+    });
+    if (!res.success) throw new Error(res.error || 'submitVote failed');
+    return res.vote;
+  },
+
   async _post(payload) {
     let res, text;
     try {

@@ -20,6 +20,7 @@ const MEMBERS_SHEET = 'Members';
 const EXPERIMENTS_SHEET = 'Experiments';
 const PASSWORDS_SHEET = 'Passwords';
 const CONFIG_SHEET = 'Config';
+const EVENT_VOTES_SHEET = 'EventVotes';
 const AUDIT_LOG_SHEET = 'AuditLog';
 
 const SESSION_TTL = 86400;       // メンバートークン有効期間: 24時間
@@ -383,6 +384,27 @@ function doPost(e) {
       if (key === 'password') invalidateAllTokens('member');
       if (key === 'admin_password') invalidateAllTokens('admin');
       return jsonResponse({ success: true });
+    }
+
+    // --- イベント投票: 投票一覧取得 ---
+    if (action === 'getEventVotes') {
+      var eventId = body.eventId || '';
+      if (!eventId) return jsonResponse({ success: false, error: 'missing eventId' });
+      return jsonResponse({ success: true, votes: listEventVotes_(eventId) });
+    }
+
+    // --- イベント投票: 投票送信（upsert） ---
+    if (action === 'submitVote') {
+      var voteData = body.vote || {};
+      if (!voteData.eventId || !voteData.memberId || !voteData.status) {
+        return jsonResponse({ success: false, error: 'missing fields' });
+      }
+      if (['attend', 'absent', 'undecided'].indexOf(voteData.status) < 0) {
+        return jsonResponse({ success: false, error: 'invalid status' });
+      }
+      var result = upsertVote_(voteData);
+      appendAuditLog('vote', voteData.eventId + ':' + voteData.memberId + ':' + voteData.status, token, 'member');
+      return jsonResponse({ success: true, vote: result });
     }
 
     return jsonResponse({ success: false, error: 'unknown action: ' + action });
@@ -809,6 +831,7 @@ function setupSpreadsheet() {
     ensureSheet(ss, MEMBERS_SHEET, MEMBERS_HEADERS);
     ensureSheet(ss, EXPERIMENTS_SHEET, EXPERIMENTS_HEADERS);
     ensureSheet(ss, PASSWORDS_SHEET, PASSWORDS_HEADERS);
+    ensureSheet(ss, EVENT_VOTES_SHEET, EVENT_VOTES_HEADERS);
     ensureConfigSheet(ss);
     ensureAuditLogSheet(ss);
     SpreadsheetApp.flush();
@@ -1812,6 +1835,67 @@ function generateAnnualReport(fiscalYear) {
   }
 
   return html;
+}
+
+// ====== イベント投票 ======
+
+const EVENT_VOTES_HEADERS = ['EventID', 'MemberID', 'Status', 'UpdatedAt'];
+
+function listEventVotes_(eventId) {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(EVENT_VOTES_SHEET);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+  var votes = [];
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]) === eventId) {
+      votes.push({
+        eventId: String(data[i][0]),
+        memberId: String(data[i][1]),
+        status: String(data[i][2]),
+        updatedAt: String(data[i][3])
+      });
+    }
+  }
+  return votes;
+}
+
+function upsertVote_(voteData) {
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (_) {
+    throw new Error('他のユーザーが投票中です。数秒後にもう一度お試しください。');
+  }
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(EVENT_VOTES_SHEET);
+    if (!sheet) {
+      sheet = ss.insertSheet(EVENT_VOTES_SHEET);
+      sheet.getRange(1, 1, 1, EVENT_VOTES_HEADERS.length).setValues([EVENT_VOTES_HEADERS]);
+      sheet.getRange(1, 1, 1, EVENT_VOTES_HEADERS.length)
+        .setFontWeight('bold').setBackground('#464775').setFontColor('#ffffff');
+      sheet.setFrozenRows(1);
+    }
+    var now = new Date().toISOString();
+    var lastRow = sheet.getLastRow();
+    var existingRow = -1;
+    if (lastRow >= 2) {
+      var data = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+      for (var i = 0; i < data.length; i++) {
+        if (String(data[i][0]) === voteData.eventId && String(data[i][1]) === voteData.memberId) {
+          existingRow = i + 2;
+          break;
+        }
+      }
+    }
+    var row = [voteData.eventId, voteData.memberId, voteData.status, now];
+    if (existingRow > 0) {
+      sheet.getRange(existingRow, 1, 1, 4).setValues([row]);
+    } else {
+      sheet.appendRow(row);
+    }
+    return { eventId: voteData.eventId, memberId: voteData.memberId, status: voteData.status, updatedAt: now };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // ====== ユーティリティ ======

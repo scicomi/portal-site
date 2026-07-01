@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <title>参加投票 | SciComi Portal</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="app-header"></header>
+
+    <main class="container">
+        <div id="vote-loading" class="loading-text" style="text-align:center;padding:3rem 0;">読み込み中...</div>
+
+        <div id="vote-error" class="vote-error-box" style="display:none;">
+            <p id="vote-error-msg"></p>
+            <a href="events.html" class="btn btn-secondary">イベント一覧に戻る</a>
+        </div>
+
+        <div id="vote-app" style="display:none;">
+            <div class="vote-event-header">
+                <span class="vote-event-category" id="vote-cat-badge"></span>
+                <h1 class="vote-event-title" id="vote-event-title"></h1>
+                <p class="vote-event-date" id="vote-event-date"></p>
+                <p class="vote-event-location" id="vote-event-location"></p>
+                <p class="vote-deadline-notice" id="vote-deadline" style="display:none;"></p>
+            </div>
+
+            <section class="vote-section">
+                <h2 class="vote-section-title">投票</h2>
+
+                <div class="vote-member-select">
+                    <label class="vote-label" for="vote-member">あなたの名前</label>
+                    <div class="vote-member-row">
+                        <select id="vote-member" class="vote-select">
+                            <option value="">-- 名前を選択 --</option>
+                        </select>
+                        <button class="btn btn-text vote-change-btn" id="vote-change-btn" style="display:none;" onclick="clearMemberSelection()">名前を変更</button>
+                    </div>
+                </div>
+
+                <div id="vote-buttons" class="vote-buttons" style="display:none;">
+                    <button class="vote-btn vote-btn-attend" data-status="attend" onclick="onVoteClick('attend')">参加</button>
+                    <button class="vote-btn vote-btn-absent" data-status="absent" onclick="onVoteClick('absent')">不参加</button>
+                    <button class="vote-btn vote-btn-undecided" data-status="undecided" onclick="onVoteClick('undecided')">未定</button>
+                </div>
+
+                <div id="vote-current" class="vote-current" style="display:none;">
+                    <p>現在の回答: <strong id="vote-current-status"></strong></p>
+                    <p class="vote-current-time" id="vote-current-time"></p>
+                </div>
+            </section>
+
+            <section class="vote-section">
+                <h2 class="vote-section-title">回答状況</h2>
+                <div class="vote-summary" id="vote-summary">
+                    <div class="vote-summary-item vote-summary-attend">
+                        <span class="vote-summary-num" id="vote-count-attend">0</span>
+                        <span class="vote-summary-label">参加</span>
+                    </div>
+                    <div class="vote-summary-item vote-summary-absent">
+                        <span class="vote-summary-num" id="vote-count-absent">0</span>
+                        <span class="vote-summary-label">不参加</span>
+                    </div>
+                    <div class="vote-summary-item vote-summary-undecided">
+                        <span class="vote-summary-num" id="vote-count-undecided">0</span>
+                        <span class="vote-summary-label">未定</span>
+                    </div>
+                    <div class="vote-summary-item vote-summary-noanswer">
+                        <span class="vote-summary-num" id="vote-count-noanswer">0</span>
+                        <span class="vote-summary-label">未回答</span>
+                    </div>
+                </div>
+
+                <div id="vote-all-done" class="vote-all-done" style="display:none;">全員回答済み</div>
+
+                <div class="vote-detail-toggle">
+                    <button class="btn btn-text" id="vote-detail-btn" onclick="toggleVoteDetail()">回答一覧を表示</button>
+                </div>
+                <div id="vote-detail" class="vote-detail" style="display:none;">
+                    <div class="vote-detail-group" id="vote-list-attend"></div>
+                    <div class="vote-detail-group" id="vote-list-absent"></div>
+                    <div class="vote-detail-group" id="vote-list-undecided"></div>
+                    <div class="vote-detail-group" id="vote-list-noanswer"></div>
+                </div>
+            </section>
+
+            <div class="vote-back">
+                <a href="events.html" class="btn btn-secondary">イベント一覧に戻る</a>
+            </div>
+        </div>
+    </main>
+
+    <div id="vote-confirm-modal" class="vote-confirm-overlay" style="display:none;">
+        <div class="vote-confirm-box" role="dialog" aria-modal="true">
+            <h3>投票の確認</h3>
+            <p id="vote-confirm-msg"></p>
+            <div class="vote-confirm-actions">
+                <button class="btn btn-secondary" onclick="closeConfirm()">キャンセル</button>
+                <button class="btn btn-primary-solid" id="vote-confirm-submit" onclick="submitConfirmedVote()">投票する</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="api.js"></script>
+    <script src="app.js"></script>
+    <script src="vote.js"></script>
+</body>
+</html>
