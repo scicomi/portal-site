@@ -28,11 +28,6 @@ function isGradStudent(m) {
     return id.length >= 5 && (id[4] === 'm' || id[4] === 'M');
 }
 
-function currentFiscalYear() {
-    const now = new Date();
-    return (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
-}
-
 function getEffectiveRole(m) {
     if (m.Role) return m.Role;
     const cat = m.Category || 'member';
@@ -47,12 +42,31 @@ function deriveCategoryFromRole(role) {
     return 'member';
 }
 
+function _bindMemberTableDelegation() {
+    const tbody = document.getElementById('members-tbody');
+    if (!tbody) return;
+    tbody.addEventListener('click', (e) => {
+        const actionEl = e.target.closest('[data-action]');
+        if (actionEl) {
+            e.stopPropagation();
+            const row = actionEl.closest('tr[data-id]');
+            if (!row) return;
+            const id = row.dataset.id;
+            if (actionEl.dataset.action === 'edit') openMemberWizard(id);
+            else if (actionEl.dataset.action === 'delete') confirmDeleteMember(id);
+            return;
+        }
+        if (e.target.closest('[data-action-cell]')) return;
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     bootPage('members', init);
 });
 
 async function init() {
     bindOverlayClose(document.getElementById('year-copy-modal'), closeYearCopyModal);
+    _bindMemberTableDelegation();
 
     const cached = api.loadCache('members');
     if (cached && cached.items) {
@@ -134,9 +148,24 @@ function setGradeFilter(g) {
 function setRoleFilter(r) {
     roleFilter = r;
     gradeFilter = null;
-    document.querySelectorAll('#role-filter-row .filter-chip').forEach(c =>
-        c.classList.toggle('active', c.dataset.role === r));
+    document.querySelectorAll('#role-filter-row .filter-chip').forEach(c => {
+        const isActive = c.dataset.role === r;
+        c.classList.toggle('active', isActive);
+        c.setAttribute('aria-pressed', String(isActive));
+    });
     renderMembers();
+}
+
+function sortByRoleThenName(list) {
+    const roleOrder = {};
+    CONFIG.MEMBER_ROLES.forEach((r, i) => { roleOrder[r.value] = i; });
+    return list.slice().sort((a, b) => {
+        const ra = getEffectiveRole(a), rb = getEffectiveRole(b);
+        const oa = roleOrder[ra] ?? (ra ? 10 : 99);
+        const ob = roleOrder[rb] ?? (rb ? 10 : 99);
+        if (oa !== ob) return oa - ob;
+        return (a.Name || '').localeCompare(b.Name || '');
+    });
 }
 
 function onMemberSearch() {
@@ -186,16 +215,7 @@ function renderMembers() {
         });
     }
 
-    const roleOrder = {};
-    CONFIG.MEMBER_ROLES.forEach((r, i) => { roleOrder[r.value] = i; });
-
-    const sorted = base.slice().sort((a, b) => {
-        const ra = getEffectiveRole(a), rb = getEffectiveRole(b);
-        const oa = roleOrder[ra] ?? (ra ? 10 : 99);
-        const ob = roleOrder[rb] ?? (rb ? 10 : 99);
-        if (oa !== ob) return oa - ob;
-        return (a.Name || '').localeCompare(b.Name || '');
-    });
+    const sorted = sortByRoleThenName(base);
 
     const tbody = document.getElementById('members-tbody');
     const isAdmin = api.isAdmin();
@@ -216,7 +236,7 @@ function renderMembers() {
                 ? `<span class="cat-badge" style="background:${roleInfo.color};margin-left:6px;font-size:0.7rem;">${escapeHtml(role)}</span>`
                 : '';
             return `
-            <tr data-id="${m.ID}" ${rowStyle}>
+            <tr data-id="${escapeAttr(m.ID)}" ${rowStyle}>
                 <td>${escapeHtml(m.StudentID || '')}</td>
                 <td class="cell-name">
                     ${m.Furigana ? '<span class="member-furigana">' + escapeHtml(m.Furigana) + '</span>' : ''}
@@ -225,10 +245,10 @@ function renderMembers() {
                 </td>
                 <td>${escapeHtml(m.Affiliation || '')}</td>
                 <td class="hide-mobile">${m.Email ? `<a href="mailto:${escapeAttr(m.Email)}">${escapeHtml(m.Email)}</a>` : ''}</td>
-                <td onclick="event.stopPropagation()">
+                <td data-action-cell>
                     <div class="inline-actions">
-                        ${isAdmin ? `<button class="inline-action-btn" onclick="openMemberWizard('${m.ID}')" title="編集">&#9998;</button>` : ''}
-                        ${isAdmin ? `<button class="inline-action-btn danger" onclick="confirmDeleteMember('${m.ID}')" title="削除">&#x2715;</button>` : ''}
+                        ${isAdmin ? `<button class="inline-action-btn" data-action="edit" title="編集">&#9998;</button>` : ''}
+                        ${isAdmin ? `<button class="inline-action-btn danger" data-action="delete" title="削除">&#x2715;</button>` : ''}
                     </div>
                 </td>
             </tr>`;
@@ -345,6 +365,7 @@ function openMemberWizard(editId) {
 
     document.body.appendChild(overlay);
     bindModalEscape(overlay, closeMemberWizard);
+    trapFocus(overlay.querySelector('.wizard-panel'));
     setTimeout(() => document.getElementById('wz-mb-name').focus(), 80);
 }
 
@@ -553,7 +574,7 @@ async function deleteMember(id) {
         async () => {
             try {
                 const saved = await api.save('members', backup);
-                membersData.splice(idx, 0, saved);
+                membersData.push(saved);
                 api.saveCache('members', membersData);
                 buildFiscalYearSelect();
                 renderMembers();
@@ -605,23 +626,14 @@ function renderYearCopyMembers() {
     const srcYear = parseInt(document.getElementById('yc-source-year').value);
     const members = membersData.filter(m => getMemberFiscalYear(m) === srcYear);
 
-    const roleOrder = {};
-    CONFIG.MEMBER_ROLES.forEach((r, i) => { roleOrder[r.value] = i; });
-
-    members.sort((a, b) => {
-        const ra = getEffectiveRole(a), rb = getEffectiveRole(b);
-        const oa = roleOrder[ra] ?? (ra ? 10 : 99);
-        const ob = roleOrder[rb] ?? (rb ? 10 : 99);
-        if (oa !== ob) return oa - ob;
-        return (a.Name || '').localeCompare(b.Name || '');
-    });
+    const sortedMembers = sortByRoleThenName(members);
 
     const list = document.getElementById('yc-member-list');
-    if (members.length === 0) {
+    if (sortedMembers.length === 0) {
         list.innerHTML = '<p class="text-hint" style="text-align:center; padding:20px;">この年度にメンバーがいません</p>';
         return;
     }
-    list.innerHTML = members.map(m => {
+    list.innerHTML = sortedMembers.map(m => {
         const role = getEffectiveRole(m);
         const roleInfo = role ? getRoleDisplay(role) : null;
         const badge = roleInfo
@@ -680,16 +692,16 @@ async function executeYearCopy() {
     closeYearCopyModal();
     toast(`${newMembers.length}名を${targetYear}年度に登録しました`, 'success');
 
+    const results = await Promise.allSettled(newMembers.map(item => api.save('members', item)));
     let failCount = 0;
-    for (const item of newMembers) {
-        try {
-            const saved = await api.save('members', item);
-            const idx = membersData.findIndex(m => m.ID === item.ID);
-            if (idx >= 0) membersData[idx] = saved;
-        } catch (e) {
+    results.forEach((r, i) => {
+        if (r.status === 'fulfilled') {
+            const idx = membersData.findIndex(m => m.ID === newMembers[i].ID);
+            if (idx >= 0) membersData[idx] = r.value;
+        } else {
             failCount++;
         }
-    }
+    });
     api.saveCache('members', membersData);
     if (failCount > 0) {
         toast(`${failCount}名の保存に失敗しました。再読み込みしてください。`, 'error');
