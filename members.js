@@ -28,13 +28,7 @@ function isGradStudent(m) {
     return id.length >= 5 && (id[4] === 'm' || id[4] === 'M');
 }
 
-function getEffectiveRole(m) {
-    if (m.Role) return m.Role;
-    const cat = m.Category || 'member';
-    if (cat === 'adviser') return 'アドバイザー';
-    if (cat === 'coordinator') return 'コーディネーター';
-    return '';
-}
+// 役職の導出は app.js の memberRoleOf を使用
 
 function deriveCategoryFromRole(role) {
     if (role === 'アドバイザー') return 'adviser';
@@ -54,6 +48,17 @@ function _bindMemberTableDelegation() {
             const id = row.dataset.id;
             if (actionEl.dataset.action === 'edit') openMemberWizard(id);
             else if (actionEl.dataset.action === 'delete') confirmDeleteMember(id);
+            return;
+        }
+        const popEl = e.target.closest('.cell-popover-trigger');
+        if (popEl) {
+            e.stopPropagation();
+            const label = popEl.dataset.popoverLabel || '';
+            const isEmail = popEl.dataset.popoverType === 'email';
+            const valueHtml = isEmail
+                ? `<a href="mailto:${escapeAttr(popEl.dataset.popoverValue)}">${escapeHtml(popEl.dataset.popoverValue)}</a>`
+                : escapeHtml(popEl.dataset.popoverValue);
+            showCellPopover(popEl, label, valueHtml);
             return;
         }
         if (e.target.closest('[data-action-cell]')) return;
@@ -121,7 +126,7 @@ function buildGradeChips(fyMembers) {
     const grades = new Set();
     let hasGrad = false;
     fyMembers.forEach(m => {
-        const role = getEffectiveRole(m);
+        const role = memberRoleOf(m);
         if (role === 'アドバイザー' || role === 'コーディネーター') return;
         if (isGradStudent(m)) { hasGrad = true; return; }
         const g = gradeOf(m);
@@ -160,7 +165,7 @@ function sortByRoleThenName(list) {
     const roleOrder = {};
     CONFIG.MEMBER_ROLES.forEach((r, i) => { roleOrder[r.value] = i; });
     return list.slice().sort((a, b) => {
-        const ra = getEffectiveRole(a), rb = getEffectiveRole(b);
+        const ra = memberRoleOf(a), rb = memberRoleOf(b);
         const oa = roleOrder[ra] ?? (ra ? 10 : 99);
         const ob = roleOrder[rb] ?? (rb ? 10 : 99);
         if (oa !== ob) return oa - ob;
@@ -182,7 +187,7 @@ function renderMembers() {
     let fyMembers = membersData.filter(m => getMemberFiscalYear(m) === selectedFiscalYear);
 
     fyMembers = fyMembers.filter(m => {
-        const role = getEffectiveRole(m);
+        const role = memberRoleOf(m);
         if (roleFilter === 'coordinator') return role === 'コーディネーター';
         if (roleFilter === 'adviser') return role === 'アドバイザー';
         return role !== 'コーディネーター' && role !== 'アドバイザー';
@@ -209,48 +214,75 @@ function renderMembers() {
 
     if (memberSearchKw) {
         base = base.filter(m => {
-            const role = getEffectiveRole(m);
-            const hay = [m.Name, m.Furigana, role, m.Affiliation, m.StudentID, m.Note, m.Email].filter(Boolean).join(' ').toLowerCase();
+            const role = memberRoleOf(m);
+            const hay = [m.Name, m.Furigana, role, m.Affiliation, m.StudentID, m.Note, m.Email, m.Extension].filter(Boolean).join(' ').toLowerCase();
             return hay.includes(memberSearchKw);
         });
     }
 
     const sorted = sortByRoleThenName(base);
 
+    const thead = document.getElementById('members-thead');
     const tbody = document.getElementById('members-tbody');
     const isAdmin = api.isAdmin();
+    const isStaffTab = roleFilter === 'coordinator' || roleFilter === 'adviser';
+    const colCount = isStaffTab ? 5 : 3;
 
     document.querySelectorAll('.admin-only').forEach(el => {
         el.style.display = isAdmin ? 'inline-block' : 'none';
     });
 
+    if (thead) {
+        thead.innerHTML = isStaffTab
+            ? `<tr><th>名前</th><th>所属</th><th>メールアドレス</th><th>内線</th><th style="width:1px;"></th></tr>`
+            : `<tr><th>学籍/教職員番号</th><th>名前</th><th style="width:1px;"></th></tr>`;
+    }
+
     if (sorted.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">該当するメンバーはいません</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">該当するメンバーはいません</td></tr>`;
     } else {
         tbody.innerHTML = sorted.map(m => {
-            const role = getEffectiveRole(m);
+            const role = memberRoleOf(m);
             const roleInfo = role ? getRoleDisplay(role) : null;
-            const isStaff = role === 'アドバイザー' || role === 'コーディネーター';
-            const rowStyle = isStaff ? 'style="background:var(--hover-bg);"' : '';
             const roleBadge = roleInfo
                 ? `<span class="cat-badge" style="background:${roleInfo.color};margin-left:6px;font-size:0.7rem;">${escapeHtml(role)}</span>`
                 : '';
-            return `
-            <tr data-id="${escapeAttr(m.ID)}" ${rowStyle}>
-                <td>${escapeHtml(m.StudentID || '')}</td>
+            const nameCell = `
                 <td class="cell-name">
                     ${m.Furigana ? '<span class="member-furigana">' + escapeHtml(m.Furigana) + '</span>' : ''}
                     <span class="member-name-text">${escapeHtml(m.Name || '')}</span>
                     ${roleBadge}
-                </td>
-                <td>${escapeHtml(m.Affiliation || '')}</td>
-                <td class="hide-mobile">${m.Email ? `<a href="mailto:${escapeAttr(m.Email)}">${escapeHtml(m.Email)}</a>` : ''}</td>
+                </td>`;
+            const actionCell = `
                 <td data-action-cell>
                     <div class="inline-actions">
                         ${isAdmin ? `<button class="inline-action-btn" data-action="edit" title="編集">&#9998;</button>` : ''}
                         ${isAdmin ? `<button class="inline-action-btn danger" data-action="delete" title="削除">&#x2715;</button>` : ''}
                     </div>
-                </td>
+                </td>`;
+
+            if (isStaffTab) {
+                const affCell = m.Affiliation
+                    ? `<span class="cell-popover-trigger" data-popover-label="所属" data-popover-value="${escapeAttr(m.Affiliation)}">${escapeHtml(m.Affiliation)}</span>`
+                    : '';
+                const emailCell = m.Email
+                    ? `<span class="cell-popover-trigger" data-popover-label="メールアドレス" data-popover-type="email" data-popover-value="${escapeAttr(m.Email)}">${escapeHtml(m.Email)}</span>`
+                    : '';
+                return `
+                <tr data-id="${escapeAttr(m.ID)}" style="background:var(--hover-bg);">
+                    ${nameCell}
+                    <td>${affCell}</td>
+                    <td>${emailCell}</td>
+                    <td>${escapeHtml(m.Extension || '')}</td>
+                    ${actionCell}
+                </tr>`;
+            }
+
+            return `
+            <tr data-id="${escapeAttr(m.ID)}">
+                <td>${escapeHtml(m.StudentID || '')}</td>
+                ${nameCell}
+                ${actionCell}
             </tr>`;
         }).join('');
     }
@@ -273,7 +305,7 @@ function openMemberWizard(editId) {
         showAdminAuthModal(() => openMemberWizard(editId));
         return;
     }
-    const currentRole = isEdit ? getEffectiveRole(m) : '';
+    const currentRole = isEdit ? memberRoleOf(m) : '';
     const isCustomRole = currentRole && !MEMBER_ROLE_PRESETS.includes(currentRole) && currentRole !== '';
 
     const roleOptions = [
@@ -347,6 +379,10 @@ function openMemberWizard(editId) {
                         <label class="e1-label">メールアドレス</label>
                         <input id="wz-mb-email" class="e1-input" type="email" placeholder="例: name@example.com" value="${escapeAttr(m ? m.Email : '')}">
                     </div>
+                    <div class="e1-group" id="wz-mb-extension-group" ${!showContactFields ? 'style="display:none;"' : ''}>
+                        <label class="e1-label">内線</label>
+                        <input id="wz-mb-extension" class="e1-input" type="text" placeholder="例: 1234" value="${escapeAttr(m ? m.Extension : '')}">
+                    </div>
                     <div class="e1-group">
                         <label class="e1-label">メモ</label>
                         <textarea id="wz-mb-note" class="e1-input" rows="2" placeholder="任意のメモ">${escapeHtml(m ? m.Note : '')}</textarea>
@@ -393,8 +429,10 @@ function onWzRoleChange() {
     const hide = sel.value === '';
     const emailG = document.getElementById('wz-mb-email-group');
     const affG = document.getElementById('wz-mb-affiliation-group');
+    const extG = document.getElementById('wz-mb-extension-group');
     if (emailG) emailG.style.display = hide ? 'none' : '';
     if (affG) affG.style.display = hide ? 'none' : '';
+    if (extG) extG.style.display = hide ? 'none' : '';
 }
 
 function updateMbWizardUI() {
@@ -469,6 +507,7 @@ async function saveMember() {
         Affiliation: document.getElementById('wz-mb-affiliation').value.trim(),
         Note: document.getElementById('wz-mb-note').value.trim(),
         Email: document.getElementById('wz-mb-email').value.trim(),
+        Extension: document.getElementById('wz-mb-extension').value.trim(),
         FiscalYear: document.getElementById('wz-mb-fiscal-year').value,
         Active: 'true'
     };
@@ -634,13 +673,13 @@ function renderYearCopyMembers() {
         return;
     }
     list.innerHTML = sortedMembers.map(m => {
-        const role = getEffectiveRole(m);
+        const role = memberRoleOf(m);
         const roleInfo = role ? getRoleDisplay(role) : null;
         const badge = roleInfo
             ? `<span class="cat-badge" style="background:${roleInfo.color};font-size:0.7rem;">${escapeHtml(role)}</span>`
             : '';
         return `<label style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid var(--bg-muted); cursor:pointer;">
-            <input type="checkbox" value="${m.ID}" checked class="yc-check">
+            <input type="checkbox" value="${escapeAttr(m.ID)}" checked class="yc-check">
             <span style="flex:1;">${escapeHtml(m.Name || '')} ${badge}</span>
             <span class="text-hint" style="font-size:0.8rem;">${escapeHtml(m.StudentID || '')}</span>
         </label>`;
@@ -675,11 +714,12 @@ async function executeYearCopy() {
         Name: m.Name,
         Furigana: m.Furigana || '',
         Category: m.Category || 'member',
-        Role: getEffectiveRole(m),
+        Role: memberRoleOf(m),
         StudentID: m.StudentID || '',
         Affiliation: m.Affiliation || '',
         Note: '',
         Email: m.Email || '',
+        Extension: m.Extension || '',
         FiscalYear: targetYear,
         Active: 'true'
     }));

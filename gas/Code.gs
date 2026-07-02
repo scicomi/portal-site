@@ -811,7 +811,7 @@ const EVENTS_HEADERS = [
 ];
 const MEMBERS_HEADERS = [
   'ID', 'Name', 'Furigana', 'Category', 'Role', 'StudentID', 'Affiliation',
-  'Email', 'Note', 'FiscalYear', 'Active',
+  'Email', 'Extension', 'Note', 'FiscalYear', 'Active',
   'CreatedAt', 'UpdatedAt'
 ];
 const EXPERIMENTS_HEADERS = [

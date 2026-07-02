@@ -108,17 +108,10 @@ function renderPage() {
 function renderEventsSection() {
     if (!currentExp || !allEvents.length) return;
     const expName = currentExp.Name;
-    const related = allEvents.filter(ev => {
-        let parts = [];
-        try {
-            const raw = ev.PartsList || ev.partsList;
-            parts = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
-        } catch (_) {}
-        return parts.some(p => {
-            if (p.items) return p.items.some(it => it.name === expName);
-            return p.name === expName;
-        });
-    }).sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
+    // 新旧フォーマットの吸収は app.js の normalizeParts に一本化
+    const related = allEvents.filter(ev =>
+        normalizeParts(ev.PartsList || ev.partsList).some(it => it.name === expName)
+    ).sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
 
     const sec = document.getElementById('expd-events-section');
     if (related.length === 0) { sec.classList.add('hidden'); return; }

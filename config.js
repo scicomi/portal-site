@@ -137,15 +137,9 @@ function getEventCategory(key) {
 function getExperimentCategory(key) {
   return CONFIG.EXPERIMENT_CATEGORIES[key] || CONFIG.EXPERIMENT_CATEGORIES.other;
 }
-function getMemberCategory(key) {
-  return CONFIG.MEMBER_CATEGORIES[key] || CONFIG.MEMBER_CATEGORIES.member;
-}
 function getRoleDisplay(role) {
   if (!role) return null;
   const r = CONFIG.MEMBER_ROLES.find(x => x.value === role);
   if (r) return r;
   return { value: role, color: '#6b7280', category: 'member', order: 10 };
-}
-function getPasswordCategory(key) {
-  return CONFIG.PASSWORD_CATEGORIES[key] || CONFIG.PASSWORD_CATEGORIES.other;
 }

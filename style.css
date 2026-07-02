@@ -2839,18 +2839,14 @@ textarea:focus {
     width: auto !important;
 }
 .tag-input-dropdown {
-    position: absolute;
-    top: 100%;
-    left: -1px;
-    right: -1px;
+    position: fixed;
     background: white;
     border: 1px solid var(--border-field);
-    border-top: none;
-    border-radius: 0 0 6px 6px;
+    border-radius: 6px;
     max-height: 200px;
     overflow-y: auto;
-    z-index: var(--z-dropdown);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    z-index: calc(var(--z-modal) + 10);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 .tag-input-option {
     padding: 8px 12px;
@@ -2865,6 +2861,39 @@ textarea:focus {
     font-size: 0.85rem;
     font-style: italic;
 }
+
+/* ========== テーブルセルのポップオーバー ========== */
+.cell-popover-trigger {
+    display: inline-block;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+    cursor: pointer;
+    border-bottom: 1px dotted var(--text-hint);
+}
+@media (max-width: 480px) {
+    .cell-popover-trigger { max-width: 90px; }
+}
+.cell-popover {
+    position: fixed;
+    z-index: var(--z-modal);
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    padding: 10px 14px;
+    max-width: min(280px, calc(100vw - 24px));
+    word-break: break-word;
+    font-size: 0.85rem;
+}
+.cell-popover-label {
+    font-size: 0.72rem;
+    color: var(--text-hint);
+    margin-bottom: 2px;
+}
+.cell-popover-value a { color: var(--primary-color); }
 
 /* ===== 日付レンジピッカー ===== */
 .date-range-picker-wrapper { position: relative; }
@@ -3333,6 +3362,67 @@ textarea:focus {
     padding: 1px 6px;
 }
 .series-map-link:hover { background: var(--bg-hover, #efefef); text-decoration: none; }
+
+/* Location link in events table */
+.location-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.15s;
+}
+.location-link:hover {
+    color: var(--primary-light);
+    text-decoration: underline;
+}
+
+/* Safety / Emergency info card (event-series) */
+.series-safety-card {
+    background: #fdf2f2;
+    border: 1px solid #fecaca;
+    border-radius: var(--radius-md, 10px);
+    padding: 16px 20px;
+    margin-bottom: 20px;
+}
+.series-safety-title {
+    margin: 0 0 12px 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #991b1b;
+}
+.series-safety-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+@media (max-width: 600px) {
+    .series-safety-grid { grid-template-columns: 1fr; }
+}
+.series-safety-item {
+    background: white;
+    border: 1px solid #fee2e2;
+    border-radius: var(--radius-sm, 6px);
+    padding: 8px 12px;
+    font-size: 0.85rem;
+}
+.series-safety-label {
+    font-weight: 700;
+    color: var(--text-secondary, #718096);
+    display: block;
+    margin-bottom: 3px;
+    font-size: 0.78rem;
+}
+.series-safety-value {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.series-tel-link {
+    color: #b91c1c;
+    text-decoration: none;
+    font-weight: 700;
+}
+.series-tel-link:hover {
+    text-decoration: underline;
+}
 
 /* Stats */
 .series-stats-grid {

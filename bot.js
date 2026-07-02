@@ -254,7 +254,7 @@ const queryEngine = {
     return `<div class="bot-result-count">${items.length}人</div>
       <div class="bot-result-list">${items.map(m => {
         const grade = (m.StudentID || '').slice(0, 2);
-        const role = m.Role || (m.Category === 'adviser' ? 'アドバイザー' : m.Category === 'coordinator' ? 'コーディネーター' : '');
+        const role = memberRoleOf(m);
         const roleStr = role ? ` / ${escapeHtml(role)}` : '';
         const fy = m.FiscalYear ? ` (${m.FiscalYear}年度)` : '';
         return `<div class="bot-result-item member-item">
@@ -813,7 +813,8 @@ async function handleBotError(e, text, isRetry) {
       break;
 
     default:
-      addMessage('bot', 'エラーが発生しました: ' + escapeHtml(errMsg) + detailNote);
+      // text は renderMessages 側で escapeHtml されるため、ここでエスケープすると二重になる
+      addMessage('bot', 'エラーが発生しました: ' + errMsg + detailNote);
       fallbackToKeyword(text);
   }
 }

@@ -36,6 +36,9 @@ function gasToUi(g) {
     u.Gather_Time = g.GatherTime || '';
     u.Dismiss_Time = g.DismissTime || '';
     u.Accompany = g.Accompany || '';
+    u.Address = g.Address || '';
+    u.EmergencyHospital = g.EmergencyHospital || '';
+    u.EmergencyPolice = g.EmergencyPolice || '';
     u.PartsList = Array.isArray(g.PartsList) ? JSON.stringify(g.PartsList) : (g.PartsList || '');
     u.Files = Array.isArray(g.Files)
         ? g.Files.map(f => typeof f === 'string' ? { name: '', url: f } : f)
@@ -78,6 +81,9 @@ function uiToGas(u) {
         Remarks: u.Remarks || '',
         Belongings: u.Belongings || '',
         Files: Array.isArray(u.Files) ? u.Files : [],
+        Address: u.Address || '',
+        EmergencyHospital: u.EmergencyHospital || '',
+        EmergencyPolice: u.EmergencyPolice || '',
         SeriesKey: u.SeriesKey || '',
         Positives: u.Positives || '',
         Reflections: u.Reflections || '',
@@ -126,12 +132,16 @@ document.addEventListener('keydown', (e) => {
         }
         return;
     }
+    if (e.key === 'Escape') { closeAnyOpenModal(); return; }
+    // ウィザード・確認ダイアログ・認証モーダル表示中や修飾キー付きでは
+    // ページ用ショートカット（n / /）を発動しない
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (document.querySelector('.wizard-overlay, .confirm-dialog-overlay, #admin-auth-modal, #pw-modal')) return;
     if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openNewEventModal(); }
     if (e.key === '/' && document.getElementById('event-search')) {
         e.preventDefault();
         document.getElementById('event-search').focus();
     }
-    if (e.key === 'Escape') closeAnyOpenModal();
 });
 
 function closeAnyOpenModal() {
@@ -147,31 +157,6 @@ let filterState = {
     category: 'all',
     period: 'upcoming'
 };
-
-// ---- 時刻選択肢を動的生成 ----
-function populateTimeSelects() {
-    function genOpts(startH, endH, withEmpty) {
-        let html = withEmpty ? '<option value="">--</option>' : '';
-        for (let h = startH; h <= endH; h++) {
-            for (let m = 0; m < 60; m += 30) {
-                if (h === endH && m > 0) break;
-                const v = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-                html += `<option value="${v}">${v}</option>`;
-            }
-        }
-        return html;
-    }
-    const modal = document.getElementById('new-event-form-container');
-    if (!modal) return;
-    const startSel = modal.querySelector('.time-start-select');
-    const endSel = modal.querySelector('.time-end-select');
-    if (startSel) { startSel.innerHTML = genOpts(9, 21, false); startSel.value = '13:00'; }
-    if (endSel) { endSel.innerHTML = genOpts(9, 21, false); endSel.value = '16:00'; }
-    const gatherSel = modal.querySelector('.gather-time-select');
-    const dismissSel = modal.querySelector('.dismiss-time-select');
-    if (gatherSel) gatherSel.innerHTML = genOpts(7, 21, true);
-    if (dismissSel) dismissSel.innerHTML = genOpts(7, 21, true);
-}
 
 // ---- テーブル行のイベント委譲（XSS 対策: onclick に ID を埋め込まない） ----
 function _bindEventTableDelegation() {
@@ -205,7 +190,6 @@ async function init() {
     bindOverlayClose(document.getElementById('modal-overlay'), closeModal);
     _bindEventTableDelegation();
     holidaysData = await api.loadHolidaysCached();
-    populateTimeSelects();
 
     // キャッシュ即表示（GAS形で書かれていても UI形へ正規化してから使う）
     const cached = api.loadCache('events');
@@ -270,10 +254,7 @@ async function populateDatalists() {
         const curFY = currentFiscalYear();
         memberDl.innerHTML = members
             .filter(m => parseInt(m.FiscalYear || curFY) === curFY && m.Name)
-            .map(m => {
-                const role = m.Role || (m.Category === 'adviser' ? 'アドバイザー' : m.Category === 'coordinator' ? 'コーディネーター' : '');
-                return `<option value="${escapeAttr(m.Name)}">${escapeAttr(role || 'メンバー')}</option>`;
-            })
+            .map(m => `<option value="${escapeAttr(m.Name)}">${escapeAttr(memberRoleOf(m) || 'メンバー')}</option>`)
             .join('');
     }
     if (expDl && experiments) {
@@ -357,11 +338,16 @@ function refreshCalendar() {
     }
 }
 
-function initFullCalendar() {
+function initFullCalendar(attempt = 0) {
     const calendarEl = document.getElementById('calendar');
     if (!calendarEl) return;
     if (typeof FullCalendar === 'undefined') {
-        setTimeout(initFullCalendar, 50);
+        // CDN 読込待ちの再試行。読込失敗時に無限リトライしないよう約5秒で打ち切る
+        if (attempt > 100) {
+            toast('カレンダーの読み込みに失敗しました。ページを再読込してください。', 'error');
+            return;
+        }
+        setTimeout(() => initFullCalendar(attempt + 1), 50);
         return;
     }
 
@@ -589,7 +575,7 @@ function renderEvents() {
                     <span class="cat-badge" style="background:${cat.bg};color:${cat.text};margin-left:6px;">${cat.short}</span>
                     ${occ ? `<a href="event-series.html?key=${encodeURIComponent(eventSeriesKey(ev))}" class="occ-badge occ-link" title="通算${occ.total}回 — シリーズ履歴を見る" data-action="series">${occ.num}回目</a>` : ''}
                 </td>
-                <td class="hide-mobile">${escapeHtml(ev.Location || '')}</td>
+                <td class="hide-mobile">${ev.Location ? `<a href="event-series.html?key=${encodeURIComponent(eventSeriesKey(ev))}" class="location-link" data-action="series" title="現地情報・シリーズ履歴を見る">${escapeHtml(ev.Location)}</a>` : ''}</td>
                 <td class="hide-mobile">${escapeHtml(ev.Event_Time || '')}</td>
                 <td data-action-cell>
                     <div class="inline-actions">
@@ -623,12 +609,12 @@ function populateFields(cardElement, eventData) {
         sec.style.display = isMeeting ? '' : 'none';
     });
 
-    const remarksLabel = cardElement.querySelector('.remarks-label');
-    if (remarksLabel) {
-        remarksLabel.textContent = isMeeting ? '議題 / 備考' : '備考';
-    }
+    // ラベルはテンプレート側が .remarks-label-view / .remarks-label-edit の2箇所
+    cardElement.querySelectorAll('.remarks-label-view, .remarks-label-edit').forEach(el => {
+        el.textContent = isMeeting ? '議題 / 備考' : '備考';
+    });
 
-    const fields = ['Title', 'Location', 'Audience', 'Meeting_Number', 'Date', 'Date_End', 'Event_Time', 'Meeting_Logistics', 'Remarks', 'Belongings', 'Positives', 'Reflections'];
+    const fields = ['Title', 'Location', 'Audience', 'Meeting_Number', 'Date', 'Date_End', 'Event_Time', 'Meeting_Logistics', 'Remarks', 'Belongings', 'Accompany', 'Positives', 'Reflections'];
 
     fields.forEach(field => {
         // Display elements
@@ -638,8 +624,12 @@ function populateFields(cardElement, eventData) {
 
         const displayEl = cardElement.querySelector(`.display-mode[data-field="${field}"]`);
         if (displayEl) {
-            // text-area-view は CSS の white-space:pre-wrap で改行が出るので textContent でOK（XSS安全）
-            displayEl.textContent = val;
+            if (field === 'Location' && eventData.Location) {
+                const key = eventSeriesKey(eventData);
+                displayEl.innerHTML = `<a href="event-series.html?key=${encodeURIComponent(key)}" class="location-link" title="現地情報・シリーズ履歴を見る">${escapeHtml(val)}</a>`;
+            } else {
+                displayEl.textContent = val;
+            }
         }
 
         // Input elements
@@ -667,6 +657,16 @@ function populateFields(cardElement, eventData) {
             b.onclick = (e) => e.stopPropagation();
             dateDisplayEl.appendChild(b);
         }
+    }
+
+    // 集合・解散の表示（片方だけの入力にも対応）
+    const gatherDismissEl = cardElement.querySelector('.display-mode[data-field="Gather_Dismiss_Display"]');
+    if (gatherDismissEl) {
+        const g = eventData.Gather_Time || '';
+        const d = eventData.Dismiss_Time || '';
+        gatherDismissEl.textContent = (g || d)
+            ? [g && `集合 ${g}`, d && `解散 ${d}`].filter(Boolean).join(' / ')
+            : '---';
     }
 
     // Special Date Inputs
@@ -967,16 +967,28 @@ function getActiveMembers() {
     return cached.filter(m => parseInt(m.FiscalYear || curFY) === curFY && m.Name);
 }
 
-// メンバーの役職判定（Role 優先、無ければ旧 Category から導出）
-function memberRole(m) {
-    return m.Role || (m.Category === 'adviser' ? 'アドバイザー' : m.Category === 'coordinator' ? 'コーディネーター' : '');
-}
+// 役職判定は app.js の memberRoleOf を使用
 function isStaffMember(m) {
-    const r = memberRole(m);
+    const r = memberRoleOf(m);
     return r === 'アドバイザー' || r === 'コーディネーター';
 }
 function isRegularMember(m) {
     return !isStaffMember(m);
+}
+
+// 開いているタグ入力ドロップダウンをすべて再配置する。row/wizard の再生成のたびに
+// window リスナーを追加すると溜まり続けるため、リスナー自体は一度だけ登録する。
+let _tagInputViewportListenersBound = false;
+function _initTagInputViewportListeners() {
+    if (_tagInputViewportListenersBound) return;
+    _tagInputViewportListenersBound = true;
+    const reposition = () => {
+        document.querySelectorAll('.tag-input-dropdown:not(.hidden)').forEach(dd => {
+            if (dd.isConnected && dd._reposition) dd._reposition();
+        });
+    };
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
 }
 
 function initTagInput(container, selectedValues, placeholder, filterFn) {
@@ -1009,6 +1021,29 @@ function initTagInput(container, selectedValues, placeholder, filterFn) {
         });
     }
 
+    // position:fixed でモーダルの overflow:auto によるクリッピングを避け、
+    // 実験内容の datalist のように入力欄の下（入らなければ上）へ画面いっぱいに広げる。
+    function positionDropdown() {
+        const rect = wrapper.getBoundingClientRect();
+        const margin = 8;
+        const spaceBelow = window.innerHeight - rect.bottom - margin;
+        const spaceAbove = rect.top - margin;
+        dropdown.style.left = rect.left + 'px';
+        dropdown.style.width = rect.width + 'px';
+        if (spaceBelow >= 150 || spaceBelow >= spaceAbove) {
+            dropdown.style.top = (rect.bottom + 4) + 'px';
+            dropdown.style.bottom = '';
+            dropdown.style.maxHeight = Math.max(100, spaceBelow) + 'px';
+        } else {
+            dropdown.style.top = '';
+            dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+            dropdown.style.maxHeight = Math.max(100, spaceAbove) + 'px';
+        }
+    }
+
+    dropdown._reposition = positionDropdown;
+    _initTagInputViewportListeners();
+
     function showDropdown() {
         const query = input.value.toLowerCase().trim();
         const members = filterFn ? getActiveMembers().filter(filterFn) : getActiveMembers();
@@ -1033,6 +1068,7 @@ function initTagInput(container, selectedValues, placeholder, filterFn) {
             dropdown.innerHTML = html;
         }
         dropdown.classList.remove('hidden');
+        positionDropdown();
     }
 
     function hideDropdown() { dropdown.classList.add('hidden'); }
@@ -1291,6 +1327,20 @@ function openEventWizard(editId, category, templateSrc) {
                     <label class="e1-label">場所</label>
                     <input id="wz-ev-location" class="e1-input" type="text" placeholder="例: 学生会館3F" value="${escapeAttr(e.Location || '')}">
                 </div>
+                <div class="e1-group">
+                    <label class="e1-label">住所</label>
+                    <input id="wz-ev-address" class="e1-input" type="text" placeholder="例: 秋田県大館市桜町1-1" value="${escapeAttr(e.Address || '')}">
+                </div>
+                <div class="flex-row">
+                    <div class="e1-group" style="flex:1;">
+                        <label class="e1-label">近隣の病院・診療所</label>
+                        <input id="wz-ev-hospital" class="e1-input" type="text" placeholder="例: ○○診療所：0186-45-0223" value="${escapeAttr(e.EmergencyHospital || '')}">
+                    </div>
+                    <div class="e1-group" style="flex:1;">
+                        <label class="e1-label">近隣の警察署</label>
+                        <input id="wz-ev-police" class="e1-input" type="text" placeholder="例: ○○警察署：018-852-4100" value="${escapeAttr(e.EmergencyPolice || '')}">
+                    </div>
+                </div>
             </div>`;
         // Meeting step 2: 日時
         stepsHtml += `
@@ -1340,6 +1390,20 @@ function openEventWizard(editId, category, templateSrc) {
                 <div class="e1-group">
                     <label class="e1-label">対象者・人数</label>
                     <input id="wz-ev-audience" class="e1-input" type="text" placeholder="例: 小学1〜3年生 40名" value="${escapeAttr(e.Audience || '')}">
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">住所</label>
+                    <input id="wz-ev-address" class="e1-input" type="text" placeholder="例: 秋田県大館市桜町1-1" value="${escapeAttr(e.Address || '')}">
+                </div>
+                <div class="flex-row">
+                    <div class="e1-group" style="flex:1;">
+                        <label class="e1-label">近隣の病院・診療所</label>
+                        <input id="wz-ev-hospital" class="e1-input" type="text" placeholder="例: ○○診療所：0186-45-0223" value="${escapeAttr(e.EmergencyHospital || '')}">
+                    </div>
+                    <div class="e1-group" style="flex:1;">
+                        <label class="e1-label">近隣の警察署</label>
+                        <input id="wz-ev-police" class="e1-input" type="text" placeholder="例: ○○警察署：018-852-4100" value="${escapeAttr(e.EmergencyPolice || '')}">
+                    </div>
                 </div>
             </div>`;
         // Event step 2: 日時
@@ -1662,6 +1726,9 @@ function saveEventFromWizard() {
     // Collect form data
     tempNewEvent.Title = (document.getElementById('wz-ev-title')?.value || '').trim();
     tempNewEvent.Location = (document.getElementById('wz-ev-location')?.value || '').trim();
+    tempNewEvent.Address = (document.getElementById('wz-ev-address')?.value || '').trim();
+    tempNewEvent.EmergencyHospital = (document.getElementById('wz-ev-hospital')?.value || '').trim();
+    tempNewEvent.EmergencyPolice = (document.getElementById('wz-ev-police')?.value || '').trim();
     tempNewEvent.Category = evWizardCategory;
     tempNewEvent.Date = document.getElementById('wz-ev-date')?.value || '';
     tempNewEvent.Date_End = document.getElementById('wz-ev-date-end')?.value || '';
@@ -1873,10 +1940,6 @@ function renderModalForm(eventData, isEditMode = true) {
     // Populate and force Edit Mode
     populateFields(card, eventData);
 
-    // Title input is missing in details (it was in summary). Add it dynamically.
-    const detailsContainer = card.querySelector('.detail-section.top-section') || card.querySelector('.event-details');
-    // If it's pure Event mode, inject the standard title at the top if it got removed, else it's in template. 
-    // Wait, with the new template Title input is already there for both modes. So we don't need programmatic injection
     container.appendChild(card);
 
     if (isEditMode) {
@@ -1944,58 +2007,6 @@ async function saveExperimentFeedback(card, eventData) {
                 if (idx >= 0) experiments[idx] = saved;
             } catch (e) {
                 console.warn('Experiment feedback save failed for', expName, e);
-            }
-        }
-    }
-
-    api.saveCache('experiments', experiments);
-}
-
-async function processExperimentFeedbackBg(feedbackData, eventData) {
-    let experiments = (api.loadCache('experiments') || {}).items;
-    if (!experiments) {
-        try { experiments = await api.list('experiments'); api.saveCache('experiments', experiments); } catch (_) { return; }
-    }
-
-    for (const fb of feedbackData) {
-        const exp = experiments.find(e => e.Name === fb.expName);
-        if (!exp) continue;
-
-        let changed = false;
-
-        if (fb.posText) {
-            const entries = parseFeedbackEntries(exp.Positives);
-            entries.push({
-                id: genFeedbackId(),
-                date: eventData.Date || todayISO(),
-                eventId: eventData.ID || '',
-                eventTitle: eventData.Title || '',
-                text: fb.posText
-            });
-            exp.Positives = stringifyFeedbackEntries(entries);
-            changed = true;
-        }
-
-        if (fb.refText) {
-            const entries = parseFeedbackEntries(exp.Reflections);
-            entries.push({
-                id: genFeedbackId(),
-                date: eventData.Date || todayISO(),
-                eventId: eventData.ID || '',
-                eventTitle: eventData.Title || '',
-                text: fb.refText
-            });
-            exp.Reflections = stringifyFeedbackEntries(entries);
-            changed = true;
-        }
-
-        if (changed) {
-            try {
-                const saved = await api.save('experiments', { ...exp, _baseUpdatedAt: exp.UpdatedAt || '' });
-                const idx = experiments.findIndex(e => e.ID === exp.ID);
-                if (idx >= 0) experiments[idx] = saved;
-            } catch (e) {
-                console.warn('Experiment feedback save failed for', fb.expName, e);
             }
         }
     }
