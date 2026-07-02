@@ -24,6 +24,25 @@
                 <p id="series-subtitle" class="series-subtitle"></p>
             </div>
 
+            <!-- 緊急連絡先・現地情報 -->
+            <div id="series-safety-card" class="series-safety-card hidden">
+                <div class="series-safety-title">&#x1F6A8; 緊急連絡先・現地情報</div>
+                <div class="series-safety-grid">
+                    <div class="series-safety-item" style="grid-column: 1 / -1;">
+                        <span class="series-safety-label">&#x1F4CD; 住所</span>
+                        <span id="series-address" class="series-safety-value"></span>
+                    </div>
+                    <div class="series-safety-item">
+                        <span class="series-safety-label">&#x1F3E5; 近隣の病院・診療所</span>
+                        <span id="series-hospital" class="series-safety-value"></span>
+                    </div>
+                    <div class="series-safety-item">
+                        <span class="series-safety-label">&#x1F46E; 近隣の警察署</span>
+                        <span id="series-police" class="series-safety-value"></span>
+                    </div>
+                </div>
+            </div>
+
             <div class="expd-tab-bar">
                 <button class="expd-tab active" data-tab="overview" onclick="switchSeriesTab(this)">概要</button>
                 <button class="expd-tab" data-tab="feedback" onclick="switchSeriesTab(this)">振り返りタイムライン</button>

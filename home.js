@@ -205,24 +205,17 @@ function renderMembersCard(members) {
     const curFY = currentFiscalYear();
     const fy = members.filter(m => parseInt(m.FiscalYear || curFY) === curFY);
 
-    function effectiveRole(m) {
-        if (m.Role) return m.Role;
-        if (m.Category === 'adviser') return 'アドバイザー';
-        if (m.Category === 'coordinator') return 'コーディネーター';
-        return '';
-    }
-
-    const advisers = fy.filter(m => effectiveRole(m) === 'アドバイザー');
-    const coordinators = fy.filter(m => effectiveRole(m) === 'コーディネーター');
-    const regular = fy.filter(m => { const r = effectiveRole(m); return r !== 'アドバイザー' && r !== 'コーディネーター'; });
-    const withRole = regular.filter(m => effectiveRole(m));
+    const advisers = fy.filter(m => memberRoleOf(m) === 'アドバイザー');
+    const coordinators = fy.filter(m => memberRoleOf(m) === 'コーディネーター');
+    const regular = fy.filter(m => { const r = memberRoleOf(m); return r !== 'アドバイザー' && r !== 'コーディネーター'; });
+    const withRole = regular.filter(m => memberRoleOf(m));
 
     container.innerHTML = `
         <li><span class="dl-date">アドバイザー</span><span class="dl-title">${advisers.length}名</span></li>
         <li><span class="dl-date">コーディネーター</span><span class="dl-title">${coordinators.length}名</span></li>
         <li><span class="dl-date">メンバー</span><span class="dl-title">${regular.length}名</span></li>
         ${withRole.slice(0, 4).map(m => `
-            <li><span class="dl-date" style="min-width:90px;">${escapeHtml(effectiveRole(m))}</span><span class="dl-title">${escapeHtml(m.Name)}</span></li>
+            <li><span class="dl-date" style="min-width:90px;">${escapeHtml(memberRoleOf(m))}</span><span class="dl-title">${escapeHtml(m.Name)}</span></li>
         `).join('')}
     `;
 }

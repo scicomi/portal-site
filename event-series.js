@@ -67,16 +67,59 @@ function renderAll() {
     document.getElementById('series-subtitle').textContent =
         `通算${seriesEvents.length}回開催（${earliest}年〜）`;
 
+    renderSafetyInfo();
     renderOverview();
     renderFeedbackTimeline();
     renderStats();
+}
+
+// ---- 緊急連絡先・現地情報 ----
+
+function renderSafetyInfo() {
+    const card = document.getElementById('series-safety-card');
+    if (!card) return;
+
+    // 最新イベントの情報を優先的に使う（フォールバックで過去イベントも探す）
+    let info = null;
+    for (const ev of seriesEvents) {
+        if (ev.Address || ev.EmergencyHospital || ev.EmergencyPolice) {
+            info = ev;
+            break;
+        }
+    }
+
+    if (!info) {
+        card.classList.add('hidden');
+        return;
+    }
+
+    card.classList.remove('hidden');
+
+    const addressEl = document.getElementById('series-address');
+    const hospitalEl = document.getElementById('series-hospital');
+    const policeEl = document.getElementById('series-police');
+
+    if (addressEl) addressEl.textContent = info.Address || '---';
+    if (hospitalEl) hospitalEl.innerHTML = formatTelLink(info.EmergencyHospital);
+    if (policeEl) policeEl.innerHTML = formatTelLink(info.EmergencyPolice);
+}
+
+function formatTelLink(text) {
+    if (!text) return '---';
+    // "施設名：0186-45-0223" のようなフォーマットから電話番号を抽出してリンク化
+    const match = text.match(/([\d\-]+)$/);
+    if (match) {
+        const tel = match[1];
+        const telDigits = tel.replace(/-/g, '');
+        return `${escapeHtml(text.replace(tel, ''))}<a href="tel:${escapeAttr(telDigits)}" class="series-tel-link">${escapeHtml(tel)}</a>`;
+    }
+    return escapeHtml(text);
 }
 
 // ---- 概要タブ ----
 
 function renderOverview() {
     const container = document.getElementById('series-overview-list');
-    const currentFy = getFiscalYear(todayISO());
 
     container.innerHTML = seriesEvents.map((ev, idx) => {
         const fy = getFiscalYear(ev.Date);
@@ -84,18 +127,8 @@ function renderOverview() {
         const isLatest = idx === 0;
         const cat = getEventCategory(ev.Category || 'normal');
 
-        let expNames = [];
-        if (ev.PartsList) {
-            try {
-                const list = typeof ev.PartsList === 'string' ? JSON.parse(ev.PartsList) : (Array.isArray(ev.PartsList) ? ev.PartsList : []);
-                if (list.length > 0 && list[0].partName !== undefined) {
-                    list.forEach(p => (p.items || []).forEach(it => { if (it.name) expNames.push(it.name); }));
-                } else {
-                    list.forEach(it => { if (it.name) expNames.push(it.name); });
-                }
-            } catch (_) {}
-        }
-        expNames = [...new Set(expNames)];
+        // 新旧フォーマットの吸収は app.js の normalizeParts に一本化
+        const expNames = [...new Set(normalizeParts(ev.PartsList).map(it => it.name).filter(Boolean))];
 
         const pos = (ev.Positives || '').trim();
         const ref = (ev.Reflections || '').trim();
@@ -131,7 +164,6 @@ function renderOverview() {
 
 function renderFeedbackTimeline() {
     const container = document.getElementById('series-feedback-timeline');
-    const currentFy = getFiscalYear(todayISO());
 
     const grouped = {};
     seriesEvents.forEach(ev => {
@@ -214,20 +246,9 @@ function renderStats() {
         if (ev.Positives && ev.Positives.trim()) totalPos++;
         if (ev.Reflections && ev.Reflections.trim()) totalRef++;
 
-        if (ev.PartsList) {
-            try {
-                let list = typeof ev.PartsList === 'string' ? JSON.parse(ev.PartsList) : (Array.isArray(ev.PartsList) ? ev.PartsList : []);
-                if (list.length > 0 && list[0].partName !== undefined) {
-                    list.forEach(p => (p.items || []).forEach(it => {
-                        if (it.name) expCount[it.name] = (expCount[it.name] || 0) + 1;
-                    }));
-                } else {
-                    list.forEach(it => {
-                        if (it.name) expCount[it.name] = (expCount[it.name] || 0) + 1;
-                    });
-                }
-            } catch (_) {}
-        }
+        normalizeParts(ev.PartsList).forEach(it => {
+            if (it.name) expCount[it.name] = (expCount[it.name] || 0) + 1;
+        });
     });
 
     const topExps = Object.entries(expCount)
@@ -268,7 +289,6 @@ function renderStats() {
     }
 
     if (locHistory.length > 1) {
-        const uniqueLocs = [...new Set(locations.map(l => l.loc))];
         html += `<div class="stats-card stats-card-wide">
             <h3 class="stats-card-title">場所の変遷</h3>
             <div class="stats-location-timeline">

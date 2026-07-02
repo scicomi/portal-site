@@ -184,8 +184,8 @@ function renderPasswords() {
         const host = hostOf(p.URL);
         const urlHref = p.URL ? (/^https?:\/\//i.test(p.URL) ? p.URL : 'https://' + p.URL) : '';
         return `
-        <div class="pw-card ${open ? 'open' : ''}" data-id="${p.ID}">
-            <div class="pw-card-head" onclick="togglePwCard('${p.ID}')">
+        <div class="pw-card ${open ? 'open' : ''}" data-id="${escapeAttr(p.ID)}">
+            <div class="pw-card-head" onclick="togglePwCard('${escapeAttr(p.ID)}')">
                 <div class="pw-card-title">
                     ${catBadgeHtml(p.Category)}
                     <span class="pw-card-name">${escapeHtml(p.SiteName || '(名称未設定)')}</span>
@@ -211,15 +211,15 @@ function renderPasswords() {
                 </div>` : `
                 <div class="pw-row">
                     <span class="pw-row-label">パスワード</span>
-                    <span class="pw-row-value pw-mono pw-secret" id="pw-secret-${p.ID}" data-revealed="false">${p.Password ? '••••••••' : '—'}</span>
+                    <span class="pw-row-value pw-mono pw-secret" id="pw-secret-${escapeAttr(p.ID)}" data-revealed="false">${p.Password ? '••••••••' : '—'}</span>
                     ${p.Password ? `
-                    <button class="pw-copy-btn" onclick="toggleSecret('${p.ID}', this)" title="表示切替">👁 表示</button>
+                    <button class="pw-copy-btn" onclick="toggleSecret('${escapeAttr(p.ID)}', this)" title="表示切替">👁 表示</button>
                     <button class="pw-copy-btn" onclick="copyPwField('${escapeAttr(p.ID)}', 'Password', this)" title="コピー">コピー</button>` : ''}
                 </div>`}
                 ${p.Note ? `<div class="pw-row pw-row-note"><span class="pw-row-label">メモ</span><span class="pw-row-value pw-note-body">${noteToHtml(p.Note)}</span></div>` : ''}
                 <div class="pw-card-actions">
-                    <button class="tbl-btn" onclick="editPwEntry('${p.ID}')">編集</button>
-                    <button class="tbl-btn tbl-btn-danger" onclick="deletePwEntry('${p.ID}')">削除</button>
+                    <button class="tbl-btn" onclick="editPwEntry('${escapeAttr(p.ID)}')">編集</button>
+                    <button class="tbl-btn tbl-btn-danger" onclick="deletePwEntry('${escapeAttr(p.ID)}')">削除</button>
                 </div>
             </div>
         </div>`;

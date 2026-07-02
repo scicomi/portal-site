@@ -91,12 +91,6 @@ function shortDate(str) {
   return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
 }
 
-function daysBetween(aISO, bISO) {
-  const a = parseISODate(aISO), b = parseISODate(bISO);
-  if (!a || !b) return null;
-  return Math.round((b - a) / (1000 * 60 * 60 * 24));
-}
-
 function genId(prefix) {
   return prefix + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
 }
@@ -147,6 +141,15 @@ function normalizeParts(raw) {
   }));
 }
 
+// メンバーの役職（Role 優先、無ければ旧 Category から導出）。
+// members / home / bot / events の各ページで同じ導出が重複していたため共通化。
+function memberRoleOf(m) {
+  if (m.Role) return m.Role;
+  if (m.Category === 'adviser') return 'アドバイザー';
+  if (m.Category === 'coordinator') return 'コーディネーター';
+  return '';
+}
+
 // ====== ナビゲーション ======
 
 function renderHeader(activePage) {
@@ -189,6 +192,9 @@ function handleLogout(btn) {
     api.clearToken();
     api.clearAdminToken();
     api.clearAllCache();
+    // サーバー設定由来のキャッシュも消す（次のログインで再取得される）
+    localStorage.removeItem('scicomi_site_settings');
+    localStorage.removeItem('scicomi_welcome_message');
     location.href = 'index.html';
     return;
   }
@@ -221,15 +227,29 @@ function trapFocus(modal) {
 }
 
 function bindModalEscape(modal, closeFn) {
+  // .hidden 切替だけで再利用される静的モーダルは開くたびにここを通るため、
+  // 1要素につき1回だけ登録し、2回目以降は closeFn の差し替えのみ行う
+  // （毎回 addEventListener + MutationObserver を作るとリスナーが際限なく増える）。
+  if (modal._escBinding) {
+    modal._escBinding.closeFn = closeFn;
+    return modal._escBinding.cleanup;
+  }
+  const binding = { closeFn };
   const handler = (e) => {
-    if (e.key === 'Escape') closeFn();
+    if (e.key === 'Escape') binding.closeFn();
   };
-  document.addEventListener('keydown', handler);
-  const cleanup = () => document.removeEventListener('keydown', handler);
   const observer = new MutationObserver(() => {
-    if (!document.contains(modal)) { cleanup(); observer.disconnect(); }
+    if (!document.contains(modal)) cleanup();
   });
-  observer.observe(modal.parentNode || document.body, { childList: true, subtree: true });
+  const cleanup = () => {
+    document.removeEventListener('keydown', handler);
+    observer.disconnect();
+    delete modal._escBinding;
+  };
+  binding.cleanup = cleanup;
+  modal._escBinding = binding;
+  document.addEventListener('keydown', handler);
+  observer.observe(document.body, { childList: true, subtree: true });
   return cleanup;
 }
 
@@ -237,6 +257,48 @@ function bindOverlayClose(overlayEl, closeFn) {
   overlayEl.addEventListener('click', (e) => {
     if (e.target === overlayEl) closeFn();
   });
+}
+
+// ====== テーブルセルのポップオーバー（狭い列で潰れる値をタップで全文表示） ======
+
+function closeCellPopover() {
+  const existing = document.getElementById('cell-popover');
+  if (existing) existing.remove();
+  document.removeEventListener('click', _cellPopoverOutsideHandler, true);
+  document.removeEventListener('keydown', _cellPopoverEscHandler);
+}
+
+function _cellPopoverOutsideHandler(e) {
+  const pop = document.getElementById('cell-popover');
+  if (pop && !pop.contains(e.target)) closeCellPopover();
+}
+
+function _cellPopoverEscHandler(e) {
+  if (e.key === 'Escape') closeCellPopover();
+}
+
+function showCellPopover(anchorEl, label, valueHtml) {
+  closeCellPopover();
+
+  const pop = document.createElement('div');
+  pop.id = 'cell-popover';
+  pop.className = 'cell-popover';
+  pop.innerHTML = `<div class="cell-popover-label">${escapeHtml(label)}</div><div class="cell-popover-value">${valueHtml}</div>`;
+  document.body.appendChild(pop);
+
+  const rect = anchorEl.getBoundingClientRect();
+  const popRect = pop.getBoundingClientRect();
+  let left = Math.min(rect.left, window.innerWidth - popRect.width - 12);
+  left = Math.max(8, left);
+  let top = rect.bottom + 6;
+  if (top + popRect.height > window.innerHeight - 8) top = rect.top - popRect.height - 6;
+  pop.style.left = left + 'px';
+  pop.style.top = top + 'px';
+
+  setTimeout(() => {
+    document.addEventListener('click', _cellPopoverOutsideHandler, true);
+    document.addEventListener('keydown', _cellPopoverEscHandler);
+  }, 0);
 }
 
 // ====== 管理者認証モーダル ======
@@ -319,6 +381,9 @@ async function requireAuth(onReady) {
 }
 
 function showPasswordModal(onSuccess) {
+  // 複数の API 呼び出しが同時に unauthorized を返すと多重に開くため、既存があれば作り直す
+  const existing = document.getElementById('pw-modal');
+  if (existing) existing.remove();
   const modal = document.createElement('div');
   modal.id = 'pw-modal';
   modal.innerHTML = `
