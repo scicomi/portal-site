@@ -97,9 +97,11 @@ function renderEventHeader() {
 
 function checkDeadline() {
   if (!currentEvent.Date) return;
-  const eventDate = parseISODate(currentEvent.Date);
-  const now = new Date();
-  if (eventDate && eventDate < now) {
+  // 最終日の23:59まで投票可能にする（従来は開催初日の正午で「終了」扱いになっていた）
+  const endDate = parseISODate(currentEvent.DateEnd || currentEvent.Date);
+  if (!endDate) return;
+  endDate.setHours(23, 59, 59, 999);
+  if (endDate < new Date()) {
     const el = document.getElementById('vote-deadline');
     el.textContent = 'このイベントは終了しています。投票は締め切られました。';
     el.style.display = '';

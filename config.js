@@ -89,9 +89,10 @@ const CONFIG = {
 
   // ===== ナビゲーション =====
   NAV_ITEMS: [
-    { href: 'index.html',       label: 'ホーム',     page: 'home' },
-    { href: 'events.html',      label: 'イベント',   page: 'events' },
-    { href: 'members.html',     label: 'メンバー',   page: 'members' },
+    { href: 'index.html',        label: 'ホーム',       page: 'home' },
+    { href: 'events.html',       label: 'イベント',     page: 'events' },
+    { href: 'event-series.html', label: 'イベント別',   page: 'series' },
+    { href: 'members.html',      label: 'メンバー',     page: 'members' },
     { href: 'experiments.html', label: '実験ネタ',   page: 'experiments' },
     { href: 'bot.html',         label: 'AI検索',     page: 'bot' },
     // 管理者ログイン時のみ表示（セパレーター付き）

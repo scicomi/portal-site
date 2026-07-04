@@ -393,6 +393,11 @@ function doPost(e) {
       return jsonResponse({ success: true, votes: listEventVotes_(eventId) });
     }
 
+    // --- イベント投票: 全投票の一括取得（ホームの出欠一括回答・一覧の参加人数表示用） ---
+    if (action === 'listVotes') {
+      return jsonResponse({ success: true, votes: listAllVotes_() });
+    }
+
     // --- イベント投票: 投票送信（upsert） ---
     if (action === 'submitVote') {
       var voteData = body.vote || {};
@@ -800,6 +805,8 @@ function deleteResource(resource, id) {
 
 const EVENTS_HEADERS = [
   'ID', 'Date', 'DateEnd', 'Title', 'Category', 'Location', 'Audience',
+  // 現地情報（住所・緊急連絡先）。シリーズページ（event-series.html）で表示する。
+  'Address', 'EmergencyHospital', 'EmergencyPolice',
   'TimeStart', 'TimeEnd', 'GatherTime', 'DismissTime', 'MeetingNumber', 'PartsList',
   'AdminKyoka', 'AdminHoukoku', 'KyokaDeadline', 'HoukokuDeadline',
   'Logistics', 'Remarks', 'Files', 'Belongings', 'Accompany',
@@ -807,6 +814,8 @@ const EVENTS_HEADERS = [
   // 報告書の提出ステータス（''=未提出 / coordinator=コーディネーター提出済 / clc=CLC提出済）。
   // ホーム画面の「期限が近い報告書」カードから段階的に更新する。
   'ReportStatus',
+  // 許可願の提出ステータス（''=未提出 / submitted=提出済）。ホームの「許可願の期限」カードで更新する。
+  'KyokaStatus',
   'CreatedAt', 'UpdatedAt', 'UpdatedBy'
 ];
 const MEMBERS_HEADERS = [
@@ -1855,6 +1864,23 @@ function listEventVotes_(eventId) {
         updatedAt: String(data[i][3])
       });
     }
+  }
+  return votes;
+}
+
+// 全イベント分の投票を一括で返す（イベント数×個別取得のラウンドトリップを避ける）。
+function listAllVotes_() {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(EVENT_VOTES_SHEET);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+  var votes = [];
+  for (var i = 0; i < data.length; i++) {
+    votes.push({
+      eventId: String(data[i][0]),
+      memberId: String(data[i][1]),
+      status: String(data[i][2]),
+      updatedAt: String(data[i][3])
+    });
   }
   return votes;
 }

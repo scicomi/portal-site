@@ -17,7 +17,7 @@
     --danger-text: #c92a2a;
     --success-color: #107c10;
     --success-light: #4ade80;
-    --warning-color: var(--warning-color);
+    --warning-color: #f59e0b; /* 自己参照になっていて無効値だったのを修正 */
     --warning-hover: #d97706;
     --info-color: #60a5fa;
     --text-muted: #888;
@@ -3869,4 +3869,311 @@ textarea:focus {
     .vote-btn { font-size: var(--font-size-base); min-height: 52px; padding: var(--space-sm); }
     .vote-event-title { font-size: 1.3rem; }
     .vote-section { padding: var(--space-md); }
+}
+/* ====== 2026年7月改修: イベント別ページ・出欠一括回答・チェックリスト ====== */
+
+/* --- 期限超過の強調（ウィザード・クイック作成・詳細の書類欄で使用） --- */
+.deadline-past {
+    color: var(--danger-text);
+    font-weight: 700;
+}
+
+/* --- イベント一覧: 参加人数バッジ --- */
+.vote-count-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 8px;
+    border-radius: var(--radius-full);
+    background: #e1f5ee;
+    color: #085041;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* --- シリーズ一覧（イベント別ページのトップ） --- */
+.series-index-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+}
+.series-index-card {
+    display: block;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    text-decoration: none;
+    color: var(--text-color);
+    transition: box-shadow 0.15s, border-color 0.15s;
+}
+.series-index-card:hover {
+    border-color: var(--primary-light);
+    box-shadow: 0 2px 8px rgba(70, 71, 117, 0.12);
+}
+.series-index-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.series-index-title {
+    font-weight: 700;
+    font-size: 0.98rem;
+    line-height: 1.3;
+}
+.series-index-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    flex-wrap: wrap;
+}
+.series-index-next {
+    color: var(--success-color);
+    font-weight: 600;
+}
+.series-index-loc {
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+/* --- 詳細タブ: 開催回セレクタ --- */
+.occ-selector-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.occ-selector-label {
+    font-size: 0.85rem;
+    color: var(--text-label);
+    white-space: nowrap;
+}
+.occ-selector-select {
+    max-width: 340px;
+}
+
+/* --- 詳細タブ: ヘッダー行（バッジ＋編集/複製ボタン） --- */
+.detail-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+.detail-head-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.detail-head-actions {
+    display: flex;
+    gap: 8px;
+}
+.detail-head-actions .btn {
+    text-decoration: none;
+}
+.occ-badge.occ-upcoming {
+    background: #e1f5ee;
+    color: #085041;
+}
+
+/* --- 詳細タブ: 未入力チェックリスト（枠だけ作成→あとから追記の可視化） --- */
+.detail-checklist {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    font-size: 0.82rem;
+}
+.detail-checklist-label {
+    color: #92400e;
+    font-weight: 600;
+}
+.checklist-chip {
+    background: #fef3c7;
+    color: #78350f;
+    border-radius: var(--radius-full);
+    padding: 1px 10px;
+    font-size: 0.78rem;
+}
+.detail-checklist-link {
+    margin-left: auto;
+    color: var(--primary-light);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.detail-checklist-link:hover { text-decoration: underline; }
+
+/* --- 詳細タブ: 情報テーブル --- */
+.series-detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    font-size: 0.92rem;
+}
+.series-detail-table th,
+.series-detail-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-subtle);
+    text-align: left;
+    vertical-align: top;
+}
+.series-detail-table tr:last-child th,
+.series-detail-table tr:last-child td {
+    border-bottom: none;
+}
+.series-detail-table th {
+    width: 140px;
+    background: var(--bg-subtle);
+    color: var(--text-label);
+    font-weight: 600;
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+@media (max-width: 600px) {
+    .series-detail-table th { width: 96px; font-size: 0.76rem; padding: 8px 8px; }
+    .series-detail-table td { padding: 8px 10px; }
+}
+
+/* --- 詳細タブ: 書類ステータス行 --- */
+.doc-status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 4px 0;
+}
+.doc-status-name {
+    font-weight: 700;
+    min-width: 52px;
+}
+.doc-status-info {
+    font-size: 0.88rem;
+}
+
+/* --- 詳細タブ: 参加状況・振り返りカード --- */
+.detail-section-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    margin-top: 14px;
+}
+.detail-section-title {
+    margin: 0 0 10px;
+    font-size: 0.95rem;
+    color: var(--primary-color);
+}
+.vote-mini-summary {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+.vote-mini {
+    padding: 3px 12px;
+    border-radius: var(--radius-full);
+    font-size: 0.82rem;
+    background: var(--bg-muted);
+    color: var(--text-body);
+}
+.vote-mini strong { font-size: 0.95rem; }
+.vote-mini-attend { background: #e1f5ee; color: #085041; }
+.vote-mini-absent { background: #fceaea; color: #7c2d2d; }
+.vote-mini-undecided { background: #fef3c7; color: #78350f; }
+
+/* --- 統計タブ内の開催履歴見出し --- */
+.series-history-heading {
+    margin: 20px 0 10px;
+    font-size: 1rem;
+    color: var(--primary-color);
+}
+
+/* タイムライン・開催履歴の「この回の詳細」ボタン（<a>から<button>に変えたため） */
+button.sfb-detail-link,
+button.sfb-event-link {
+    background: none;
+    border: none;
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
+}
+
+/* --- ホーム: 出欠一括回答 --- */
+.bulk-vote-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.bulk-vote-label {
+    font-size: 0.85rem;
+    color: var(--text-label);
+    font-weight: 600;
+    white-space: nowrap;
+}
+.bulk-vote-select {
+    max-width: 240px;
+}
+.bulk-vote-list .bv-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.bv-counts {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+.bv-btns {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+.bv-btn {
+    border: 1px solid var(--border-input);
+    background: var(--card-bg);
+    color: var(--text-body);
+    border-radius: var(--radius-full);
+    padding: 3px 12px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+    min-height: 30px;
+}
+.bv-btn:hover { background: var(--hover-bg); }
+.bv-btn.bv-attend.active { background: #e1f5ee; border-color: #10b981; color: #085041; font-weight: 700; }
+.bv-btn.bv-absent.active { background: #fceaea; border-color: var(--danger-color); color: #7c2d2d; font-weight: 700; }
+.bv-btn.bv-undecided.active { background: #fef3c7; border-color: #f59e0b; color: #78350f; font-weight: 700; }
+@media (max-width: 600px) {
+    .bv-btns { margin-left: 0; width: 100%; justify-content: flex-end; }
+    .bv-btn { min-height: 36px; padding: 4px 14px; }
+}
+
+/* 進捗ドットをクリック可能にした（<button>化）のに伴う調整 */
+button.wizard-step-dot {
+    font-family: inherit;
+    padding: 0;
+    cursor: pointer;
+}
+button.wizard-step-dot:hover:not(.active) {
+    border-color: var(--primary-light);
+    color: var(--primary-light);
 }
