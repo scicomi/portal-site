@@ -88,6 +88,7 @@ function uiToGas(u) {
         Positives: u.Positives || '',
         Reflections: u.Reflections || '',
         ReportStatus: u.ReportStatus || '',  // 報告書ステータスをイベント編集保存でも保持する
+        KyokaStatus: u.KyokaStatus || '',    // 許可願ステータスも同様に保持する
         UpdatedBy: u.UpdatedBy || '',
         CreatedAt: u.CreatedAt || '',  // 既存の作成日時を保持（更新・UNDO再作成で消さない）
         UpdatedAt: u.UpdatedAt || ''   // GAS形キャッシュ統一を将来行うための準備。サーバーは送信値を上書きする。
@@ -127,7 +128,7 @@ document.addEventListener('keydown', (e) => {
         // フォーム編集中は Esc / Ctrl+S だけ拾う
         if (e.key === 'Escape') closeAnyOpenModal();
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-            const saveBtn = document.querySelector('.modal-content .btn-primary:not(.hidden), .event-card.editing .btn-primary:not(.hidden)');
+            const saveBtn = document.querySelector('#qc-save, .modal-content .btn-primary:not(.hidden)');
             if (saveBtn) { e.preventDefault(); saveBtn.click(); }
         }
         return;
@@ -166,18 +167,22 @@ function _bindEventTableDelegation() {
         const actionEl = e.target.closest('[data-action]');
         if (actionEl) {
             const action = actionEl.dataset.action;
-            if (action === 'series' || action === 'vote') return; // <a> のデフォルト遷移に任せる
+            if (action === 'series' || action === 'map') return; // <a> のデフォルト遷移に任せる
             e.stopPropagation();
             const row = actionEl.closest('tr[data-id]');
             if (!row) return;
             const id = row.dataset.id;
             if (action === 'edit') openEventWizard(id);
             else if (action === 'delete') confirmDeleteEvent(id);
+            else if (action === 'duplicate') {
+                const src = eventsData.find(x => x.ID === id);
+                if (src) startNewEvent(src.Category || 'normal', src);
+            }
             return;
         }
         if (e.target.closest('[data-action-cell]')) return;
         const row = e.target.closest('tr[data-id]');
-        if (row) viewEventInModal(row.dataset.id);
+        if (row) location.href = 'event-series.html?event=' + encodeURIComponent(row.dataset.id);
     });
 }
 
@@ -187,8 +192,18 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function init() {
+    // 旧リンク互換: ?event=<ID> はイベント詳細（シリーズページ）へ転送する（詳細モーダルは廃止）。
+    if (redirectLegacyEventParam()) return;
+
     bindOverlayClose(document.getElementById('modal-overlay'), closeModal);
     _bindEventTableDelegation();
+
+    // ?action=new はデータ読込を待たずに新規作成モーダルを開ける
+    if (new URLSearchParams(location.search).get('action') === 'new') {
+        history.replaceState(null, '', 'events.html');
+        openNewEventModal();
+    }
+
     holidaysData = await api.loadHolidaysCached();
 
     // キャッシュ即表示（GAS形で書かれていても UI形へ正規化してから使う）
@@ -202,32 +217,39 @@ async function init() {
     // refreshData 完了後に renderEvents で置き換える（空表示と読込中を取り違えない）。
     if (cached && cached.items && cached.items.length > 0) {
         renderEvents();
-        focusEventFromUrl();
+        handleUrlActionParams();
     }
 
     if (cached) updateSyncStatus('cached', cached.timestamp);
     else updateSyncStatus('initial-loading');
 
     refreshData();
+    refreshVotes();
 }
 
-// ホーム等から ?event=<ID>（&tab=feedback）で来た場合、そのイベントの詳細モーダルを開く。
-// データ未取得のうちは何もせず、refreshData 後に再度試みる（focusHandled で一度だけ実行）。
-let eventFocusHandled = false;
-function focusEventFromUrl() {
-    if (eventFocusHandled) return;
+function redirectLegacyEventParam() {
+    const id = new URLSearchParams(location.search).get('event');
+    if (!id) return false;
+    location.replace('event-series.html?event=' + encodeURIComponent(id));
+    return true;
+}
+
+// ?edit=<ID> は編集ウィザード、?duplicate=<ID> は複製して新規作成を開く
+// （シリーズ詳細ページの「編集」「複製」ボタンの遷移先）。
+// データ未取得のうちは何もせず、refreshData 後に再度試みる（一度だけ実行）。
+let urlActionHandled = false;
+function handleUrlActionParams() {
+    if (urlActionHandled) return;
     const params = new URLSearchParams(location.search);
-    const id = params.get('event');
-    if (!id) return;
-    const ev = eventsData.find(e => e.ID === id);
-    if (!ev) return; // まだ読み込まれていない → リフレッシュ後に再試行
-    eventFocusHandled = true;
-    viewEventInModal(id);
-    if (params.get('tab') === 'feedback') {
-        const container = document.getElementById('new-event-form-container');
-        const fbBtn = container && container.querySelector('.event-tab[data-tab="feedback"]');
-        if (fbBtn) switchEventTab(fbBtn);
-    }
+    const editId = params.get('edit');
+    const dupId = params.get('duplicate');
+    if (!editId && !dupId) return;
+    const target = eventsData.find(e => e.ID === (editId || dupId));
+    if (!target) return; // まだ読み込まれていない → リフレッシュ後に再試行
+    urlActionHandled = true;
+    history.replaceState(null, '', 'events.html');
+    if (editId) openEventWizard(editId);
+    else startNewEvent(target.Category || 'normal', target);
 }
 
 /**
@@ -272,13 +294,27 @@ async function refreshData(isManual = false) {
         eventsData = list.map(gasToUi);
         api.saveCache('events', eventsData);
         renderEvents();
-        focusEventFromUrl();
+        handleUrlActionParams();
         if (calendarVisible) refreshCalendar();
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
         if (e.handled) return;
         updateSyncStatus('error', null, e.message);
     }
+}
+
+// ---- 投票（出欠）集計: 一覧の参加人数バッジ用 ----
+let votesByEvent = {};
+async function refreshVotes() {
+    try {
+        const votes = await api.listVotes();
+        votesByEvent = {};
+        votes.forEach(v => {
+            const b = votesByEvent[v.eventId] || (votesByEvent[v.eventId] = { attend: 0, absent: 0, undecided: 0 });
+            if (b[v.status] !== undefined) b[v.status]++;
+        });
+        renderEvents();
+    } catch (_) { /* 集計は補助情報。失敗しても一覧表示は継続する */ }
 }
 
 // ---- 検索・フィルタ ----
@@ -386,7 +422,6 @@ function initFullCalendar(attempt = 0) {
 
             _modalPrevFocus = document.activeElement;
             document.getElementById('category-selection-modal').classList.remove('hidden');
-            document.getElementById('new-event-edit-modal').classList.add('hidden');
             document.getElementById('modal-overlay').classList.remove('hidden');
             bindModalEscape(document.getElementById('modal-overlay'), closeModal);
 
@@ -429,7 +464,7 @@ function initFullCalendar(attempt = 0) {
             successCallback(fcEvents);
         },
         eventClick: function (info) {
-            viewEventInModal(info.event.id);
+            location.href = 'event-series.html?event=' + encodeURIComponent(info.event.id);
         },
         eventDidMount: function (info) {
             // ホバーツールチップ
@@ -477,39 +512,7 @@ function initFullCalendar(attempt = 0) {
 }
 
 // ※ カスタムグリッド暦（#calendar-grid）は廃止。カレンダーは FullCalendar(#calendar) に一本化。
-
-function viewEventInModal(id) {
-    const eventData = eventsData.find(e => e.ID === id);
-    if (!eventData) return;
-
-    _modalPrevFocus = document.activeElement;
-    document.getElementById('modal-overlay').classList.remove('hidden');
-    bindModalEscape(document.getElementById('modal-overlay'), closeModal);
-    const catModal = document.getElementById('category-selection-modal');
-    if (catModal) catModal.classList.add('hidden');
-    document.getElementById('new-event-edit-modal').classList.remove('hidden');
-
-    const headerTitle = document.querySelector('#new-event-edit-modal h2');
-    if (headerTitle) headerTitle.textContent = "イベント詳細";
-
-    const actionButtons = document.getElementById('modal-action-buttons');
-    if (actionButtons) {
-        actionButtons.innerHTML = `
-            <button class="btn btn-text" onclick="closeModal()">閉じる</button>
-            <button class="btn btn-secondary" onclick="closeModal(); openEventWizard('${escapeAttr(id)}')">編集</button>
-        `;
-    }
-
-    renderModalForm(eventData, false);
-
-    // Show tab bar for existing events
-    const container = document.getElementById('new-event-form-container');
-    const tabBar = container.querySelector('.event-tab-bar');
-    if (tabBar) tabBar.classList.remove('hidden');
-
-    const voteLink = container.querySelector('[data-field="VoteLink"]');
-    if (voteLink) voteLink.href = 'vote.html?id=' + encodeURIComponent(id);
-}
+// ※ イベント詳細モーダルは廃止。閲覧はシリーズ詳細ページ（event-series.html?event=<ID>）へ一本化。
 
 // Calendar toggle
 let calendarVisible = false;
@@ -557,6 +560,7 @@ function renderEvents() {
     }
 
     const isAdmin = api.isAdmin();
+    const today = todayISO();
     tbody.innerHTML = sorted.map(ev => {
         const cat = getEventCategory(ev.Category);
         let displayTitle = ev.Title || '(無題)';
@@ -564,6 +568,13 @@ function renderEvents() {
             displayTitle = `第${ev.Meeting_Number}回 ${displayTitle}`;
         }
         const occ = occurrenceInfo(ev);
+        // 参加人数バッジ（今後のイベントで、回答が1件以上あるときだけ表示）
+        const vc = votesByEvent[ev.ID];
+        const isUpcoming = (ev.Date_End || ev.Date) >= today;
+        const hasVotes = vc && (vc.attend + vc.absent + vc.undecided) > 0;
+        const voteBadge = (isUpcoming && hasVotes)
+            ? `<span class="vote-count-badge" title="参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}">参加 ${vc.attend}</span>`
+            : '';
         return `
             <tr class="clickable-row" data-id="${escapeAttr(ev.ID)}">
                 <td class="cell-name" style="white-space:nowrap;">
@@ -574,12 +585,13 @@ function renderEvents() {
                     <span style="font-weight:600;">${escapeHtml(displayTitle)}</span>
                     <span class="cat-badge" style="background:${cat.bg};color:${cat.text};margin-left:6px;">${cat.short}</span>
                     ${occ ? `<a href="event-series.html?key=${encodeURIComponent(eventSeriesKey(ev))}" class="occ-badge occ-link" title="通算${occ.total}回 — シリーズ履歴を見る" data-action="series">${occ.num}回目</a>` : ''}
+                    ${voteBadge}
                 </td>
-                <td class="hide-mobile">${ev.Location ? `<a href="event-series.html?key=${encodeURIComponent(eventSeriesKey(ev))}" class="location-link" data-action="series" title="現地情報・シリーズ履歴を見る">${escapeHtml(ev.Location)}</a>` : ''}</td>
+                <td class="hide-mobile">${ev.Location ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ev.Location)}" target="_blank" rel="noopener" class="location-link" data-action="map" title="Google マップで開く">${escapeHtml(ev.Location)}</a>` : ''}</td>
                 <td class="hide-mobile">${escapeHtml(ev.Event_Time || '')}</td>
                 <td data-action-cell>
                     <div class="inline-actions">
-                        <a class="inline-action-btn" href="vote.html?id=${encodeURIComponent(ev.ID)}" title="参加投票" style="text-decoration:none;" data-action="vote">&#x2714;</a>
+                        <button class="inline-action-btn" data-action="duplicate" title="複製して新規作成">&#x29C9;</button>
                         <button class="inline-action-btn" data-action="edit" title="編集">&#9998;</button>
                         ${isAdmin ? `<button class="inline-action-btn danger" data-action="delete" title="削除">&#x2715;</button>` : ''}
                     </div>
@@ -588,254 +600,6 @@ function renderEvents() {
         `;
     }).join('');
 }
-
-// Populate fields within a card element
-function populateFields(cardElement, eventData) {
-    // Determine category to toggle sections
-    const cat = eventData.Category || 'normal';
-    const isMeeting = cat === 'general' || cat === 'admin';
-
-    // Hide/Show event specific sections
-    cardElement.querySelectorAll('.event-only-section').forEach(sec => {
-        if (isMeeting) {
-            sec.style.display = 'none';
-        } else {
-            sec.style.display = ''; // default
-        }
-    });
-
-    // Hide/Show meeting only sections
-    cardElement.querySelectorAll('.meeting-only-section').forEach(sec => {
-        sec.style.display = isMeeting ? '' : 'none';
-    });
-
-    // ラベルはテンプレート側が .remarks-label-view / .remarks-label-edit の2箇所
-    cardElement.querySelectorAll('.remarks-label-view, .remarks-label-edit').forEach(el => {
-        el.textContent = isMeeting ? '議題 / 備考' : '備考';
-    });
-
-    const fields = ['Title', 'Location', 'Audience', 'Meeting_Number', 'Date', 'Date_End', 'Event_Time', 'Meeting_Logistics', 'Remarks', 'Belongings', 'Accompany', 'Positives', 'Reflections'];
-
-    fields.forEach(field => {
-        // Display elements
-        let val = eventData[field] || '---';
-        if (field === 'Date') return; // Skip basic Date, we handle it specially below
-        if (field === 'Date_End') return; // Handled specially
-
-        const displayEl = cardElement.querySelector(`.display-mode[data-field="${field}"]`);
-        if (displayEl) {
-            if (field === 'Location' && eventData.Location) {
-                const key = eventSeriesKey(eventData);
-                displayEl.innerHTML = `<a href="event-series.html?key=${encodeURIComponent(key)}" class="location-link" title="現地情報・シリーズ履歴を見る">${escapeHtml(val)}</a>`;
-            } else {
-                displayEl.textContent = val;
-            }
-        }
-
-        // Input elements
-        const inputEls = cardElement.querySelectorAll(`.edit-mode[data-field="${field}"]`);
-        inputEls.forEach(el => {
-            el.value = eventData[field] || '';
-        });
-    });
-
-    // Special Date Display Logic
-    const dateDisplayEl = cardElement.querySelector('.display-mode[data-field="Date_Display"]');
-    if (dateDisplayEl) {
-        if (eventData.Date_End && eventData.Date_End !== eventData.Date) {
-            dateDisplayEl.textContent = `${eventData.Date} 〜 ${eventData.Date_End}`;
-        } else {
-            dateDisplayEl.textContent = eventData.Date || '---';
-        }
-        const occ = occurrenceInfo(eventData);
-        if (occ) {
-            const b = document.createElement('a');
-            b.className = 'occ-badge occ-link';
-            b.href = `event-series.html?key=${encodeURIComponent(eventSeriesKey(eventData))}`;
-            b.title = 'シリーズ履歴を見る';
-            b.textContent = `${occ.num}回目 / 通算${occ.total}回`;
-            b.onclick = (e) => e.stopPropagation();
-            dateDisplayEl.appendChild(b);
-        }
-    }
-
-    // 集合・解散の表示（片方だけの入力にも対応）
-    const gatherDismissEl = cardElement.querySelector('.display-mode[data-field="Gather_Dismiss_Display"]');
-    if (gatherDismissEl) {
-        const g = eventData.Gather_Time || '';
-        const d = eventData.Dismiss_Time || '';
-        gatherDismissEl.textContent = (g || d)
-            ? [g && `集合 ${g}`, d && `解散 ${d}`].filter(Boolean).join(' / ')
-            : '---';
-    }
-
-    // Special Date Inputs
-    ['Date', 'Date_End'].forEach(df => {
-        cardElement.querySelectorAll(`.edit-mode[data-field="${df}"]`).forEach(el => {
-            el.value = eventData[df] || '';
-        });
-    });
-
-    // 日付レンジピッカー（クリックでカレンダーを開く）を初期化
-    initDateRangePicker(cardElement);
-
-    // Deadlines & Admins Special Handling
-    const adminFields = ['Admin_Kyoka', 'Admin_Houkoku', 'Kyoka_Deadline', 'Houkoku_Deadline'];
-    adminFields.forEach(field => {
-        const val = eventData[field] || '---';
-        const displayEls = cardElement.querySelectorAll(`[data-field="${field}"]`);
-        displayEls.forEach(el => {
-            if (el.tagName === 'INPUT') {
-                el.value = eventData[field] || '';
-            } else {
-                el.textContent = val;
-            }
-        });
-    });
-
-    // Time Selects in Edit mode
-    if (eventData.Event_Time) {
-        let [s, e] = eventData.Event_Time.split(' - ');
-        const selStart = cardElement.querySelector('select[data-field="Time_Start"]');
-        const selEnd = cardElement.querySelector('select[data-field="Time_End"]');
-        if (selStart && s) selStart.value = s.trim();
-        if (selEnd && e) selEnd.value = e.trim();
-    }
-
-    // Dynamic List for Experiments & Presenters (flat format)
-    const expDisplay = cardElement.querySelector('.display-mode[data-field="Experiments_Display"]');
-    const expContainer = cardElement.querySelector('.experiments-container');
-    const expList = parsePartsList(eventData.PartsList);
-
-    if (expDisplay) {
-        let displayHtml = '';
-        expList.forEach(item => {
-            if (!item.name && item.presenters.length === 0) return;
-            let expNameHtml;
-            if (item.name) {
-                const allExp = (api.loadCache('experiments') || {}).items || [];
-                const match = allExp.find(e => e.Name === item.name);
-                const href = match
-                    ? `experiment-detail.html?id=${encodeURIComponent(match.ID)}`
-                    : `experiments.html?focus=${encodeURIComponent(item.name)}`;
-                expNameHtml = `<a href="${href}" class="exp-link-inline" title="実験内容を見る">${escapeHtml(item.name)}</a>`;
-            } else {
-                expNameHtml = '(未定)';
-            }
-            const presenterText = item.presenters.length > 0
-                ? item.presenters.map(p => escapeHtml(p)).join(', ')
-                : '未定';
-            displayHtml += `<span class="tag tag-exp">${expNameHtml} <span class="tag-presenter">(${presenterText})</span></span>`;
-        });
-        expDisplay.innerHTML = displayHtml || '---';
-    }
-
-    if (expContainer) {
-        expContainer.innerHTML = '';
-        expList.forEach(item => {
-            expContainer.appendChild(buildExperimentRow(item.name, item.presenters));
-        });
-    }
-
-    // Initialize admin tag inputs
-    cardElement.querySelectorAll('.admin-tag-container').forEach(container => {
-        const field = container.dataset.adminField;
-        const currentVal = eventData[field] || '';
-        const vals = currentVal ? currentVal.split(',').map(s => s.trim()).filter(Boolean) : [];
-        // 帯同(Accompany)はコーディネーター・アドバイザーのみ。
-        // 許可願・報告書の担当はそれ以外のメンバーのみ。
-        const isAccompany = field === 'Accompany';
-        const filterFn = isAccompany ? isStaffMember : isRegularMember;
-        const ph = isAccompany ? 'コーディネーター・アドバイザーを検索...' : '担当者を検索...';
-        initTagInput(container, vals, ph, filterFn);
-    });
-
-    // Title mapping overrides for Meeting Mode
-    const titleDisplay = cardElement.querySelector('.display-mode[data-field="Title_Display"]');
-    if (titleDisplay) {
-        if (isMeeting) {
-            titleDisplay.innerHTML = `<span class="text-primary" style="font-size: 1.25rem;">回数：[ ${eventData.Meeting_Number || '?'} ] [ ${eventData.Title || ''} ]</span>`;
-        } else {
-            titleDisplay.innerHTML = `<span class="text-primary" style="font-size: 1.25rem;">${eventData.Title || ''}</span>`;
-        }
-    }
-    const meetingNumInput = cardElement.querySelector('#meeting-num-input');
-    if (meetingNumInput && isMeeting) {
-        meetingNumInput.value = eventData.Meeting_Number || '';
-    }
-    const meetingTitleInput = cardElement.querySelector('#meeting-name-input');
-    if (meetingTitleInput && isMeeting) {
-        meetingTitleInput.value = eventData.Title || '';
-    }
-
-    // Populate series feedback history
-    renderSeriesFeedback(cardElement, eventData);
-
-    // Populate feedback tab
-    const fbTabPositives = cardElement.querySelector('.fb-tab-positives');
-    const fbTabReflections = cardElement.querySelector('.fb-tab-reflections');
-    if (fbTabPositives) fbTabPositives.value = eventData.Positives || '';
-    if (fbTabReflections) fbTabReflections.value = eventData.Reflections || '';
-
-    const expFbTab = cardElement.querySelector('[data-field="ExpFeedback_Tab"]');
-    if (expFbTab) {
-        const expNames = new Set();
-        expList.forEach(it => { if (it.name) expNames.add(it.name); });
-        if (expNames.size > 0) {
-            const experiments = (api.loadCache('experiments') || {}).items || [];
-            expFbTab.innerHTML = [...expNames].map(name => {
-                const exp = experiments.find(e => e.Name === name);
-                const detailLink = exp
-                    ? `<a href="experiment-detail.html?id=${encodeURIComponent(exp.ID)}" target="_blank" onclick="event.stopPropagation();">${escapeHtml(name)}</a>`
-                    : escapeHtml(name);
-                return `<div class="exp-fb-card" data-exp-name="${escapeAttr(name)}">
-                    <div class="exp-fb-card-title">${detailLink}</div>
-                    <div class="exp-fb-row">
-                        <label>良かった点</label>
-                        <textarea class="e1-input exp-fb-positive" rows="2" placeholder="この実験で良かったこと"></textarea>
-                    </div>
-                    <div class="exp-fb-row">
-                        <label>改善点</label>
-                        <textarea class="e1-input exp-fb-reflection" rows="2" placeholder="この実験の改善点"></textarea>
-                    </div>
-                </div>`;
-            }).join('');
-        } else {
-            expFbTab.innerHTML = '<p class="text-hint" style="font-size:0.85rem;">実験が登録されていないため、実験の振り返りは入力できません。</p>';
-        }
-    }
-
-    // File processing (Phase 2: Drive upload)
-    const fileContainer = cardElement.querySelector('.display-mode[data-field="Files_Display"]');
-    const fileListEdit = cardElement.querySelector('.file-list-edit');
-    const files = Array.isArray(eventData.Files) ? eventData.Files : [];
-
-    if (fileContainer) {
-        if (files.length > 0) {
-            fileContainer.innerHTML = files.map((f, i) => {
-                const url = f.url || '';
-                const name = escapeHtml(f.name || ('ファイル ' + (i + 1)));
-                const size = f.size ? ' (' + formatFileSize(f.size) + ')' : '';
-                if (/^https?:\/\//i.test(url)) {
-                    return `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="file-link">${name}${size}</a>`;
-                }
-                return `<span class="file-link text-hint">${name} (リンク切れ)</span>`;
-            }).join('');
-        } else {
-            fileContainer.innerHTML = '<span class="text-hint" style="font-size:0.9rem;">なし</span>';
-        }
-    }
-
-    if (fileListEdit) {
-        renderEditFileList(fileListEdit, files);
-    }
-}
-
-// イベントの閲覧はモーダル、編集・作成・削除はウィザード経由:
-//   表示  → viewEventInModal()
-//   編集  → openEventWizard(id)
-//   新規  → openNewEventModal() → startNewEvent() → openEventWizard()
-//   削除  → confirmDeleteEvent(id)
 
 // ---- 日付レンジピッカー（クリックでカレンダーを開く） ----
 // events.html の .date-range-picker-wrapper を駆動する。
@@ -1184,7 +948,6 @@ function openNewEventModal() {
     _modalPrevFocus = document.activeElement;
     document.getElementById('modal-overlay').classList.remove('hidden');
     document.getElementById('category-selection-modal').classList.remove('hidden');
-    document.getElementById('new-event-edit-modal').classList.add('hidden');
     bindModalEscape(document.getElementById('modal-overlay'), closeModal);
     populateTemplateDropdown();
 }
@@ -1193,9 +956,10 @@ function populateTemplateDropdown() {
     const sel = document.getElementById('template-source');
     if (!sel) return;
     const sorted = eventsData.slice().sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
+    // カテゴリ表記はフィルタチップ等と同じ CONFIG の短縮名に統一する（表記ゆれ防止）
     sel.innerHTML = '<option value="">-- 過去イベントを選んで複製 --</option>' +
         sorted.slice(0, 50).map(e => {
-            const catLabel = { normal: '通常', other: '学内', general: '全体', admin: '幹部' }[e.Category] || '';
+            const catLabel = getEventCategory(e.Category).short;
             return `<option value="${escapeAttr(e.ID)}">${escapeHtml(e.Date)} ${catLabel}: ${escapeHtml(e.Title)}</option>`;
         }).join('');
     sel.value = '';
@@ -1217,10 +981,197 @@ let _modalPrevFocus = null;
 
 function startNewEvent(category, template) {
     closeModal();
-    openEventWizard(null, category, template);
+    openQuickCreate(category, template);
 }
 
-// ---- イベント ウィザード ----
+// ---- クイック作成（案C: 「枠だけ作って後から埋める」2段階運用） ----
+// 必須はカテゴリ＋名前＋日付だけ。保存後はイベント詳細ページへ遷移し、
+// 残りの項目（実験・担当・ファイル等）は詳細ページの「編集」から追記する。
+// template（複製元）がある場合は、表示されない項目も含めて内容を引き継ぐ。
+
+function openQuickCreate(category, template) {
+    const cat = category || (template && template.Category) || 'normal';
+    const isMeeting = cat === 'general' || cat === 'admin';
+    const catInfo = getEventCategory(cat);
+
+    // カレンダーのドラッグ選択で渡された日付があれば初期値に使う
+    const startDate = window.tempStart || todayISO();
+    const endDate = window.tempEnd || '';
+    window.tempStart = null;
+    window.tempEnd = null;
+
+    // 下書きイベント（クイック作成で見せないフィールドは template から引き継ぐ）
+    const draft = {
+        ID: genId('ev_'),
+        Date: startDate, Date_End: endDate,
+        Title: template ? (template.Title || '') + ' (複製)' : '',
+        Location: template ? (template.Location || '') : '',
+        Audience: template ? (template.Audience || '') : '',
+        Meeting_Number: '', Category: cat,
+        Event_Time: template ? (template.Event_Time || '') : '',
+        Meeting_Logistics: template ? (template.Meeting_Logistics || '') : '',
+        PartsList: template ? (template.PartsList || '') : '',
+        Accompany: template ? (template.Accompany || '') : '',
+        Admin_Kyoka: template ? (template.Admin_Kyoka || '') : '',
+        Admin_Houkoku: template ? (template.Admin_Houkoku || '') : '',
+        Kyoka_Deadline: '', Houkoku_Deadline: '',
+        Remarks: template ? (template.Remarks || '') : '',
+        Belongings: template ? (template.Belongings || '') : '',
+        Files: [],
+        Gather_Time: template ? (template.Gather_Time || '') : '',
+        Dismiss_Time: template ? (template.Dismiss_Time || '') : '',
+        Address: template ? (template.Address || '') : '',
+        EmergencyHospital: template ? (template.EmergencyHospital || '') : '',
+        EmergencyPolice: template ? (template.EmergencyPolice || '') : '',
+        SeriesKey: template ? (template.SeriesKey || '') : ''
+    };
+    tempNewEvent = draft;
+
+    const timeParts = (draft.Event_Time || '').split(' - ');
+    const timeStart = (timeParts[0] || '').trim();
+    const timeEnd = (timeParts[1] || '').trim();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'qc-overlay';
+    overlay.className = 'wizard-overlay';
+    overlay.onclick = (ev) => { if (ev.target === overlay) closeQuickCreate(); };
+
+    overlay.innerHTML = `
+        <div class="wizard-panel" role="dialog" aria-modal="true" style="max-width:480px;">
+            <div class="wizard-header">
+                <h2 class="wizard-title">${template ? 'イベントを複製して作成' : '新規イベント作成'}</h2>
+                <p class="wizard-subtitle">まず枠だけ登録できます。実験・担当などの詳細はあとから追記できます。</p>
+            </div>
+            <div class="wizard-body">
+                <div style="margin-bottom:12px;"><span class="cat-badge" style="background:${catInfo.bg};color:${catInfo.text};">${catInfo.short}</span></div>
+                ${isMeeting ? `
+                <div class="flex-row">
+                    <div class="e1-group" style="flex:0 0 100px;">
+                        <label class="e1-label">回数</label>
+                        <input id="qc-meeting-num" class="e1-input" type="number" placeholder="3" value="${escapeAttr(draft.Meeting_Number || '')}">
+                    </div>
+                    <div class="e1-group" style="flex:1;">
+                        <label class="e1-label">ミーティング名 *</label>
+                        <input id="qc-title" class="e1-input" type="text" placeholder="例: イベント振り返り" value="${escapeAttr(draft.Title || '')}">
+                    </div>
+                </div>` : `
+                <div class="e1-group">
+                    <label class="e1-label">イベント名 *</label>
+                    <input id="qc-title" class="e1-input" type="text" placeholder="例: サイエンスフェスタ" value="${escapeAttr(draft.Title || '')}">
+                </div>`}
+                <div class="e1-group">
+                    <label class="e1-label">日にち *</label>
+                    <div class="date-range-picker-wrapper">
+                        <input type="text" class="e1-input date-range-display" readonly placeholder="クリックして日にちを選択">
+                        <input type="hidden" data-field="Date" value="${escapeAttr(draft.Date || '')}">
+                        <input type="hidden" data-field="Date_End" value="${escapeAttr(draft.Date_End || '')}">
+                        <div class="date-range-popup hidden"></div>
+                    </div>
+                    <p id="qc-deadline-note" class="text-muted" style="font-size:0.8rem; margin:6px 0 0;"></p>
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">時間（未定なら空欄のまま）</label>
+                    <div class="time-select-group">
+                        <select class="e1-input" id="qc-time-start">${genTimeOpts(7, 21, true)}</select>
+                        <span>〜</span>
+                        <select class="e1-input" id="qc-time-end">${genTimeOpts(7, 21, true)}</select>
+                    </div>
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">場所（任意）</label>
+                    <input id="qc-location" class="e1-input" type="text" placeholder="${isMeeting ? '例: 学生会館3F' : '例: ○○公民館'}" value="${escapeAttr(draft.Location || '')}">
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <div class="wizard-footer-spacer"></div>
+                <button class="btn btn-text" onclick="closeQuickCreate()">キャンセル</button>
+                <button id="qc-save" class="btn btn-primary" onclick="saveQuickCreate()">作成して詳細ページへ</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+    bindModalEscape(overlay, closeQuickCreate);
+    trapFocus(overlay.querySelector('.wizard-panel'));
+    initDateRangePicker(overlay);
+
+    const tsEl = document.getElementById('qc-time-start');
+    const teEl = document.getElementById('qc-time-end');
+    if (tsEl) tsEl.value = timeStart;
+    if (teEl) teEl.value = timeEnd;
+
+    // 期限メモの初期表示
+    const dateInput = overlay.querySelector('[data-field="Date"]');
+    if (dateInput) updateDeadlines(dateInput);
+
+    setTimeout(() => {
+        const firstInput = overlay.querySelector('#qc-title');
+        if (firstInput) firstInput.focus();
+    }, 80);
+}
+
+function closeQuickCreate() {
+    const overlay = document.getElementById('qc-overlay');
+    if (overlay) overlay.remove();
+    tempNewEvent = null;
+}
+
+async function saveQuickCreate() {
+    if (!tempNewEvent) return;
+    const draft = tempNewEvent;
+    const isMeeting = draft.Category === 'general' || draft.Category === 'admin';
+
+    draft.Title = (document.getElementById('qc-title')?.value || '').trim();
+    if (!draft.Title) {
+        toast(isMeeting ? 'ミーティング名を入力してください' : 'イベント名を入力してください', 'error');
+        document.getElementById('qc-title')?.focus();
+        return;
+    }
+    const overlay = document.getElementById('qc-overlay');
+    draft.Date = overlay.querySelector('[data-field="Date"]')?.value || '';
+    draft.Date_End = overlay.querySelector('[data-field="Date_End"]')?.value || '';
+    if (!draft.Date) {
+        toast('日にちを選択してください', 'error');
+        return;
+    }
+    draft.Location = (document.getElementById('qc-location')?.value || '').trim();
+    if (isMeeting) draft.Meeting_Number = document.getElementById('qc-meeting-num')?.value || '';
+
+    const ts = document.getElementById('qc-time-start')?.value || '';
+    const te = document.getElementById('qc-time-end')?.value || '';
+    if ((ts && !te) || (!ts && te)) {
+        toast('時間は開始と終了の両方を選択してください（未定なら両方空欄）', 'error');
+        return;
+    }
+    draft.Event_Time = ts && te ? `${ts} - ${te}` : '';
+
+    const dl = isMeeting ? { kyoka: '', houkoku: '' } : calculateDeadlines(draft.Date);
+    draft.Kyoka_Deadline = dl.kyoka;
+    draft.Houkoku_Deadline = dl.houkoku;
+
+    const btn = document.getElementById('qc-save');
+    btn.disabled = true;
+    btn.textContent = '保存中...';
+
+    try {
+        const savedGas = await api.save('events', uiToGas(draft));
+        const saved = gasToUi(savedGas);
+        eventsData.unshift(saved);
+        api.saveCache('events', eventsData);
+        closeQuickCreate();
+        if (!isMeeting && dl.kyoka && dl.kyoka < todayISO() && (draft.Date_End || draft.Date) >= todayISO()) {
+            toast(`許可願の期限（${dl.kyoka}）を過ぎています。至急対応してください`, 'error', 6000);
+        }
+        // 続きの入力はイベント詳細ページで（未入力チェックリストが出る）
+        location.href = 'event-series.html?event=' + encodeURIComponent(saved.ID);
+    } catch (err) {
+        btn.disabled = false;
+        btn.textContent = '作成して詳細ページへ';
+        toast('保存失敗: ' + err.message, 'error');
+    }
+}
+
+// ---- イベント ウィザード（既存イベントの編集用） ----
 
 function genTimeOpts(startH, endH, withEmpty) {
     let html = withEmpty ? '<option value="">--</option>' : '';
@@ -1234,61 +1185,17 @@ function genTimeOpts(startH, endH, withEmpty) {
     return html;
 }
 
-function openEventWizard(editId, category, templateSrc) {
+function openEventWizard(editId) {
     editingEventId = editId || null;
     evWizardStep = 0;
 
+    // 新規作成はクイック作成（openQuickCreate）に一本化した。ここは既存イベントの編集専用。
     const existing = editingEventId ? eventsData.find(x => x.ID === editingEventId) : null;
-    const isEdit = !!existing;
+    if (!existing) return;
+    const isEdit = true;
 
-    let e;
-    if (isEdit) {
-        e = { ...existing, Files: Array.isArray(existing.Files) ? [...existing.Files] : [] };
-        evWizardCategory = e.Category || 'normal';
-    } else if (templateSrc) {
-        const newId = genId('ev_');
-        const startDate = window.tempStart || todayISO();
-        const endDate = window.tempEnd || '';
-        window.tempStart = null;
-        window.tempEnd = null;
-        e = { ...templateSrc };
-        e.ID = newId;
-        e.Date = startDate;
-        e.Date_End = endDate;
-        e.Title = (templateSrc.Title || '') + ' (複製)';
-        e.Kyoka_Deadline = '';
-        e.Houkoku_Deadline = '';
-        e.Positives = '';
-        e.Reflections = '';
-        e.Files = [];
-        e.CreatedAt = '';
-        e.UpdatedAt = '';
-        e.UpdatedBy = '';
-        evWizardCategory = category || e.Category || 'normal';
-        e.Category = evWizardCategory;
-        toast('過去イベントを複製しました', 'info', 3000);
-    } else {
-        const newId = genId('ev_');
-        const startDate = window.tempStart || todayISO();
-        const endDate = window.tempEnd || '';
-        window.tempStart = null;
-        window.tempEnd = null;
-        const titleMap = { normal: '', other: '', general: '', admin: '' };
-        evWizardCategory = category || 'normal';
-        const isMtg = evWizardCategory === 'general' || evWizardCategory === 'admin';
-        const deadlines = isMtg ? { kyoka: '', houkoku: '' } : calculateDeadlines(startDate);
-        e = {
-            ID: newId, Date: startDate, Date_End: endDate,
-            Title: titleMap[evWizardCategory] || '', Location: '', Audience: '',
-            Meeting_Number: '', Category: evWizardCategory,
-            Event_Time: '', Meeting_Logistics: '',
-            PartsList: '', Accompany: '',
-            Admin_Kyoka: '', Admin_Houkoku: '',
-            Kyoka_Deadline: deadlines.kyoka, Houkoku_Deadline: deadlines.houkoku,
-            Remarks: '', Belongings: '', Files: [],
-            Gather_Time: '', Dismiss_Time: ''
-        };
-    }
+    const e = { ...existing, Files: Array.isArray(existing.Files) ? [...existing.Files] : [] };
+    evWizardCategory = e.Category || 'normal';
 
     tempNewEvent = e;
 
@@ -1302,8 +1209,9 @@ function openEventWizard(editId, category, templateSrc) {
     overlay.className = 'wizard-overlay';
     overlay.onclick = (ev) => { if (ev.target === overlay) closeEventWizard(); };
 
-    const timeStart = (e.Event_Time || '').split(' - ')[0]?.trim() || '13:00';
-    const timeEnd = (e.Event_Time || '').split(' - ')[1]?.trim() || '16:00';
+    // 時間未定のイベントに架空の時間を入れない（空欄 = 未定のまま保存できる）
+    const timeStart = (e.Event_Time || '').split(' - ')[0]?.trim() || '';
+    const timeEnd = (e.Event_Time || '').split(' - ')[1]?.trim() || '';
 
     let stepsHtml = '';
 
@@ -1327,20 +1235,6 @@ function openEventWizard(editId, category, templateSrc) {
                     <label class="e1-label">場所</label>
                     <input id="wz-ev-location" class="e1-input" type="text" placeholder="例: 学生会館3F" value="${escapeAttr(e.Location || '')}">
                 </div>
-                <div class="e1-group">
-                    <label class="e1-label">住所</label>
-                    <input id="wz-ev-address" class="e1-input" type="text" placeholder="例: 秋田県大館市桜町1-1" value="${escapeAttr(e.Address || '')}">
-                </div>
-                <div class="flex-row">
-                    <div class="e1-group" style="flex:1;">
-                        <label class="e1-label">近隣の病院・診療所</label>
-                        <input id="wz-ev-hospital" class="e1-input" type="text" placeholder="例: ○○診療所：0186-45-0223" value="${escapeAttr(e.EmergencyHospital || '')}">
-                    </div>
-                    <div class="e1-group" style="flex:1;">
-                        <label class="e1-label">近隣の警察署</label>
-                        <input id="wz-ev-police" class="e1-input" type="text" placeholder="例: ○○警察署：018-852-4100" value="${escapeAttr(e.EmergencyPolice || '')}">
-                    </div>
-                </div>
             </div>`;
         // Meeting step 2: 日時
         stepsHtml += `
@@ -1356,11 +1250,11 @@ function openEventWizard(editId, category, templateSrc) {
                     </div>
                 </div>
                 <div class="e1-group">
-                    <label class="e1-label">ミーティング時間</label>
+                    <label class="e1-label">ミーティング時間（未定なら空欄のまま）</label>
                     <div class="time-select-group">
-                        <select class="e1-input" id="wz-ev-time-start">${genTimeOpts(9, 21, false)}</select>
+                        <select class="e1-input" id="wz-ev-time-start">${genTimeOpts(7, 21, true)}</select>
                         <span>〜</span>
-                        <select class="e1-input" id="wz-ev-time-end">${genTimeOpts(9, 21, false)}</select>
+                        <select class="e1-input" id="wz-ev-time-end">${genTimeOpts(7, 21, true)}</select>
                     </div>
                 </div>
             </div>`;
@@ -1391,20 +1285,6 @@ function openEventWizard(editId, category, templateSrc) {
                     <label class="e1-label">対象者・人数</label>
                     <input id="wz-ev-audience" class="e1-input" type="text" placeholder="例: 小学1〜3年生 40名" value="${escapeAttr(e.Audience || '')}">
                 </div>
-                <div class="e1-group">
-                    <label class="e1-label">住所</label>
-                    <input id="wz-ev-address" class="e1-input" type="text" placeholder="例: 秋田県大館市桜町1-1" value="${escapeAttr(e.Address || '')}">
-                </div>
-                <div class="flex-row">
-                    <div class="e1-group" style="flex:1;">
-                        <label class="e1-label">近隣の病院・診療所</label>
-                        <input id="wz-ev-hospital" class="e1-input" type="text" placeholder="例: ○○診療所：0186-45-0223" value="${escapeAttr(e.EmergencyHospital || '')}">
-                    </div>
-                    <div class="e1-group" style="flex:1;">
-                        <label class="e1-label">近隣の警察署</label>
-                        <input id="wz-ev-police" class="e1-input" type="text" placeholder="例: ○○警察署：018-852-4100" value="${escapeAttr(e.EmergencyPolice || '')}">
-                    </div>
-                </div>
             </div>`;
         // Event step 2: 日時
         stepsHtml += `
@@ -1420,11 +1300,11 @@ function openEventWizard(editId, category, templateSrc) {
                     </div>
                 </div>
                 <div class="e1-group">
-                    <label class="e1-label">イベント時間</label>
+                    <label class="e1-label">イベント時間（未定なら空欄のまま）</label>
                     <div class="time-select-group">
-                        <select class="e1-input" id="wz-ev-time-start">${genTimeOpts(9, 21, false)}</select>
+                        <select class="e1-input" id="wz-ev-time-start">${genTimeOpts(7, 21, true)}</select>
                         <span>〜</span>
-                        <select class="e1-input" id="wz-ev-time-end">${genTimeOpts(9, 21, false)}</select>
+                        <select class="e1-input" id="wz-ev-time-end">${genTimeOpts(7, 21, true)}</select>
                     </div>
                 </div>
                 <div class="flex-row">
@@ -1465,6 +1345,14 @@ function openEventWizard(editId, category, templateSrc) {
                     <textarea id="wz-ev-remarks" class="e1-input" rows="3" placeholder="その他メモ">${escapeHtml(e.Remarks || '')}</textarea>
                 </div>
                 <div class="e1-group">
+                    <label class="e1-label">現地情報（任意・イベント詳細ページの「緊急連絡先・現地情報」に表示）</label>
+                    <input id="wz-ev-address" class="e1-input" type="text" placeholder="住所（例: 秋田県大館市桜町1-1）" value="${escapeAttr(e.Address || '')}" style="margin-bottom:8px;">
+                    <div class="flex-row">
+                        <input id="wz-ev-hospital" class="e1-input" type="text" placeholder="近隣の病院（例: ○○診療所：0186-45-0223）" value="${escapeAttr(e.EmergencyHospital || '')}" style="flex:1;">
+                        <input id="wz-ev-police" class="e1-input" type="text" placeholder="近隣の警察署（例: ○○警察署：018-852-4100）" value="${escapeAttr(e.EmergencyPolice || '')}" style="flex:1;">
+                    </div>
+                </div>
+                <div class="e1-group">
                     <label class="e1-label">関連ファイル</label>
                     <div class="file-upload-area">
                         <div class="file-drop-zone" id="wz-ev-drop-zone">
@@ -1502,7 +1390,7 @@ function openEventWizard(editId, category, templateSrc) {
             <div class="wizard-progress">
                 ${steps.map((s, i) => `
                     ${i > 0 ? '<div class="wizard-step-line" data-line="' + i + '"></div>' : ''}
-                    <div class="wizard-step-dot${i === 0 ? ' active' : ''}" data-dot="${i}" title="${s.label}">${i + 1}</div>
+                    <button type="button" class="wizard-step-dot${i === 0 ? ' active' : ''}" data-dot="${i}" title="${s.label}へ移動" onclick="evWizardGoto(${i})">${i + 1}</button>
                 `).join('')}
             </div>
             <div class="wizard-body">${stepsHtml}</div>
@@ -1616,6 +1504,20 @@ function evWizardPrev() {
     if (evWizardStep > 0) { evWizardStep--; updateEvWizardUI(); }
 }
 
+// 進捗ドットのクリックで任意のステップへ移動（1項目だけ直したい時に全ステップたどらなくてよい）
+function evWizardGoto(n) {
+    const isMeeting = evWizardCategory === 'general' || evWizardCategory === 'admin';
+    const steps = isMeeting ? EV_STEPS_MEETING : EV_STEPS_EVENT;
+    if (n < 0 || n >= steps.length || n === evWizardStep) return;
+    evWizardStep = n;
+    updateEvWizardUI();
+    const step = document.querySelector('#ev-wizard-overlay .wizard-step.active');
+    if (step) {
+        const fi = step.querySelector('input:not([type="hidden"]):not([type="file"]), textarea, select');
+        if (fi) setTimeout(() => fi.focus(), 100);
+    }
+}
+
 function evWizardNext() {
     const isMeeting = evWizardCategory === 'general' || evWizardCategory === 'admin';
     const steps = isMeeting ? EV_STEPS_MEETING : EV_STEPS_EVENT;
@@ -1725,10 +1627,21 @@ function saveEventFromWizard() {
 
     // Collect form data
     tempNewEvent.Title = (document.getElementById('wz-ev-title')?.value || '').trim();
+    if (!tempNewEvent.Title) {
+        // ドットで直接最終ステップへ来られるため、保存時にも必須チェックする
+        toast(isMeeting ? 'ミーティング名を入力してください' : 'イベント名を入力してください', 'error');
+        evWizardGoto(0);
+        return;
+    }
     tempNewEvent.Location = (document.getElementById('wz-ev-location')?.value || '').trim();
-    tempNewEvent.Address = (document.getElementById('wz-ev-address')?.value || '').trim();
-    tempNewEvent.EmergencyHospital = (document.getElementById('wz-ev-hospital')?.value || '').trim();
-    tempNewEvent.EmergencyPolice = (document.getElementById('wz-ev-police')?.value || '').trim();
+    // 現地情報の入力欄はイベントの Step 4 のみに存在する。
+    // ミーティング編集時は欄が無いので、既存値を消さないよう存在チェックしてから反映する。
+    const addrEl = document.getElementById('wz-ev-address');
+    if (addrEl) tempNewEvent.Address = addrEl.value.trim();
+    const hospEl = document.getElementById('wz-ev-hospital');
+    if (hospEl) tempNewEvent.EmergencyHospital = hospEl.value.trim();
+    const polEl = document.getElementById('wz-ev-police');
+    if (polEl) tempNewEvent.EmergencyPolice = polEl.value.trim();
     tempNewEvent.Category = evWizardCategory;
     tempNewEvent.Date = document.getElementById('wz-ev-date')?.value || '';
     tempNewEvent.Date_End = document.getElementById('wz-ev-date-end')?.value || '';
@@ -1736,6 +1649,11 @@ function saveEventFromWizard() {
 
     const ts = document.getElementById('wz-ev-time-start')?.value || '';
     const te = document.getElementById('wz-ev-time-end')?.value || '';
+    if ((ts && !te) || (!ts && te)) {
+        toast('時間は開始と終了の両方を選択してください（未定なら両方空欄）', 'error');
+        evWizardGoto(1);
+        return;
+    }
     tempNewEvent.Event_Time = ts && te ? `${ts} - ${te}` : '';
 
     if (isMeeting) {
@@ -1810,6 +1728,12 @@ function saveEventFromWizard() {
 
     closeEventWizard();
     toast('保存しました', 'success');
+
+    // 許可願の期限が過去なのにイベントがまだ先の場合は注意を促す（保存は妨げない）
+    if (!isMeeting && optimisticItem.Kyoka_Deadline && optimisticItem.Kyoka_Deadline < todayISO()
+        && (optimisticItem.Date_End || optimisticItem.Date) >= todayISO()) {
+        toast(`許可願の期限（${optimisticItem.Kyoka_Deadline}）を過ぎています。至急対応してください`, 'error', 6000);
+    }
 
     api.save('events', gasItem).then(savedGas => {
         const savedEvent = gasToUi(savedGas);
@@ -1920,243 +1844,35 @@ async function executeDeleteEvent(id) {
 // Temporary storage for the event currently being created or edited in the modal
 let tempNewEvent = null;
 
-function renderModalForm(eventData, isEditMode = true) {
-    tempNewEvent = { ...eventData, Files: Array.isArray(eventData.Files) ? [...eventData.Files] : [] };
-    const container = document.getElementById('new-event-form-container');
-    container.innerHTML = ''; // clear
-
-    const template = document.getElementById('event-template');
-    const clone = template.content.cloneNode(true);
-    const card = clone.querySelector('.event-card');
-    card.setAttribute('data-id', eventData.ID);
-
-    // We only need the details section, not the accordion header
-    const summary = card.querySelector('.event-summary');
-    summary.style.display = 'none';
-
-    const details = card.querySelector('.event-details');
-    details.classList.remove('collapsed');
-
-    // Populate and force Edit Mode
-    populateFields(card, eventData);
-
-    container.appendChild(card);
-
-    if (isEditMode) {
-        card.classList.add('editing');
-        card.querySelectorAll('.display-mode').forEach(el => el.classList.add('hidden'));
-        card.querySelectorAll('.edit-mode').forEach(el => el.classList.remove('hidden'));
-    } else {
-        card.classList.remove('editing');
-        card.querySelectorAll('.display-mode').forEach(el => el.classList.remove('hidden'));
-        card.querySelectorAll('.edit-mode').forEach(el => el.classList.add('hidden'));
-    }
-}
-
-
-async function saveExperimentFeedback(card, eventData) {
-    const fbCards = card.querySelectorAll('.exp-fb-card');
-    if (!fbCards.length) return;
-
-    let experiments = (api.loadCache('experiments') || {}).items;
-    if (!experiments) {
-        try { experiments = await api.list('experiments'); api.saveCache('experiments', experiments); } catch (_) { return; }
-    }
-
-    for (const fbCard of fbCards) {
-        const expName = fbCard.dataset.expName;
-        const posText = (fbCard.querySelector('.exp-fb-positive')?.value || '').trim();
-        const refText = (fbCard.querySelector('.exp-fb-reflection')?.value || '').trim();
-        if (!posText && !refText) continue;
-
-        const exp = experiments.find(e => e.Name === expName);
-        if (!exp) continue;
-
-        let changed = false;
-
-        if (posText) {
-            const entries = parseFeedbackEntries(exp.Positives);
-            entries.push({
-                id: genFeedbackId(),
-                date: eventData.Date || todayISO(),
-                eventId: eventData.ID || '',
-                eventTitle: eventData.Title || '',
-                text: posText
-            });
-            exp.Positives = stringifyFeedbackEntries(entries);
-            changed = true;
-        }
-
-        if (refText) {
-            const entries = parseFeedbackEntries(exp.Reflections);
-            entries.push({
-                id: genFeedbackId(),
-                date: eventData.Date || todayISO(),
-                eventId: eventData.ID || '',
-                eventTitle: eventData.Title || '',
-                text: refText
-            });
-            exp.Reflections = stringifyFeedbackEntries(entries);
-            changed = true;
-        }
-
-        if (changed) {
-            try {
-                const saved = await api.save('experiments', { ...exp, _baseUpdatedAt: exp.UpdatedAt || '' });
-                const idx = experiments.findIndex(e => e.ID === exp.ID);
-                if (idx >= 0) experiments[idx] = saved;
-            } catch (e) {
-                console.warn('Experiment feedback save failed for', expName, e);
-            }
-        }
-    }
-
-    api.saveCache('experiments', experiments);
-}
-
-// ---- シリーズ過去振り返り表示 ----
-
-function renderSeriesFeedback(cardElement, eventData) {
-    const container = cardElement.querySelector('[data-field="SeriesFeedback"]');
-    if (!container) return;
-
-    const key = eventSeriesKey(eventData);
-    if (!key) { container.classList.add('hidden'); return; }
-
-    const series = eventsData
-        .filter(x => eventSeriesKey(x) === key && x.ID !== eventData.ID && x.Date)
-        .sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
-
-    if (series.length === 0) { container.classList.add('hidden'); return; }
-
-    const currentFy = getFiscalYear(todayISO());
-    const grouped = {};
-    series.forEach(ev => {
-        const fy = getFiscalYear(ev.Date);
-        const label = fy ? `${fy}年度` : '日付なし';
-        if (!grouped[label]) grouped[label] = [];
-        grouped[label].push(ev);
-    });
-
-    const fyKeys = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
-    const seriesKeyEncoded = encodeURIComponent(key);
-
-    let html = `<div class="sfb-header">
-        <span class="sfb-title">過去の振り返り（通算${series.length + 1}回）</span>
-        <a href="event-series.html?key=${escapeAttr(seriesKeyEncoded)}" class="sfb-link">シリーズ全履歴を見る &rarr;</a>
-    </div>`;
-
-    html += fyKeys.map((fy, fyIdx) => {
-        const events = grouped[fy];
-        const isRecent = fyIdx < 2;
-
-        return events.map(ev => {
-            const expList = parsePartsList(ev.PartsList);
-            const expNames = expList.map(it => it.name).filter(Boolean);
-            const pos = (ev.Positives || '').trim();
-            const ref = (ev.Reflections || '').trim();
-            const hasFeedback = pos || ref;
-
-            return `<div class="sfb-year-group">
-                <div class="sfb-year-header ${isRecent ? 'open' : ''}" onclick="this.classList.toggle('open'); this.nextElementSibling.classList.toggle('hidden');">
-                    <span class="sfb-toggle">${isRecent ? '&#9660;' : '&#9654;'}</span>
-                    <span class="sfb-year-label">${escapeHtml(fy)}</span>
-                    <span class="sfb-event-date">${escapeHtml(ev.Date)} (${dayOfWeekJP(ev.Date)})</span>
-                    ${!hasFeedback ? '<span class="sfb-no-fb">振り返りなし</span>' : ''}
-                </div>
-                <div class="sfb-year-body ${isRecent ? '' : 'hidden'}">
-                    <div class="sfb-meta">
-                        ${ev.Location ? `<span>場所: ${escapeHtml(ev.Location)}</span>` : ''}
-                        ${ev.Audience ? `<span>対象: ${escapeHtml(ev.Audience)}</span>` : ''}
-                        ${expNames.length > 0 ? `<span>実験: ${expNames.map(n => escapeHtml(n)).join(', ')}</span>` : ''}
-                    </div>
-                    ${pos ? `<div class="sfb-entry sfb-positive"><span class="sfb-icon">&#9675;</span><span class="sfb-label">良かった点</span><span class="sfb-text">${escapeHtml(pos)}</span></div>` : ''}
-                    ${ref ? `<div class="sfb-entry sfb-reflection"><span class="sfb-icon">&#9651;</span><span class="sfb-label">改善点</span><span class="sfb-text">${escapeHtml(ref)}</span></div>` : ''}
-                    ${!hasFeedback ? '<p class="sfb-empty">この年度の振り返りは未記入です</p>' : ''}
-                    <a href="events.html?event=${encodeURIComponent(ev.ID)}&tab=feedback" class="sfb-detail-link" onclick="event.stopPropagation();">このイベントの詳細 &rarr;</a>
-                </div>
-            </div>`;
-        }).join('');
-    }).join('');
-
-    container.innerHTML = html;
-    container.classList.remove('hidden');
-}
-
-// ---- タブ切り替え ----
-
-function switchEventTab(btn) {
-    const card = btn.closest('.event-card') || document.querySelector('#new-event-form-container .event-card');
-    if (!card) return;
-    card.querySelectorAll('.event-tab').forEach(t => t.classList.remove('active'));
-    btn.classList.add('active');
-    const target = btn.dataset.tab;
-    card.querySelectorAll('.event-tab-pane').forEach(p => {
-        p.classList.toggle('hidden', p.dataset.tabPane !== target);
-    });
-}
-
-async function saveFeedbackFromTab() {
-    if (!tempNewEvent) return;
-    const container = document.getElementById('new-event-form-container');
-    const card = container.querySelector('.event-card');
-    const eventIndex = eventsData.findIndex(e => e.ID === tempNewEvent.ID);
-    if (eventIndex < 0) { toast('イベントが見つかりません', 'error'); return; }
-
-    const positives = card.querySelector('.fb-tab-positives')?.value || '';
-    const reflections = card.querySelector('.fb-tab-reflections')?.value || '';
-
-    const updated = { ...eventsData[eventIndex] };
-    updated.Positives = positives;
-    updated.Reflections = reflections;
-
-    const gasItem = uiToGas(updated);
-    gasItem._baseUpdatedAt = updated.UpdatedAt || '';
-
-    try {
-        const savedGas = await api.save('events', gasItem);
-        const savedEvent = gasToUi(savedGas);
-        eventsData[eventIndex] = savedEvent;
-        tempNewEvent = { ...savedEvent, Files: Array.isArray(savedEvent.Files) ? [...savedEvent.Files] : [] };
-        api.saveCache('events', eventsData);
-
-        await saveExperimentFeedback(card, savedEvent);
-
-        toast('振り返りを保存しました', 'success');
-    } catch (e) {
-        if (String(e.message).includes('conflict')) {
-            toast('他の人が編集しました。最新を読み込みます。', 'error', 5000);
-            closeModal();
-            await refreshData();
-            return;
-        }
-        toast('保存失敗: ' + e.message, 'error');
-    }
-}
-
 // 日付変更時に期限表示を即時更新する（期限は自動計算のみ・表示専用スパン）。
-// 実際の保存値は saveEventFromWizard で確定する。
+// 実際の保存値は saveEventFromWizard / saveQuickCreate で確定する。
+// 許可願の期限が既に過ぎている場合は赤字で警告する。
 function updateDeadlines(dateInput) {
-    const card = dateInput.closest('.event-card');
     const newDate = dateInput.value;
-    if (!newDate) return;
-
     const cat = (tempNewEvent && tempNewEvent.Category) || 'normal';
     const isMeeting = cat === 'general' || cat === 'admin';
-    const calculations = isMeeting ? { kyoka: '', houkoku: '' } : calculateDeadlines(newDate);
+    const calc = isMeeting ? { kyoka: '', houkoku: '' } : calculateDeadlines(newDate);
+    const kyokaPast = !!calc.kyoka && calc.kyoka < todayISO();
 
-    // Wizard context
+    // 編集ウィザード（Step 4 の期限表示）
     const wzKyoka = document.getElementById('wz-ev-kyoka-dl');
     const wzHoukoku = document.getElementById('wz-ev-houkoku-dl');
-    if (wzKyoka) wzKyoka.textContent = calculations.kyoka;
-    if (wzHoukoku) wzHoukoku.textContent = calculations.houkoku;
+    if (wzKyoka) {
+        wzKyoka.textContent = calc.kyoka || '---';
+        wzKyoka.classList.toggle('deadline-past', kyokaPast);
+        wzKyoka.title = kyokaPast ? '許可願の期限が既に過ぎています' : '';
+    }
+    if (wzHoukoku) wzHoukoku.textContent = calc.houkoku || '---';
 
-    // Modal context
-    if (card) {
-        const kyokaDisplay = card.querySelector('[data-field="Kyoka_Deadline"]');
-        const houkokuDisplay = card.querySelector('[data-field="Houkoku_Deadline"]');
-        if (kyokaDisplay) kyokaDisplay.textContent = calculations.kyoka;
-        if (houkokuDisplay) houkokuDisplay.textContent = calculations.houkoku;
+    // クイック作成（日付の下の期限メモ）
+    const qcNote = document.getElementById('qc-deadline-note');
+    if (qcNote) {
+        if (isMeeting || !newDate) {
+            qcNote.innerHTML = '';
+        } else {
+            qcNote.innerHTML = `書類期限（自動計算）: 許可願 <strong class="${kyokaPast ? 'deadline-past' : ''}">${escapeHtml(calc.kyoka)}</strong> ／ 報告書 ${escapeHtml(calc.houkoku)}`
+                + (kyokaPast ? '<br><span class="deadline-past">開催日まで10日を切っています。許可願を至急提出してください。</span>' : '');
+        }
     }
 }
 
@@ -2179,113 +1895,3 @@ function calculateDeadlines(dateStr) {
 }
 
 // 日付フォーマットは app.js の toISODate / todayISO を使用
-
-// ---- Phase 2: ファイルアップロード (Google Drive) ----
-
-function allowDrop(ev) {
-    ev.preventDefault();
-}
-
-function handleDrop(ev) {
-    ev.preventDefault();
-    ev.currentTarget.classList.remove('dragover');
-
-    const files = [];
-    if (ev.dataTransfer.items) {
-        [...ev.dataTransfer.items].forEach(item => {
-            if (item.kind === 'file') files.push(item.getAsFile());
-        });
-    } else if (ev.dataTransfer.files) {
-        files.push(...ev.dataTransfer.files);
-    }
-    if (files.length > 0) uploadFiles(files);
-}
-
-function handleFileSelect(input) {
-    const files = Array.from(input.files);
-    if (files.length > 0) uploadFiles(files);
-    input.value = '';
-}
-
-async function uploadFiles(fileList) {
-    const maxSizeMB = (CONFIG.FILE_UPLOAD && CONFIG.FILE_UPLOAD.maxSizeMB) || 10;
-
-    for (const file of fileList) {
-        if (file.size > maxSizeMB * 1024 * 1024) {
-            toast(`「${file.name}」はサイズ上限(${maxSizeMB}MB)を超えています`, 'error');
-            continue;
-        }
-        if (!tempNewEvent) continue;
-        if (!Array.isArray(tempNewEvent.Files)) tempNewEvent.Files = [];
-
-        const placeholder = { name: file.name, size: file.size, _uploading: true };
-        tempNewEvent.Files.push(placeholder);
-        refreshEditFileList();
-
-        try {
-            const result = await api.uploadFile(file);
-            const idx = tempNewEvent.Files.indexOf(placeholder);
-            if (idx >= 0) {
-                tempNewEvent.Files[idx] = result;
-            } else {
-                tempNewEvent.Files.push(result);
-            }
-            toast(`「${file.name}」をアップロードしました`, 'success', 2000);
-        } catch (e) {
-            toast(`「${file.name}」のアップロード失敗: ${e.message}`, 'error');
-            const idx = tempNewEvent.Files.indexOf(placeholder);
-            if (idx >= 0) {
-                tempNewEvent.Files[idx] = { name: file.name, size: file.size, _failed: true };
-            }
-        }
-        refreshEditFileList();
-    }
-}
-
-function removeFile(index) {
-    if (!tempNewEvent || !Array.isArray(tempNewEvent.Files)) return;
-    const file = tempNewEvent.Files[index];
-    if (!file) return;
-
-    if (file.driveId) {
-        if (!Array.isArray(tempNewEvent._filesToDelete)) tempNewEvent._filesToDelete = [];
-        tempNewEvent._filesToDelete.push(file.driveId);
-    }
-    tempNewEvent.Files.splice(index, 1);
-    refreshEditFileList();
-}
-
-function refreshEditFileList() {
-    const card = document.querySelector('#new-event-form-container .event-card');
-    if (!card || !tempNewEvent) return;
-    const el = card.querySelector('.file-list-edit');
-    if (el) renderEditFileList(el, tempNewEvent.Files);
-}
-
-function renderEditFileList(container, files) {
-    if (!files || files.length === 0) {
-        container.innerHTML = '';
-        return;
-    }
-    container.innerHTML = files.map((f, i) => {
-        const name = escapeHtml(f.name || ('ファイル ' + (i + 1)));
-        const size = f.size ? formatFileSize(f.size) : '';
-        const uploading = f._uploading;
-        const failed = f._failed;
-        let statusCls = '';
-        let statusLabel = '';
-        if (uploading) { statusCls = ' uploading'; statusLabel = ' (アップロード中...)'; }
-        if (failed) { statusCls = ' upload-failed'; statusLabel = ' (アップロード失敗)'; }
-        return `
-            <div class="file-item${statusCls}" data-index="${i}">
-                <span class="file-name">${name}${statusLabel}</span>
-                <span class="file-size">${size}</span>
-                <div class="file-actions">
-                    ${!uploading && !failed && f.url ? `<a href="${escapeAttr(f.url)}" target="_blank" rel="noopener" class="tbl-btn">開く</a>` : ''}
-                    ${!uploading ? `<button class="tbl-btn tbl-btn-danger" onclick="removeFile(${i})" type="button">削除</button>` : ''}
-                    ${uploading ? `<button class="tbl-btn tbl-btn-danger" onclick="removeFile(${i})" type="button">キャンセル</button>` : ''}
-                </div>
-            </div>
-        `;
-    }).join('');
-}

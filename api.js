@@ -332,6 +332,20 @@ const api = {
     return res.votes || [];
   },
 
+  // 全イベントの投票を一括取得（ホームの出欠一括回答・イベント一覧の参加人数バッジ用）。
+  // 旧バックエンド（listVotes 未対応）では空配列を返し、表示だけが省略される。
+  async listVotes() {
+    const res = await this._post({
+      action: 'listVotes',
+      token: this.getToken()
+    });
+    if (!res.success) {
+      if (String(res.error || '').indexOf('unknown action') >= 0) return [];
+      throw new Error(res.error || 'listVotes failed');
+    }
+    return res.votes || [];
+  },
+
   async submitVote(vote) {
     const res = await this._post({
       action: 'submitVote',

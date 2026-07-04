@@ -32,13 +32,33 @@
             <h3 class="page-header">対応が必要</h3>
             <div class="dashboard-grid">
                 <div class="dash-card dash-card--alert">
-                    <h3 class="dash-card-title">報告書の期限 <a href="events.html">一覧 →</a></h3>
+                    <h3 class="dash-card-title">許可願の期限（イベント前）</h3>
+                    <ul class="dash-list" id="upcoming-kyoka"></ul>
+                </div>
+                <div class="dash-card dash-card--alert">
+                    <h3 class="dash-card-title">報告書の期限（イベント後）</h3>
                     <ul class="dash-list" id="upcoming-deadlines"></ul>
                 </div>
                 <div class="dash-card dash-card--alert">
-                    <h3 class="dash-card-title">振り返り未記入 <a href="events.html">一覧 →</a></h3>
+                    <h3 class="dash-card-title">振り返り未記入</h3>
                     <ul class="dash-list" id="feedback-pending"></ul>
                 </div>
+            </div>
+        </section>
+
+        <section class="dash-section" id="bulk-vote-section">
+            <h3 class="page-header">出欠の回答</h3>
+            <div class="dash-card">
+                <div class="bulk-vote-header">
+                    <label class="bulk-vote-label" for="bulk-vote-member">あなたの名前</label>
+                    <select id="bulk-vote-member" class="e1-input bulk-vote-select">
+                        <option value="">-- 名前を選択 --</option>
+                    </select>
+                </div>
+                <p class="text-muted" style="font-size:0.82rem; margin:6px 0 10px;">
+                    名前を選ぶと、今後のイベントにここからまとめて出欠を回答できます（端末に記憶されます）。
+                </p>
+                <ul class="dash-list bulk-vote-list" id="bulk-vote-list"><li class="loading-text">読み込み中</li></ul>
             </div>
         </section>
 
