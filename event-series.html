@@ -11,6 +11,10 @@
 <body>
     <header class="app-header"></header>
 
+    <!-- ページ内編集ウィザード（event-wizard.js）の入力候補 -->
+    <datalist id="member-datalist"></datalist>
+    <datalist id="experiment-datalist"></datalist>
+
     <main class="container">
 
         <!-- ===== シリーズ一覧モード（?key / ?event なしでアクセスした時） ===== -->
@@ -23,9 +27,9 @@
                 同じ名前の催しは1つにまとめています。開くと詳細・現地情報・過去の振り返り・統計が見られます。
             </p>
             <div class="page-filters">
-                <button class="filter-chip active" data-sidx="event" onclick="onSeriesIndexFilter('event')">イベント</button>
-                <button class="filter-chip" data-sidx="meeting" onclick="onSeriesIndexFilter('meeting')">ミーティング</button>
-                <button class="filter-chip" data-sidx="all" onclick="onSeriesIndexFilter('all')">全部</button>
+                <button class="filter-chip active" data-sidx="event" aria-pressed="true" onclick="onSeriesIndexFilter('event')">イベント</button>
+                <button class="filter-chip" data-sidx="other" aria-pressed="false" onclick="onSeriesIndexFilter('other')">その他</button>
+                <button class="filter-chip" data-sidx="all" aria-pressed="false" onclick="onSeriesIndexFilter('all')">全部</button>
             </div>
             <div id="series-index-grid" class="series-index-grid">
                 <div class="loading-text">読み込み中</div>
@@ -82,9 +86,9 @@
                 <div class="expd-tab-pane hidden" data-tab-pane="feedback">
                     <div class="expd-section">
                         <div class="expd-feedback-filters">
-                            <button class="filter-chip active" data-fb="all" onclick="filterSeriesFb('all')">全て</button>
-                            <button class="filter-chip" data-fb="positive" onclick="filterSeriesFb('positive')">良かった点</button>
-                            <button class="filter-chip" data-fb="reflection" onclick="filterSeriesFb('reflection')">改善点</button>
+                            <button class="filter-chip active" data-fb="all" aria-pressed="true" onclick="filterSeriesFb('all')">全て</button>
+                            <button class="filter-chip" data-fb="positive" aria-pressed="false" onclick="filterSeriesFb('positive')">良かった点</button>
+                            <button class="filter-chip" data-fb="reflection" aria-pressed="false" onclick="filterSeriesFb('reflection')">改善点</button>
                         </div>
                         <div id="series-feedback-timeline"></div>
                     </div>
@@ -103,6 +107,7 @@
     <script src="config.js"></script>
     <script src="api.js"></script>
     <script src="app.js"></script>
+    <script src="event-wizard.js"></script>
     <script src="event-series.js"></script>
 </body>
 </html>

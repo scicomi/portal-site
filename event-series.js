@@ -17,22 +17,116 @@ let seriesKey = '';
 let seriesFbFilter = 'all';
 let currentEventId = '';     // 詳細タブで選択中の開催回
 let indexMode = false;
-let indexFilter = 'event';   // 一覧モードのフィルタ: event / meeting / all
+let indexFilter = 'event';   // 一覧モードのフィルタ: event / other / all（ミーティングは表示しない）
 let membersCache = [];
 let experimentsCache = [];
 const votesCache = {};       // eventId -> votes[]
 let scrollToFeedback = false;
+let detailFbOpen = false;    // 「この回の振り返り」トグルの開閉状態（再描画をまたいで維持）
 
-// 許可願・報告書の提出ステータス定義
-const KYOKA_STATUS = {
-    '':          { label: '未提出', color: '#9ca3af' },
-    'submitted': { label: '提出済', color: '#10b981' }
+// 許可願・報告書の提出ステータス定義（config.js に集約）
+const KYOKA_STATUS = CONFIG.KYOKA_STATUS;
+const REPORT_STATUS = CONFIG.REPORT_STATUS;
+
+// ---- イベント編集ウィザードのホスト実装 ----
+// event-wizard.js の共通ウィザードをこのページ内で使う。
+// このページのデータ（allEventsData）は GAS 正準形なので UI形と相互変換する。
+window.EVENT_WIZARD_HOST = {
+    getEvent(id) {
+        const g = allEventsData.find(e => e.ID === id);
+        return g ? gasToUi(g) : null;
+    },
+    snapshot() { return JSON.parse(JSON.stringify(allEventsData)); },
+    applyOptimistic(itemUi) {
+        const g = uiToGas(itemUi);
+        const idx = allEventsData.findIndex(e => e.ID === g.ID);
+        if (idx >= 0) allEventsData[idx] = g; else allEventsData.unshift(g);
+        api.saveCache('events', allEventsData);
+        this._rerender();
+    },
+    commitSaved(savedGas) {
+        const idx = allEventsData.findIndex(e => e.ID === savedGas.ID);
+        if (idx >= 0) allEventsData[idx] = savedGas;
+        api.saveCache('events', allEventsData);
+        this._rerender();
+    },
+    rollback(snap) {
+        allEventsData.splice(0, allEventsData.length, ...snap);
+        api.saveCache('events', allEventsData);
+        this._rerender();
+    },
+    onConflict() { init(); },
+    confirmDelete(id) { confirmDeleteSeriesEvent(id); },
+    _rerender() {
+        // タイトル変更でシリーズキーが変わることがあるため、選択中イベントから再導出する
+        const ev = allEventsData.find(e => e.ID === currentEventId);
+        if (ev) seriesKey = seriesKeyNormalize(ev);
+        filterSeries();
+        if (seriesEvents.length > 0) renderAll();
+    }
 };
-const REPORT_STATUS = {
-    '':            { label: '未提出',                 color: '#9ca3af' },
-    'coordinator': { label: 'コーディネーター提出済', color: '#f59e0b' },
-    'clc':         { label: 'CLC提出済',              color: '#10b981' }
-};
+
+// ウィザードの削除ボタンから呼ばれる削除フロー（一覧ページと同じ Undo つき）
+function confirmDeleteSeriesEvent(id) {
+    if (!api.isAdmin()) {
+        showAdminAuthModal(() => confirmDeleteSeriesEvent(id));
+        return;
+    }
+    const ev = allEventsData.find(e => e.ID === id);
+    if (!ev) return;
+    showConfirmDialog({
+        title: `「${ev.Title || '(無題)'}」を削除`,
+        message: 'この操作は元に戻せます（削除直後のみ）。',
+        okLabel: '削除する',
+        danger: true,
+        onOk: () => executeDeleteSeriesEvent(id)
+    });
+}
+
+async function executeDeleteSeriesEvent(id) {
+    const idx = allEventsData.findIndex(e => e.ID === id);
+    if (idx < 0) return;
+    const backup = allEventsData[idx];
+
+    allEventsData.splice(idx, 1);
+    api.saveCache('events', allEventsData);
+
+    try {
+        await api.delete('events', id);
+    } catch (e) {
+        allEventsData.splice(idx, 0, backup);
+        api.saveCache('events', allEventsData);
+        toast('削除失敗: ' + e.message, 'error');
+        return;
+    }
+
+    filterSeries();
+    if (seriesEvents.length === 0) {
+        // シリーズの最後の1回を消したら一覧モードへ戻る
+        location.href = 'event-series.html';
+        return;
+    }
+    if (currentEventId === id) currentEventId = '';
+    renderAll();
+
+    toastUndo(
+        `「${backup.Title || '(無題)'}」を削除しました`,
+        async () => {
+            try {
+                const saved = await api.save('events', backup);
+                allEventsData.push(saved);
+                api.saveCache('events', allEventsData);
+                filterSeries();
+                renderAll();
+                toast('元に戻しました', 'success', 2000);
+            } catch (e) {
+                toast('復元に失敗しました: ' + e.message, 'error');
+            }
+        },
+        () => {},
+        5000
+    );
+}
 
 function seriesKeyNormalize(e) {
     const k = (e.SeriesKey && String(e.SeriesKey).trim()) || (e.Title || '');
@@ -68,12 +162,17 @@ async function init() {
     seriesKey = params.get('key') || '';
     currentEventId = params.get('event') || '';
     scrollToFeedback = params.get('tab') === 'feedback';
+    if (scrollToFeedback) detailFbOpen = true; // 未記入通知などから来たら折りたたみを開いておく
     indexMode = !seriesKey && !currentEventId;
 
     document.getElementById(indexMode ? 'series-index' : 'series-view').classList.remove('hidden');
     if (indexMode) document.title = 'イベント別ページ | SciComi Portal';
 
     loadAuxData(); // メンバー・実験は補助情報。裏で読み込み、揃い次第再描画する。
+
+    // ページ内の編集ウィザード用の補助データ（祝日・担当/実験の入力候補）を裏で読み込む
+    api.loadHolidaysCached().then(h => { holidaysData = h || {}; }).catch(() => {});
+    populateDatalists();
 
     const cached = api.loadCache('events');
     if (cached && cached.items && cached.items.length > 0) {
@@ -91,10 +190,22 @@ async function init() {
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
         if (e.handled) return;
-        if (!indexMode && seriesEvents.length === 0) {
-            document.getElementById('series-loading').textContent = 'データの読み込みに失敗しました';
-        }
         updateSyncStatus('error', null, e.message);
+        // キャッシュも無い初回失敗時は「読み込み中」を残さず、エラー＋再試行を表示する
+        const errorHtml = `<div class="empty-state">
+            <div class="empty-text">データを読み込めませんでした</div>
+            <div class="empty-hint">${escapeHtml(humanizeApiError(e))}</div>
+            <button type="button" class="btn btn-secondary" onclick="init()">再読み込み</button>
+        </div>`;
+        if (indexMode) {
+            if (allEventsData.length === 0) {
+                document.getElementById('series-index-grid').innerHTML = errorHtml;
+            }
+        } else if (seriesEvents.length === 0) {
+            const loading = document.getElementById('series-loading');
+            loading.classList.remove('loading-text');
+            loading.innerHTML = errorHtml;
+        }
     }
 }
 
@@ -147,7 +258,11 @@ function filterSeries() {
 
 function onSeriesIndexFilter(f) {
     indexFilter = f;
-    document.querySelectorAll('.filter-chip[data-sidx]').forEach(c => c.classList.toggle('active', c.dataset.sidx === f));
+    document.querySelectorAll('.filter-chip[data-sidx]').forEach(c => {
+        const isActive = c.dataset.sidx === f;
+        c.classList.toggle('active', isActive);
+        c.setAttribute('aria-pressed', String(isActive));
+    });
     renderSeriesIndex();
 }
 
@@ -185,9 +300,11 @@ function renderSeriesIndex() {
 
     let list = buildSeriesIndex();
     list = list.filter(s => {
-        const isMtg = s.category === 'general' || s.category === 'admin';
-        if (indexFilter === 'event' && isMtg) return false;
-        if (indexFilter === 'meeting' && !isMtg) return false;
+        // ミーティング類はこのページでは扱わない（全部でもイベント＋その他のみ）
+        if (s.category === 'general' || s.category === 'admin') return false;
+        const isOther = s.category === 'other';
+        if (indexFilter === 'event' && isOther) return false;
+        if (indexFilter === 'other' && !isOther) return false;
         if (q && !(s.title.toLowerCase().includes(q) || s.location.toLowerCase().includes(q))) return false;
         return true;
     });
@@ -201,7 +318,11 @@ function renderSeriesIndex() {
     });
 
     if (list.length === 0) {
-        grid.innerHTML = '<div class="empty-state" style="padding:30px 20px;">該当する催しはありません</div>';
+        const hasNarrowing = q || indexFilter !== 'all';
+        grid.innerHTML = `<div class="empty-state" style="padding:30px 20px;">
+            <div class="empty-text">該当する催しはありません</div>
+            ${hasNarrowing ? '<div class="empty-hint">検索キーワードや絞り込みを変更してみてください</div>' : ''}
+        </div>`;
         return;
     }
 
@@ -276,10 +397,15 @@ function renderOccurrenceSelector() {
 
     const today = todayISO();
     const asc = seriesEvents.slice().sort((a, b) => (a.Date || '').localeCompare(b.Date || ''));
+    // 年をまたぐシリーズがあるため年は残しつつ、コンパクトな表記にする
+    const compactDate = (s) => {
+        const p = String(s || '').split('-');
+        return p.length < 3 ? (s || '') : `${p[0]}/${parseInt(p[1])}/${parseInt(p[2])}`;
+    };
     const options = seriesEvents.map(ev => {
         const n = asc.findIndex(x => x.ID === ev.ID) + 1;
         const isUpcoming = (ev.DateEnd || ev.Date) >= today;
-        const label = `${ev.Date} (${dayOfWeekJP(ev.Date)}) — ${n}回目${isUpcoming ? '（予定）' : ''}`;
+        const label = `${compactDate(ev.Date)}(${dayOfWeekJP(ev.Date)}) ${n}回目${isUpcoming ? '・予定' : ''}`;
         return `<option value="${escapeAttr(ev.ID)}" ${ev.ID === currentEventId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
     }).join('');
 
@@ -400,7 +526,7 @@ function renderDetail() {
         <div class="detail-checklist">
             <span class="detail-checklist-label">未入力の項目:</span>
             ${miss.map(m => `<span class="checklist-chip">${escapeHtml(m)}</span>`).join('')}
-            <a href="events.html?edit=${encodeURIComponent(ev.ID)}" class="detail-checklist-link">編集して追記 &rarr;</a>
+            <button type="button" class="detail-checklist-link" onclick="openEventWizard('${escapeAttr(ev.ID)}')">編集して追記 &rarr;</button>
         </div>` : '';
 
     // 実験・発表者
@@ -435,7 +561,7 @@ function renderDetail() {
             <span class="doc-status-name">許可願</span>
             <span class="doc-status-info">期限 <span class="tag-deadline ${kyokaOverdue ? 'deadline-past' : ''}">${escapeHtml(ev.KyokaDeadline || '---')}</span>
                 ／ 担当 <strong>${escapeHtml(ev.AdminKyoka || '未定')}</strong></span>
-            <select class="report-status-select status-${(ev.KyokaStatus || '') === 'submitted' ? 'clc' : 'none'}" data-doc="KyokaStatus" title="許可願の提出ステータスを変更">
+            <select class="report-status-select status-${docStatusClass(KYOKA_STATUS, ev.KyokaStatus || '')}" data-doc="KyokaStatus" title="許可願の提出ステータスを変更">
                 ${Object.keys(KYOKA_STATUS).map(v => `<option value="${v}" ${v === (ev.KyokaStatus || '') ? 'selected' : ''}>${KYOKA_STATUS[v].label}</option>`).join('')}
             </select>
         </div>
@@ -443,7 +569,7 @@ function renderDetail() {
             <span class="doc-status-name">報告書</span>
             <span class="doc-status-info">期限 <span class="tag-deadline ${houkokuOverdue ? 'deadline-past' : ''}">${escapeHtml(ev.HoukokuDeadline || '---')}</span>
                 ／ 担当 <strong>${escapeHtml(ev.AdminHoukoku || '未定')}</strong></span>
-            <select class="report-status-select status-${escapeAttr(ev.ReportStatus || 'none')}" data-doc="ReportStatus" title="報告書の提出ステータスを変更">
+            <select class="report-status-select status-${docStatusClass(REPORT_STATUS, ev.ReportStatus || '')}" data-doc="ReportStatus" title="報告書の提出ステータスを変更">
                 ${Object.keys(REPORT_STATUS).map(v => `<option value="${v}" ${v === (ev.ReportStatus || '') ? 'selected' : ''}>${REPORT_STATUS[v].label}</option>`).join('')}
             </select>
         </div>`;
@@ -465,8 +591,8 @@ function renderDetail() {
                 ${isUpcoming ? '<span class="occ-badge occ-upcoming">開催予定</span>' : ''}
             </div>
             <div class="detail-head-actions">
-                <a class="btn btn-secondary btn-sm" href="events.html?edit=${encodeURIComponent(ev.ID)}">編集</a>
-                <a class="btn btn-secondary btn-sm" href="events.html?duplicate=${encodeURIComponent(ev.ID)}" title="この回の内容を引き継いで新しい開催を作る">複製して新規作成</a>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="openEventWizard('${escapeAttr(ev.ID)}')">編集</button>
+                <a class="btn btn-secondary btn-sm" href="events.html?duplicate=${encodeURIComponent(ev.ID)}" title="この回の内容を引き継いで新しい開催を作る">複製</a>
             </div>
         </div>
         ${checklistHtml}
@@ -476,53 +602,62 @@ function renderDetail() {
                 <td><span class="text-primary" style="font-size:1.15rem; font-weight:600;">${escapeHtml(displayTitle)}</span></td>
             </tr>
             <tr><th>日にち</th><td>${dateStr}</td></tr>
-            <tr><th>時間</th><td>${timeStr}</td></tr>
-            ${!isMeeting ? `<tr><th>集合・解散</th><td>${gatherDismiss}</td></tr>` : ''}
-            <tr><th>場所</th><td>${ev.Location
-                ? `${escapeHtml(ev.Location)} <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ev.Location)}" target="_blank" rel="noopener" class="series-map-link">&#x1F4CD; 地図</a>`
-                : '---'}</td></tr>
-            ${!isMeeting ? `<tr><th>対象・人数</th><td>${escapeHtml(ev.Audience || '---')}</td></tr>` : ''}
-            ${!isMeeting ? `<tr><th>実験内容・発表者</th><td>${expHtml}</td></tr>` : ''}
+            ${ev.TimeStart && ev.TimeEnd ? `<tr><th>時間</th><td>${timeStr}</td></tr>` : ''}
+            ${!isMeeting && (ev.GatherTime || ev.DismissTime) ? `<tr><th>集合・解散</th><td>${gatherDismiss}</td></tr>` : ''}
+            ${ev.Location ? `<tr><th>場所</th><td>${escapeHtml(ev.Location)}</td></tr>` : ''}
+            ${!isMeeting && ev.Audience ? `<tr><th>対象・人数</th><td>${escapeHtml(ev.Audience)}</td></tr>` : ''}
+            ${!isMeeting && parts.length > 0 ? `<tr><th>実験内容・発表者</th><td>${expHtml}</td></tr>` : ''}
             ${!isMeeting && ev.Logistics ? `<tr><th>スケジュール・運搬</th><td style="white-space:pre-wrap;">${escapeHtml(ev.Logistics)}</td></tr>` : ''}
             ${!isMeeting && ev.Accompany ? `<tr><th>帯同</th><td>${escapeHtml(ev.Accompany)}</td></tr>` : ''}
-            <tr><th>${isMeeting ? '議題 / 備考' : '備考'}</th><td style="white-space:pre-wrap;">${escapeHtml(ev.Remarks || '---')}</td></tr>
-            ${!isMeeting || files.length > 0 ? `<tr><th>関連ファイル</th><td class="file-list">${filesHtml}</td></tr>` : ''}
+            ${(ev.Remarks || '').trim() ? `<tr><th>${isMeeting ? '議題 / 備考' : '備考'}</th><td style="white-space:pre-wrap;">${escapeHtml(ev.Remarks)}</td></tr>` : ''}
+            ${files.length > 0 ? `<tr><th>関連ファイル</th><td class="file-list">${filesHtml}</td></tr>` : ''}
             ${!isMeeting ? `<tr><th>書類</th><td>${docsHtml}</td></tr>` : ''}
         </table>
 
         <div class="detail-section-card" id="series-detail-votes">
             <h3 class="detail-section-title">参加状況</h3>
             <div id="series-vote-summary" class="loading-text" style="padding:8px 0;">読み込み中</div>
-            <a class="btn btn-secondary btn-sm" href="vote.html?id=${encodeURIComponent(ev.ID)}">投票ページを開く（回答・変更）</a>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" class="btn btn-primary btn-sm" onclick="openVoteListModal()">回答一覧</button>
+                <a class="btn btn-secondary btn-sm" href="vote.html?id=${encodeURIComponent(ev.ID)}" title="投票ページで出欠を回答・変更する">回答する</a>
+            </div>
         </div>
 
         <div class="detail-section-card" id="series-detail-feedback">
-            <h3 class="detail-section-title">この回の振り返り</h3>
-            <div class="e1-group">
-                <label class="e1-label">良かった点</label>
-                <textarea class="e1-input" id="series-fb-positives" rows="3" placeholder="会場・運営で良かったこと">${escapeHtml(ev.Positives || '')}</textarea>
-            </div>
-            <div class="e1-group">
-                <label class="e1-label">改善点</label>
-                <textarea class="e1-input" id="series-fb-reflections" rows="3" placeholder="会場・運営の改善点">${escapeHtml(ev.Reflections || '')}</textarea>
-            </div>
-            ${!isMeeting ? `
-            <div id="series-exp-feedback">
-                ${parts.filter(p => p.name).map(p => `
-                    <div class="exp-fb-card" data-exp-name="${escapeAttr(p.name)}">
-                        <div class="exp-fb-card-title">${expLinkHtml(p.name)} の振り返り（実験ページに蓄積されます）</div>
-                        <div class="exp-fb-row">
-                            <label>良かった点</label>
-                            <textarea class="e1-input exp-fb-positive" rows="2" placeholder="この実験で良かったこと"></textarea>
-                        </div>
-                        <div class="exp-fb-row">
-                            <label>改善点</label>
-                            <textarea class="e1-input exp-fb-reflection" rows="2" placeholder="この実験の改善点"></textarea>
-                        </div>
-                    </div>`).join('')}
-            </div>` : ''}
-            <div style="margin-top:12px; text-align:right;">
-                <button class="btn btn-primary-solid" style="width:auto; padding:8px 24px;" onclick="saveDetailFeedback()">振り返りを保存</button>
+            <button type="button" class="detail-toggle-header" aria-expanded="${detailFbOpen}" aria-controls="series-fb-body" onclick="toggleDetailFeedback()">
+                <span class="detail-section-title" style="margin:0;">この回の振り返り</span>
+                <span class="fy-toggle" id="series-fb-arrow">${detailFbOpen ? '&#9660;' : '&#9654;'}</span>
+            </button>
+            <div id="series-fb-body" class="${detailFbOpen ? '' : 'hidden'}" style="margin-top:10px;">
+                ${!isMeeting ? `
+                <div id="series-exp-feedback">
+                    ${parts.filter(p => p.name).map(p => `
+                        <div class="exp-fb-card" data-exp-name="${escapeAttr(p.name)}">
+                            <div class="exp-fb-card-title">${expLinkHtml(p.name)} の振り返り（実験ページに蓄積されます）</div>
+                            <div class="exp-fb-row">
+                                <label>良かった点</label>
+                                <textarea class="e1-input exp-fb-positive" rows="2" placeholder="この実験で良かったこと"></textarea>
+                            </div>
+                            <div class="exp-fb-row">
+                                <label>改善点</label>
+                                <textarea class="e1-input exp-fb-reflection" rows="2" placeholder="この実験の改善点"></textarea>
+                            </div>
+                        </div>`).join('')}
+                </div>` : ''}
+                <div class="exp-fb-card">
+                    <div class="exp-fb-card-title">会場・運営の振り返り</div>
+                    <div class="exp-fb-row">
+                        <label>良かった点</label>
+                        <textarea class="e1-input" id="series-fb-positives" rows="3" placeholder="会場・運営で良かったこと">${escapeHtml(ev.Positives || '')}</textarea>
+                    </div>
+                    <div class="exp-fb-row">
+                        <label>改善点</label>
+                        <textarea class="e1-input" id="series-fb-reflections" rows="3" placeholder="会場・運営の改善点">${escapeHtml(ev.Reflections || '')}</textarea>
+                    </div>
+                </div>
+                <div style="margin-top:12px; text-align:right;">
+                    <button id="series-fb-save-btn" class="btn btn-primary-solid" style="width:auto; padding:8px 24px;" onclick="saveDetailFeedback()">振り返りを保存</button>
+                </div>
             </div>
         </div>
     `;
@@ -537,6 +672,25 @@ function renderDetail() {
 
 // ---- 参加状況（投票サマリー） ----
 
+// 出欠の回答・集計はコーディネーター・アドバイザーを対象外にする
+function staffMemberIds() {
+    return new Set(membersCache.filter(m => {
+        const r = memberRoleOf(m);
+        return r === 'アドバイザー' || r === 'コーディネーター';
+    }).map(m => m.ID));
+}
+
+// イベント年度に在籍する出欠対象メンバー（コーディネーター・アドバイザー除く）
+function voteEligibleMembers(ev, staffIds) {
+    const eventFY = getFiscalYear(ev.Date) || currentFiscalYear();
+    return membersCache.filter(m => {
+        if (m.Active === 'false') return false;
+        if (staffIds.has(m.ID)) return false;
+        const fy = m.FiscalYear ? parseInt(m.FiscalYear) : currentFiscalYear();
+        return fy === eventFY;
+    });
+}
+
 async function renderVoteSummary(ev) {
     const box = document.getElementById('series-vote-summary');
     if (!box) return;
@@ -549,20 +703,17 @@ async function renderVoteSummary(ev) {
         // 描画中に開催回が切り替わっていたら何もしない
         if (currentEventId !== ev.ID) return;
 
+        const staffIds = staffMemberIds();
         const counts = { attend: 0, absent: 0, undecided: 0 };
         const voted = new Set();
         votes.forEach(v => {
+            if (staffIds.has(v.memberId)) return;
             if (counts[v.status] !== undefined) counts[v.status]++;
             voted.add(v.memberId);
         });
 
-        // 未回答 = イベント年度の在籍メンバー − 回答済み
-        const eventFY = getFiscalYear(ev.Date) || currentFiscalYear();
-        const eligible = membersCache.filter(m => {
-            if (m.Active === 'false') return false;
-            const fy = m.FiscalYear ? parseInt(m.FiscalYear) : currentFiscalYear();
-            return fy === eventFY;
-        });
+        // 未回答 = 出欠対象メンバー − 回答済み
+        const eligible = voteEligibleMembers(ev, staffIds);
         const noAnswer = Math.max(0, eligible.length - voted.size);
 
         box.classList.remove('loading-text');
@@ -577,6 +728,86 @@ async function renderVoteSummary(ev) {
         box.classList.remove('loading-text');
         box.innerHTML = '<span class="text-hint" style="font-size:0.85rem;">参加状況を取得できませんでした</span>';
     }
+}
+
+// 参加回答一覧ポップアップ（vote.html へ行かなくても誰が何と答えたか見られる）
+async function openVoteListModal() {
+    const ev = currentEvent();
+    if (!ev) return;
+
+    let votes = votesCache[ev.ID];
+    if (!votes) {
+        try {
+            votes = await api.getEventVotes(ev.ID);
+            votesCache[ev.ID] = votes;
+        } catch (e) {
+            toast('参加状況を取得できませんでした: ' + e.message, 'error');
+            return;
+        }
+    }
+
+    const staffIds = staffMemberIds();
+    const nameOf = {};
+    membersCache.forEach(m => { nameOf[m.ID] = m.Name || m.ID; });
+
+    const grouped = { attend: [], absent: [], undecided: [] };
+    const voted = new Set();
+    votes.forEach(v => {
+        if (staffIds.has(v.memberId)) return;
+        if (grouped[v.status]) grouped[v.status].push(nameOf[v.memberId] || v.memberId);
+        voted.add(v.memberId);
+    });
+    const noanswer = voteEligibleMembers(ev, staffIds)
+        .filter(m => !voted.has(m.ID))
+        .map(m => m.Name || m.ID);
+
+    const sections = [
+        { label: '参加',   type: 'attend',    names: grouped.attend },
+        { label: '不参加', type: 'absent',    names: grouped.absent },
+        { label: '未定',   type: 'undecided', names: grouped.undecided },
+        { label: '未回答', type: 'noanswer',  names: noanswer }
+    ];
+    const sectionsHtml = sections.map(s => {
+        if (s.names.length === 0) return '';
+        const names = s.names.slice().sort((a, b) => a.localeCompare(b, 'ja'));
+        return `<div class="vote-detail-group">
+            <h4 class="vote-detail-label vote-detail-label-${s.type}">${s.label} (${s.names.length})</h4>
+            <ul class="vote-detail-names">${names.map(n => `<li>${escapeHtml(n)}</li>`).join('')}</ul>
+        </div>`;
+    }).join('');
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal-content" style="max-width:520px;" role="dialog" aria-modal="true" aria-labelledby="vote-list-modal-title">
+            <h2 id="vote-list-modal-title" style="margin-top:0;">参加回答一覧</h2>
+            <p class="text-muted" style="font-size:0.85rem; margin:0 0 12px;">
+                ${escapeHtml(ev.Title || '(無題)')} — ${escapeHtml(ev.Date)} (${dayOfWeekJP(ev.Date)})
+            </p>
+            ${sectionsHtml || '<p class="text-hint">まだ回答はありません</p>'}
+            <div class="action-buttons" style="margin-top:16px;">
+                <a class="btn btn-secondary" href="vote.html?id=${encodeURIComponent(ev.ID)}">回答する</a>
+                <button type="button" class="btn btn-primary-solid" style="width:auto;" data-close>閉じる</button>
+            </div>
+        </div>`;
+
+    const close = () => overlay.remove();
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    bindOverlayClose(overlay, close);
+    bindModalEscape(overlay, close);
+    document.body.appendChild(overlay);
+    trapFocus(overlay.querySelector('.modal-content'));
+}
+
+// 「この回の振り返り」の開閉（再描画せずDOMだけ切り替え、入力途中の文章を守る）
+function toggleDetailFeedback() {
+    detailFbOpen = !detailFbOpen;
+    const body = document.getElementById('series-fb-body');
+    const header = document.querySelector('#series-detail-feedback .detail-toggle-header');
+    const arrow = document.getElementById('series-fb-arrow');
+    if (body) body.classList.toggle('hidden', !detailFbOpen);
+    if (header) header.setAttribute('aria-expanded', String(detailFbOpen));
+    if (arrow) arrow.innerHTML = detailFbOpen ? '&#9660;' : '&#9654;';
 }
 
 // ---- 書類ステータス・振り返りの保存（楽観的UI + 競合検知） ----
@@ -619,6 +850,10 @@ async function saveDetailFeedback() {
     const positives = document.getElementById('series-fb-positives')?.value || '';
     const reflections = document.getElementById('series-fb-reflections')?.value || '';
 
+    // 保存には複数リクエストが走ることがあるため、処理中表示＋二度押し防止
+    const saveBtn = document.getElementById('series-fb-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
+
     try {
         const saved = await api.save('events', {
             ...ev, Positives: positives, Reflections: reflections,
@@ -643,6 +878,8 @@ async function saveDetailFeedback() {
             return;
         }
         toast('保存失敗: ' + e.message, 'error');
+        // 成功時は renderDetail() でボタンごと再生成されるため、失敗時のみ元へ戻す
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '振り返りを保存'; }
     }
 }
 
@@ -734,11 +971,11 @@ function renderFeedbackTimeline() {
         if (entries.length === 0) return '';
 
         return `<div class="fy-group">
-            <div class="fy-header ${isRecent ? 'open' : ''}" onclick="this.classList.toggle('open'); this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.fy-toggle').innerHTML = this.classList.contains('open') ? '&#9660;' : '&#9654;';">
+            <button type="button" class="fy-header ${isRecent ? 'open' : ''}" aria-expanded="${isRecent}" onclick="this.classList.toggle('open'); this.setAttribute('aria-expanded', this.classList.contains('open')); this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.fy-toggle').innerHTML = this.classList.contains('open') ? '&#9660;' : '&#9654;';">
                 <span class="fy-toggle">${isRecent ? '&#9660;' : '&#9654;'}</span>
                 <span class="fy-label">${escapeHtml(fy)}</span>
                 <span class="fy-count">${entries.length}件</span>
-            </div>
+            </button>
             <div class="fy-body ${isRecent ? '' : 'hidden'}">
                 ${entries.map(f => {
                     const isPos = f.type === 'positive';
@@ -756,9 +993,11 @@ function renderFeedbackTimeline() {
 
 function filterSeriesFb(type) {
     seriesFbFilter = type;
-    document.querySelectorAll('[data-fb]').forEach(c =>
-        c.classList.toggle('active', c.dataset.fb === type)
-    );
+    document.querySelectorAll('[data-fb]').forEach(c => {
+        const isActive = c.dataset.fb === type;
+        c.classList.toggle('active', isActive);
+        c.setAttribute('aria-pressed', String(isActive));
+    });
     renderFeedbackTimeline();
 }
 
@@ -855,10 +1094,7 @@ function renderOverview() {
             <div class="series-card-body">
                 <div class="series-card-meta">
                     <div><strong>${escapeHtml(ev.Date)}</strong> (${dayOfWeekJP(ev.Date)})${ev.DateEnd && ev.DateEnd !== ev.Date ? ` 〜 ${escapeHtml(ev.DateEnd)}` : ''}</div>
-                    ${ev.Location ? `<div class="series-location-row">
-                        <span>場所: ${escapeHtml(ev.Location)}</span>
-                        <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ev.Location)}" target="_blank" rel="noopener" class="series-map-link" onclick="event.stopPropagation();" title="Google Maps で開く">&#x1F4CD; 地図</a>
-                    </div>` : ''}
+                    ${ev.Location ? `<div>場所: ${escapeHtml(ev.Location)}</div>` : ''}
                     ${ev.Audience ? `<div>対象: ${escapeHtml(ev.Audience)}</div>` : ''}
                     ${ev.TimeStart && ev.TimeEnd ? `<div>時間: ${escapeHtml(ev.TimeStart)} 〜 ${escapeHtml(ev.TimeEnd)}</div>` : ''}
                     ${ev.GatherTime ? `<div>集合: ${escapeHtml(ev.GatherTime)}${ev.DismissTime ? ` / 解散: ${escapeHtml(ev.DismissTime)}` : ''}</div>` : ''}

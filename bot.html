@@ -14,9 +14,9 @@
     <main class="bot-container">
         <div class="bot-gauge" id="bot-gauge">
             <div class="bot-gauge-header">
-                <span class="bot-gauge-label">Gemini API 使用量</span>
+                <span class="bot-gauge-label">Gemini API 使用量（本日・サイト全体）</span>
                 <span class="bot-gauge-count" id="bot-gauge-count">— / —</span>
-                <button class="bot-help-btn" id="bot-help-btn" title="AI検索について">
+                <button class="bot-help-btn" id="bot-help-btn" title="AI検索について" aria-label="AI検索について">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><text x="8" y="11.5" text-anchor="middle" font-size="10" font-weight="700" fill="currentColor">?</text></svg>
                 </button>
             </div>
@@ -25,10 +25,10 @@
             </div>
         </div>
 
-        <div class="bot-messages" id="bot-messages"></div>
+        <div class="bot-messages" id="bot-messages" role="log" aria-live="polite" aria-label="チャット履歴"></div>
 
         <div class="bot-input-area">
-            <textarea id="bot-input" class="bot-input" placeholder="質問・要約を入力…&#10;Enter で送信 / Shift+Enter で改行" rows="1" autocomplete="off"></textarea>
+            <textarea id="bot-input" class="bot-input" placeholder="質問・要約を入力…&#10;Enter で送信 / Shift+Enter で改行" rows="1" autocomplete="off" maxlength="2000" aria-label="質問を入力"></textarea>
             <button class="bot-send-btn" id="bot-send-btn">送信</button>
         </div>
     </main>
@@ -59,8 +59,10 @@
                 <h3>使い方のヒント</h3>
                 <ul>
                     <li><strong>Enter</strong> で送信、<strong>Shift + Enter</strong> または <strong>Option(Alt) + Enter</strong> で改行</li>
+                    <li>最初に表示される「例」をタップすると、そのまま質問できます</li>
                     <li>回答のコピーは、メッセージ横の「コピー」ボタンで可能です</li>
                     <li>AI が使えない場合は自動でキーワード検索に切り替わります</li>
+                    <li>入力は2000文字まで、検索結果の一覧は先頭50件まで表示されます</li>
                 </ul>
             </div>
         </div>

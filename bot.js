@@ -9,6 +9,11 @@
 
 let allData = { events: [], members: [], experiments: [] };
 let chatHistory = [];
+// 送信〜応答完了（自動再試行の待機を含む）まで true。多重送信と typing 表示の重複を防ぐ。
+let isProcessing = false;
+
+// 検索結果一覧の最大表示件数（チャットバブル内に数百件並ぶのを防ぐ）
+const BOT_MAX_LIST_ITEMS = 50;
 
 // ====== 使用量トラッカー ======
 
@@ -249,10 +254,15 @@ const queryEngine = {
   },
 
   // --- 結果フォーマット ---
+  _moreNote(total) {
+    if (total <= BOT_MAX_LIST_ITEMS) return '';
+    return `<div class="bot-note">件数が多いため先頭${BOT_MAX_LIST_ITEMS}件のみ表示しています。期間やカテゴリで絞り込むか、各ページで確認してください。</div>`;
+  },
+
   _formatMembers(items) {
     if (items.length === 0) return '<div class="bot-empty">該当するメンバーが見つかりませんでした。</div>';
     return `<div class="bot-result-count">${items.length}人</div>
-      <div class="bot-result-list">${items.map(m => {
+      <div class="bot-result-list">${items.slice(0, BOT_MAX_LIST_ITEMS).map(m => {
         const grade = (m.StudentID || '').slice(0, 2);
         const role = memberRoleOf(m);
         const roleStr = role ? ` / ${escapeHtml(role)}` : '';
@@ -261,14 +271,14 @@ const queryEngine = {
           <div class="bot-ri-main">${escapeHtml(m.Name)}</div>
           <div class="bot-ri-sub">${escapeHtml(grade)}${roleStr}${fy}</div>
         </div>`;
-      }).join('')}</div>`;
+      }).join('')}</div>` + this._moreNote(items.length);
   },
 
   _formatEvents(items) {
     if (items.length === 0) return '<div class="bot-empty">該当するイベントが見つかりませんでした。</div>';
     const catLabels = { normal: 'イベント', other: 'その他', general: '全体MTG', admin: '幹部MTG' };
     return `<div class="bot-result-count">${items.length}件</div>
-      <div class="bot-result-list">${items.map(e => {
+      <div class="bot-result-list">${items.slice(0, BOT_MAX_LIST_ITEMS).map(e => {
         const d = e.Date ? shortDate(e.Date) : '未定';
         const dow = e.Date ? `(${dayOfWeekJP(e.Date)})` : '';
         const cat = catLabels[e.Category] || e.Category;
@@ -278,7 +288,7 @@ const queryEngine = {
         if (e.AdminKyoka) admin.push(`許可願: ${escapeHtml(e.AdminKyoka)}`);
         if (e.AdminHoukoku) admin.push(`報告書: ${escapeHtml(e.AdminHoukoku)}`);
         const adminStr = admin.length ? `<div class="bot-ri-detail">${admin.join(' | ')}</div>` : '';
-        return `<div class="bot-result-item event-item bot-clickable" onclick="openEventDetailFromBot('${escapeAttr(e.ID)}')" title="クリックで詳細を表示">
+        return `<div class="bot-result-item event-item bot-clickable" data-bot-open="event" data-id="${escapeAttr(e.ID)}" role="button" tabindex="0" title="クリックで詳細を表示">
           <div class="bot-ri-date">${d}${dow}</div>
           <div class="bot-ri-body">
             <div class="bot-ri-main">${escapeHtml(e.Title)} <span class="bot-ri-badge" style="background:${catCfg.bg};color:${catCfg.text}">${escapeHtml(cat)}</span></div>
@@ -287,24 +297,24 @@ const queryEngine = {
           </div>
           <span class="bot-ri-chevron">›</span>
         </div>`;
-      }).join('')}</div>`;
+      }).join('')}</div>` + this._moreNote(items.length);
   },
 
   _formatExperiments(items) {
     if (items.length === 0) return '<div class="bot-empty">該当する実験ネタが見つかりませんでした。</div>';
     const catLabels = { workshop: '工作', show: '実験ショー', other: 'その他' };
     return `<div class="bot-result-count">${items.length}件</div>
-      <div class="bot-result-list">${items.map(x => {
+      <div class="bot-result-list">${items.slice(0, BOT_MAX_LIST_ITEMS).map(x => {
         const cat = catLabels[x.Category] || x.Category;
         const catCfg = getExperimentCategory(x.Category);
         const mat = x.Materials ? x.Materials.split('\n').slice(0, 3).join(', ') : '';
         const matStr = mat ? `<div class="bot-ri-sub">材料: ${escapeHtml(mat)}</div>` : '';
-        return `<div class="bot-result-item exp-item bot-clickable" onclick="openExpDetailFromBot('${escapeAttr(x.ID)}')" title="クリックで詳細を表示">
+        return `<div class="bot-result-item exp-item bot-clickable" data-bot-open="exp" data-id="${escapeAttr(x.ID)}" role="button" tabindex="0" title="クリックで詳細を表示">
           <div class="bot-ri-main">${escapeHtml(x.Name)} <span class="bot-ri-badge" style="background:${catCfg.color};color:white">${escapeHtml(cat)}</span></div>
           ${matStr}
           <span class="bot-ri-chevron">›</span>
         </div>`;
-      }).join('')}</div>`;
+      }).join('')}</div>` + this._moreNote(items.length);
   }
 };
 
@@ -444,6 +454,15 @@ function closeBotEventDetail() {
   document.getElementById('bot-event-detail-modal').classList.add('hidden');
 }
 
+// クリック/キー操作された要素が結果アイテム（data-bot-open）なら詳細を開く。開いたら true。
+function openFromResultItem(target) {
+  const el = target.closest ? target.closest('[data-bot-open]') : null;
+  if (!el) return false;
+  if (el.dataset.botOpen === 'event') openEventDetailFromBot(el.dataset.id);
+  else openExpDetailFromBot(el.dataset.id);
+  return true;
+}
+
 // ====== キーワード検索（Gemini未設定時のフォールバック） ======
 
 function keywordSearch(text) {
@@ -511,7 +530,7 @@ function renderMessages() {
         <div class="bot-msg-meta">
           ${sourceBadge(msg.source)}
           <span class="bot-msg-time">${timeStr}</span>
-          <button class="bot-copy-btn" data-idx="${i}" title="コピー">
+          <button class="bot-copy-btn" data-idx="${i}" title="コピー" aria-label="回答をコピー">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 11V3a1.5 1.5 0 011.5-1.5H11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           </button>
         </div>
@@ -519,9 +538,7 @@ function renderMessages() {
     </div>`;
   }).join('');
 
-  container.querySelectorAll('.bot-copy-btn').forEach(btn => {
-    btn.addEventListener('click', () => copyBotMessage(parseInt(btn.dataset.idx)));
-  });
+  // クリック処理は init のイベント委譲（#bot-messages）で一括して行う
 
   container.scrollTop = container.scrollHeight;
 }
@@ -544,6 +561,7 @@ function copyBotMessage(idx) {
 }
 
 function showTyping() {
+  hideTyping(); // 二重表示を防ぐ（同じ id の要素が複数できると hideTyping で消えなくなる）
   const container = document.getElementById('bot-messages');
   const el = document.createElement('div');
   el.id = 'bot-typing';
@@ -580,7 +598,15 @@ function renderGauge() {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+// 送信ボタンの活性状態と処理中フラグを同期させる
+function setProcessing(on) {
+  isProcessing = on;
+  const btn = document.getElementById('bot-send-btn');
+  if (btn) btn.disabled = on;
+}
+
 async function handleSend() {
+  if (isProcessing) return; // 応答待ち・自動再試行中の多重送信を防ぐ
   const input = document.getElementById('bot-input');
   const text = input.value.trim();
   if (!text) return;
@@ -588,7 +614,12 @@ async function handleSend() {
   input.value = '';
   input.style.height = 'auto';
   addMessage('user', text);
-  await processQuery(text, false);
+  setProcessing(true);
+  try {
+    await processQuery(text, false);
+  } finally {
+    setProcessing(false);
+  }
 }
 
 // 1つの質問を Gemini で処理する。isRetry=true は1分レート制限の自動再試行時。
@@ -735,7 +766,8 @@ async function handleBotError(e, text, isRetry) {
       break;
 
     case 'API_KEY_INVALID':
-      addMessage('bot', 'APIキーが無効です。⚙→管理 から正しいキーを設定してください。');
+      addMessage('bot', 'APIキーが無効です。⚙→管理 から正しいキーを設定してください。\nキーワード検索に切り替えます。');
+      fallbackToKeyword(text);
       break;
 
     // キーは有効だが、API未有効化・地域制限・請求設定などでプロジェクト側が使えない状態
@@ -831,7 +863,8 @@ async function init() {
 
   const botInput = document.getElementById('bot-input');
   botInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.isComposing) {
+    // keyCode 229 は IME 変換確定の Enter（Safari 等は isComposing が false になるため併用）
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
       if (e.shiftKey || e.altKey) {
         return; // Shift+Enter / Alt(Option)+Enter → 改行（デフォルト動作）
       }
@@ -842,6 +875,30 @@ async function init() {
   botInput.addEventListener('input', () => {
     botInput.style.height = 'auto';
     botInput.style.height = Math.min(botInput.scrollHeight, 120) + 'px';
+  });
+
+  // 結果リスト・コピー・例チップのクリックを一括処理する。
+  // （インライン onclick を使わないことで、ID・文字列由来のスクリプト混入を構造的に防ぐ）
+  const messagesEl = document.getElementById('bot-messages');
+  messagesEl.addEventListener('click', e => {
+    const chip = e.target.closest('[data-bot-example]');
+    if (chip) {
+      if (isProcessing) return;
+      botInput.value = chip.dataset.botExample;
+      handleSend();
+      return;
+    }
+    const copyBtn = e.target.closest('.bot-copy-btn');
+    if (copyBtn) {
+      copyBotMessage(parseInt(copyBtn.dataset.idx, 10));
+      return;
+    }
+    openFromResultItem(e.target);
+  });
+  // 結果アイテムはキーボードでも開けるようにする（tabindex 付与済み）
+  messagesEl.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (openFromResultItem(e.target)) e.preventDefault();
   });
 
   // ヘルプボタン
@@ -875,8 +932,21 @@ async function init() {
   const hasCache = allData.events.length + allData.members.length + allData.experiments.length > 0;
   updateSyncStatus(hasCache ? 'cached' : 'initial-loading', hasCache ? Date.now() : null);
 
-  // ウェルカムメッセージ
-  addMessage('bot', 'こんにちは！SciComi Bot です。\nイベント・メンバー・実験に関する質問や、振り返りの要約ができます。\n\n例:\n・来月のイベントは？\n・6Cで書類を書いていないメンバーは？\n・工作の実験ネタを教えて\n・田中さんの参加イベント\n・スライムの実験の振り返りを要約して');
+  // ウェルカムメッセージ（例はタップでそのまま送信できるチップにする）
+  const examples = [
+    '来月のイベントは？',
+    '6Cで書類を書いていないメンバーは？',
+    '工作の実験ネタを教えて',
+    '田中さんの参加イベント',
+    'スライムの実験の振り返りを要約して'
+  ];
+  const chipsHtml = '<div class="bot-chips">'
+    + examples.map(q => `<button type="button" class="bot-chip" data-bot-example="${escapeAttr(q)}">${escapeHtml(q)}</button>`).join('')
+    + '</div>';
+  addMessage('bot', 'こんにちは！SciComi Bot です。\nイベント・メンバー・実験に関する質問や、振り返りの要約ができます。\n\n例（タップでそのまま質問できます）:', chipsHtml);
+
+  // デスクトップでは入力欄へ自動フォーカス（モバイルはキーボードが開いてしまうため除外）
+  if (!window.matchMedia('(pointer: coarse)').matches) botInput.focus();
 
   // APIキー未設定時のメッセージはサーバー応答で判定するため、ここでは出さない
 
@@ -897,5 +967,13 @@ async function refreshData(isManual = false) {
   } catch (e) {
     if (e.handled) return;
     updateSyncStatus('error', null, e.message);
+    // キャッシュも無い＝検索対象データが空のままだと、何を聞いても「0件」になってしまう。
+    // ヘッダーの同期ドットだけでは気づけないため、チャット内でも知らせる。
+    const hasData = allData.events.length + allData.members.length + allData.experiments.length > 0;
+    if (!hasData) {
+      addMessage('bot', 'イベント・メンバー・実験データを読み込めませんでした。\n'
+        + humanizeApiError(e)
+        + '\nこのままでは検索結果が常に0件になります。通信環境を確認して、ページを再読み込みしてください。');
+    }
   }
 }

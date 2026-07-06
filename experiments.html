@@ -18,9 +18,9 @@
         </div>
 
         <div class="page-section-actions">
-            <button class="filter-chip active" data-cat="workshop" onclick="switchExpTab('workshop')">工作 <span id="tab-cnt-workshop">0</span></button>
-            <button class="filter-chip" data-cat="show" onclick="switchExpTab('show')">実験ショー <span id="tab-cnt-show">0</span></button>
-            <button class="filter-chip" data-cat="other" onclick="switchExpTab('other')">その他 <span id="tab-cnt-other">0</span></button>
+            <button class="filter-chip active" data-cat="workshop" aria-pressed="true" onclick="switchExpTab('workshop')">工作 <span id="tab-cnt-workshop">0</span></button>
+            <button class="filter-chip" data-cat="show" aria-pressed="false" onclick="switchExpTab('show')">実験ショー <span id="tab-cnt-show">0</span></button>
+            <button class="filter-chip" data-cat="other" aria-pressed="false" onclick="switchExpTab('other')">その他 <span id="tab-cnt-other">0</span></button>
         </div>
 
         <div class="table-wrapper">
@@ -37,19 +37,7 @@
             </table>
         </div>
 
-        <!-- 詳細モーダル -->
-        <div id="exp-detail-modal" class="modal-overlay hidden">
-            <div class="modal-content large-modal exp-detail" role="dialog" aria-modal="true" aria-labelledby="exp-detail-title">
-                <div class="modal-header">
-                    <h2 id="exp-detail-title">&mdash;</h2>
-                    <div class="action-buttons-top">
-                        <button class="btn btn-text" onclick="closeExpDetail()">閉じる</button>
-                        <button class="btn btn-secondary" onclick="editCurrentExp()">編集</button>
-                    </div>
-                </div>
-                <div class="modal-body" id="exp-detail-body"></div>
-            </div>
-        </div>
+        <!-- 詳細モーダルは廃止。閲覧は experiment-detail.html（実験詳細ページ）へ一本化 -->
     </main>
 
     <!-- FAB -->

@@ -17,6 +17,16 @@ const MB_WIZARD_STEPS = [
     { label: '所属・連絡先' }
 ];
 
+// 学籍番号・教職員番号を大文字半角英数字へ正規化する。
+// 学年フィルタ（gradeOf: 先頭2文字）と院生判定（isGradStudent: 5文字目の M）が
+// 番号の形式に依存するため、全角・小文字のまま保存されると絞り込みに現れなくなる。
+function normalizeStudentId(s) {
+    return String(s || '')
+        .replace(/[０-９Ａ-Ｚａ-ｚ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+        .replace(/\s+/g, '')
+        .toUpperCase();
+}
+
 function gradeOf(m) {
     const id = (m.StudentID || '').trim();
     if (id.length < 2) return '';
@@ -50,18 +60,10 @@ function _bindMemberTableDelegation() {
             else if (actionEl.dataset.action === 'delete') confirmDeleteMember(id);
             return;
         }
-        const popEl = e.target.closest('.cell-popover-trigger');
-        if (popEl) {
-            e.stopPropagation();
-            const label = popEl.dataset.popoverLabel || '';
-            const isEmail = popEl.dataset.popoverType === 'email';
-            const valueHtml = isEmail
-                ? `<a href="mailto:${escapeAttr(popEl.dataset.popoverValue)}">${escapeHtml(popEl.dataset.popoverValue)}</a>`
-                : escapeHtml(popEl.dataset.popoverValue);
-            showCellPopover(popEl, label, valueHtml);
-            return;
-        }
         if (e.target.closest('[data-action-cell]')) return;
+        // 行タップで詳細ポップアップを開く（全行共通）
+        const row = e.target.closest('tr[data-id][data-detail]');
+        if (row) openMemberDetailModal(row.dataset.id);
     });
 }
 
@@ -94,6 +96,15 @@ async function refreshData(isManual = false) {
     } catch (e) {
         if (e.handled) return;
         updateSyncStatus('error', null, e.message);
+        // キャッシュも無く一覧が空のままなら、「読み込み中」を残さずエラー＋再試行を表示
+        if (membersData.length === 0) {
+            const tbody = document.getElementById('members-tbody');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-state">
+                <div class="empty-text">データを読み込めませんでした</div>
+                <div class="empty-hint">${escapeHtml(humanizeApiError(e))}</div>
+                <button type="button" class="btn btn-secondary" onclick="refreshData(true)">再読み込み</button>
+            </td></tr>`;
+        }
     }
 }
 
@@ -139,9 +150,9 @@ function buildGradeChips(fyMembers) {
         wrap.innerHTML = '';
         return;
     }
-    row.style.display = '';
+    row.style.display = 'inline-flex'; // 区分チップと同じ行に並べる（span ラッパーのため flex 指定）
     wrap.innerHTML = list.map(g =>
-        `<button class="filter-chip ${gradeFilter === g ? 'active' : ''}" onclick="setGradeFilter('${g}')">${g === '院生' ? '院生' : g + '生'}</button>`
+        `<button class="filter-chip ${gradeFilter === g ? 'active' : ''}" aria-pressed="${gradeFilter === g}" onclick="setGradeFilter('${g}')">${g === '院生' ? '院生' : g + '生'}</button>`
     ).join('');
 }
 
@@ -226,7 +237,7 @@ function renderMembers() {
     const tbody = document.getElementById('members-tbody');
     const isAdmin = api.isAdmin();
     const isStaffTab = roleFilter === 'coordinator' || roleFilter === 'adviser';
-    const colCount = isStaffTab ? 5 : 3;
+    const colCount = isStaffTab ? 4 : 3;
 
     document.querySelectorAll('.admin-only').forEach(el => {
         el.style.display = isAdmin ? 'inline-block' : 'none';
@@ -234,12 +245,17 @@ function renderMembers() {
 
     if (thead) {
         thead.innerHTML = isStaffTab
-            ? `<tr><th>名前</th><th>所属</th><th>メールアドレス</th><th>内線</th><th style="width:1px;"></th></tr>`
-            : `<tr><th>学籍/教職員番号</th><th>名前</th><th style="width:1px;"></th></tr>`;
+            ? `<tr><th>教職員番号</th><th>名前</th><th>メールアドレス</th><th style="width:1px;"></th></tr>`
+            : `<tr><th>学籍番号</th><th>名前</th><th style="width:1px;"></th></tr>`;
     }
 
     if (sorted.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">該当するメンバーはいません</td></tr>`;
+        // 検索・絞り込み中は「条件を変えれば見つかるかもしれない」ことが分かるようにする
+        const hasFilter = memberSearchKw || gradeFilter;
+        tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">
+            <div class="empty-text">該当するメンバーはいません</div>
+            ${hasFilter ? '<div class="empty-hint">検索キーワードや絞り込みを変更してみてください</div>' : ''}
+        </td></tr>`;
     } else {
         tbody.innerHTML = sorted.map(m => {
             const role = memberRoleOf(m);
@@ -253,39 +269,90 @@ function renderMembers() {
                     <span class="member-name-text">${escapeHtml(m.Name || '')}</span>
                     ${roleBadge}
                 </td>`;
+            // 編集・削除ボタンは全員に表示し、非管理者はタップ時に管理者認証を挟む
+            // （実験ページ等と表示ルールを統一。権限チェックは openMemberWizard / confirmDeleteMember 側で行う）
             const actionCell = `
                 <td data-action-cell>
                     <div class="inline-actions">
-                        ${isAdmin ? `<button class="inline-action-btn" data-action="edit" title="編集">&#9998;</button>` : ''}
-                        ${isAdmin ? `<button class="inline-action-btn danger" data-action="delete" title="削除">&#x2715;</button>` : ''}
+                        <button class="inline-action-btn" data-action="edit" title="編集">&#9998;</button>
+                        <button class="inline-action-btn danger" data-action="delete" title="削除">&#x2715;</button>
                     </div>
                 </td>`;
 
+            // どの行もタップで詳細ポップアップを開ける（各項目はポップアップ側でコピー可能）
             if (isStaffTab) {
-                const affCell = m.Affiliation
-                    ? `<span class="cell-popover-trigger" data-popover-label="所属" data-popover-value="${escapeAttr(m.Affiliation)}">${escapeHtml(m.Affiliation)}</span>`
-                    : '';
-                const emailCell = m.Email
-                    ? `<span class="cell-popover-trigger" data-popover-label="メールアドレス" data-popover-type="email" data-popover-value="${escapeAttr(m.Email)}">${escapeHtml(m.Email)}</span>`
-                    : '';
                 return `
-                <tr data-id="${escapeAttr(m.ID)}" style="background:var(--hover-bg);">
+                <tr data-id="${escapeAttr(m.ID)}" data-detail="1" class="clickable-row" title="タップで詳細を表示">
+                    <td>${escapeHtml(m.StudentID || '')}</td>
                     ${nameCell}
-                    <td>${affCell}</td>
-                    <td>${emailCell}</td>
-                    <td>${escapeHtml(m.Extension || '')}</td>
+                    <td>${escapeHtml(m.Email || '')}</td>
                     ${actionCell}
                 </tr>`;
             }
 
             return `
-            <tr data-id="${escapeAttr(m.ID)}">
+            <tr data-id="${escapeAttr(m.ID)}" data-detail="1" class="clickable-row" title="タップで詳細を表示">
                 <td>${escapeHtml(m.StudentID || '')}</td>
                 ${nameCell}
                 ${actionCell}
             </tr>`;
         }).join('');
     }
+}
+
+// ---- 詳細ポップアップ（コーディネーター・アドバイザー行のタップで開く） ----
+
+function openMemberDetailModal(id) {
+    const m = membersData.find(x => x.ID === id);
+    if (!m) return;
+    const role = memberRoleOf(m);
+    const roleInfo = role ? getRoleDisplay(role) : null;
+    const isStaff = role === 'アドバイザー' || role === 'コーディネーター';
+
+    // 各値はタップでコピーできる（メールもリンクではなくコピー）
+    const rows = [
+        ['名前', m.Name || ''],
+        [isStaff ? '教職員番号' : '学籍番号', m.StudentID || ''],
+        ['ふりがな', m.Furigana || ''],
+        ['所属', m.Affiliation || ''],
+        ['メールアドレス', m.Email || ''],
+        ['内線', m.Extension || ''],
+        ['年度', m.FiscalYear ? m.FiscalYear + '年度' : ''],
+        ['メモ', m.Note || '']
+    ].filter(r => r[1]);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal-content" style="max-width:460px;" role="dialog" aria-modal="true" aria-labelledby="member-detail-title">
+            <h2 id="member-detail-title" style="margin-top:0;">
+                ${escapeHtml(m.Name || '')}
+                ${roleInfo ? `<span class="cat-badge" style="background:${roleInfo.color};margin-left:8px;font-size:0.75rem;vertical-align:middle;">${escapeHtml(role)}</span>` : ''}
+            </h2>
+            ${rows.length > 0
+                ? `<table class="d1-table">${rows.map(([label, value]) =>
+                    `<tr><th style="width:130px;">${escapeHtml(label)}</th>
+                     <td class="copy-cell" data-copy="${escapeAttr(value)}" data-copy-label="${escapeAttr(label)}" title="タップでコピー" style="white-space:pre-wrap;">${escapeHtml(value)}<span class="copy-icon" aria-hidden="true">&#x2398;</span></td></tr>`).join('')}</table>
+                  <p class="text-hint" style="font-size:0.78rem; margin:8px 0 0;">各項目はタップでコピーできます</p>`
+                : '<p class="text-hint">登録されている詳細情報はありません</p>'}
+            <div class="action-buttons" style="margin-top:16px;">
+                ${api.isAdmin() ? '<button type="button" class="btn btn-secondary" data-edit>編集</button>' : ''}
+                <button type="button" class="btn btn-primary-solid" style="width:auto;" data-close>閉じる</button>
+            </div>
+        </div>`;
+
+    const close = () => overlay.remove();
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    const editBtn = overlay.querySelector('[data-edit]');
+    if (editBtn) editBtn.addEventListener('click', () => { close(); openMemberWizard(id); });
+    overlay.addEventListener('click', (e) => {
+        const cell = e.target.closest('.copy-cell');
+        if (cell) copyTextToClipboard(cell.dataset.copy, cell.dataset.copyLabel);
+    });
+    bindOverlayClose(overlay, close);
+    bindModalEscape(overlay, close);
+    document.body.appendChild(overlay);
+    trapFocus(overlay.querySelector('.modal-content'));
 }
 
 // ---- ウィザード形式の新規作成・編集 ----
@@ -328,7 +395,6 @@ function openMemberWizard(editId) {
     const overlay = document.createElement('div');
     overlay.id = 'mb-wizard-overlay';
     overlay.className = 'wizard-overlay';
-    overlay.onclick = (ev) => { if (ev.target === overlay) closeMemberWizard(); };
 
     overlay.innerHTML = `
         <div class="wizard-panel" role="dialog" aria-modal="true">
@@ -357,6 +423,10 @@ function openMemberWizard(editId) {
                     <div class="e1-group">
                         <label class="e1-label">役職</label>
                         <select id="wz-mb-role" class="e1-input" onchange="onWzRoleChange()">${roleOptions}</select>
+                    </div>
+                    <div class="e1-group" id="wz-mb-role-custom-group" style="display:none;">
+                        <label class="e1-label">役職名（自由入力）</label>
+                        <input id="wz-mb-role-custom" class="e1-input" type="text" placeholder="例: 会計">
                     </div>
                     <div class="e1-group">
                         <label class="e1-label">年度</label>
@@ -390,7 +460,7 @@ function openMemberWizard(editId) {
                 </div>
             </div>
             <div class="wizard-footer">
-                ${isEdit && isAdmin ? '<button class="btn btn-danger" onclick="deleteFromMbWizard()">削除</button>' : ''}
+                ${isEdit ? '<button class="btn btn-danger" onclick="deleteFromMbWizard()">削除</button>' : ''}
                 <div class="wizard-footer-spacer"></div>
                 <button class="btn btn-text" onclick="closeMemberWizard()">キャンセル</button>
                 <button id="wz-mb-prev-btn" class="btn btn-secondary" onclick="mbWizardPrev()" style="display:none;">戻る</button>
@@ -400,8 +470,20 @@ function openMemberWizard(editId) {
     `;
 
     document.body.appendChild(overlay);
-    bindModalEscape(overlay, closeMemberWizard);
+    // 領域外クリック・Esc は、入力に変更があれば破棄確認を挟む（誤タップで編集内容が消えないように）
+    bindEditDismissGuard(overlay, closeMemberWizard);
     trapFocus(overlay.querySelector('.wizard-panel'));
+    // 学籍番号は入力確定時に大文字半角英数字へ自動変換する
+    const sidInput = document.getElementById('wz-mb-student-id');
+    if (sidInput) sidInput.addEventListener('blur', () => { sidInput.value = normalizeStudentId(sidInput.value); });
+    // テキスト入力中に Enter で次のステップへ（キーボードだけで完結できるように）
+    overlay.querySelector('.wizard-body').addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Enter' || ev.isComposing) return;
+        const t = ev.target;
+        if (t.tagName === 'TEXTAREA') return;
+        ev.preventDefault();
+        mbWizardNext();
+    });
     setTimeout(() => document.getElementById('wz-mb-name').focus(), 80);
 }
 
@@ -414,18 +496,12 @@ function closeMemberWizard() {
 
 function onWzRoleChange() {
     const sel = document.getElementById('wz-mb-role');
-    if (sel.value === '__custom__') {
-        const custom = prompt('役職名を入力してください:');
-        if (custom && custom.trim()) {
-            const opt = document.createElement('option');
-            opt.value = custom.trim();
-            opt.textContent = custom.trim();
-            opt.selected = true;
-            sel.insertBefore(opt, sel.querySelector('option[value="__custom__"]'));
-        } else {
-            sel.value = '';
-        }
-    }
+    // 「その他」はブラウザ標準の prompt() ではなく、直下のインライン入力欄で受ける
+    const customG = document.getElementById('wz-mb-role-custom-group');
+    const isCustom = sel.value === '__custom__';
+    if (customG) customG.style.display = isCustom ? '' : 'none';
+    if (isCustom) setTimeout(() => document.getElementById('wz-mb-role-custom')?.focus(), 50);
+
     const hide = sel.value === '';
     const emailG = document.getElementById('wz-mb-email-group');
     const affG = document.getElementById('wz-mb-affiliation-group');
@@ -433,6 +509,16 @@ function onWzRoleChange() {
     if (emailG) emailG.style.display = hide ? 'none' : '';
     if (affG) affG.style.display = hide ? 'none' : '';
     if (extG) extG.style.display = hide ? 'none' : '';
+}
+
+// ウィザードの役職選択値（自由入力を含む）を解決する
+function wzSelectedRole() {
+    const sel = document.getElementById('wz-mb-role');
+    if (!sel) return '';
+    if (sel.value === '__custom__') {
+        return (document.getElementById('wz-mb-role-custom')?.value || '').trim();
+    }
+    return sel.value;
 }
 
 function updateMbWizardUI() {
@@ -496,14 +582,14 @@ async function saveMember() {
 
     const existing = editingMemberId ? membersData.find(m => m.ID === editingMemberId) : null;
     const isNew = !editingMemberId;
-    const role = document.getElementById('wz-mb-role').value === '__custom__' ? '' : document.getElementById('wz-mb-role').value;
+    const role = wzSelectedRole();
     const item = {
         ID: editingMemberId || genId('mb_'),
         Name: name,
         Furigana: document.getElementById('wz-mb-furigana').value.trim(),
         Category: deriveCategoryFromRole(role),
         Role: role,
-        StudentID: document.getElementById('wz-mb-student-id').value.trim(),
+        StudentID: normalizeStudentId(document.getElementById('wz-mb-student-id').value),
         Affiliation: document.getElementById('wz-mb-affiliation').value.trim(),
         Note: document.getElementById('wz-mb-note').value.trim(),
         Email: document.getElementById('wz-mb-email').value.trim(),
@@ -562,27 +648,13 @@ function confirmDeleteMember(id) {
     }
     const m = membersData.find(x => x.ID === id);
     if (!m) return;
-
-    const overlay = document.createElement('div');
-    overlay.className = 'confirm-dialog-overlay';
-    overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
-    overlay.innerHTML = `
-        <div class="confirm-dialog">
-            <h3>「${escapeHtml(m.Name)}」を削除</h3>
-            <p>この操作は元に戻せます（削除直後のみ）。</p>
-            <div class="confirm-dialog-actions">
-                <button class="btn btn-secondary" onclick="this.closest('.confirm-dialog-overlay').remove()">キャンセル</button>
-                <button class="btn btn-danger" id="confirm-del-mb-btn">削除する</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(overlay);
-    bindModalEscape(overlay, () => overlay.remove());
-
-    overlay.querySelector('#confirm-del-mb-btn').onclick = () => {
-        overlay.remove();
-        deleteMember(id);
-    };
+    showConfirmDialog({
+        title: `「${m.Name}」を削除`,
+        message: 'この操作は元に戻せます（削除直後のみ）。',
+        okLabel: '削除する',
+        danger: true,
+        onOk: () => deleteMember(id)
+    });
 }
 
 async function deleteMember(id) {
@@ -705,9 +777,18 @@ async function executeYearCopy() {
 
     const existingInTarget = membersData.filter(m => getMemberFiscalYear(m) === parseInt(targetYear));
     if (existingInTarget.length > 0) {
-        if (!confirm(`${targetYear}年度には既に${existingInTarget.length}名のメンバーがいます。追加しますか？`)) return;
+        showConfirmDialog({
+            title: `${targetYear}年度に追加登録`,
+            message: `${targetYear}年度には既に${existingInTarget.length}名のメンバーがいます。選択した${selectedIds.length}名を追加しますか？`,
+            okLabel: '追加する',
+            onOk: () => doYearCopy(targetYear, selectedIds)
+        });
+        return;
     }
+    await doYearCopy(targetYear, selectedIds);
+}
 
+async function doYearCopy(targetYear, selectedIds) {
     const sourceMembers = membersData.filter(m => selectedIds.includes(m.ID));
     const newMembers = sourceMembers.map(m => ({
         ID: genId('mb_'),
@@ -715,7 +796,7 @@ async function executeYearCopy() {
         Furigana: m.Furigana || '',
         Category: m.Category || 'member',
         Role: memberRoleOf(m),
-        StudentID: m.StudentID || '',
+        StudentID: normalizeStudentId(m.StudentID || ''),
         Affiliation: m.Affiliation || '',
         Note: '',
         Email: m.Email || '',

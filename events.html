@@ -25,19 +25,21 @@
     <main class="container">
         <div class="page-header">
             <h1 class="page-title" style="margin:0; flex:1;">イベント管理</h1>
-            <input id="event-search" class="search-input" type="text" placeholder="タイトル・場所・発表者で検索" oninput="onSearchChange()">
+            <input id="event-search" class="search-input" type="text" placeholder="タイトル・場所・発表者で検索" title="ショートカット: / キーで検索欄へ" oninput="onSearchChange()">
         </div>
         <div class="page-filters">
-            <button class="filter-chip active" data-cat="all" onclick="onCategoryFilter('all')">全部</button>
-            <button class="filter-chip" data-cat="normal" onclick="onCategoryFilter('normal')">イベント</button>
-            <button class="filter-chip" data-cat="other" onclick="onCategoryFilter('other')">その他</button>
-            <button class="filter-chip" data-cat="general" onclick="onCategoryFilter('general')">全体MTG</button>
-            <button class="filter-chip" data-cat="admin" onclick="onCategoryFilter('admin')">幹部MTG</button>
+            <button class="filter-chip active" data-cat="all" aria-pressed="true" onclick="onCategoryFilter('all')">全部</button>
+            <button class="filter-chip" data-cat="normal" aria-pressed="false" onclick="onCategoryFilter('normal')">イベント</button>
+            <button class="filter-chip" data-cat="other" aria-pressed="false" onclick="onCategoryFilter('other')">その他</button>
+            <button class="filter-chip" data-cat="general" aria-pressed="false" onclick="onCategoryFilter('general')">全体MTG</button>
+            <button class="filter-chip" data-cat="admin" aria-pressed="false" onclick="onCategoryFilter('admin')">幹部MTG</button>
             <span class="filter-divider"></span>
-            <button class="filter-chip active" data-period="upcoming" onclick="onPeriodFilter('upcoming')">今後</button>
-            <button class="filter-chip" data-period="past" onclick="onPeriodFilter('past')">過去</button>
-            <button class="filter-chip" data-period="all" onclick="onPeriodFilter('all')">全期間</button>
-            <button class="filter-chip" id="calendar-toggle-btn" onclick="toggleCalendar()">カレンダー</button>
+            <select id="period-filter" class="e1-input" style="width:auto; padding:4px 10px; font-size:0.85rem;" title="表示する期間" onchange="onPeriodFilter(this.value)">
+                <option value="upcoming" selected>今後</option>
+                <option value="past">過去</option>
+                <option value="all">全期間</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" id="calendar-toggle-btn" aria-pressed="false" onclick="toggleCalendar()" style="margin-left:auto;">カレンダーを表示</button>
         </div>
 
         <section id="calendar-wrapper" class="calendar-section hidden">
@@ -94,6 +96,7 @@
     <script src="config.js"></script>
     <script src="api.js"></script>
     <script src="app.js"></script>
+    <script src="event-wizard.js"></script>
     <script src="script.js"></script>
 </body>
 

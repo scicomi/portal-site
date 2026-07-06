@@ -102,6 +102,7 @@ body {
     gap: 8px;
     font-size: 1.1rem;
     font-weight: 700;
+    white-space: nowrap; /* 狭い幅でブランド名が2行に折れないように */
 }
 
 .brand-icon {
@@ -132,6 +133,7 @@ body {
     display: inline-flex;
     align-items: center;
     transition: background 0.15s;
+    white-space: nowrap; /* 「ログアウト」等がモバイル幅で2行に折れないように */
 }
 
 .btn-text-light:hover { background: rgba(255,255,255,0.18); }
@@ -682,6 +684,8 @@ tr:focus-within .inline-actions {
     .wizard-body { padding: 16px; }
     .wizard-footer { padding: 12px 16px; }
     .inline-actions { opacity: 1; }
+    /* タッチ端末ではホバーが無いので常時表示＋指で押しやすい大きさに */
+    .inline-action-btn { min-height: 36px; padding: 6px 10px; }
 }
 
 /* --- New Edit Form Elements --- */
@@ -1422,6 +1426,12 @@ textarea:focus {
     font-size: 0.9rem;
 }
 .dash-list li:last-child { border-bottom: none; }
+/* リスト内の空状態・エラー表示は横並び(flex row)を打ち消して縦積みにする */
+.dash-list li.empty-state {
+    flex-direction: column;
+    gap: var(--space-sm);
+    border-bottom: none;
+}
 .dash-list .dl-date {
     color: var(--text-muted); font-size: 0.8rem; flex-shrink: 0;
     min-width: 70px;
@@ -1454,10 +1464,11 @@ textarea:focus {
 .report-status-select.status-clc { border-color: var(--success-color); color: #166534; background: #f0fdf4; }
 
 .dash-stats {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    /* 統計カードは3枚（ホームのみで使用）。4列だと右端が常に空くため3列に */
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
     margin-bottom: 30px;
 }
-@media (max-width: 700px) { .dash-stats { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px) { .dash-stats { grid-template-columns: repeat(3, 1fr); gap: 10px; } }
 .stat-card {
     background: white; padding: var(--space-md); border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
@@ -1857,8 +1868,8 @@ textarea:focus {
     /* 実験カード/メンバーカードを1列に */
     .exp-grid, .member-grid { grid-template-columns: 1fr; }
 
-    /* 統計カードは2列 */
-    .dash-stats { grid-template-columns: repeat(2, 1fr); }
+    /* 統計カードは3枚なので3列のまま（2列だと1枚だけ孤立する） */
+    .dash-stats { grid-template-columns: repeat(3, 1fr); }
 
     /* カレンダーのイベント文字を少し小さく */
     .fc .fc-daygrid-event { font-size: 0.7rem; }
@@ -1875,7 +1886,7 @@ textarea:focus {
 /* さらに狭い端末（480px以下） */
 @media (max-width: 480px) {
     .header-brand .brand-name { font-size: 0.95rem; }
-    .dash-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .dash-stats { grid-template-columns: repeat(3, 1fr); gap: 10px; }
     .stat-num { font-size: 1.5rem; }
     .welcome-hero { padding: 20px; }
     .welcome-hero h2 { font-size: 1.2rem; }
@@ -2061,6 +2072,34 @@ textarea:focus {
     white-space: nowrap;
 }
 .bot-send-btn:hover { background: var(--primary-light); }
+.bot-send-btn:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+.bot-send-btn:disabled:hover { background: var(--primary-color); }
+
+/* 例チップ（ウェルカムメッセージ内のサンプル質問。タップでそのまま送信） */
+.bot-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+.bot-chip {
+    background: var(--primary-subtle);
+    color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.bot-chip:hover {
+    background: var(--hover-bg);
+    border-color: var(--primary-color);
+}
 
 /* Result formatting */
 .bot-result-count {
@@ -2168,6 +2207,7 @@ textarea:focus {
 /* クリックで詳細を開ける結果アイテム */
 .bot-clickable { cursor: pointer; position: relative; padding-right: 24px; transition: background 0.15s, border-left-color 0.15s; }
 .bot-clickable:hover { background: var(--primary-subtle); border-left-color: var(--primary-color); }
+.bot-clickable:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
 .bot-ri-chevron {
     position: absolute;
     right: 9px;
@@ -2398,6 +2438,13 @@ textarea:focus {
     padding: 14px 16px;
     cursor: pointer;
     user-select: none;
+    /* キーボード操作できるよう <button> にしたためのリセット */
+    width: 100%;
+    background: none;
+    border: none;
+    font: inherit;
+    text-align: left;
+    color: inherit;
 }
 .pw-card-head:hover { background: var(--hover-bg); }
 .pw-card-title {
@@ -2778,7 +2825,8 @@ textarea:focus {
     .expd-section { padding: 14px 16px; }
     .expd-section-header { flex-direction: column; align-items: flex-start; gap: 8px; }
     .expd-feedback-filters { flex-direction: row; flex-wrap: wrap; }
-    .expd-feedback-filters .search-input { max-width: 100% !important; margin-left: 0 !important; width: 100%; }
+    /* flex:1 (flex-basis:0) のままだとチップの隣の残り幅に潰れるため、1行まるごと使わせる */
+    .expd-feedback-filters .search-input { max-width: 100% !important; margin-left: 0 !important; width: 100%; flex-basis: 100%; }
     .fb-entry-header { gap: 4px; }
     .fb-date { margin-left: 0; width: 100%; }
     .exp-fb-row { flex-direction: column; gap: 4px; }
@@ -3344,35 +3392,6 @@ textarea:focus {
     margin-top: 10px;
     padding-top: 10px;
     border-top: 1px solid var(--border-light);
-}
-
-.series-location-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-.series-map-link {
-    font-size: 0.75rem;
-    color: var(--primary-color);
-    text-decoration: none;
-    white-space: nowrap;
-    border: 1px solid var(--border-light);
-    border-radius: 4px;
-    padding: 1px 6px;
-}
-.series-map-link:hover { background: var(--bg-hover, #efefef); text-decoration: none; }
-
-/* Location link in events table */
-.location-link {
-    color: var(--primary-color);
-    text-decoration: none;
-    font-weight: 500;
-    transition: color 0.15s;
-}
-.location-link:hover {
-    color: var(--primary-light);
-    text-decoration: underline;
 }
 
 /* Safety / Emergency info card (event-series) */
@@ -4079,6 +4098,28 @@ textarea:focus {
     font-size: 0.95rem;
     color: var(--primary-color);
 }
+
+/* 振り返りカードの開閉ヘッダー（カード全幅をタップ領域にする） */
+.detail-toggle-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+}
+.detail-toggle-header:hover .detail-section-title { text-decoration: underline; }
+
+/* 実在しない実験名など、修正しないと先へ進めない入力欄の強調 */
+.e1-input.input-invalid {
+    border-color: #e74c3c;
+    background: #fdf3f2;
+}
 .vote-mini-summary {
     display: flex;
     gap: 8px;
@@ -4106,12 +4147,30 @@ textarea:focus {
 
 /* タイムライン・開催履歴の「この回の詳細」ボタン（<a>から<button>に変えたため） */
 button.sfb-detail-link,
-button.sfb-event-link {
+button.sfb-event-link,
+button.detail-checklist-link {
     background: none;
     border: none;
     font: inherit;
     cursor: pointer;
     padding: 0;
+}
+/* 未入力チェックリストの「編集して追記」も <a>→<button> 化したため同じ見た目を維持する */
+button.detail-checklist-link {
+    margin-left: auto;
+    color: var(--primary-light);
+    font-weight: 600;
+    white-space: nowrap;
+}
+button.detail-checklist-link:hover { text-decoration: underline; }
+
+/* 年度アコーディオンのヘッダー（キーボード操作できるよう <div> から <button> に変えたため） */
+button.fy-header {
+    width: 100%;
+    border: none;
+    font: inherit;
+    text-align: left;
+    color: inherit;
 }
 
 /* --- ホーム: 出欠一括回答 --- */
@@ -4176,4 +4235,22 @@ button.wizard-step-dot {
 button.wizard-step-dot:hover:not(.active) {
     border-color: var(--primary-light);
     color: var(--primary-light);
+}
+
+/* ===== タップでコピーできるセル（メンバー詳細ポップアップ等） ===== */
+.copy-cell {
+    cursor: pointer;
+}
+.copy-cell:hover,
+.copy-cell:active {
+    background: var(--hover-bg);
+}
+.copy-cell .copy-icon {
+    margin-left: 6px;
+    font-size: 0.85em;
+    opacity: 0.35;
+    user-select: none;
+}
+.copy-cell:hover .copy-icon {
+    opacity: 0.85;
 }
