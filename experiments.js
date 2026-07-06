@@ -8,7 +8,6 @@
 let expData = [];
 let expCurrentTab = 'workshop';
 let expSearchKw = '';
-let currentExpId = null;
 let editingExpId = null;
 let wizardStep = 0;
 
@@ -29,7 +28,7 @@ function _bindExpTableDelegation() {
         const actionEl = e.target.closest('[data-action]');
         if (actionEl) {
             const action = actionEl.dataset.action;
-            if (action === 'slides') return;
+            if (action === 'slides' || action === 'open') return; // <a> のデフォルト遷移に任せる
             e.stopPropagation();
             const row = actionEl.closest('tr[data-id]');
             if (!row) return;
@@ -45,7 +44,6 @@ function _bindExpTableDelegation() {
 }
 
 async function init() {
-    bindOverlayClose(document.getElementById('exp-detail-modal'), closeExpDetail);
     _bindExpTableDelegation();
 
     const cached = api.loadCache('experiments');
@@ -69,6 +67,15 @@ async function refreshData(isManual = false) {
     } catch (e) {
         if (e.handled) return;
         updateSyncStatus('error', null, e.message);
+        // キャッシュも無く一覧が空のままなら、「読み込み中」を残さずエラー＋再試行を表示
+        if (expData.length === 0) {
+            const tbody = document.getElementById('experiments-tbody');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="empty-state">
+                <div class="empty-text">データを読み込めませんでした</div>
+                <div class="empty-hint">${escapeHtml(humanizeApiError(e))}</div>
+                <button type="button" class="btn btn-secondary" onclick="refreshData(true)">再読み込み</button>
+            </td></tr>`;
+        }
     }
 }
 
@@ -95,8 +102,8 @@ function focusFromUrl() {
         || expData.find(e => (e.Name || '').toLowerCase() === focusName.toLowerCase());
     if (match) {
         focusHandled = true;
-        switchExpTab(match.Category || 'other');
-        viewExp(match.ID);
+        // 詳細の閲覧は実験詳細ページへ一本化（行クリックと同じ導線）
+        goToDetail(match.ID);
     } else {
         const searchEl = document.getElementById('exp-search');
         if (searchEl) {
@@ -110,9 +117,11 @@ function focusFromUrl() {
 
 function switchExpTab(cat) {
     expCurrentTab = cat;
-    document.querySelectorAll('.filter-chip[data-cat]').forEach(t =>
-        t.classList.toggle('active', t.dataset.cat === cat)
-    );
+    document.querySelectorAll('.filter-chip[data-cat]').forEach(t => {
+        const isActive = t.dataset.cat === cat;
+        t.classList.toggle('active', isActive);
+        t.setAttribute('aria-pressed', String(isActive));
+    });
     render();
 }
 
@@ -139,15 +148,22 @@ function render() {
     const tbody = document.getElementById('experiments-tbody');
 
     if (items.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="empty-state">
-            <span class="empty-icon">&#x1F52C;</span>
-            <span class="empty-text">実験がまだありません</span>
-            <span class="empty-hint">右下の＋ボタンから追加できます</span>
-        </td></tr>`;
+        // 検索中とタブが空の場合で文言を分ける（検索は全カテゴリ横断のため）
+        tbody.innerHTML = expSearchKw
+            ? `<tr><td colspan="4" class="empty-state">
+                <span class="empty-icon">&#x1F52C;</span>
+                <span class="empty-text">該当する実験はありません</span>
+                <span class="empty-hint">検索キーワードを変更してみてください</span>
+            </td></tr>`
+            : `<tr><td colspan="4" class="empty-state">
+                <span class="empty-icon">&#x1F52C;</span>
+                <span class="empty-text">このカテゴリには実験がまだありません</span>
+                <span class="empty-hint">右下の＋ボタンから追加できます</span>
+            </td></tr>`;
         return;
     }
 
-    const isAdmin = api.isAdmin();
+    // 削除ボタンは全員に表示し、非管理者はタップ時に管理者認証を挟む（メンバーページと表示ルールを統一）
     tbody.innerHTML = items.map(e => {
         const snippet = (e.Materials || '').split('\n').slice(0, 2).join(', ') || '-';
         const safeSlides = safeHttpUrl(e.SlidesURL);
@@ -155,7 +171,7 @@ function render() {
         return `
             <tr class="clickable-row" data-id="${escapeAttr(e.ID)}">
                 <td class="cell-name">
-                    ${escapeHtml(e.Name || '(無題)')}
+                    <a href="experiment-detail.html?id=${encodeURIComponent(e.ID)}" data-action="open" style="color:inherit;text-decoration:none;">${escapeHtml(e.Name || '(無題)')}</a>
                     ${fbCount > 0 ? `<span class="badge-fb-count" title="振り返り ${fbCount}件">${fbCount}件</span>` : ''}
                 </td>
                 <td class="hide-mobile cell-snippet">${escapeHtml(snippet)}</td>
@@ -163,7 +179,7 @@ function render() {
                 <td data-action-cell>
                     <div class="inline-actions">
                         <button class="inline-action-btn" data-action="edit" title="編集">&#9998;</button>
-                        ${isAdmin ? `<button class="inline-action-btn danger" data-action="delete" title="削除">&#x2715;</button>` : ''}
+                        <button class="inline-action-btn danger" data-action="delete" title="削除">&#x2715;</button>
                     </div>
                 </td>
             </tr>
@@ -181,58 +197,8 @@ function countFeedback(e) {
     return pos.length + ref.length;
 }
 
-// ---- 詳細モーダル（簡易プレビュー） ----
-function viewExp(id) {
-    const e = expData.find(x => x.ID === id);
-    if (!e) return;
-    currentExpId = id;
-
-    document.getElementById('exp-detail-title').textContent = e.Name || '(無題)';
-    const body = document.getElementById('exp-detail-body');
-
-    const section = (title, content, isList) => {
-        if (!content || !content.trim()) return '';
-        const items = content.split('\n').map(s => s.trim()).filter(Boolean);
-        const inner = isList
-            ? `<ul>${items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
-            : `<div class="exp-text">${escapeHtml(content)}</div>`;
-        return `<div class="exp-detail-section"><h3>${title}</h3>${inner}</div>`;
-    };
-
-    const cat = getExperimentCategory(e.Category);
-    const safeSlides = safeHttpUrl(e.SlidesURL);
-    body.innerHTML = `
-        <div style="margin-bottom:12px;">
-            <span class="cat-badge" style="background:${cat.color};">${escapeHtml(cat.label)}</span>
-            ${safeSlides ? ` &nbsp;<a class="tbl-link" href="${escapeAttr(safeSlides)}" target="_blank" rel="noopener">資料を開く</a>` : ''}
-        </div>
-        ${section('使用物品', e.Materials, true)}
-        ${section('事前準備', e.Preparation, true)}
-        ${section('発表の流れ', e.Flow, true)}
-        ${section('注意事項', e.Notes, true)}
-        <hr class="divider">
-        <div style="text-align:center; padding: 8px 0;">
-            <a href="experiment-detail.html?id=${encodeURIComponent(e.ID)}" class="tbl-link" style="font-size:0.95rem; font-weight:600;">
-                振り返り・詳細ページを開く &rarr;
-            </a>
-        </div>
-    `;
-
-    document.getElementById('exp-detail-modal').classList.remove('hidden');
-    bindModalEscape(document.getElementById('exp-detail-modal'), closeExpDetail);
-}
-
-function closeExpDetail() {
-    document.getElementById('exp-detail-modal').classList.add('hidden');
-    currentExpId = null;
-}
-
-function editCurrentExp() {
-    if (!currentExpId) return;
-    const id = currentExpId;
-    closeExpDetail();
-    openExpWizard(id);
-}
+// ※ 簡易プレビューモーダルは廃止。詳細の閲覧は experiment-detail.html へ一本化した
+//   （行クリック・?focus= のどちらも同じ導線になる）。
 
 // ---- ウィザード形式の新規作成・編集 ----
 
@@ -242,12 +208,10 @@ function openExpWizard(editId) {
 
     const e = editingExpId ? expData.find(x => x.ID === editingExpId) : null;
     const isEdit = !!e;
-    const isAdmin = api.isAdmin();
 
     const overlay = document.createElement('div');
     overlay.id = 'exp-wizard-overlay';
     overlay.className = 'wizard-overlay';
-    overlay.onclick = (ev) => { if (ev.target === overlay) closeExpWizard(); };
 
     overlay.innerHTML = `
         <div class="wizard-panel" role="dialog" aria-modal="true">
@@ -310,7 +274,7 @@ function openExpWizard(editId) {
                 </div>
             </div>
             <div class="wizard-footer">
-                ${isEdit && isAdmin ? '<button class="btn btn-danger" onclick="deleteFromWizard()">削除</button>' : ''}
+                ${isEdit ? '<button class="btn btn-danger" onclick="deleteFromWizard()">削除</button>' : ''}
                 <div class="wizard-footer-spacer"></div>
                 <button class="btn btn-text" onclick="closeExpWizard()">キャンセル</button>
                 <button id="wz-prev-btn" class="btn btn-secondary" onclick="wizardPrev()" style="display:none;">戻る</button>
@@ -320,7 +284,16 @@ function openExpWizard(editId) {
     `;
 
     document.body.appendChild(overlay);
-    bindModalEscape(overlay, closeExpWizard);
+    // 領域外クリック・Esc は、入力に変更があれば破棄確認を挟む（誤タップで編集内容が消えないように）
+    bindEditDismissGuard(overlay, closeExpWizard);
+    trapFocus(overlay.querySelector('.wizard-panel'));
+    // テキスト入力中に Enter で次のステップへ（textarea は改行を優先）
+    overlay.querySelector('.wizard-body').addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Enter' || ev.isComposing) return;
+        if (ev.target.tagName === 'TEXTAREA') return;
+        ev.preventDefault();
+        wizardNext();
+    });
     setTimeout(() => document.getElementById('wz-ex-name').focus(), 80);
 }
 
@@ -455,27 +428,13 @@ function confirmDeleteExp(id) {
     }
     const e = expData.find(x => x.ID === id);
     if (!e) return;
-
-    const overlay = document.createElement('div');
-    overlay.className = 'confirm-dialog-overlay';
-    overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
-    overlay.innerHTML = `
-        <div class="confirm-dialog">
-            <h3>「${escapeHtml(e.Name)}」を削除</h3>
-            <p>この操作は元に戻せます（削除直後のみ）。</p>
-            <div class="confirm-dialog-actions">
-                <button class="btn btn-secondary" onclick="this.closest('.confirm-dialog-overlay').remove()">キャンセル</button>
-                <button class="btn btn-danger" id="confirm-del-btn">削除する</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(overlay);
-    bindModalEscape(overlay, () => overlay.remove());
-
-    overlay.querySelector('#confirm-del-btn').onclick = () => {
-        overlay.remove();
-        deleteExp(id);
-    };
+    showConfirmDialog({
+        title: `「${e.Name}」を削除`,
+        message: 'この操作は元に戻せます（削除直後のみ）。',
+        okLabel: '削除する',
+        danger: true,
+        onOk: () => deleteExp(id)
+    });
 }
 
 async function deleteExp(id) {

@@ -259,6 +259,120 @@ function bindOverlayClose(overlayEl, closeFn) {
   });
 }
 
+// ====== 編集モーダルの誤操作ガード ======
+// 領域外クリック・Esc で閉じる前に、入力へ変更があれば「破棄して閉じる？」確認を挟む。
+// 何も触っていなければ従来どおり即閉じる。
+// 開いた直後にコードが初期値を流し込むモーダルがあるため、
+// 呼び出しは open 関数の最後（初期値の設定がすべて終わった後）に行うこと。
+
+function bindEditDismissGuard(overlay, closeFn) {
+  const snapshot = () =>
+    [...overlay.querySelectorAll('input, textarea, select')]
+      .map(el => (el.type === 'checkbox' || el.type === 'radio') ? String(el.checked) : el.value)
+      .join('\u0000');
+  const initial = snapshot();
+  // ファイル添付・タグ操作など snapshot に現れにくい操作も input/change で拾う
+  let touched = false;
+  overlay.addEventListener('input', () => { touched = true; });
+  overlay.addEventListener('change', () => { touched = true; });
+
+  const attemptClose = () => {
+    if (!touched && snapshot() === initial) { closeFn(); return; }
+    showDiscardConfirm(closeFn);
+  };
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) attemptClose(); });
+  bindModalEscape(overlay, attemptClose);
+  return attemptClose;
+}
+
+// ====== 汎用確認ダイアログ ======
+// 削除確認・投票確認など、ページごとにバラバラだった確認UIを統一する。
+// onOk が async の場合は完了まで OK ボタンを無効化し busyLabel を表示する。
+function showConfirmDialog({ title, message, okLabel = 'OK', cancelLabel = 'キャンセル', danger = false, busyLabel = '処理中...', onOk }) {
+  const ov = document.createElement('div');
+  ov.className = 'confirm-dialog-overlay';
+  ov.innerHTML = `
+    <div class="confirm-dialog" role="alertdialog" aria-modal="true">
+      <h3>${escapeHtml(title || '')}</h3>
+      ${message ? `<p>${escapeHtml(message)}</p>` : ''}
+      <div class="confirm-dialog-actions">
+        <button type="button" class="btn btn-secondary" data-cancel>${escapeHtml(cancelLabel)}</button>
+        <button type="button" class="btn ${danger ? 'btn-danger' : 'btn-primary-solid'}" data-ok>${escapeHtml(okLabel)}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.querySelector('[data-cancel]').addEventListener('click', close);
+  ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+  bindModalEscape(ov, close);
+  const okBtn = ov.querySelector('[data-ok]');
+  okBtn.addEventListener('click', async () => {
+    if (!onOk) { close(); return; }
+    okBtn.disabled = true;
+    const orig = okBtn.textContent;
+    okBtn.textContent = busyLabel;
+    try {
+      await onOk();
+      close();
+    } catch (e) {
+      okBtn.disabled = false;
+      okBtn.textContent = orig;
+      toast('失敗しました: ' + (e && e.message ? e.message : e), 'error');
+    }
+  });
+  setTimeout(() => okBtn.focus(), 30);
+  return { close };
+}
+
+function showDiscardConfirm(onDiscard) {
+  if (document.getElementById('discard-confirm-overlay')) return;
+  const ov = document.createElement('div');
+  ov.id = 'discard-confirm-overlay';
+  ov.className = 'confirm-dialog-overlay';
+  ov.innerHTML = `
+    <div class="confirm-dialog" role="alertdialog" aria-modal="true">
+      <h3>編集内容が保存されていません</h3>
+      <p>このまま閉じると、入力した内容は失われます。</p>
+      <div class="confirm-dialog-actions">
+        <button type="button" class="btn btn-secondary" data-stay>編集を続ける</button>
+        <button type="button" class="btn btn-danger" data-discard>破棄して閉じる</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('[data-stay]').addEventListener('click', () => ov.remove());
+  ov.querySelector('[data-discard]').addEventListener('click', () => { ov.remove(); onDiscard(); });
+  ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+  bindModalEscape(ov, () => ov.remove());
+  setTimeout(() => ov.querySelector('[data-stay]').focus(), 30);
+}
+
+// ====== クリップボード ======
+
+// テキストをコピーしてトーストで通知する。navigator.clipboard は
+// https/localhost 以外（file:// 配布など）で使えないため execCommand へフォールバック。
+async function copyTextToClipboard(text, label) {
+  const value = String(text === null || text === undefined ? '' : text).trim();
+  if (!value) return;
+  let ok = false;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(value);
+      ok = true;
+    }
+  } catch (_) {}
+  if (!ok) {
+    const ta = document.createElement('textarea');
+    ta.value = value;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+    ta.remove();
+  }
+  toast(ok ? `${label || 'テキスト'}をコピーしました` : 'コピーできませんでした', ok ? 'success' : 'error', 2000);
+}
+
 // ====== テーブルセルのポップオーバー（狭い列で潰れる値をタップで全文表示） ======
 
 function closeCellPopover() {
@@ -447,20 +561,25 @@ function updateSyncStatus(state, timestamp, errMsg) {
     return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
   };
 
+  // 正常同期済みはドットだけにして常時のテキストノイズを減らす（詳細はツールチップで）
   const labels = {
     'initial-loading': '<span class="sync-dot loading"></span>読み込み中...',
     'syncing-bg':      '<span class="sync-dot loading"></span>同期中...',
     'syncing':         '<span class="sync-dot loading"></span>更新中...',
-    'fresh':           `<span class="sync-dot fresh"></span>${fmtTime(timestamp)} 同期済`,
+    'fresh':           '<span class="sync-dot fresh"></span>',
     'cached':          `<span class="sync-dot cached"></span>キャッシュ表示 ${fmtTime(timestamp)}`,
     'error':           `<span class="sync-dot error"></span>同期エラー`
   };
   el.innerHTML = labels[state] || '';
-  // エラー詳細（ツールチップ）は既知のコードを日本語へ変換して表示する
-  if (state === 'error') {
+  if (state === 'fresh') {
+    el.title = `${fmtTime(timestamp)} 同期済 — クリックで再読込`;
+  } else if (state === 'error') {
+    // エラー詳細（ツールチップ）は既知のコードを日本語へ変換して表示する
     el.title = errMsg
       ? (typeof humanizeApiError === 'function' ? humanizeApiError({ code: errMsg, message: errMsg }) : errMsg)
       : '';
+  } else {
+    el.title = 'クリックで再読込';
   }
 }
 

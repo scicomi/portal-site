@@ -92,10 +92,10 @@ function onLoginTypeChange() {
 function buildCategoryFilter() {
     const container = document.getElementById('pw-cat-filter');
     if (!container) return;
-    let html = '<button class="pw-cat-tab active" data-cat="" onclick="setPwCatFilter(\'\')">すべて</button>';
+    let html = '<button class="pw-cat-tab active" data-cat="" aria-pressed="true" onclick="setPwCatFilter(\'\')">すべて</button>';
     Object.keys(PW_CATS).forEach(key => {
         const cat = PW_CATS[key];
-        html += `<button class="pw-cat-tab" data-cat="${key}" onclick="setPwCatFilter('${key}')" style="--cat-color:${cat.color}">${escapeHtml(cat.label)}</button>`;
+        html += `<button class="pw-cat-tab" data-cat="${key}" aria-pressed="false" onclick="setPwCatFilter('${key}')" style="--cat-color:${cat.color}">${escapeHtml(cat.label)}</button>`;
     });
     container.innerHTML = html;
 }
@@ -103,13 +103,17 @@ function buildCategoryFilter() {
 function setPwCatFilter(cat) {
     pwCatFilter = cat;
     document.querySelectorAll('.pw-cat-tab').forEach(el => {
-        el.classList.toggle('active', el.getAttribute('data-cat') === cat);
+        const isActive = el.getAttribute('data-cat') === cat;
+        el.classList.toggle('active', isActive);
+        el.setAttribute('aria-pressed', String(isActive));
     });
     renderPasswords();
 }
 
 async function refreshData(isManual = false) {
     updateSyncStatus(isManual ? 'syncing' : 'initial-loading');
+    // 機密のためキャッシュしない＝毎回サーバー取得なので、取得中であることを明示する
+    document.getElementById('pw-list').innerHTML = '<div class="loading-text">読み込み中</div>';
     try {
         pwData = await api.listPasswords();
         renderPasswords();
@@ -124,8 +128,11 @@ async function refreshData(isManual = false) {
             return;
         }
         updateSyncStatus('error', null, msg);
-        document.getElementById('pw-list').innerHTML =
-            `<div class="empty-state">読み込みに失敗しました: ${escapeHtml(msg)}</div>`;
+        document.getElementById('pw-list').innerHTML = `<div class="empty-state">
+            <div class="empty-text">データを読み込めませんでした</div>
+            <div class="empty-hint">${escapeHtml(humanizeApiError(e))}</div>
+            <button type="button" class="btn btn-secondary" onclick="refreshData(true)">再読み込み</button>
+        </div>`;
     }
 }
 
@@ -173,9 +180,15 @@ function renderPasswords() {
     items.sort((a, b) => (a.SiteName || '').localeCompare(b.SiteName || '', 'ja'));
 
     if (items.length === 0) {
-        list.innerHTML = '<div class="empty-state">' +
-            (pwData.length === 0 ? 'まだ登録がありません。「+ 追加」から登録してください。' : '該当する項目がありません') +
-            '</div>';
+        list.innerHTML = pwData.length === 0
+            ? `<div class="empty-state">
+                <div class="empty-text">まだ登録がありません</div>
+                <div class="empty-hint">右上の「+ 追加」から登録できます</div>
+            </div>`
+            : `<div class="empty-state">
+                <div class="empty-text">該当する項目がありません</div>
+                <div class="empty-hint">検索キーワードやカテゴリを変更してみてください</div>
+            </div>`;
         return;
     }
 
@@ -185,14 +198,14 @@ function renderPasswords() {
         const urlHref = p.URL ? (/^https?:\/\//i.test(p.URL) ? p.URL : 'https://' + p.URL) : '';
         return `
         <div class="pw-card ${open ? 'open' : ''}" data-id="${escapeAttr(p.ID)}">
-            <div class="pw-card-head" onclick="togglePwCard('${escapeAttr(p.ID)}')">
+            <button type="button" class="pw-card-head" aria-expanded="${open}" onclick="togglePwCard('${escapeAttr(p.ID)}')">
                 <div class="pw-card-title">
                     ${catBadgeHtml(p.Category)}
                     <span class="pw-card-name">${escapeHtml(p.SiteName || '(名称未設定)')}</span>
                     ${host ? `<span class="pw-card-host">${escapeHtml(host)}</span>` : ''}
                 </div>
                 <span class="pw-card-chevron">${open ? '▲' : '▼'}</span>
-            </div>
+            </button>
             <div class="pw-card-body" ${open ? '' : 'style="display:none;"'}>
                 ${urlHref ? `
                 <div class="pw-row">
@@ -314,7 +327,10 @@ function closePwModal() {
 
 async function savePwEntry() {
     const name = document.getElementById('pw-f-name').value.trim();
-    if (!name) { toast('サービス名を入力してください', 'error'); return; }
+    if (!name) { toast('サービス名を入力してください', 'error'); document.getElementById('pw-f-name').focus(); return; }
+
+    const saveBtn = document.getElementById('pw-f-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
 
     const existing = editingPwId ? pwData.find(p => p.ID === editingPwId) : null;
     const item = {
@@ -357,15 +373,39 @@ async function savePwEntry() {
             return;
         }
         toast('保存失敗: ' + msg, 'error');
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; }
     }
 }
 
-async function deletePwEntry(id) {
+function deletePwEntry(id) {
     const p = pwData.find(x => x.ID === id);
     if (!p) return;
-    if (!confirm(`「${p.SiteName}」を削除しますか？`)) return;
+    // 他ページと同じ確認ダイアログ（ネイティブ confirm は使わない）
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-dialog-overlay';
+    overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+    overlay.innerHTML = `
+        <div class="confirm-dialog">
+            <h3>「${escapeHtml(p.SiteName || '(名称未設定)')}」を削除</h3>
+            <p>このログイン情報を削除しますか？この操作は取り消せません。</p>
+            <div class="confirm-dialog-actions">
+                <button class="btn btn-secondary" onclick="this.closest('.confirm-dialog-overlay').remove()">キャンセル</button>
+                <button class="btn btn-danger" id="confirm-pw-del-btn">削除する</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    bindModalEscape(overlay, () => overlay.remove());
+    overlay.querySelector('#confirm-pw-del-btn').onclick = () => {
+        overlay.remove();
+        executeDeletePwEntry(id);
+    };
+}
 
+async function executeDeletePwEntry(id) {
     const idx = pwData.findIndex(x => x.ID === id);
+    if (idx < 0) return;
     const backup = pwData[idx];
     pwData.splice(idx, 1);
     expandedPw.delete(id);

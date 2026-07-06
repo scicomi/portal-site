@@ -58,9 +58,9 @@
                         <button class="btn-primary-solid" style="width:auto; padding:6px 16px; font-size:0.85rem;" onclick="openAddFeedback()">+ 振り返りを追加</button>
                     </div>
                     <div class="expd-feedback-filters">
-                        <button class="filter-chip active" data-fb="all" onclick="filterFeedback('all')">全て</button>
-                        <button class="filter-chip" data-fb="positive" onclick="filterFeedback('positive')">良かった点</button>
-                        <button class="filter-chip" data-fb="reflection" onclick="filterFeedback('reflection')">改善点</button>
+                        <button class="filter-chip active" data-fb="all" aria-pressed="true" onclick="filterFeedback('all')">全て</button>
+                        <button class="filter-chip" data-fb="positive" aria-pressed="false" onclick="filterFeedback('positive')">良かった点</button>
+                        <button class="filter-chip" data-fb="reflection" aria-pressed="false" onclick="filterFeedback('reflection')">改善点</button>
                         <input id="feedback-search" class="search-input" type="text" placeholder="キーワードで検索" style="max-width:220px; margin-left:auto;" oninput="renderFeedback()">
                     </div>
                     <div id="feedback-timeline"></div>
@@ -108,7 +108,7 @@
                     </div>
                     <div class="action-buttons">
                         <button class="btn btn-text" onclick="closeFeedbackModal()">キャンセル</button>
-                        <button class="btn btn-primary-solid" style="width:auto;" onclick="saveFeedback()">保存</button>
+                        <button id="fb-save-btn" class="btn btn-primary-solid" style="width:auto;" onclick="saveFeedback()">保存</button>
                     </div>
                 </div>
             </div>

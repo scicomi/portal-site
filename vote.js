@@ -11,7 +11,6 @@ const STATUS_LABELS = { attend: '参加', absent: '不参加', undecided: '未�
 let currentEvent = null;
 let allMembers = [];
 let currentVotes = [];
-let pendingStatus = null;
 
 // ====== 起動 ======
 
@@ -42,13 +41,19 @@ async function init() {
     }
 
     const eventFY = getFiscalYear(currentEvent.Date) || currentFiscalYear();
+    // 出欠の回答はコーディネーター・アドバイザーを対象外にする
+    const staffIds = new Set((allData.members || []).filter(m => {
+      const r = memberRoleOf(m);
+      return r === 'アドバイザー' || r === 'コーディネーター';
+    }).map(m => m.ID));
     allMembers = (allData.members || []).filter(m => {
       if (m.Active === 'false') return false;
+      if (staffIds.has(m.ID)) return false;
       const fy = m.FiscalYear ? parseInt(m.FiscalYear) : currentFiscalYear();
       return fy === eventFY;
     });
 
-    currentVotes = votes;
+    currentVotes = votes.filter(v => !staffIds.has(v.memberId));
     renderEventHeader();
     renderMemberSelect();
     renderVoteSummary();
@@ -57,7 +62,8 @@ async function init() {
     document.getElementById('vote-loading').style.display = 'none';
     document.getElementById('vote-app').style.display = '';
   } catch (e) {
-    showError('データの読み込みに失敗しました: ' + humanizeApiError(e));
+    if (e.handled) return; // 未認証はログインモーダル側で処理される
+    showError('データの読み込みに失敗しました: ' + humanizeApiError(e), true);
   }
 }
 
@@ -181,54 +187,30 @@ function onVoteClick(status) {
 
   const member = allMembers.find(m => m.ID === memberId);
   const name = member ? member.Name : memberId;
-  const label = STATUS_LABELS[status];
 
-  pendingStatus = status;
-  document.getElementById('vote-confirm-msg').textContent =
-    name + ' さんの回答を「' + label + '」で登録します。よろしいですか？';
-  document.getElementById('vote-confirm-modal').style.display = '';
-}
+  // 確認は共通ダイアログ（app.js の showConfirmDialog）を使う。
+  // 送信失敗時はダイアログが開いたままになるので、そのまま再試行できる。
+  showConfirmDialog({
+    title: '投票の確認',
+    message: name + ' さんの回答を「' + STATUS_LABELS[status] + '」で登録します。よろしいですか？',
+    okLabel: '投票する',
+    busyLabel: '送信中...',
+    onOk: async () => {
+      const result = await api.submitVote({
+        eventId: currentEvent.ID,
+        memberId: memberId,
+        status: status
+      });
+      const idx = currentVotes.findIndex(v => v.memberId === memberId);
+      if (idx >= 0) currentVotes[idx] = result;
+      else currentVotes.push(result);
 
-function closeConfirm() {
-  pendingStatus = null;
-  document.getElementById('vote-confirm-modal').style.display = 'none';
-}
-
-async function submitConfirmedVote() {
-  if (!pendingStatus) return;
-
-  const memberId = document.getElementById('vote-member').value;
-  const status = pendingStatus;
-  const submitBtn = document.getElementById('vote-confirm-submit');
-
-  submitBtn.disabled = true;
-  submitBtn.textContent = '送信中...';
-
-  try {
-    const result = await api.submitVote({
-      eventId: currentEvent.ID,
-      memberId: memberId,
-      status: status
-    });
-
-    const idx = currentVotes.findIndex(v => v.memberId === memberId);
-    if (idx >= 0) {
-      currentVotes[idx] = result;
-    } else {
-      currentVotes.push(result);
+      renderVoteSummary();
+      updateCurrentVoteDisplay(memberId);
+      highlightCurrentVote(memberId);
+      toast(STATUS_LABELS[status] + 'で投票しました', 'success');
     }
-
-    renderVoteSummary();
-    updateCurrentVoteDisplay(memberId);
-    highlightCurrentVote(memberId);
-    toast(STATUS_LABELS[status] + 'で投票しました', 'success');
-  } catch (e) {
-    toast('投票に失敗しました: ' + e.message, 'error');
-  } finally {
-    closeConfirm();
-    submitBtn.disabled = false;
-    submitBtn.textContent = '投票する';
-  }
+  });
 }
 
 // ====== 表示更新 ======
@@ -327,16 +309,21 @@ function toggleVoteDetail() {
   if (el.style.display === 'none') {
     el.style.display = '';
     btn.textContent = '回答一覧を隠す';
+    btn.setAttribute('aria-expanded', 'true');
   } else {
     el.style.display = 'none';
     btn.textContent = '回答一覧を表示';
+    btn.setAttribute('aria-expanded', 'false');
   }
 }
 
 // ====== エラー表示 ======
 
-function showError(msg) {
+function showError(msg, canRetry) {
   document.getElementById('vote-loading').style.display = 'none';
   document.getElementById('vote-error-msg').textContent = msg;
   document.getElementById('vote-error').style.display = '';
+  // 通信エラー等、再試行で直る可能性がある場合だけ再読み込みボタンを出す
+  const retryBtn = document.getElementById('vote-retry-btn');
+  if (retryBtn) retryBtn.style.display = canRetry ? '' : 'none';
 }

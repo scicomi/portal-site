@@ -36,6 +36,20 @@ const CONFIG = {
     warning: 7   // 7日前以内 → 黄
   },
 
+  // ===== 書類（許可願・報告書）の提出ステータス =====
+  // home / event-series で共用（以前は両ページに重複定義があり、片方だけ直すとズレていた）。
+  // cssClass は style.css の .report-status-select.status-* に対応する色分けクラス。
+  KYOKA_STATUS: {
+    '':            { label: '未提出',                 color: '#9ca3af', cssClass: 'none' },
+    'coordinator': { label: 'コーディネーター提出済', color: '#f59e0b', cssClass: 'coordinator' },
+    'submitted':   { label: '提出済',                 color: '#10b981', cssClass: 'clc' }
+  },
+  REPORT_STATUS: {
+    '':            { label: '未提出',                 color: '#9ca3af', cssClass: 'none' },
+    'coordinator': { label: 'コーディネーター提出済', color: '#f59e0b', cssClass: 'coordinator' },
+    'clc':         { label: 'CLC提出済',              color: '#10b981', cssClass: 'clc' }
+  },
+
   // ===== Phase 4: リマインダーメール =====
   REMINDER: {
     days: [7, 3, 1],              // 期限の何日前に送信するか
@@ -143,4 +157,8 @@ function getRoleDisplay(role) {
   const r = CONFIG.MEMBER_ROLES.find(x => x.value === role);
   if (r) return r;
   return { value: role, color: '#6b7280', category: 'member', order: 10 };
+}
+// 書類ステータスの select 色分けクラス（未知の値は「未提出」扱い）
+function docStatusClass(def, value) {
+  return (def[value] || def['']).cssClass || 'none';
 }

@@ -14,12 +14,22 @@ document.addEventListener('DOMContentLoaded', () => {
     bootPage('experiments', init);
 });
 
+// 「読み込み中」のスピナーを止めて、エラー・未発見メッセージに置き換える
+function showLoadMessage(html) {
+    const el = document.getElementById('exp-loading');
+    el.classList.remove('loading-text');
+    el.innerHTML = html;
+}
+
 async function init() {
     bindOverlayClose(document.getElementById('feedback-modal'), closeFeedbackModal);
 
     const id = new URLSearchParams(location.search).get('id');
     if (!id) {
-        document.getElementById('exp-loading').textContent = '実験IDが指定されていません';
+        showLoadMessage(`<div class="empty-state">
+            <div class="empty-text">実験IDが指定されていません</div>
+            <a href="experiments.html" class="btn btn-secondary" style="text-decoration:none;">実験一覧へ戻る</a>
+        </div>`);
         return;
     }
 
@@ -33,7 +43,8 @@ async function init() {
 
     if (currentExp) {
         renderPage();
-        updateSyncStatus('cached', cached.timestamp);
+        // 2回目以降の init（競合検知後など）ではキャッシュが無いこともある
+        updateSyncStatus('cached', cached ? cached.timestamp : null);
     }
 
     try {
@@ -41,14 +52,23 @@ async function init() {
         api.saveCache('experiments', allExperiments);
         currentExp = allExperiments.find(e => e.ID === id);
         if (!currentExp) {
-            document.getElementById('exp-loading').textContent = '実験が見つかりません';
+            showLoadMessage(`<div class="empty-state">
+                <div class="empty-text">実験が見つかりません</div>
+                <div class="empty-hint">削除されたか、リンクが古い可能性があります</div>
+                <a href="experiments.html" class="btn btn-secondary" style="text-decoration:none;">実験一覧へ戻る</a>
+            </div>`);
             return;
         }
         renderPage();
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
+        if (e.handled) return;
         if (!currentExp) {
-            document.getElementById('exp-loading').textContent = '読み込みエラー: ' + e.message;
+            showLoadMessage(`<div class="empty-state">
+                <div class="empty-text">データを読み込めませんでした</div>
+                <div class="empty-hint">${escapeHtml(humanizeApiError(e))}</div>
+                <button type="button" class="btn btn-secondary" onclick="location.reload()">再読み込み</button>
+            </div>`);
         }
         updateSyncStatus('error', null, e.message);
     }
@@ -119,7 +139,7 @@ function renderEventsSection() {
 
     document.getElementById('expd-events-list').innerHTML = related.map(ev => {
         const cat = getEventCategory(ev.Category || 'normal');
-        return `<a href="events.html?event=${encodeURIComponent(ev.ID)}" class="expd-event-chip" title="${escapeAttr(ev.Title)}">
+        return `<a href="event-series.html?event=${encodeURIComponent(ev.ID)}" class="expd-event-chip" title="${escapeAttr(ev.Title)}">
             <span class="expd-event-date">${escapeHtml(ev.Date || '')}</span>
             <span class="expd-event-title">${escapeHtml(ev.Title || '(無題)')}</span>
             <span class="cat-badge" style="background:${cat.bg};color:${cat.text};font-size:0.65rem;">${cat.short}</span>
@@ -136,9 +156,11 @@ function getAllFeedback() {
 
 function filterFeedback(type) {
     feedbackFilter = type;
-    document.querySelectorAll('[data-fb]').forEach(c =>
-        c.classList.toggle('active', c.dataset.fb === type)
-    );
+    document.querySelectorAll('[data-fb]').forEach(c => {
+        const isActive = c.dataset.fb === type;
+        c.classList.toggle('active', isActive);
+        c.setAttribute('aria-pressed', String(isActive));
+    });
     renderFeedback();
 }
 
@@ -180,11 +202,11 @@ function renderFeedback() {
         const open = isCurrentFy || fy === '日付なし';
         return `
             <div class="fy-group">
-                <div class="fy-header ${open ? 'open' : ''}" onclick="this.classList.toggle('open'); this.nextElementSibling.classList.toggle('hidden');">
+                <button type="button" class="fy-header ${open ? 'open' : ''}" aria-expanded="${open}" onclick="this.classList.toggle('open'); this.setAttribute('aria-expanded', this.classList.contains('open')); this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.fy-toggle').innerHTML = this.classList.contains('open') ? '&#9660;' : '&#9654;';">
                     <span class="fy-toggle">${open ? '&#9660;' : '&#9654;'}</span>
                     <span class="fy-label">${escapeHtml(fy)}</span>
                     <span class="fy-count">${entries.length}件</span>
-                </div>
+                </button>
                 <div class="fy-body ${open ? '' : 'hidden'}">
                     ${entries.map(f => renderFeedbackEntry(f)).join('')}
                 </div>
@@ -247,7 +269,10 @@ function closeFeedbackModal() {
 
 async function saveFeedback() {
     const text = document.getElementById('fb-text').value.trim();
-    if (!text) { toast('内容を入力してください', 'error'); return; }
+    if (!text) { toast('内容を入力してください', 'error'); document.getElementById('fb-text').focus(); return; }
+
+    const saveBtn = document.getElementById('fb-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
 
     const type = document.getElementById('fb-type').value;
     const eventSel = document.getElementById('fb-event');
@@ -290,13 +315,36 @@ async function saveFeedback() {
         } else {
             toast('保存失敗: ' + e.message, 'error');
         }
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; }
     }
 }
 
-async function deleteFeedbackEntry(fbId, type) {
+function deleteFeedbackEntry(fbId, type) {
     if (!fbId || !currentExp) return;
-    if (!confirm('この振り返りエントリを削除しますか？')) return;
+    // 他ページと同じ確認ダイアログ（ネイティブ confirm は使わない）
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-dialog-overlay';
+    overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+    overlay.innerHTML = `
+        <div class="confirm-dialog">
+            <h3>振り返りを削除</h3>
+            <p>この振り返りエントリを削除しますか？</p>
+            <div class="confirm-dialog-actions">
+                <button class="btn btn-secondary" onclick="this.closest('.confirm-dialog-overlay').remove()">キャンセル</button>
+                <button class="btn btn-danger" id="confirm-fb-del-btn">削除する</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    bindModalEscape(overlay, () => overlay.remove());
+    overlay.querySelector('#confirm-fb-del-btn').onclick = () => {
+        overlay.remove();
+        executeDeleteFeedbackEntry(fbId, type);
+    };
+}
 
+async function executeDeleteFeedbackEntry(fbId, type) {
     const field = type === 'positive' ? 'Positives' : 'Reflections';
     const entries = parseFeedbackEntries(currentExp[field]);
     const idx = entries.findIndex(e => e.id === fbId);

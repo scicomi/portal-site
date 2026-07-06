@@ -6,18 +6,9 @@ document.addEventListener('DOMContentLoaded', () => {
     bootPage('home', init);
 });
 
-// 報告書ステータス（''=未提出 / coordinator / clc）
-const REPORT_STATUS = {
-    '':            { label: '未提出',                color: '#9ca3af' },
-    'coordinator': { label: 'コーディネーター提出済', color: '#f59e0b' },
-    'clc':         { label: 'CLC提出済',            color: '#10b981' }
-};
-
-// 許可願ステータス（''=未提出 / submitted=提出済）
-const KYOKA_STATUS = {
-    '':          { label: '未提出', color: '#9ca3af' },
-    'submitted': { label: '提出済', color: '#10b981' }
-};
+// 書類（許可願・報告書）の提出ステータス定義（config.js に集約）
+const REPORT_STATUS = CONFIG.REPORT_STATUS;
+const KYOKA_STATUS = CONFIG.KYOKA_STATUS;
 
 // 出欠一括回答（vote.html と同じキーで名前選択を端末に記憶する）
 const VOTE_MEMBER_KEY = 'scicomi_vote_member';
@@ -80,7 +71,20 @@ async function refreshData(isManual = false) {
     } catch (e) {
         if (e.handled) return;
         updateSyncStatus('error', null, e.message);
+        renderLoadError();
     }
+}
+
+// 初回読み込みに失敗（キャッシュも無い）場合、「読み込み中」スピナーが残り続けないよう
+// エラー表示＋再読み込みボタンに置き換える。キャッシュ表示済みのカードには触らない。
+function renderLoadError() {
+    document.querySelectorAll('#upcoming-events .loading-text, #member-summary .loading-text, #bulk-vote-list .loading-text').forEach(el => {
+        el.outerHTML = `<li class="empty-state">
+            <div class="empty-text">データを読み込めませんでした</div>
+            <div class="empty-hint">通信環境を確認して、もう一度お試しください</div>
+            <button type="button" class="btn btn-secondary" onclick="refreshData(true)">再読み込み</button>
+        </li>`;
+    });
 }
 
 // ---- 出欠一括回答 ----
@@ -94,13 +98,19 @@ async function loadVotesAndRenderBulk() {
     renderBulkVote();
 }
 
+// 出欠の回答はコーディネーター・アドバイザーを対象外にする
+function isVoteEligibleMember(m) {
+    const r = memberRoleOf(m);
+    return r !== 'アドバイザー' && r !== 'コーディネーター';
+}
+
 function renderBulkVote() {
     const select = document.getElementById('bulk-vote-member');
     if (!select) return;
 
     const curFY = currentFiscalYear();
     const eligible = (allMembersData || [])
-        .filter(m => m.Name && m.Active !== 'false' && parseInt(m.FiscalYear || curFY) === curFY)
+        .filter(m => m.Name && m.Active !== 'false' && parseInt(m.FiscalYear || curFY) === curFY && isVoteEligibleMember(m))
         .sort((a, b) => (a.Name || '').localeCompare(b.Name || '', 'ja'));
 
     const saved = localStorage.getItem(VOTE_MEMBER_KEY) || '';
@@ -134,8 +144,10 @@ function renderBulkVoteList() {
         return;
     }
 
+    const staffIds = new Set((allMembersData || []).filter(m => !isVoteEligibleMember(m)).map(m => m.ID));
     const byEvent = {};
     (allVotes || []).forEach(v => {
+        if (staffIds.has(v.memberId)) return;
         const b = byEvent[v.eventId] || (byEvent[v.eventId] = { attend: 0, absent: 0, undecided: 0, mine: '' });
         if (b[v.status] !== undefined) b[v.status]++;
         if (memberId && v.memberId === memberId) b.mine = v.status;
@@ -225,7 +237,7 @@ function renderEventsCard(events) {
         .slice(0, 5);
 
     if (upcoming.length === 0) {
-        container.innerHTML = '<li class="empty-state"><span class="empty-text">予定なし</span></li>';
+        container.innerHTML = '<li class="empty-state"><span class="empty-text">今後の予定はありません</span></li>';
     } else {
         container.innerHTML = upcoming.map(e => {
             const c = getEventCategory(e.Category);
@@ -234,10 +246,11 @@ function renderEventsCard(events) {
             if (c.isMeeting && meetingNo) {
                 title = `第${meetingNo}回 ${title}`;
             }
+            // 行全体タップでも、キーボード(Tab→Enter)でリンクからでも開けるようにする
             return `
                 <li onclick="location.href='event-series.html?event=${encodeURIComponent(e.ID)}'" style="cursor:pointer;">
                     <span class="dl-date">${shortDate(e.Date)}</span>
-                    <span class="dl-title">${escapeHtml(title)}</span>
+                    <span class="dl-title"><a href="event-series.html?event=${encodeURIComponent(e.ID)}" class="report-event-link">${escapeHtml(title)}</a></span>
                     <span class="dl-badge" style="background:${c.bg};color:${c.text};">${c.short}</span>
                 </li>
             `;
@@ -288,7 +301,7 @@ function renderKyokaCard(events) {
                 <a href="event-series.html?event=${encodeURIComponent(r.id)}" class="report-event-link">${escapeHtml(r.event || '(無題)')}</a>
                 ${r.admin ? `<span class="report-admin">担当: ${escapeHtml(r.admin)}</span>` : ''}
             </span>
-            <select class="report-status-select status-${r.status === 'submitted' ? 'clc' : 'none'}" data-event-id="${escapeAttr(r.id)}" title="提出ステータスを変更">
+            <select class="report-status-select status-${docStatusClass(KYOKA_STATUS, r.status)}" data-event-id="${escapeAttr(r.id)}" title="提出ステータスを変更">
                 ${options}
             </select>
         </li>`;
@@ -342,7 +355,7 @@ function renderReportsCard(events) {
                 <a href="event-series.html?event=${encodeURIComponent(r.id)}&tab=feedback" class="report-event-link">${escapeHtml(r.event || '(無題)')}</a>
                 ${r.admin ? `<span class="report-admin">担当: ${escapeHtml(r.admin)}</span>` : ''}
             </span>
-            <select class="report-status-select status-${r.status || 'none'}" data-event-id="${escapeAttr(r.id)}" title="提出ステータスを変更">
+            <select class="report-status-select status-${docStatusClass(REPORT_STATUS, r.status)}" data-event-id="${escapeAttr(r.id)}" title="提出ステータスを変更">
                 ${options}
             </select>
         </li>`;
@@ -392,6 +405,11 @@ function renderMembersCard(members) {
     const curFY = currentFiscalYear();
     const fy = members.filter(m => parseInt(m.FiscalYear || curFY) === curFY);
 
+    if (fy.length === 0) {
+        container.innerHTML = '<li class="empty-state"><span class="empty-text">今年度のメンバーが登録されていません</span></li>';
+        return;
+    }
+
     const advisers = fy.filter(m => memberRoleOf(m) === 'アドバイザー');
     const coordinators = fy.filter(m => memberRoleOf(m) === 'コーディネーター');
     const regular = fy.filter(m => { const r = memberRoleOf(m); return r !== 'アドバイザー' && r !== 'コーディネーター'; });
@@ -411,11 +429,13 @@ function renderFeedbackPending(events) {
     const container = document.getElementById('feedback-pending');
     if (!container) return;
     const today = todayISO();
+    // 終了から2週間を過ぎたイベントはもう通知しない（古い未記入で埋まらないように）
+    const cutoff = toISODate((() => { const d = new Date(); d.setDate(d.getDate() - 14); return d; })());
     const pending = (events || [])
         .filter(e => {
             if (e.Category === 'general' || e.Category === 'admin') return false;
             const endDate = e.DateEnd || e.Date_End || e.Date;
-            if (!endDate || endDate >= today) return false;
+            if (!endDate || endDate >= today || endDate < cutoff) return false;
             return !(e.Positives || '').trim() && !(e.Reflections || '').trim();
         })
         .sort((a, b) => (b.Date || '').localeCompare(a.Date || ''))
@@ -426,9 +446,10 @@ function renderFeedbackPending(events) {
         return;
     }
     container.innerHTML = pending.map(e => {
-        return `<li onclick="location.href='event-series.html?event=${encodeURIComponent(e.ID)}&tab=feedback'" style="cursor:pointer;">
+        const url = `event-series.html?event=${encodeURIComponent(e.ID)}&tab=feedback`;
+        return `<li onclick="location.href='${url}'" style="cursor:pointer;">
             <span class="dl-date">${shortDate(e.Date)}</span>
-            <span class="dl-title">${escapeHtml(e.Title || '(無題)')}</span>
+            <span class="dl-title"><a href="${url}" class="report-event-link">${escapeHtml(e.Title || '(無題)')}</a></span>
             <span class="dl-badge badge-warning">未記入</span>
         </li>`;
     }).join('');
