@@ -1,7 +1,7 @@
 /**
  * 実験内容ページ
  * カテゴリタブ（工作/実験ショー/その他）+ 検索。
- * 行クリックで詳細ページへ遷移。行ホバーで編集・削除ボタン表示。
+ * 行クリックで詳細ページへ遷移。編集・削除ボタンは行内に常時表示。
  * 新規作成・編集はステップウィザード形式。
  */
 
@@ -38,8 +38,9 @@ function _bindExpTableDelegation() {
             return;
         }
         if (e.target.closest('[data-action-cell]')) return;
+        // 行タップはまず概要ポップアップ（メンバー・日程ページと同じ2段構え）
         const row = e.target.closest('tr[data-id]');
-        if (row) goToDetail(row.dataset.id);
+        if (row) openExpPreviewModal(row.dataset.id);
     });
 }
 
@@ -158,18 +159,22 @@ function render() {
             : `<tr><td colspan="4" class="empty-state">
                 <span class="empty-icon">&#x1F52C;</span>
                 <span class="empty-text">このカテゴリには実験がまだありません</span>
-                <span class="empty-hint">右下の＋ボタンから追加できます</span>
+                <span class="empty-hint">「＋ 実験を追加」ボタンから追加できます</span>
             </td></tr>`;
         return;
     }
 
-    // 削除ボタンは全員に表示し、非管理者はタップ時に管理者認証を挟む（メンバーページと表示ルールを統一）
+    // 削除は管理者ログイン時のみ表示（誤タップ防止）。編集は全員に表示し、
+    // タップ時に管理者認証を挟む（メンバーページと表示ルールを統一）
+    const isAdmin = api.isAdmin();
     tbody.innerHTML = items.map(e => {
-        const snippet = (e.Materials || '').split('\n').slice(0, 2).join(', ') || '-';
+        // 使用物品は1行に短縮（先頭項目＋他n点）。全文はポップアップ・詳細ページで見る
+        const mats = (e.Materials || '').split('\n').map(s => s.trim()).filter(Boolean);
+        const snippet = mats.length === 0 ? '-' : mats[0] + (mats.length > 1 ? ` 他${mats.length - 1}点` : '');
         const safeSlides = safeHttpUrl(e.SlidesURL);
         const fbCount = countFeedback(e);
         return `
-            <tr class="clickable-row" data-id="${escapeAttr(e.ID)}">
+            <tr class="clickable-row" data-id="${escapeAttr(e.ID)}" title="タップで概要を表示">
                 <td class="cell-name">
                     <a href="experiment-detail.html?id=${encodeURIComponent(e.ID)}" data-action="open" style="color:inherit;text-decoration:none;">${escapeHtml(e.Name || '(無題)')}</a>
                     ${fbCount > 0 ? `<span class="badge-fb-count" title="振り返り ${fbCount}件">${fbCount}件</span>` : ''}
@@ -178,8 +183,8 @@ function render() {
                 <td class="hide-mobile">${safeSlides ? `<a href="${escapeAttr(safeSlides)}" target="_blank" rel="noopener" data-action="slides" class="tbl-link">資料を開く</a>` : '-'}</td>
                 <td data-action-cell>
                     <div class="inline-actions">
-                        <button class="inline-action-btn" data-action="edit" title="編集">&#9998;</button>
-                        <button class="inline-action-btn danger" data-action="delete" title="削除">&#x2715;</button>
+                        <button class="inline-action-btn" data-action="edit" title="この実験を編集">編集</button>
+                        ${isAdmin ? '<button class="inline-action-btn danger" data-action="delete" title="この実験を削除">削除</button>' : ''}
                     </div>
                 </td>
             </tr>
@@ -197,8 +202,44 @@ function countFeedback(e) {
     return pos.length + ref.length;
 }
 
-// ※ 簡易プレビューモーダルは廃止。詳細の閲覧は experiment-detail.html へ一本化した
-//   （行クリック・?focus= のどちらも同じ導線になる）。
+// ---- 実験プレビュー（行タップで概要をポップアップ表示） ----
+// メンバー・日程ページと同じ「一覧 → ポップアップ →（必要なら）詳細ページ」の2段構え。
+function openExpPreviewModal(id) {
+    const e = expData.find(x => x.ID === id);
+    if (!e) return;
+    const cat = getExperimentCategory(e.Category);
+    const mats = (e.Materials || '').split('\n').map(s => s.trim()).filter(Boolean);
+    const safeSlides = safeHttpUrl(e.SlidesURL);
+    const fbCount = countFeedback(e);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal-content" style="max-width:480px;" role="dialog" aria-modal="true" aria-labelledby="exp-preview-title">
+            <h2 id="exp-preview-title" style="margin-top:0;">
+                ${escapeHtml(e.Name || '(無題)')}
+                <span class="cat-badge" style="background:${cat.color};margin-left:8px;font-size:0.75rem;vertical-align:middle;">${escapeHtml(cat.label)}</span>
+            </h2>
+            ${mats.length > 0
+                ? `<div class="e1-group"><span class="e1-label">使用物品</span>
+                    <ul style="margin:4px 0 0; padding-left:20px; max-height:180px; overflow-y:auto;">
+                        ${mats.map(m => `<li>${escapeHtml(m)}</li>`).join('')}
+                    </ul></div>`
+                : ''}
+            ${fbCount > 0 ? `<p class="text-muted" style="font-size:0.85rem;">振り返り ${fbCount}件（詳細ページで見られます）</p>` : ''}
+            <div class="action-buttons" style="margin-top:16px;">
+                ${safeSlides ? `<a class="btn btn-secondary" href="${escapeAttr(safeSlides)}" target="_blank" rel="noopener">資料を開く</a>` : ''}
+                <button type="button" class="btn btn-text" data-close>閉じる</button>
+                <a class="btn btn-primary-solid" style="width:auto;" href="experiment-detail.html?id=${encodeURIComponent(e.ID)}">詳細ページへ</a>
+            </div>
+        </div>`;
+    const close = () => overlay.remove();
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    bindOverlayClose(overlay, close);
+    bindModalEscape(overlay, close);
+    document.body.appendChild(overlay);
+    trapFocus(overlay.querySelector('.modal-content'));
+}
 
 // ---- ウィザード形式の新規作成・編集 ----
 

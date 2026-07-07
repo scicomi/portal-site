@@ -166,7 +166,7 @@ async function init() {
     indexMode = !seriesKey && !currentEventId;
 
     document.getElementById(indexMode ? 'series-index' : 'series-view').classList.remove('hidden');
-    if (indexMode) document.title = 'イベント別ページ | SciComi Portal';
+    if (indexMode) document.title = 'イベント一覧 | SciComi Portal';
 
     loadAuxData(); // メンバー・実験は補助情報。裏で読み込み、揃い次第再描画する。
 

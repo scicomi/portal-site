@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light">
-    <title>イベント | SciComi Portal</title>
+    <title>日程 | SciComi Portal</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js">
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
@@ -24,8 +24,9 @@
 
     <main class="container">
         <div class="page-header">
-            <h1 class="page-title" style="margin:0; flex:1;">イベント管理</h1>
+            <h1 class="page-title" style="margin:0; flex:1;">日程</h1>
             <input id="event-search" class="search-input" type="text" placeholder="タイトル・場所・発表者で検索" title="ショートカット: / キーで検索欄へ" oninput="onSearchChange()">
+            <button class="btn btn-primary page-new-btn" onclick="openNewEventModal()" title="ショートカット: n キー">＋ 日程を追加</button>
         </div>
         <div class="page-filters">
             <button class="filter-chip active" data-cat="all" aria-pressed="true" onclick="onCategoryFilter('all')">全部</button>
@@ -52,7 +53,7 @@
                 <thead>
                     <tr>
                         <th>日付</th>
-                        <th>イベント名</th>
+                        <th>タイトル</th>
                         <th class="hide-mobile">場所</th>
                         <th class="hide-mobile">時間</th>
                         <th style="width:1px;"></th>
@@ -67,8 +68,8 @@
     <!-- Modal Overlay -->
     <div id="modal-overlay" class="modal-overlay hidden">
         <div class="modal-content" id="category-selection-modal" role="dialog" aria-modal="true" aria-labelledby="cat-modal-title">
-            <h2 id="cat-modal-title">新規イベント作成</h2>
-            <p>イベントの種類を選択してください。</p>
+            <h2 id="cat-modal-title">日程を追加</h2>
+            <p>日程の種類を選択してください。</p>
             <div class="category-buttons">
                 <button class="btn btn-category cat-normal-btn" onclick="startNewEvent('normal')">イベント</button>
                 <button class="btn btn-category cat-other-btn" onclick="startNewEvent('other')">その他</button>
@@ -79,19 +80,19 @@
             <div class="text-center-or">または</div>
 
             <div class="e1-group">
-                <label class="e1-label">過去イベントから複製</label>
+                <label class="e1-label">過去の日程から複製</label>
                 <select id="template-source" class="e1-input" onchange="onTemplateSelect(this.value)">
-                    <option value="">-- 過去イベントを選んで複製 --</option>
+                    <option value="">-- 過去の日程を選んで複製 --</option>
                 </select>
             </div>
 
             <button class="btn btn-text mt-2" onclick="closeModal()">キャンセル</button>
         </div>
     </div>
-    <!-- イベント詳細モーダルは廃止。閲覧は event-series.html?event=<ID>（イベント詳細ページ）へ一本化 -->
+    <!-- 行タップ→概要ポップアップ（script.js openEventPreviewModal）。フル情報は event-series.html?event=<ID> へ -->
 
     <!-- FAB -->
-    <button class="fab" onclick="openNewEventModal()" title="新規イベント" aria-label="新規イベント">+</button>
+    <button class="fab" onclick="openNewEventModal()" aria-label="日程を追加"><span class="fab-icon">＋</span>日程を追加</button>
 
     <script src="config.js"></script>
     <script src="api.js"></script>

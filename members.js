@@ -1,7 +1,7 @@
 /**
  * メンバーリストページ
  * 年度別表示。全メンバー（アドバイザー・コーディネーター含む）を統一表示。
- * 新規作成・編集はステップウィザード形式。行ホバーで編集・削除ボタン表示。
+ * 新規作成・編集はステップウィザード形式。編集・削除ボタンは行内に常時表示。
  */
 
 let membersData = [];
@@ -143,7 +143,12 @@ function buildGradeChips(fyMembers) {
         const g = gradeOf(m);
         if (g && /^\d[A-Z]$/.test(g)) grades.add(g);
     });
-    const list = [...grades].sort();
+    // 学年チップも一覧と同じ年度サイクル順（上級生 → 新入生）で並べる
+    const list = [...grades].sort((a, b) => {
+        const ka = digitCycleKey(a[0]), kb = digitCycleKey(b[0]);
+        if (ka !== kb) return ka - kb;
+        return a.localeCompare(b);
+    });
     if (hasGrad) list.push('院生');
     if (list.length === 0) {
         row.style.display = 'none';
@@ -184,6 +189,38 @@ function sortByRoleThenName(list) {
     });
 }
 
+// 学籍番号の先頭1桁は入学年度の下1桁で、年度ごとに 0→9 でサイクルする。
+// 選択中年度の下1桁が「最新の入学年」なので、その翌数字（=最も古い在籍学年）から
+// 昇順に並ぶキーを返す。例) 2022年度に 8,9,0,1,2 がいる場合はこの順になる。
+function digitCycleKey(ch) {
+    const d = parseInt(ch, 10);
+    if (isNaN(d)) return 10; // 数字で始まらない・空の番号は学年グループの最後へ
+    const newest = selectedFiscalYear % 10;
+    return ((d - newest - 1) % 10 + 10) % 10;
+}
+
+// メンバー（学生）タブの表示順:
+//   1) 院生は必ず一番下（役職の有無より優先）
+//   2) 役職もちは一番上（CONFIG.MEMBER_ROLES の順 → その他の役職）
+//   3) 学籍番号先頭数字の年度サイクル順（上級生 → 新入生）
+//   4) 名前順
+function sortStudents(list) {
+    const roleOrder = {};
+    CONFIG.MEMBER_ROLES.forEach((r, i) => { roleOrder[r.value] = i; });
+    return list.slice().sort((a, b) => {
+        const ga = isGradStudent(a) ? 1 : 0, gb = isGradStudent(b) ? 1 : 0;
+        if (ga !== gb) return ga - gb;
+        const ra = memberRoleOf(a), rb = memberRoleOf(b);
+        const oa = ra ? (roleOrder[ra] ?? 10) : 99;
+        const ob = rb ? (roleOrder[rb] ?? 10) : 99;
+        if (oa !== ob) return oa - ob;
+        const da = digitCycleKey(((a.StudentID || '').trim())[0]);
+        const db = digitCycleKey(((b.StudentID || '').trim())[0]);
+        if (da !== db) return da - db;
+        return (a.Name || '').localeCompare(b.Name || '', 'ja');
+    });
+}
+
 function onMemberSearch() {
     memberSearchKw = (document.getElementById('member-search').value || '').toLowerCase();
     renderMembers();
@@ -197,11 +234,12 @@ function getMemberFiscalYear(m) {
 function renderMembers() {
     let fyMembers = membersData.filter(m => getMemberFiscalYear(m) === selectedFiscalYear);
 
+    // タブは「メンバー / スタッフ」の2つ。スタッフ=コーディネーター＋アドバイザー
+    // （人数が少ないため1タブに統合。区別は役職バッジで分かる）
     fyMembers = fyMembers.filter(m => {
         const role = memberRoleOf(m);
-        if (roleFilter === 'coordinator') return role === 'コーディネーター';
-        if (roleFilter === 'adviser') return role === 'アドバイザー';
-        return role !== 'コーディネーター' && role !== 'アドバイザー';
+        const isStaff = role === 'コーディネーター' || role === 'アドバイザー';
+        return roleFilter === 'staff' ? isStaff : !isStaff;
     });
 
     if (roleFilter === 'member') {
@@ -231,12 +269,13 @@ function renderMembers() {
         });
     }
 
-    const sorted = sortByRoleThenName(base);
+    // 学生タブは学番サイクル順、コーディネーター・アドバイザーは役職→名前順
+    const sorted = roleFilter === 'member' ? sortStudents(base) : sortByRoleThenName(base);
 
     const thead = document.getElementById('members-thead');
     const tbody = document.getElementById('members-tbody');
     const isAdmin = api.isAdmin();
-    const isStaffTab = roleFilter === 'coordinator' || roleFilter === 'adviser';
+    const isStaffTab = roleFilter === 'staff';
     const colCount = isStaffTab ? 4 : 3;
 
     document.querySelectorAll('.admin-only').forEach(el => {
@@ -253,6 +292,7 @@ function renderMembers() {
         // 検索・絞り込み中は「条件を変えれば見つかるかもしれない」ことが分かるようにする
         const hasFilter = memberSearchKw || gradeFilter;
         tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">
+            <span class="empty-icon">&#x1F465;</span>
             <div class="empty-text">該当するメンバーはいません</div>
             ${hasFilter ? '<div class="empty-hint">検索キーワードや絞り込みを変更してみてください</div>' : ''}
         </td></tr>`;
@@ -269,13 +309,13 @@ function renderMembers() {
                     <span class="member-name-text">${escapeHtml(m.Name || '')}</span>
                     ${roleBadge}
                 </td>`;
-            // 編集・削除ボタンは全員に表示し、非管理者はタップ時に管理者認証を挟む
-            // （実験ページ等と表示ルールを統一。権限チェックは openMemberWizard / confirmDeleteMember 側で行う）
+            // 削除は管理者ログイン時のみ表示（誤タップ防止）。編集は全員に表示し、
+            // タップ時に管理者認証を挟む（実験ページ等と表示ルールを統一）
             const actionCell = `
                 <td data-action-cell>
                     <div class="inline-actions">
-                        <button class="inline-action-btn" data-action="edit" title="編集">&#9998;</button>
-                        <button class="inline-action-btn danger" data-action="delete" title="削除">&#x2715;</button>
+                        <button class="inline-action-btn" data-action="edit" title="このメンバーを編集">編集</button>
+                        ${isAdmin ? '<button class="inline-action-btn danger" data-action="delete" title="このメンバーを削除">削除</button>' : ''}
                     </div>
                 </td>`;
 
@@ -600,6 +640,15 @@ async function saveMember() {
 
     if (editingMemberId && existing) item._baseUpdatedAt = existing.UpdatedAt || '';
 
+    // 保存は妨げない軽い検証（入力ミスの早期発見用）。
+    // 学籍番号が数字始まりでないと学年フィルタ・並び順に反映されない。
+    if (!item.Role && item.StudentID && !/^\d/.test(item.StudentID)) {
+        toast('学籍番号が数字で始まっていません。学年の絞り込み・並び順に反映されない場合があります', 'info', 5000);
+    }
+    if (item.Email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item.Email)) {
+        toast('メールアドレスの形式が正しくない可能性があります', 'info', 5000);
+    }
+
     const snapshot = JSON.parse(JSON.stringify(membersData));
 
     if (isNew) {
@@ -735,7 +784,14 @@ function openYearCopyModal() {
 
 function renderYearCopyMembers() {
     const srcYear = parseInt(document.getElementById('yc-source-year').value);
+    const tgtYear = parseInt(document.getElementById('yc-target-year').value);
     const members = membersData.filter(m => getMemberFiscalYear(m) === srcYear);
+
+    // 登録先年度に既にいる人（同名 or 同学籍番号）は二重登録を防ぐため、
+    // 既定でチェックを外し「登録済み」と表示する
+    const inTarget = membersData.filter(m => getMemberFiscalYear(m) === tgtYear);
+    const tgtNames = new Set(inTarget.map(m => (m.Name || '').trim()).filter(Boolean));
+    const tgtIds = new Set(inTarget.map(m => (m.StudentID || '').trim()).filter(Boolean));
 
     const sortedMembers = sortByRoleThenName(members);
 
@@ -750,9 +806,14 @@ function renderYearCopyMembers() {
         const badge = roleInfo
             ? `<span class="cat-badge" style="background:${roleInfo.color};font-size:0.7rem;">${escapeHtml(role)}</span>`
             : '';
+        const sid = (m.StudentID || '').trim();
+        const dup = tgtNames.has((m.Name || '').trim()) || (sid && tgtIds.has(sid));
+        const dupBadge = dup
+            ? ' <span class="cat-badge" style="background:#9ca3af;font-size:0.7rem;" title="登録先年度に同名または同じ学籍番号のメンバーがいます">登録済み</span>'
+            : '';
         return `<label style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid var(--bg-muted); cursor:pointer;">
-            <input type="checkbox" value="${escapeAttr(m.ID)}" checked class="yc-check">
-            <span style="flex:1;">${escapeHtml(m.Name || '')} ${badge}</span>
+            <input type="checkbox" value="${escapeAttr(m.ID)}" ${dup ? '' : 'checked'} class="yc-check">
+            <span style="flex:1;">${escapeHtml(m.Name || '')} ${badge}${dupBadge}</span>
             <span class="text-hint" style="font-size:0.8rem;">${escapeHtml(m.StudentID || '')}</span>
         </label>`;
     }).join('');

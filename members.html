@@ -15,6 +15,7 @@
         <div class="page-section-actions">
             <h1 class="page-title" style="margin:0; flex:1;">メンバーリスト</h1>
             <button class="btn btn-secondary btn-sm admin-only" onclick="openYearCopyModal()">新年度一括登録</button>
+            <button class="btn btn-primary page-new-btn" onclick="openMemberWizard()">＋ メンバーを追加</button>
         </div>
 
         <div class="page-section-actions">
@@ -26,8 +27,7 @@
         <div class="page-section-actions" id="role-filter-row" style="flex-wrap:wrap;">
             <span class="text-muted" style="font-size:0.85rem;">区分:</span>
             <button class="filter-chip active" data-role="member" aria-pressed="true" onclick="setRoleFilter('member')">メンバー</button>
-            <button class="filter-chip" data-role="coordinator" aria-pressed="false" onclick="setRoleFilter('coordinator')">コーディネーター</button>
-            <button class="filter-chip" data-role="adviser" aria-pressed="false" onclick="setRoleFilter('adviser')">アドバイザー</button>
+            <button class="filter-chip" data-role="staff" aria-pressed="false" onclick="setRoleFilter('staff')" title="コーディネーター・アドバイザー">スタッフ</button>
             <span id="grade-filter-row" style="display:none; align-items:center; gap:8px; flex-wrap:wrap;">
                 <span class="filter-divider"></span>
                 <span class="text-muted" style="font-size:0.85rem;">学年:</span>
@@ -53,7 +53,7 @@
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">登録先年度</label>
-                    <select id="yc-target-year" class="e1-input"></select>
+                    <select id="yc-target-year" class="e1-input" onchange="renderYearCopyMembers()"></select>
                 </div>
                 <div style="margin:12px 0; display:flex; gap:8px;">
                     <button class="tbl-btn" onclick="yearCopySelectAll(true)">全選択</button>
@@ -69,7 +69,7 @@
     </main>
 
     <!-- FAB -->
-    <button class="fab" onclick="openMemberWizard()" title="メンバー追加" aria-label="メンバー追加">+</button>
+    <button class="fab" onclick="openMemberWizard()" aria-label="メンバーを追加"><span class="fab-icon">＋</span>メンバーを追加</button>
 
     <script src="config.js"></script>
     <script src="api.js"></script>
