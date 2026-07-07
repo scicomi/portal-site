@@ -446,6 +446,8 @@ function openEventDetailFromBot(id) {
   if (cat.isMeeting && e.MeetingNumber) title = `第${e.MeetingNumber}回 ${title}`;
   document.getElementById('bot-event-detail-title').textContent = title;
   document.getElementById('bot-event-detail-body').innerHTML = buildEventDetailBody(e);
+  // リンク先は一覧ではなくこのイベントの詳細ページへ（ラベル「詳細ページで開く」と一致させる）
+  document.getElementById('bot-event-detail-link').href = 'event-series.html?event=' + encodeURIComponent(e.ID);
   document.getElementById('bot-event-detail-modal').classList.remove('hidden');
   bindModalEscape(document.getElementById('bot-event-detail-modal'), closeBotEventDetail);
 }

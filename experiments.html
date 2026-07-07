@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light">
-    <title>実験内容 | SciComi Portal</title>
+    <title>実験ネタ | SciComi Portal</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
@@ -13,8 +13,9 @@
 
     <main class="container">
         <div class="page-section-actions">
-            <h1 class="page-title" style="margin:0; flex:1;">実験内容</h1>
+            <h1 class="page-title" style="margin:0; flex:1;">実験ネタ</h1>
             <input id="exp-search" class="search-input" type="text" placeholder="名前・材料で検索" oninput="onExpSearch()">
+            <button class="btn btn-primary page-new-btn" onclick="openExpWizard()">＋ 実験を追加</button>
         </div>
 
         <div class="page-section-actions">
@@ -41,7 +42,7 @@
     </main>
 
     <!-- FAB -->
-    <button class="fab" onclick="openExpWizard()" title="実験を追加" aria-label="実験を追加">+</button>
+    <button class="fab" onclick="openExpWizard()" aria-label="実験を追加"><span class="fab-icon">＋</span>実験を追加</button>
 
     <script src="config.js"></script>
     <script src="api.js"></script>

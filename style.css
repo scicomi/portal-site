@@ -571,27 +571,31 @@ body {
 .wizard-footer-spacer { flex: 1; }
 
 /* ========== FAB (Floating Action Button) ========== */
+/* 「＋」だけでは何のボタンか分かりにくいため、ラベル付きの拡張FABにする。
+   デスクトップはページ上部に「＋ ○○を追加」ボタンがあるので、FABはモバイルのみ表示。 */
 .fab {
     position: fixed;
     bottom: 24px;
     right: 24px;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
+    padding: 14px 20px;
+    border-radius: var(--radius-full);
     background: var(--primary-color);
     color: white;
     border: none;
     box-shadow: 0 4px 12px rgba(70, 71, 117, 0.35);
     cursor: pointer;
-    font-size: 1.6rem;
-    font-weight: 300;
-    display: flex;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    display: none;
     align-items: center;
     justify-content: center;
+    gap: 6px;
     transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
     z-index: 50;
     line-height: 1;
 }
+.fab-icon { font-size: 1.15rem; font-weight: 400; }
 .fab:hover {
     transform: scale(1.08);
     box-shadow: 0 6px 20px rgba(70, 71, 117, 0.45);
@@ -601,17 +605,12 @@ body {
     transform: scale(0.96);
 }
 
-/* ========== Inline Edit (swipe-to-act row) ========== */
+/* ========== Inline Edit (行内の編集・削除ボタン) ========== */
+/* ホバーするまで見えないと存在に気づけないため、常時表示にする */
 .inline-actions {
     display: flex;
     gap: 4px;
-    opacity: 0;
-    transition: opacity 0.15s;
     flex-shrink: 0;
-}
-tr:hover .inline-actions,
-tr:focus-within .inline-actions {
-    opacity: 1;
 }
 .inline-action-btn {
     background: none;
@@ -625,6 +624,7 @@ tr:focus-within .inline-actions {
     min-height: 28px;
     display: inline-flex;
     align-items: center;
+    white-space: nowrap;
     transition: all 0.1s;
 }
 .inline-action-btn:hover {
@@ -676,15 +676,16 @@ tr:focus-within .inline-actions {
 }
 
 @media (max-width: 768px) {
-    .fab { bottom: 16px; right: 16px; width: 52px; height: 52px; font-size: 1.5rem; }
+    .fab { display: inline-flex; bottom: 16px; right: 16px; }
+    /* モバイルは FAB があるためページ上部の作成ボタンは隠す（重複を避ける） */
+    .page-new-btn { display: none; }
     .wizard-panel { max-height: 92vh; width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
     .wizard-overlay { align-items: flex-end; }
     .wizard-header { padding: 16px 16px 0; }
     .wizard-progress { padding: 12px 16px 0; }
     .wizard-body { padding: 16px; }
     .wizard-footer { padding: 12px 16px; }
-    .inline-actions { opacity: 1; }
-    /* タッチ端末ではホバーが無いので常時表示＋指で押しやすい大きさに */
+    /* 指で押しやすい大きさに */
     .inline-action-btn { min-height: 36px; padding: 6px 10px; }
 }
 
@@ -1632,6 +1633,8 @@ textarea:focus {
     display: flex; gap: 10px; align-items: center;
     margin-bottom: 16px; flex-wrap: wrap;
 }
+/* ページ上部の「＋ ○○を追加」ボタン（デスクトップの主要な新規作成導線） */
+.page-new-btn { white-space: nowrap; }
 .search-input {
     flex: 1; max-width: 400px;
     padding: 8px 12px; border: 1px solid var(--border-input); border-radius: 6px;
@@ -3909,6 +3912,11 @@ textarea:focus {
     font-weight: 600;
     white-space: nowrap;
 }
+/* バッジは投票ページへのリンク（タップで出欠回答） */
+a.vote-count-badge { text-decoration: none; cursor: pointer; }
+a.vote-count-badge:hover { background: #c9ecdf; }
+/* ポップアップ内のリンクボタン（<a class="btn">）は下線を消す */
+.action-buttons a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 
 /* --- シリーズ一覧（イベント別ページのトップ） --- */
 .series-index-grid {
@@ -4036,6 +4044,29 @@ textarea:focus {
 .detail-checklist-link:hover { text-decoration: underline; }
 
 /* --- 詳細タブ: 情報テーブル --- */
+/* 詳細ポップアップ共通のラベル/値テーブル（メンバー・日程プレビュー等）。
+   .series-detail-table も併用するため、必ずその定義より前に置くこと（上書き防止）。 */
+.d1-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+}
+.d1-table th,
+.d1-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    text-align: left;
+    vertical-align: top;
+}
+.d1-table tr:last-child th,
+.d1-table tr:last-child td { border-bottom: none; }
+.d1-table th {
+    color: var(--text-label);
+    font-weight: 600;
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+
 .series-detail-table {
     width: 100%;
     border-collapse: collapse;
