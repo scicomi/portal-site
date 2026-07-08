@@ -48,7 +48,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 function closeAnyOpenModal() {
-    if (_duplicateMode) exitDuplicateMode();
 }
 
 // ---- フィルタ状態 ----
@@ -99,11 +98,7 @@ function _bindEventTableDelegation() {
         if (e.target.closest('[data-action-cell]')) return;
         const row = e.target.closest('tr[data-id]');
         if (!row) return;
-        if (_duplicateMode) {
-            confirmDuplicate(row.dataset.id);
-        } else {
-            openEventPreviewModal(row.dataset.id);
-        }
+        openEventPreviewModal(row.dataset.id);
     });
 }
 
@@ -358,7 +353,7 @@ function initFullCalendar(attempt = 0) {
 
             window.tempStart = info.startStr;
             window.tempEnd = endDateStr !== info.startStr ? endDateStr : "";
-            enterDuplicateMode();
+            startNewEventBlank();
 
             calendar.unselect();
         },
@@ -486,9 +481,9 @@ function renderEvents() {
         return (a.Date || '').localeCompare(b.Date || '');
     });
 
-    let periodLabel = '今後の日程';
+    let periodLabel = '今後の予定';
     if (filterState.period.startsWith('fy_')) {
-        periodLabel = filterState.period.slice(3) + '年度の日程';
+        periodLabel = filterState.period.slice(3) + '年度の予定';
     }
     heading.textContent = `${periodLabel} (${sorted.length}件)`;
 
@@ -498,11 +493,11 @@ function renderEvents() {
         const hint = hasNarrowing
             ? '検索キーワードやカテゴリの絞り込みを変更してみてください'
             : (filterState.period === 'upcoming' && eventsData.length > 0
-                ? '年度を選択すると過去の日程を確認できます'
+                ? '年度を選択すると過去の予定を確認できます'
                 : '');
         tbody.innerHTML = `<tr><td colspan="3" class="empty-state">
             <span class="empty-icon">&#x1F4C5;</span>
-            <div class="empty-text">該当する日程はありません</div>
+            <div class="empty-text">該当する予定はありません</div>
             ${hint ? `<div class="empty-hint">${hint}</div>` : ''}
         </td></tr>`;
         return;
@@ -544,9 +539,9 @@ function renderEvents() {
                 </td>
                 <td data-action-cell>
                     <div class="inline-actions">
-                        <button class="inline-action-btn" data-action="duplicate" title="この日程を複製して新規作成">複製</button>
-                        <button class="inline-action-btn" data-action="edit" title="この日程を編集">編集</button>
-                        ${isAdmin ? '<button class="inline-action-btn danger" data-action="delete" title="この日程を削除">削除</button>' : ''}
+                        <button class="inline-action-btn" data-action="duplicate" title="この予定を複製して新規作成">複製</button>
+                        <button class="inline-action-btn" data-action="edit" title="この予定を編集">編集</button>
+                        ${isAdmin ? '<button class="inline-action-btn danger" data-action="delete" title="この予定を削除">削除</button>' : ''}
                     </div>
                 </td>
             </tr>
@@ -630,35 +625,16 @@ function renderPreviewVoteWidget(ev) {
     });
 }
 
-// --- 複製選択モード ---
-
-let _duplicateMode = false;
-
 function openNewEventModal() {
-    enterDuplicateMode();
-}
-
-function enterDuplicateMode() {
-    _duplicateMode = true;
-    document.getElementById('duplicate-mode-banner').classList.remove('hidden');
-    document.getElementById('events-table').classList.add('duplicate-mode');
-    document.querySelector('.fab')?.classList.add('hidden');
-}
-
-function exitDuplicateMode() {
-    _duplicateMode = false;
-    document.getElementById('duplicate-mode-banner').classList.add('hidden');
-    document.getElementById('events-table').classList.remove('duplicate-mode');
-    document.querySelector('.fab')?.classList.remove('hidden');
+    startNewEventBlank();
 }
 
 function startNewEventBlank() {
-    exitDuplicateMode();
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
         <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="cat-modal-title">
-            <h2 id="cat-modal-title">日程の種類を選択</h2>
+            <h2 id="cat-modal-title">予定の種類を選択</h2>
             <div class="category-buttons">
                 <button class="btn btn-category cat-normal-btn" data-cat="normal">イベント</button>
                 <button class="btn btn-category cat-other-btn" data-cat="other">その他</button>
@@ -671,41 +647,6 @@ function startNewEventBlank() {
     overlay.querySelector('[data-close]').addEventListener('click', close);
     overlay.querySelectorAll('[data-cat]').forEach(btn => {
         btn.addEventListener('click', () => { close(); startNewEvent(btn.dataset.cat); });
-    });
-    bindOverlayClose(overlay, close);
-    bindModalEscape(overlay, close);
-    document.body.appendChild(overlay);
-    trapFocus(overlay.querySelector('.modal-content'));
-}
-
-function confirmDuplicate(id) {
-    const src = eventsData.find(x => x.ID === id);
-    if (!src) return;
-    const cat = getEventCategory(src.Category);
-    let title = src.Title || '(無題)';
-    if (cat.isMeeting && src.Meeting_Number) title = `第${src.Meeting_Number}回 ${title}`;
-
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-        <div class="modal-content" style="max-width:400px;" role="dialog" aria-modal="true">
-            <h2 style="margin-top:0;">この日程を複製しますか？</h2>
-            <p style="margin:8px 0 16px;">
-                <span class="cat-badge" style="background:${cat.bg};color:${cat.text};">${cat.short}</span>
-                <strong>${escapeHtml(title)}</strong><br>
-                <span class="text-muted">${escapeHtml(src.Date || '')}${src.Date_End && src.Date_End !== src.Date ? ' 〜 ' + escapeHtml(src.Date_End) : ''}</span>
-            </p>
-            <div class="action-buttons" style="margin-top:16px;">
-                <button class="btn btn-text" data-close>キャンセル</button>
-                <button class="btn btn-primary-solid" data-confirm>複製する</button>
-            </div>
-        </div>`;
-    const close = () => overlay.remove();
-    overlay.querySelector('[data-close]').addEventListener('click', close);
-    overlay.querySelector('[data-confirm]').addEventListener('click', () => {
-        close();
-        exitDuplicateMode();
-        startNewEvent(src.Category || 'normal', src);
     });
     bindOverlayClose(overlay, close);
     bindModalEscape(overlay, close);
@@ -772,7 +713,7 @@ function openQuickCreate(category, template) {
     overlay.innerHTML = `
         <div class="wizard-panel" role="dialog" aria-modal="true" style="max-width:480px;">
             <div class="wizard-header">
-                <h2 class="wizard-title">${template ? '日程を複製して追加' : '日程を追加'}</h2>
+                <h2 class="wizard-title">${template ? '予定を複製して追加' : '予定を追加'}</h2>
                 <p class="wizard-subtitle">まず枠だけ登録できます。実験・担当などの詳細はあとから追記できます。</p>
             </div>
             <div class="wizard-body">
