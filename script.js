@@ -58,6 +58,23 @@ let filterState = {
     period: 'upcoming'
 };
 
+function buildPeriodFilterOptions() {
+    const sel = document.getElementById('period-filter');
+    if (!sel) return;
+    const fySet = new Set();
+    eventsData.forEach(e => {
+        const fy = getFiscalYear(e.Date);
+        if (fy) fySet.add(fy);
+    });
+    const sorted = [...fySet].sort((a, b) => b - a);
+    let html = '<option value="upcoming">今後</option>';
+    sorted.forEach(fy => {
+        html += `<option value="fy_${fy}">${fy}年度</option>`;
+    });
+    sel.innerHTML = html;
+    sel.value = filterState.period;
+}
+
 // ---- テーブル行のイベント委譲（XSS 対策: onclick に ID を埋め込まない） ----
 function _bindEventTableDelegation() {
     const tbody = document.getElementById('events-tbody');
@@ -119,6 +136,7 @@ async function init() {
     // キャッシュがある時だけ即描画。無い時は HTML の「読み込み中...」行を残し、
     // refreshData 完了後に renderEvents で置き換える（空表示と読込中を取り違えない）。
     if (cached && cached.items && cached.items.length > 0) {
+        buildPeriodFilterOptions();
         renderEvents();
         handleUrlActionParams();
     }
@@ -161,6 +179,7 @@ async function refreshData(isManual = false) {
         const list = await api.list('events');
         eventsData = list.map(gasToUi);
         api.saveCache('events', eventsData);
+        buildPeriodFilterOptions();
         renderEvents();
         handleUrlActionParams();
         if (calendarVisible) refreshCalendar();
@@ -171,7 +190,7 @@ async function refreshData(isManual = false) {
         // キャッシュも無く一覧が空のままなら、「読み込み中」を残さずエラー＋再試行を表示
         if (eventsData.length === 0) {
             const tbody = document.getElementById('events-tbody');
-            if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-state">
+            if (tbody) tbody.innerHTML = `<tr><td colspan="3" class="empty-state">
                 <div class="empty-text">データを読み込めませんでした</div>
                 <div class="empty-hint">${escapeHtml(humanizeApiError(e))}</div>
                 <button type="button" class="btn btn-secondary" onclick="refreshData(true)">再読み込み</button>
@@ -237,13 +256,15 @@ function eventSearchText(e) {
 function applyFilters(events) {
     const today = todayISO();
     return events.filter(e => {
-        // カテゴリ
         if (filterState.category !== 'all' && (e.Category || 'normal') !== filterState.category) return false;
-        // 期間
-        const endDate = e.Date_End || e.Date;
-        if (filterState.period === 'upcoming' && endDate < today) return false;
-        if (filterState.period === 'past' && e.Date >= today) return false;
-        // キーワード（実験名・担当者も含めて検索）
+        if (filterState.period === 'upcoming') {
+            const endDate = e.Date_End || e.Date;
+            if (endDate < today) return false;
+        } else if (filterState.period.startsWith('fy_')) {
+            const fy = parseInt(filterState.period.slice(3));
+            const eventFy = getFiscalYear(e.Date);
+            if (eventFy !== fy) return false;
+        }
         if (filterState.keyword) {
             if (!eventSearchText(e).includes(filterState.keyword)) return false;
         }
@@ -434,12 +455,15 @@ function renderEvents() {
 
     const filtered = applyFilters(eventsData);
     const sorted = filtered.slice().sort((a, b) => {
-        if (filterState.period === 'past') return (b.Date || '').localeCompare(a.Date || '');
+        if (filterState.period !== 'upcoming') return (b.Date || '').localeCompare(a.Date || '');
         return (a.Date || '').localeCompare(b.Date || '');
     });
 
-    const periodLabel = { upcoming: '今後の日程', past: '過去の日程', all: '全ての日程' };
-    heading.textContent = `${periodLabel[filterState.period]} (${sorted.length}件)`;
+    let periodLabel = '今後の日程';
+    if (filterState.period.startsWith('fy_')) {
+        periodLabel = filterState.period.slice(3) + '年度の日程';
+    }
+    heading.textContent = `${periodLabel} (${sorted.length}件)`;
 
     if (sorted.length === 0) {
         // 何を変えれば表示されるのかが分かるヒントを添える
@@ -447,9 +471,9 @@ function renderEvents() {
         const hint = hasNarrowing
             ? '検索キーワードやカテゴリの絞り込みを変更してみてください'
             : (filterState.period === 'upcoming' && eventsData.length > 0
-                ? '「過去」または「全期間」に切り替えると過去の日程を確認できます'
+                ? '年度を選択すると過去の日程を確認できます'
                 : '');
-        tbody.innerHTML = `<tr><td colspan="5" class="empty-state">
+        tbody.innerHTML = `<tr><td colspan="3" class="empty-state">
             <span class="empty-icon">&#x1F4C5;</span>
             <div class="empty-text">該当する日程はありません</div>
             ${hint ? `<div class="empty-hint">${hint}</div>` : ''}
@@ -488,8 +512,6 @@ function renderEvents() {
                     ${occ ? `<a href="event-series.html?key=${encodeURIComponent(eventSeriesKey(ev))}" class="occ-badge occ-link" title="通算${occ.total}回 — シリーズ履歴を見る" data-action="series">${occ.num}回目</a>` : ''}
                     ${voteBadge}
                 </td>
-                <td class="hide-mobile">${escapeHtml(ev.Location || '')}</td>
-                <td class="hide-mobile">${escapeHtml(ev.Event_Time || '')}</td>
                 <td data-action-cell>
                     <div class="inline-actions">
                         <button class="inline-action-btn" data-action="duplicate" title="この日程を複製して新規作成">複製</button>

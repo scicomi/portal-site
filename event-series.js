@@ -1120,3 +1120,41 @@ function switchSeriesTab(btn) {
         p.classList.toggle('hidden', p.dataset.tabPane !== target);
     });
 }
+
+// ====== 新規イベント作成（イベント一覧モードから） ======
+
+function openSeriesNewEventModal() {
+    const modal = document.getElementById('series-new-modal');
+    if (!modal) return;
+    const sel = document.getElementById('series-dup-source');
+    if (sel) {
+        const series = buildSeriesIndex();
+        sel.innerHTML = '<option value="">-- イベントを選んで複製 --</option>' +
+            series.map(s => {
+                const latest = allEventsData
+                    .filter(ev => seriesKeyNormalize(ev) === s.key && ev.Date)
+                    .sort((a, b) => (b.Date || '').localeCompare(a.Date || ''))[0];
+                if (!latest) return '';
+                return `<option value="${escapeAttr(latest.ID)}">${escapeHtml(s.title)}</option>`;
+            }).filter(Boolean).join('');
+    }
+    modal.classList.remove('hidden');
+    bindOverlayClose(modal, closeSeriesNewModal);
+    bindModalEscape(modal, closeSeriesNewModal);
+}
+
+function closeSeriesNewModal() {
+    const modal = document.getElementById('series-new-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function onSeriesDupSelect(eventId) {
+    if (!eventId) return;
+    closeSeriesNewModal();
+    location.href = 'events.html?duplicate=' + encodeURIComponent(eventId);
+}
+
+function goToNewEvent() {
+    closeSeriesNewModal();
+    location.href = 'events.html?action=new';
+}

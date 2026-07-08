@@ -234,7 +234,7 @@ function getMemberFiscalYear(m) {
 function renderMembers() {
     let fyMembers = membersData.filter(m => getMemberFiscalYear(m) === selectedFiscalYear);
 
-    // タブは「メンバー / スタッフ」の2つ。スタッフ=コーディネーター＋アドバイザー
+    // タブは「メンバー / 教職員」の2つ。教職員=コーディネーター＋アドバイザー
     // （人数が少ないため1タブに統合。区別は役職バッジで分かる）
     fyMembers = fyMembers.filter(m => {
         const role = memberRoleOf(m);

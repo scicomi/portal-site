@@ -606,11 +606,19 @@ body {
 }
 
 /* ========== Inline Edit (行内の編集・削除ボタン) ========== */
-/* ホバーするまで見えないと存在に気づけないため、常時表示にする */
+/* デスクトップ: 行ホバー時のみ表示。モバイル: 詳細ページから操作 */
 .inline-actions {
     display: flex;
     gap: 4px;
     flex-shrink: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+}
+tr:hover > td .inline-actions,
+tr:focus-within > td .inline-actions {
+    opacity: 1;
+    pointer-events: auto;
 }
 .inline-action-btn {
     background: none;
@@ -685,8 +693,9 @@ body {
     .wizard-progress { padding: 12px 16px 0; }
     .wizard-body { padding: 16px; }
     .wizard-footer { padding: 12px 16px; }
-    /* 指で押しやすい大きさに */
-    .inline-action-btn { min-height: 36px; padding: 6px 10px; }
+    /* モバイルではアクションボタンを非表示（詳細ページから操作） */
+    .inline-actions { display: none; }
+    td[data-action-cell] { display: none; }
 }
 
 /* --- New Edit Form Elements --- */

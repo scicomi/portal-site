@@ -38,9 +38,8 @@ function _bindExpTableDelegation() {
             return;
         }
         if (e.target.closest('[data-action-cell]')) return;
-        // 行タップはまず概要ポップアップ（メンバー・日程ページと同じ2段構え）
         const row = e.target.closest('tr[data-id]');
-        if (row) openExpPreviewModal(row.dataset.id);
+        if (row) goToDetail(row.dataset.id);
     });
 }
 
