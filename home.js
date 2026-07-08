@@ -10,9 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
 const REPORT_STATUS = CONFIG.REPORT_STATUS;
 const KYOKA_STATUS = CONFIG.KYOKA_STATUS;
 
-// 出欠一括回答（vote.html と同じキーで名前選択を端末に記憶する）
-const VOTE_MEMBER_KEY = 'scicomi_vote_member';
-const VOTE_LABELS = { attend: '参加', absent: '不参加', undecided: '未定' };
+// 出欠一括回答（名前記憶・対象者算出・ラベルは vote-widget.js の共通実装を使う）
 let allVotes = null;        // null = 未取得（読み込み中表示に使う）
 let allMembersData = [];
 
@@ -67,7 +65,13 @@ async function refreshData(isManual = false) {
         renderMembersCard(all.members);
         renderStats(all);
         updateSyncStatus('fresh', Date.now());
-        loadVotesAndRenderBulk();
+        // 投票は listAll に同梱されて届く。旧バックエンド（votes 未同梱）のみ別途取得する。
+        if (Array.isArray(all.votes)) {
+            allVotes = all.votes;
+            renderBulkVote();
+        } else {
+            loadVotesAndRenderBulk();
+        }
     } catch (e) {
         if (e.handled) return;
         updateSyncStatus('error', null, e.message);
@@ -98,31 +102,24 @@ async function loadVotesAndRenderBulk() {
     renderBulkVote();
 }
 
-// 出欠の回答はコーディネーター・アドバイザーを対象外にする
-function isVoteEligibleMember(m) {
-    const r = memberRoleOf(m);
-    return r !== 'アドバイザー' && r !== 'コーディネーター';
-}
-
 function renderBulkVote() {
     const select = document.getElementById('bulk-vote-member');
     if (!select) return;
 
-    const curFY = currentFiscalYear();
-    const eligible = (allMembersData || [])
-        .filter(m => m.Name && m.Active !== 'false' && parseInt(m.FiscalYear || curFY) === curFY && isVoteEligibleMember(m))
+    const eligible = voteEligibleMembers(allMembersData)
         .sort((a, b) => (a.Name || '').localeCompare(b.Name || '', 'ja'));
 
-    const saved = localStorage.getItem(VOTE_MEMBER_KEY) || '';
+    const saved = getSavedVoteMemberId();
     select.innerHTML = '<option value="">-- 名前を選択 --</option>' + eligible.map(m =>
         `<option value="${escapeAttr(m.ID)}" ${m.ID === saved ? 'selected' : ''}>${escapeHtml(m.Name)}</option>`
     ).join('');
     select.onchange = () => {
-        if (select.value) localStorage.setItem(VOTE_MEMBER_KEY, select.value);
-        else localStorage.removeItem(VOTE_MEMBER_KEY);
+        setSavedVoteMemberId(select.value);
         renderBulkVoteList();
+        renderMyUnanswered();
     };
     renderBulkVoteList();
+    renderMyUnanswered();
 }
 
 function renderBulkVoteList() {
@@ -144,31 +141,37 @@ function renderBulkVoteList() {
         return;
     }
 
-    const staffIds = new Set((allMembersData || []).filter(m => !isVoteEligibleMember(m)).map(m => m.ID));
+    const staffIds = voteStaffIds(allMembersData);
     const byEvent = {};
     (allVotes || []).forEach(v => {
         if (staffIds.has(v.memberId)) return;
-        const b = byEvent[v.eventId] || (byEvent[v.eventId] = { attend: 0, absent: 0, undecided: 0, mine: '' });
+        const b = byEvent[v.eventId] || (byEvent[v.eventId] = { attend: 0, absent: 0, undecided: 0, mine: '', mineNote: '' });
         if (b[v.status] !== undefined) b[v.status]++;
-        if (memberId && v.memberId === memberId) b.mine = v.status;
+        if (memberId && v.memberId === memberId) { b.mine = v.status; b.mineNote = v.note || ''; }
     });
 
     listEl.innerHTML = upcoming.map(e => {
         let title = e.Title || '(無題)';
         const c = getEventCategory(e.Category);
         if (c.isMeeting && e.MeetingNumber) title = `第${e.MeetingNumber}回 ${title}`;
-        const agg = byEvent[e.ID] || { attend: 0, absent: 0, undecided: 0, mine: '' };
-        const btns = memberId ? `
+        const agg = byEvent[e.ID] || { attend: 0, absent: 0, undecided: 0, mine: '', mineNote: '' };
+        // 対象者数を分母として添える（例: 参加5 / 対象12）
+        const eligibleCount = voteEligibleMembers(allMembersData, e).length;
+        const closed = voteDeadlinePassed(e);
+        const btns = !memberId ? '' : closed
+            ? '<span class="bv-closed" title="出欠の締切を過ぎています。変更は管理者に連絡してください">締切済み</span>'
+            : `
             <span class="bv-btns" data-event-id="${escapeAttr(e.ID)}">
-                ${Object.keys(VOTE_LABELS).map(st =>
-                    `<button type="button" class="bv-btn bv-${st} ${agg.mine === st ? 'active' : ''}" data-status="${st}">${VOTE_LABELS[st]}</button>`
+                ${Object.keys(VOTE_STATUS_LABELS).map(st =>
+                    `<button type="button" class="bv-btn bv-${st} ${agg.mine === st ? 'active' : ''}" data-status="${st}">${VOTE_STATUS_LABELS[st]}</button>`
                 ).join('')}
-            </span>` : '';
+            </span>`;
         return `<li class="bv-row">
             <span class="dl-date">${shortDate(e.Date)}</span>
             <span class="dl-title">
                 <a href="event-series.html?event=${encodeURIComponent(e.ID)}" class="report-event-link">${escapeHtml(title)}</a>
-                <span class="bv-counts">参加${agg.attend}・不参加${agg.absent}・未定${agg.undecided}</span>
+                <span class="bv-counts">参加${agg.attend}・不参加${agg.absent}・未定${agg.undecided}${eligibleCount > 0 ? ` / 対象${eligibleCount}` : ''}</span>
+                ${agg.mineNote ? `<span class="bv-note">メモ: ${escapeHtml(agg.mineNote)}</span>` : ''}
             </span>
             ${btns}
         </li>`;
@@ -186,26 +189,69 @@ async function submitBulkVote(eventId, status) {
     const memberId = document.getElementById('bulk-vote-member')?.value || '';
     if (!memberId) { toast('先に名前を選択してください', 'info'); return; }
 
-    // 楽観的更新（失敗時は巻き戻す）
+    // 楽観的更新（失敗時は巻き戻す）。note は送らない = サーバー側で既存メモを保持する。
     const idx = allVotes.findIndex(v => v.eventId === eventId && v.memberId === memberId);
     const before = idx >= 0 ? { ...allVotes[idx] } : null;
     if (before && before.status === status) return;
     if (idx >= 0) allVotes[idx] = { ...allVotes[idx], status };
     else allVotes.push({ eventId, memberId, status, updatedAt: '' });
     renderBulkVoteList();
+    renderMyUnanswered();
 
     try {
         const saved = await api.submitVote({ eventId, memberId, status });
         const j = allVotes.findIndex(v => v.eventId === eventId && v.memberId === memberId);
         if (j >= 0) allVotes[j] = saved;
-        toast(`「${VOTE_LABELS[status]}」で回答しました`, 'success', 2000);
+        renderBulkVoteList();
+        toast(`「${VOTE_STATUS_LABELS[status]}」で回答しました`, 'success', 2000);
     } catch (e) {
         const j = allVotes.findIndex(v => v.eventId === eventId && v.memberId === memberId);
         if (before) { if (j >= 0) allVotes[j] = before; }
         else if (j >= 0) allVotes.splice(j, 1);
         renderBulkVoteList();
-        toast('回答に失敗しました: ' + e.message, 'error');
+        renderMyUnanswered();
+        toast(voteErrorMessage(e), 'error');
     }
+}
+
+// ---- あなたの出欠 未回答（「対応が必要」カード） ----
+// 名前選択済みの端末で、今後の日程のうち自分がまだ回答していないものを知らせる。
+// 締切を過ぎたもの（もう回答できないもの）は表示しない。
+function renderMyUnanswered() {
+    const container = document.getElementById('my-unanswered');
+    if (!container) return;
+    const memberId = getSavedVoteMemberId();
+    if (!memberId || allVotes === null) {
+        container.innerHTML = '';
+        updateActionNeeded();
+        return;
+    }
+    const today = todayISO();
+    const answered = new Set(
+        (allVotes || []).filter(v => v.memberId === memberId).map(v => v.eventId)
+    );
+    const pending = (latestEvents || [])
+        .filter(e => (e.DateEnd || e.Date) >= today && !answered.has(e.ID) && !voteDeadlinePassed(e))
+        .sort((a, b) => (a.Date || '').localeCompare(b.Date || ''))
+        .slice(0, 8);
+
+    if (pending.length === 0) {
+        container.innerHTML = '';
+        updateActionNeeded();
+        return;
+    }
+    container.innerHTML = pending.map(e => {
+        let title = e.Title || '(無題)';
+        const c = getEventCategory(e.Category);
+        if (c.isMeeting && e.MeetingNumber) title = `第${e.MeetingNumber}回 ${title}`;
+        // タップですぐ下の一括回答セクションへ（その場で回答できる）
+        return `<li onclick="document.getElementById('bulk-vote-section').scrollIntoView({behavior:'smooth'})" style="cursor:pointer;">
+            <span class="dl-date">${shortDate(e.Date)}</span>
+            <span class="dl-title">${escapeHtml(title)}</span>
+            <span class="dl-badge badge-warning">未回答</span>
+        </li>`;
+    }).join('');
+    updateActionNeeded();
 }
 
 function renderWelcome() {
@@ -460,7 +506,7 @@ function updateActionNeeded() {
     if (!section) return;
     // 中身のあるカードだけ表示し、1つも無ければセクションごと隠す
     let hasContent = false;
-    ['upcoming-kyoka', 'upcoming-deadlines', 'feedback-pending'].forEach(id => {
+    ['upcoming-kyoka', 'upcoming-deadlines', 'feedback-pending', 'my-unanswered'].forEach(id => {
         const list = document.getElementById(id);
         if (!list) return;
         const card = list.closest('.dash-card');

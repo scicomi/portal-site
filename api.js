@@ -184,6 +184,9 @@ const api = {
     if (!res.success) throw new Error(res.error || 'listAll failed');
     const result = {};
     RESOURCE_NAMES.forEach(r => { result[r] = res[r] || []; });
+    // 出欠投票も同じレスポンスで受け取る（追加往復の削減）。
+    // 旧バックエンド（votes 未同梱）では null にして、呼び出し側が listVotes へフォールバックする。
+    result.votes = Array.isArray(res.votes) ? res.votes : null;
     return result;
   },
 
@@ -347,11 +350,15 @@ const api = {
   },
 
   async submitVote(vote) {
-    const res = await this._post({
+    const payload = {
       action: 'submitVote',
       token: this.getToken(),
       vote
-    });
+    };
+    // 締切後の修正は管理者のみ許可されるため、持っていれば管理者トークンも添える
+    const adminToken = this.getAdminToken();
+    if (adminToken) payload.adminToken = adminToken;
+    const res = await this._post(payload);
     if (!res.success) throw new Error(res.error || 'submitVote failed');
     return res.vote;
   },

@@ -164,7 +164,8 @@ function doGet(e) {
         success: true,
         events: listResource('events'),
         members: listResource('members'),
-        experiments: listResource('experiments')
+        experiments: listResource('experiments'),
+        votes: listAllVotes_()
       });
     }
 
@@ -272,11 +273,13 @@ function doPost(e) {
     }
     if (action === 'listAll') {
       if (!checkAuth(token)) return jsonResponse({ success: false, error: 'unauthorized' });
+      // votes も同梱してフロントの listVotes / getEventVotes の追加往復を無くす
       return jsonResponse({
         success: true,
         events: listResource('events'),
         members: listResource('members'),
-        experiments: listResource('experiments')
+        experiments: listResource('experiments'),
+        votes: listAllVotes_()
       });
     }
 
@@ -406,6 +409,23 @@ function doPost(e) {
       }
       if (['attend', 'absent', 'undecided'].indexOf(voteData.status) < 0) {
         return jsonResponse({ success: false, error: 'invalid status' });
+      }
+      // 出欠締切（VoteDeadline、未設定ならイベント最終日）を過ぎたら管理者のみ変更可
+      var voteEvents = listResource('events');
+      var voteEvent = null;
+      for (var vi = 0; vi < voteEvents.length; vi++) {
+        if (voteEvents[vi].ID === voteData.eventId) { voteEvent = voteEvents[vi]; break; }
+      }
+      if (!voteEvent) return jsonResponse({ success: false, error: 'event not found' });
+      var voteDlStr = voteEvent.VoteDeadline || voteEvent.DateEnd || voteEvent.Date;
+      if (voteDlStr) {
+        var voteDl = parseDateLocal(voteDlStr);
+        if (voteDl) {
+          voteDl.setHours(23, 59, 59, 999);
+          if (voteDl.getTime() < Date.now() && !checkAdmin(body.adminToken)) {
+            return jsonResponse({ success: false, error: 'vote_closed' });
+          }
+        }
       }
       var result = upsertVote_(voteData);
       appendAuditLog('vote', voteData.eventId + ':' + voteData.memberId + ':' + voteData.status, token, 'member');
@@ -809,6 +829,10 @@ const EVENTS_HEADERS = [
   'Address', 'EmergencyHospital', 'EmergencyPolice',
   'TimeStart', 'TimeEnd', 'GatherTime', 'DismissTime', 'MeetingNumber', 'PartsList',
   'AdminKyoka', 'AdminHoukoku', 'KyokaDeadline', 'HoukokuDeadline',
+  // 出欠回答の締切（任意・YYYY-MM-DD）。未設定ならイベント最終日23:59まで回答可。
+  // 締切後の変更は管理者トークン必須（submitVote 参照）。
+  'VoteDeadline',
+  'PlanName',
   'Logistics', 'Remarks', 'Files', 'Belongings', 'Accompany',
   'SeriesKey', 'Positives', 'Reflections',
   // 報告書の提出ステータス（''=未提出 / coordinator=コーディネーター提出済 / clc=CLC提出済）。
@@ -820,12 +844,12 @@ const EVENTS_HEADERS = [
 ];
 const MEMBERS_HEADERS = [
   'ID', 'Name', 'Furigana', 'Category', 'Role', 'StudentID', 'Affiliation',
-  'Email', 'Extension', 'Note', 'FiscalYear', 'Active',
+  'Email', 'Extension', 'EmergencyContact', 'Note', 'FiscalYear', 'Active',
   'CreatedAt', 'UpdatedAt'
 ];
 const EXPERIMENTS_HEADERS = [
   'ID', 'Name', 'Category', 'Materials', 'Preparation', 'Flow', 'Notes',
-  'SlidesURL', 'Photos', 'Reflections', 'Positives', 'Active', 'CreatedAt', 'UpdatedAt'
+  'SlidesURL', 'Sections', 'Photos', 'Reflections', 'Positives', 'Active', 'CreatedAt', 'UpdatedAt'
 ];
 // パスワード一覧（外部サービスの認証情報）。管理者専用。
 const PASSWORDS_HEADERS = [
@@ -1848,21 +1872,33 @@ function generateAnnualReport(fiscalYear) {
 
 // ====== イベント投票 ======
 
-const EVENT_VOTES_HEADERS = ['EventID', 'MemberID', 'Status', 'UpdatedAt'];
+// Note（一言メモ）は2026-07に追加。既存シートには setupSpreadsheet() 再実行または
+// upsertVote_ 内のヘッダー補完で5列目として追加される。
+const EVENT_VOTES_HEADERS = ['EventID', 'MemberID', 'Status', 'UpdatedAt', 'Note'];
+
+// 行→オブジェクト変換（Note 列がまだ無い旧シートでも動くよう5列目は任意）
+function voteRowToObj_(row) {
+  return {
+    eventId: String(row[0]),
+    memberId: String(row[1]),
+    status: String(row[2]),
+    updatedAt: String(row[3]),
+    note: row.length > 4 ? String(row[4] || '') : ''
+  };
+}
+
+function voteSheetWidth_(sheet) {
+  return Math.min(sheet.getMaxColumns(), EVENT_VOTES_HEADERS.length);
+}
 
 function listEventVotes_(eventId) {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(EVENT_VOTES_SHEET);
   if (!sheet || sheet.getLastRow() < 2) return [];
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, voteSheetWidth_(sheet)).getValues();
   var votes = [];
   for (var i = 0; i < data.length; i++) {
     if (String(data[i][0]) === eventId) {
-      votes.push({
-        eventId: String(data[i][0]),
-        memberId: String(data[i][1]),
-        status: String(data[i][2]),
-        updatedAt: String(data[i][3])
-      });
+      votes.push(voteRowToObj_(data[i]));
     }
   }
   return votes;
@@ -1872,15 +1908,10 @@ function listEventVotes_(eventId) {
 function listAllVotes_() {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(EVENT_VOTES_SHEET);
   if (!sheet || sheet.getLastRow() < 2) return [];
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, voteSheetWidth_(sheet)).getValues();
   var votes = [];
   for (var i = 0; i < data.length; i++) {
-    votes.push({
-      eventId: String(data[i][0]),
-      memberId: String(data[i][1]),
-      status: String(data[i][2]),
-      updatedAt: String(data[i][3])
-    });
+    votes.push(voteRowToObj_(data[i]));
   }
   return votes;
 }
@@ -1900,6 +1931,16 @@ function upsertVote_(voteData) {
         .setFontWeight('bold').setBackground('#464775').setFontColor('#ffffff');
       sheet.setFrozenRows(1);
     }
+    // 旧シート（4列）に Note ヘッダーが無ければ補完する（setupSpreadsheet 未実行でも動くように）
+    if (sheet.getMaxColumns() < EVENT_VOTES_HEADERS.length) {
+      sheet.insertColumnsAfter(sheet.getMaxColumns(), EVENT_VOTES_HEADERS.length - sheet.getMaxColumns());
+    }
+    var noteHeaderCell = sheet.getRange(1, EVENT_VOTES_HEADERS.length);
+    if (String(noteHeaderCell.getValue() || '') !== 'Note') {
+      noteHeaderCell.setValue('Note')
+        .setFontWeight('bold').setBackground('#464775').setFontColor('#ffffff');
+    }
+
     var now = new Date().toISOString();
     var lastRow = sheet.getLastRow();
     var existingRow = -1;
@@ -1912,13 +1953,20 @@ function upsertVote_(voteData) {
         }
       }
     }
-    var row = [voteData.eventId, voteData.memberId, voteData.status, now];
+    // note 未指定（旧クライアント・ホームの一括回答）の場合は既存メモを保持する
+    var note;
+    if (voteData.note === undefined || voteData.note === null) {
+      note = existingRow > 0 ? String(sheet.getRange(existingRow, 5).getValue() || '') : '';
+    } else {
+      note = String(voteData.note).slice(0, 100);
+    }
+    var row = [voteData.eventId, voteData.memberId, voteData.status, now, note];
     if (existingRow > 0) {
-      sheet.getRange(existingRow, 1, 1, 4).setValues([row]);
+      sheet.getRange(existingRow, 1, 1, 5).setValues([row]);
     } else {
       sheet.appendRow(row);
     }
-    return { eventId: voteData.eventId, memberId: voteData.memberId, status: voteData.status, updatedAt: now };
+    return { eventId: voteData.eventId, memberId: voteData.memberId, status: voteData.status, updatedAt: now, note: note };
   } finally {
     lock.releaseLock();
   }

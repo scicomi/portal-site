@@ -415,6 +415,7 @@ async function saveExp() {
         Flow: document.getElementById('wz-ex-flow').value,
         Notes: document.getElementById('wz-ex-notes').value,
         SlidesURL: document.getElementById('wz-ex-slides').value.trim(),
+        Sections: existing ? (existing.Sections || '') : '',
         Positives: existing ? existing.Positives : '',
         Reflections: existing ? existing.Reflections : '',
         Active: existing ? (existing.Active || 'true') : 'true'

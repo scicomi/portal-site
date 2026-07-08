@@ -349,17 +349,21 @@ function openMemberDetailModal(id) {
     const roleInfo = role ? getRoleDisplay(role) : null;
     const isStaff = role === 'アドバイザー' || role === 'コーディネーター';
 
-    // 各値はタップでコピーできる（メールもリンクではなくコピー）
-    const rows = [
-        ['名前', m.Name || ''],
-        [isStaff ? '教職員番号' : '学籍番号', m.StudentID || ''],
-        ['ふりがな', m.Furigana || ''],
-        ['所属', m.Affiliation || ''],
-        ['メールアドレス', m.Email || ''],
-        ['内線', m.Extension || ''],
-        ['年度', m.FiscalYear ? m.FiscalYear + '年度' : ''],
-        ['メモ', m.Note || '']
-    ].filter(r => r[1]);
+    const rows = isStaff
+        ? [
+            ['教職員番号', m.StudentID || ''],
+            ['ふりがな', m.Furigana || ''],
+            ['名前', m.Name || ''],
+            ['メールアドレス', m.Email || ''],
+            ['所属', m.Affiliation || ''],
+            ['内線', m.Extension || ''],
+            ['緊急連絡先', m.EmergencyContact || '']
+        ].filter(r => r[1])
+        : [
+            ['学籍番号', m.StudentID || ''],
+            ['ふりがな', m.Furigana || ''],
+            ['名前', m.Name || '']
+        ].filter(r => r[1]);
 
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -422,14 +426,6 @@ function openMemberWizard(editId) {
         `<option value="__custom__">その他（自由入力）</option>`
     ].join('');
 
-    const fyOptions = (() => {
-        const curFY = currentFiscalYear();
-        const years = [];
-        for (let y = curFY + 1; y >= curFY - 5; y--) years.push(y);
-        const sel = isEdit ? (m.FiscalYear || curFY) : (selectedFiscalYear || curFY);
-        return years.map(y => `<option value="${y}" ${y == sel ? 'selected' : ''}>${y}年度</option>`).join('');
-    })();
-
     const showContactFields = currentRole !== '';
 
     const overlay = document.createElement('div');
@@ -468,10 +464,6 @@ function openMemberWizard(editId) {
                         <label class="e1-label">役職名（自由入力）</label>
                         <input id="wz-mb-role-custom" class="e1-input" type="text" placeholder="例: 会計">
                     </div>
-                    <div class="e1-group">
-                        <label class="e1-label">年度</label>
-                        <select id="wz-mb-fiscal-year" class="e1-input">${fyOptions}</select>
-                    </div>
                 </div>
 
                 <!-- Step 2: 所属・連絡先 -->
@@ -492,6 +484,10 @@ function openMemberWizard(editId) {
                     <div class="e1-group" id="wz-mb-extension-group" ${!showContactFields ? 'style="display:none;"' : ''}>
                         <label class="e1-label">内線</label>
                         <input id="wz-mb-extension" class="e1-input" type="text" placeholder="例: 1234" value="${escapeAttr(m ? m.Extension : '')}">
+                    </div>
+                    <div class="e1-group" id="wz-mb-emergency-group" ${!showContactFields ? 'style="display:none;"' : ''}>
+                        <label class="e1-label">緊急連絡先</label>
+                        <input id="wz-mb-emergency" class="e1-input" type="text" placeholder="例: 090-1234-5678" value="${escapeAttr(m ? m.EmergencyContact : '')}">
                     </div>
                     <div class="e1-group">
                         <label class="e1-label">メモ</label>
@@ -546,9 +542,11 @@ function onWzRoleChange() {
     const emailG = document.getElementById('wz-mb-email-group');
     const affG = document.getElementById('wz-mb-affiliation-group');
     const extG = document.getElementById('wz-mb-extension-group');
+    const emerG = document.getElementById('wz-mb-emergency-group');
     if (emailG) emailG.style.display = hide ? 'none' : '';
     if (affG) affG.style.display = hide ? 'none' : '';
     if (extG) extG.style.display = hide ? 'none' : '';
+    if (emerG) emerG.style.display = hide ? 'none' : '';
 }
 
 // ウィザードの役職選択値（自由入力を含む）を解決する
@@ -634,7 +632,8 @@ async function saveMember() {
         Note: document.getElementById('wz-mb-note').value.trim(),
         Email: document.getElementById('wz-mb-email').value.trim(),
         Extension: document.getElementById('wz-mb-extension').value.trim(),
-        FiscalYear: document.getElementById('wz-mb-fiscal-year').value,
+        EmergencyContact: document.getElementById('wz-mb-emergency').value.trim(),
+        FiscalYear: existing ? (existing.FiscalYear || currentFiscalYear()) : (selectedFiscalYear || currentFiscalYear()),
         Active: 'true'
     };
 
