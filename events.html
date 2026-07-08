@@ -55,34 +55,26 @@
                         <th style="width:1px;"></th>
                     </tr>
                 </thead>
-                <tbody id="events-tbody"><tr><td colspan="3" class="loading-text">読み込み中</td></tr></tbody>
+                <tbody id="events-tbody">
+                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:60%;height:16px;display:inline-block;"></div><div class="skeleton" style="width:50px;height:18px;display:inline-block;margin-left:8px;border-radius:10px;"></div></td><td></td></tr>
+                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:45%;height:16px;display:inline-block;"></div><div class="skeleton" style="width:60px;height:18px;display:inline-block;margin-left:8px;border-radius:10px;"></div></td><td></td></tr>
+                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:70%;height:16px;display:inline-block;"></div><div class="skeleton" style="width:40px;height:18px;display:inline-block;margin-left:8px;border-radius:10px;"></div></td><td></td></tr>
+                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:55%;height:16px;display:inline-block;"></div><div class="skeleton" style="width:55px;height:18px;display:inline-block;margin-left:8px;border-radius:10px;"></div></td><td></td></tr>
+                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:50%;height:16px;display:inline-block;"></div><div class="skeleton" style="width:45px;height:18px;display:inline-block;margin-left:8px;border-radius:10px;"></div></td><td></td></tr>
+                </tbody>
             </table>
         </div>
     </main>
 
 
-    <!-- Modal Overlay -->
-    <div id="modal-overlay" class="modal-overlay hidden">
-        <div class="modal-content" id="category-selection-modal" role="dialog" aria-modal="true" aria-labelledby="cat-modal-title">
-            <h2 id="cat-modal-title">日程を追加</h2>
-            <p>日程の種類を選択してください。</p>
-            <div class="category-buttons">
-                <button class="btn btn-category cat-normal-btn" onclick="startNewEvent('normal')">イベント</button>
-                <button class="btn btn-category cat-other-btn" onclick="startNewEvent('other')">その他</button>
-                <button class="btn btn-category cat-general-btn" onclick="startNewEvent('general')">全体ミーティング</button>
-                <button class="btn btn-category cat-admin-btn" onclick="startNewEvent('admin')">幹部ミーティング</button>
+    <!-- 複製選択モードのバナー（script.js で表示制御） -->
+    <div id="duplicate-mode-banner" class="duplicate-mode-banner hidden">
+        <div class="duplicate-mode-inner">
+            <span class="duplicate-mode-text">複製する日程をタップしてください</span>
+            <div class="duplicate-mode-actions">
+                <button class="btn btn-text" onclick="startNewEventBlank()">白紙から作成</button>
+                <button class="btn btn-secondary btn-sm" onclick="exitDuplicateMode()">キャンセル</button>
             </div>
-
-            <div class="text-center-or">または</div>
-
-            <div class="e1-group">
-                <label class="e1-label">過去の日程から複製</label>
-                <select id="template-source" class="e1-input" onchange="onTemplateSelect(this.value)">
-                    <option value="">-- 過去の日程を選んで複製 --</option>
-                </select>
-            </div>
-
-            <button class="btn btn-text mt-2" onclick="closeModal()">キャンセル</button>
         </div>
     </div>
     <!-- 行タップ→概要ポップアップ（script.js openEventPreviewModal）。フル情報は event-series.html?event=<ID> へ -->
@@ -93,6 +85,7 @@
     <script src="config.js"></script>
     <script src="api.js"></script>
     <script src="app.js"></script>
+    <script src="vote-widget.js"></script>
     <script src="event-wizard.js"></script>
     <script src="script.js"></script>
 </body>

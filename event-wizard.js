@@ -83,10 +83,12 @@ function gasToUi(g) {
     u.Admin_Houkoku = g.AdminHoukoku || '';
     u.Kyoka_Deadline = g.KyokaDeadline || '';
     u.Houkoku_Deadline = g.HoukokuDeadline || '';
+    u.Vote_Deadline = g.VoteDeadline || '';
     u.Meeting_Number = g.MeetingNumber || '';
     u.Gather_Time = g.GatherTime || '';
     u.Dismiss_Time = g.DismissTime || '';
     u.Accompany = g.Accompany || '';
+    u.PlanName = g.PlanName || '';
     u.Address = g.Address || '';
     u.EmergencyHospital = g.EmergencyHospital || '';
     u.EmergencyPolice = g.EmergencyPolice || '';
@@ -123,11 +125,13 @@ function uiToGas(u) {
         GatherTime: u.Gather_Time || '',
         DismissTime: u.Dismiss_Time || '',
         Accompany: u.Accompany || '',
+        PlanName: u.PlanName || '',
         PartsList: partsList,
         AdminKyoka: u.Admin_Kyoka || '',
         AdminHoukoku: u.Admin_Houkoku || '',
         KyokaDeadline: u.Kyoka_Deadline || '',
         HoukokuDeadline: u.Houkoku_Deadline || '',
+        VoteDeadline: u.Vote_Deadline || '',
         Logistics: u.Meeting_Logistics || '',
         Remarks: u.Remarks || '',
         Belongings: u.Belongings || '',
@@ -640,6 +644,11 @@ function openEventWizard(editId) {
                         <select class="e1-input" id="wz-ev-time-end">${genTimeOpts(7, 21, true)}</select>
                     </div>
                 </div>
+                <div class="e1-group">
+                    <label class="e1-label">出欠回答の締切（任意）</label>
+                    <input type="date" id="wz-ev-vote-deadline" class="e1-input" value="${escapeAttr(e.Vote_Deadline || '')}">
+                    <span class="text-muted" style="font-size:0.8rem;">未設定なら最終日まで回答できます。締切後の変更は管理者のみ。</span>
+                </div>
             </div>`;
         // Meeting step 3: その他
         stepsHtml += `
@@ -659,6 +668,10 @@ function openEventWizard(editId) {
                 <div class="e1-group">
                     <label class="e1-label">イベント名 *</label>
                     <input id="wz-ev-title" class="e1-input" type="text" placeholder="例: サイエンスフェスタ" value="${escapeAttr(e.Title || '')}">
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">企画名</label>
+                    <input id="wz-ev-planname" class="e1-input" type="text" placeholder="例: 夏休み科学教室" value="${escapeAttr(e.PlanName || '')}">
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">場所</label>
@@ -699,6 +712,11 @@ function openEventWizard(editId) {
                         <label class="e1-label">解散時間</label>
                         <select class="e1-input" id="wz-ev-dismiss">${genTimeOpts(7, 21, true)}</select>
                     </div>
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">出欠回答の締切（任意）</label>
+                    <input type="date" id="wz-ev-vote-deadline" class="e1-input" value="${escapeAttr(e.Vote_Deadline || '')}">
+                    <span class="text-muted" style="font-size:0.8rem;">未設定なら最終日まで回答できます。締切後の変更は管理者のみ。</span>
                 </div>
             </div>`;
         // Event step 3: 実験・担当
@@ -1029,6 +1047,8 @@ function saveEventFromWizard() {
         return;
     }
     tempNewEvent.Location = (document.getElementById('wz-ev-location')?.value || '').trim();
+    const planNameEl = document.getElementById('wz-ev-planname');
+    if (planNameEl) tempNewEvent.PlanName = planNameEl.value.trim();
     // 現地情報の入力欄はイベントの Step 4 のみに存在する。
     // ミーティング編集時は欄が無いので、既存値を消さないよう存在チェックしてから反映する。
     const addrEl = document.getElementById('wz-ev-address');
@@ -1041,6 +1061,9 @@ function saveEventFromWizard() {
     tempNewEvent.Date = document.getElementById('wz-ev-date')?.value || '';
     tempNewEvent.Date_End = document.getElementById('wz-ev-date-end')?.value || '';
     tempNewEvent.Remarks = (document.getElementById('wz-ev-remarks')?.value || '');
+    // 出欠回答の締切（任意）。欄が無い画面（クイック作成）では既存値を保持する。
+    const voteDlEl = document.getElementById('wz-ev-vote-deadline');
+    if (voteDlEl) tempNewEvent.Vote_Deadline = voteDlEl.value || '';
 
     const ts = document.getElementById('wz-ev-time-start')?.value || '';
     const te = document.getElementById('wz-ev-time-end')?.value || '';

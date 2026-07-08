@@ -24,7 +24,8 @@
                 <input id="series-index-search" class="search-input" type="text" placeholder="イベント名・場所で検索" oninput="renderSeriesIndex()">
             </div>
             <p class="text-muted" style="font-size:0.85rem; margin:0 0 12px;">
-                同じ名前の催しは1つにまとめています。開くと詳細・現地情報・過去の振り返り・統計が見られます。
+                同じ名前の催しは1つにまとめています。開くと詳細・現地情報・過去の振り返り・統計が見られます。<br>
+                <span style="font-size:0.78rem;">※ 開催数は2023年度以降の集計です</span>
             </p>
             <div class="page-filters">
                 <button class="filter-chip active" data-sidx="event" aria-pressed="true" onclick="onSeriesIndexFilter('event')">イベント</button>
@@ -125,6 +126,7 @@
     <script src="config.js"></script>
     <script src="api.js"></script>
     <script src="app.js"></script>
+    <script src="vote-widget.js"></script>
     <script src="event-wizard.js"></script>
     <script src="event-series.js"></script>
 </body>

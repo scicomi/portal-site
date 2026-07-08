@@ -952,6 +952,18 @@ textarea:focus {
     text-decoration-style: dotted;
 }
 .exp-link-inline:hover { color: #8a6d00; }
+.accompany-staff-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: #1a6b3c;
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    cursor: pointer;
+}
+.accompany-staff-link:hover { color: #10b981; }
 .tag-presenter { color: #806a2e; font-weight: 400; }
 
 .tag-deadline {
@@ -1712,17 +1724,49 @@ textarea:focus {
     flex-wrap: wrap;
 }
 
+/* Duplicate-mode banner (events page) */
+.duplicate-mode-banner {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--primary-color); color: #fff;
+    padding: 10px 16px; border-radius: var(--radius-md);
+    margin-bottom: var(--space-md);
+    animation: slideDown 0.25s ease-out;
+}
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.duplicate-mode-inner {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: var(--space-sm);
+}
+.duplicate-mode-text { font-weight: 600; }
+.duplicate-mode-actions { display: flex; gap: var(--space-sm); align-items: center; }
+.duplicate-mode-actions .btn-text { color: rgba(255,255,255,0.85); }
+.duplicate-mode-actions .btn-text:hover { color: #fff; }
+.duplicate-mode-actions .btn-secondary { background: rgba(255,255,255,0.2); color: #fff; border-color: rgba(255,255,255,0.4); }
+.data-table.duplicate-mode tbody tr.clickable-row {
+    cursor: copy;
+}
+.data-table.duplicate-mode tbody tr.clickable-row:hover {
+    background: var(--primary-bg) !important;
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
+}
+
 /* Skeleton loader */
 .skeleton {
     background: linear-gradient(90deg, #eee 25%, #f5f5f5 50%, #eee 75%);
     background-size: 200% 100%;
     animation: skeleton-loading 1.5s infinite;
     border-radius: 4px;
+    height: 14px;
 }
 @keyframes skeleton-loading {
     0% { background-position: 200% 0; }
     100% { background-position: -200% 0; }
 }
+.skeleton-row td { padding: 14px 12px !important; }
 .loading-text {
     color: var(--text-tertiary);
     display: flex; align-items: center; justify-content: center;
@@ -1795,6 +1839,12 @@ textarea:focus {
     font-weight: 600;
     color: white;
     white-space: nowrap;
+}
+
+.cat-dot {
+    font-size: 0.7rem;
+    margin-right: 4px;
+    vertical-align: middle;
 }
 
 .occ-badge {
@@ -2586,6 +2636,17 @@ textarea:focus {
 }
 .expd-info-body { padding: 0 24px 20px; }
 .expd-info-section { margin-top: 16px; }
+.expd-info-section-header {
+    display: flex; align-items: center; gap: 8px;
+}
+.expd-info-section-header h3 { flex: 1; }
+.expd-section-edit-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-tertiary); font-size: 1rem; padding: 2px 6px;
+    border-radius: var(--radius-sm); opacity: 0; transition: opacity 0.15s;
+}
+.expd-info-section:hover .expd-section-edit-btn { opacity: 1; }
+.expd-section-edit-btn:hover { color: var(--primary-color); background: var(--primary-bg); }
 .expd-info-section h3 {
     color: var(--primary-color);
     font-size: 0.95rem;
@@ -2595,6 +2656,42 @@ textarea:focus {
 }
 .expd-info-section ul { margin: 0; padding-left: 20px; }
 .expd-info-section li { margin-bottom: 2px; font-size: 0.9rem; }
+
+/* Inline section editing */
+.expd-info-section.editing { margin-top: 16px; }
+.expd-edit-section h3 {
+    color: var(--primary-color); font-size: 0.95rem;
+    margin: 0 0 8px 0; padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-light);
+}
+.expd-edit-title {
+    width: 100%; font-size: 0.95rem; font-weight: 600;
+    color: var(--primary-color); padding: 6px 8px;
+    border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+    margin-bottom: 8px; box-sizing: border-box;
+}
+.expd-edit-title:focus { border-color: var(--primary-color); outline: none; box-shadow: 0 0 0 2px var(--primary-bg); }
+.expd-edit-content {
+    width: 100%; font-size: 0.9rem; padding: 8px;
+    border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+    resize: vertical; min-height: 80px; box-sizing: border-box;
+    font-family: inherit; line-height: 1.5;
+}
+.expd-edit-content:focus { border-color: var(--primary-color); outline: none; box-shadow: 0 0 0 2px var(--primary-bg); }
+.expd-edit-actions {
+    display: flex; align-items: center; gap: 8px; margin-top: 8px;
+}
+.expd-edit-actions-spacer { flex: 1; }
+.expd-add-section-btn {
+    margin-top: 16px; width: 100%; padding: 10px;
+    border: 2px dashed var(--border-color); background: transparent;
+    color: var(--text-secondary); font-size: 0.9rem; cursor: pointer;
+    border-radius: var(--radius-md); transition: all 0.15s;
+}
+.expd-add-section-btn:hover {
+    border-color: var(--primary-color); color: var(--primary-color);
+    background: var(--primary-bg);
+}
 
 .expd-section {
     background: white;
@@ -3561,261 +3658,9 @@ textarea:focus {
     .series-stats-grid { grid-template-columns: 1fr; }
 }
 
-/* ========== Event Vote ========== */
-
-.vote-tab-link {
-    margin-left: auto;
-    color: var(--primary-light) !important;
-    font-weight: var(--font-weight-medium);
-    text-decoration: none;
-    border-bottom: none !important;
-}
-.vote-tab-link:hover {
-    color: var(--primary-color) !important;
-    text-decoration: underline;
-}
-
-.vote-error-box {
-    text-align: center;
-    padding: 3rem 1rem;
-    color: var(--danger-color);
-}
-
-.vote-event-header {
-    text-align: center;
-    padding: var(--space-lg) var(--space-md);
-    background: var(--card-bg);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-sm);
-    margin-bottom: var(--space-lg);
-}
-
-.vote-event-category {
-    display: inline-block;
-    padding: 4px 14px;
-    border-radius: var(--radius-full);
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
-    margin-bottom: var(--space-sm);
-}
-
-.vote-event-title {
-    font-size: var(--font-size-xl);
-    margin: var(--space-sm) 0;
-    color: var(--text-color);
-}
-
-.vote-event-date {
-    color: var(--text-secondary);
-    font-size: var(--font-size-base);
-    margin: 4px 0;
-}
-
-.vote-event-location {
-    color: var(--text-tertiary);
-    font-size: var(--font-size-sm);
-    margin: 4px 0;
-}
-
-.vote-deadline-notice {
-    background: var(--danger-bg);
-    color: var(--danger-color);
-    padding: var(--space-sm) var(--space-md);
-    border-radius: var(--radius-sm);
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
-    margin-top: var(--space-md);
-    display: inline-block;
-}
-
-.vote-section {
-    background: var(--card-bg);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-sm);
-    padding: var(--space-lg);
-    margin-bottom: var(--space-lg);
-}
-
-.vote-section-title {
-    font-size: var(--font-size-lg);
-    font-weight: var(--font-weight-bold);
-    margin: 0 0 var(--space-md);
-    color: var(--text-color);
-}
-
-.vote-label {
-    display: block;
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
-    color: var(--text-secondary);
-    margin-bottom: var(--space-xs);
-}
-
-.vote-member-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-}
-
-.vote-select {
-    flex: 1;
-    padding: 10px 14px;
-    border: 1px solid var(--border-input);
-    border-radius: var(--radius-sm);
-    font-size: var(--font-size-base);
-    font-family: inherit;
-    background: var(--card-bg);
-    color: var(--text-color);
-    min-height: var(--touch-min);
-    appearance: none;
-    -webkit-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666' fill='none' stroke-width='1.5'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    padding-right: 36px;
-}
-
-.vote-select:focus {
-    outline: none;
-    border-color: var(--primary-light);
-    box-shadow: 0 0 0 3px rgba(98, 100, 167, 0.15);
-}
-
-.vote-change-btn {
-    white-space: nowrap;
-    font-size: var(--font-size-sm) !important;
-    min-height: var(--touch-min);
-}
-
-.vote-buttons {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-sm);
-    margin-top: var(--space-md);
-}
-
-.vote-btn {
-    padding: var(--space-md) var(--space-sm);
-    border: 2px solid transparent;
-    border-radius: var(--radius-md);
-    font-size: var(--font-size-lg);
-    font-weight: var(--font-weight-bold);
-    font-family: inherit;
-    cursor: pointer;
-    min-height: 60px;
-    transition: all var(--transition-fast);
-    position: relative;
-}
-
-.vote-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-.vote-btn-attend {
-    background: #e8f5e9;
-    color: #2e7d32;
-    border-color: #c8e6c9;
-}
-.vote-btn-attend:hover:not(:disabled) { background: #c8e6c9; }
-
-.vote-btn-absent {
-    background: #ffebee;
-    color: #c62828;
-    border-color: #ffcdd2;
-}
-.vote-btn-absent:hover:not(:disabled) { background: #ffcdd2; }
-
-.vote-btn-undecided {
-    background: #fff8e1;
-    color: #f57f17;
-    border-color: #ffecb3;
-}
-.vote-btn-undecided:hover:not(:disabled) { background: #ffecb3; }
-
-.vote-btn-selected {
-    box-shadow: 0 0 0 3px var(--primary-light);
-    transform: scale(1.03);
-}
-
-.vote-btn-selected::after {
-    content: '✓';
-    position: absolute;
-    top: 4px;
-    right: 8px;
-    font-size: 0.85rem;
-}
-
-.vote-current {
-    margin-top: var(--space-md);
-    padding: var(--space-md);
-    background: var(--bg-subtle);
-    border-radius: var(--radius-sm);
-    text-align: center;
-}
-
-.vote-current p { margin: 4px 0; }
-
-.vote-current-time {
-    font-size: var(--font-size-xs);
-    color: var(--text-tertiary);
-}
-
-.vote-summary {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: var(--space-sm);
-    text-align: center;
-}
-
-.vote-summary-item {
-    padding: var(--space-md) var(--space-xs);
-    border-radius: var(--radius-md);
-}
-
-.vote-summary-attend { background: #e8f5e9; }
-.vote-summary-absent { background: #ffebee; }
-.vote-summary-undecided { background: #fff8e1; }
-.vote-summary-noanswer { background: var(--bg-muted); }
-
-.vote-summary-num {
-    display: block;
-    font-size: 1.6rem;
-    font-weight: var(--font-weight-bold);
-    line-height: 1.2;
-}
-
-.vote-summary-attend .vote-summary-num { color: #2e7d32; }
-.vote-summary-absent .vote-summary-num { color: #c62828; }
-.vote-summary-undecided .vote-summary-num { color: #f57f17; }
-.vote-summary-noanswer .vote-summary-num { color: var(--text-tertiary); }
-
-.vote-summary-label {
-    font-size: var(--font-size-xs);
-    color: var(--text-secondary);
-    margin-top: 2px;
-    display: block;
-}
-
-.vote-all-done {
-    text-align: center;
-    margin-top: var(--space-md);
-    padding: var(--space-sm) var(--space-md);
-    background: #e8f5e9;
-    color: #2e7d32;
-    border-radius: var(--radius-sm);
-    font-weight: var(--font-weight-medium);
-    font-size: var(--font-size-sm);
-}
-
-.vote-detail-toggle {
-    text-align: center;
-    margin-top: var(--space-md);
-}
-
-.vote-detail {
-    margin-top: var(--space-md);
-}
+/* ========== 出欠回答（vote-widget.js 共通） ========== */
+/* vote.html は 2026-07 に廃止。専用ページのスタイルは削除し、
+   回答一覧モーダル（showVoteListModal）とインラインウィジェットのスタイルのみ残す。 */
 
 .vote-detail-label {
     font-size: var(--font-size-sm);
@@ -3848,59 +3693,66 @@ textarea:focus {
 .vote-detail-time {
     font-size: var(--font-size-xs);
     color: var(--text-tertiary);
-    margin-left: 2px;
+    margin-left: 4px;
 }
 
-.vote-back {
-    text-align: center;
-    margin-bottom: var(--space-2xl);
+/* 一言メモ（回答一覧モーダル内） */
+.vote-detail-note {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    margin-left: 4px;
+    padding: 1px 6px;
+    background: var(--bg-muted);
+    border-radius: var(--radius-full);
 }
 
-/* Vote Confirm Modal */
-.vote-confirm-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: var(--z-modal);
+/* --- インライン投票ウィジェット（renderVoteWidget） --- */
+.vw-member-row {
     display: flex;
     align-items: center;
-    justify-content: center;
-    padding: var(--space-md);
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
 }
-
-.vote-confirm-box {
-    background: var(--card-bg);
-    border-radius: var(--radius-lg);
-    padding: var(--space-lg);
-    max-width: 400px;
-    width: 100%;
-    box-shadow: var(--shadow-lg);
+.vw-label {
+    font-size: 0.85rem;
+    color: var(--text-label);
+    font-weight: 600;
+    white-space: nowrap;
 }
-
-.vote-confirm-box h3 {
-    margin: 0 0 var(--space-md);
-    font-size: var(--font-size-lg);
+.vw-member { max-width: 240px; }
+.vw-mine {
+    font-size: 0.8rem;
+    color: var(--text-muted);
 }
-
-.vote-confirm-box p {
-    margin: 0 0 var(--space-lg);
-    color: var(--text-secondary);
-}
-
-.vote-confirm-actions {
+.vw-btns {
     display: flex;
-    justify-content: flex-end;
-    gap: var(--space-sm);
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
 }
-
-@media (max-width: 600px) {
-    .vote-summary { grid-template-columns: repeat(4, 1fr); gap: 6px; }
-    .vote-summary-num { font-size: 1.3rem; }
-    .vote-buttons { gap: 6px; }
-    .vote-btn { font-size: var(--font-size-base); min-height: 52px; padding: var(--space-sm); }
-    .vote-event-title { font-size: 1.3rem; }
-    .vote-section { padding: var(--space-md); }
+/* ウィジェット内はホームの一括回答よりひと回り大きいタップ領域にする */
+.vw .bv-btn {
+    min-height: 40px;
+    padding: 6px 20px;
+    font-size: 0.9rem;
 }
+.vw-note-row { margin-bottom: 10px; }
+.vw-note {
+    max-width: 320px;
+    font-size: 0.85rem;
+}
+.vw-deadline {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+.vw-deadline-passed {
+    color: var(--danger-text);
+    font-weight: 600;
+}
+.vote-mini-noanswer { background: var(--bg-muted); color: var(--text-tertiary); }
+.vote-mini-alldone { background: #e1f5ee; color: #085041; font-weight: 600; }
 /* ====== 2026年7月改修: イベント別ページ・出欠一括回答・チェックリスト ====== */
 
 /* --- 期限超過の強調（ウィザード・クイック作成・詳細の書類欄で使用） --- */
@@ -3921,7 +3773,7 @@ textarea:focus {
     font-weight: 600;
     white-space: nowrap;
 }
-/* バッジは投票ページへのリンク（タップで出欠回答） */
+/* バッジはイベント詳細の参加状況セクションへのリンク（タップで出欠回答） */
 a.vote-count-badge { text-decoration: none; cursor: pointer; }
 a.vote-count-badge:hover { background: #c9ecdf; }
 /* ポップアップ内のリンクボタン（<a class="btn">）は下線を消す */
@@ -4261,6 +4113,20 @@ button.fy-header {
 .bv-btn.bv-attend.active { background: #e1f5ee; border-color: #10b981; color: #085041; font-weight: 700; }
 .bv-btn.bv-absent.active { background: #fceaea; border-color: var(--danger-color); color: #7c2d2d; font-weight: 700; }
 .bv-btn.bv-undecided.active { background: #fef3c7; border-color: #f59e0b; color: #78350f; font-weight: 700; }
+/* 自分の一言メモ（一括回答の行内） */
+.bv-note {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+/* 出欠締切を過ぎた日程（一括回答ではボタンの代わりに表示） */
+.bv-closed {
+    margin-left: auto;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
 @media (max-width: 600px) {
     .bv-btns { margin-left: 0; width: 100%; justify-content: flex-end; }
     .bv-btn { min-height: 36px; padding: 4px 14px; }

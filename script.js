@@ -1,5 +1,8 @@
 // イベントデータ（GASから取得してここに保持）
 let eventsData = [];
+// 参加バッジ・プレビューモーダルの投票UIに使う（listAll で一括取得）
+let membersData = [];
+let allVotesData = null;   // null = 未取得
 
 
 // ---- 開催回数（同名イベントの紐付け） ----
@@ -45,10 +48,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 function closeAnyOpenModal() {
-    const overlay = document.getElementById('modal-overlay');
-    if (overlay && !overlay.classList.contains('hidden')) {
-        overlay.classList.add('hidden');
-    }
+    if (_duplicateMode) exitDuplicateMode();
 }
 
 // ---- フィルタ状態 ----
@@ -97,9 +97,13 @@ function _bindEventTableDelegation() {
             return;
         }
         if (e.target.closest('[data-action-cell]')) return;
-        // 行タップはまず概要ポップアップ（メンバーページと同じ2段構え。フル情報は詳細ページへ）
         const row = e.target.closest('tr[data-id]');
-        if (row) openEventPreviewModal(row.dataset.id);
+        if (!row) return;
+        if (_duplicateMode) {
+            confirmDuplicate(row.dataset.id);
+        } else {
+            openEventPreviewModal(row.dataset.id);
+        }
     });
 }
 
@@ -112,7 +116,6 @@ async function init() {
     // 旧リンク互換: ?event=<ID> はイベント詳細（シリーズページ）へ転送する（詳細モーダルは廃止）。
     if (redirectLegacyEventParam()) return;
 
-    bindOverlayClose(document.getElementById('modal-overlay'), closeModal);
     _bindEventTableDelegation();
 
     // ?action=new はデータ読込を待たずに新規作成モーダルを開ける
@@ -131,6 +134,13 @@ async function init() {
     if (cached && cached.items && cached.items.length > 0) {
         eventsData = cacheItemsToUi(cached.items);
     }
+    // メンバー・投票もキャッシュがあれば先に使う（参加バッジの分母・モーダル投票UI用）
+    membersData = ((api.loadCache('members') || {}).items) || [];
+    const cachedVotes = api.loadCache('votes');
+    if (cachedVotes && Array.isArray(cachedVotes.items)) {
+        allVotesData = cachedVotes.items;
+        rebuildVotesByEvent();
+    }
 
     populateDatalists();
     // キャッシュがある時だけ即描画。無い時は HTML の「読み込み中...」行を残し、
@@ -145,7 +155,6 @@ async function init() {
     else updateSyncStatus('initial-loading');
 
     refreshData();
-    refreshVotes();
 }
 
 function redirectLegacyEventParam() {
@@ -176,9 +185,21 @@ function handleUrlActionParams() {
 async function refreshData(isManual = false) {
     updateSyncStatus(isManual ? 'syncing' : 'syncing-bg');
     try {
-        const list = await api.list('events');
-        eventsData = list.map(gasToUi);
+        // listAll で events / members / votes を1往復で取得する
+        // （参加バッジの分母表示・モーダル内の投票UIにメンバーと投票が要るため）
+        const all = await api.listAll();
+        eventsData = (all.events || []).map(gasToUi);
         api.saveCache('events', eventsData);
+        membersData = all.members || [];
+        api.saveCache('members', membersData);
+        if (all.experiments) api.saveCache('experiments', all.experiments);
+        if (Array.isArray(all.votes)) {
+            allVotesData = all.votes;
+            api.saveCache('votes', allVotesData);
+            rebuildVotesByEvent();
+        } else {
+            refreshVotes(); // 旧バックエンド: votes 未同梱なら従来どおり別途取得
+        }
         buildPeriodFilterOptions();
         renderEvents();
         handleUrlActionParams();
@@ -201,14 +222,25 @@ async function refreshData(isManual = false) {
 
 // ---- 投票（出欠）集計: 一覧の参加人数バッジ用 ----
 let votesByEvent = {};
+
+// allVotesData（生の投票）から集計を作り直す。スタッフ（コーディネーター・アドバイザー）の
+// 投票は集計から除外する（他ページの集計と基準を揃えた）。
+function rebuildVotesByEvent() {
+    votesByEvent = {};
+    const staffIds = voteStaffIds(membersData);
+    (allVotesData || []).forEach(v => {
+        if (staffIds.has(v.memberId)) return;
+        const b = votesByEvent[v.eventId] || (votesByEvent[v.eventId] = { attend: 0, absent: 0, undecided: 0 });
+        if (b[v.status] !== undefined) b[v.status]++;
+    });
+}
+
+// 旧バックエンド（listAll に votes 未同梱）向けフォールバック
 async function refreshVotes() {
     try {
-        const votes = await api.listVotes();
-        votesByEvent = {};
-        votes.forEach(v => {
-            const b = votesByEvent[v.eventId] || (votesByEvent[v.eventId] = { attend: 0, absent: 0, undecided: 0 });
-            if (b[v.status] !== undefined) b[v.status]++;
-        });
+        allVotesData = await api.listVotes();
+        api.saveCache('votes', allVotesData);
+        rebuildVotesByEvent();
         renderEvents();
     } catch (_) { /* 集計は補助情報。失敗しても一覧表示は継続する */ }
 }
@@ -324,14 +356,9 @@ function initFullCalendar(attempt = 0) {
             endObj.setDate(endObj.getDate() - 1);
             const endDateStr = toISODate(endObj);
 
-            _modalPrevFocus = document.activeElement;
-            document.getElementById('category-selection-modal').classList.remove('hidden');
-            document.getElementById('modal-overlay').classList.remove('hidden');
-            bindModalEscape(document.getElementById('modal-overlay'), closeModal);
-
-            // Set global temp dates
             window.tempStart = info.startStr;
             window.tempEnd = endDateStr !== info.startStr ? endDateStr : "";
+            enterDuplicateMode();
 
             calendar.unselect();
         },
@@ -492,14 +519,17 @@ function renderEvents() {
             displayTitle = `第${ev.Meeting_Number}回 ${displayTitle}`;
         }
         const occ = occurrenceInfo(ev);
-        // 参加人数バッジ（今後のイベントで、回答が1件以上あるときだけ表示）
-        const vc = votesByEvent[ev.ID];
+        // 参加人数バッジ。今後の日程には回答0件でも常時表示し（最初の1票への導線）、
+        // 分母（対象者数）を添える。タップでイベント詳細の参加状況セクションへ。
+        const vc = votesByEvent[ev.ID] || { attend: 0, absent: 0, undecided: 0 };
         const isUpcoming = (ev.Date_End || ev.Date) >= today;
-        const hasVotes = vc && (vc.attend + vc.absent + vc.undecided) > 0;
-        // バッジタップで投票ページへ（一覧から1タップで出欠回答できる導線）
-        const voteBadge = (isUpcoming && hasVotes)
-            ? `<a class="vote-count-badge" href="vote.html?id=${encodeURIComponent(ev.ID)}" data-action="vote" title="参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided} — タップで出欠を回答">参加 ${vc.attend}</a>`
-            : '';
+        let voteBadge = '';
+        if (isUpcoming && allVotesData !== null) {
+            const eligibleCount = membersData.length > 0 ? voteEligibleMembers(membersData, ev).length : 0;
+            const label = eligibleCount > 0 ? `参加 ${vc.attend}/${eligibleCount}` : `参加 ${vc.attend}`;
+            const noanswer = Math.max(0, eligibleCount - (vc.attend + vc.absent + vc.undecided));
+            voteBadge = `<a class="vote-count-badge" href="event-series.html?event=${encodeURIComponent(ev.ID)}&vote=1" data-action="vote" title="参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}${eligibleCount > 0 ? `・未回答${noanswer}` : ''} — タップで出欠を回答">${label}</a>`;
+        }
         return `
             <tr class="clickable-row" data-id="${escapeAttr(ev.ID)}" title="タップで概要を表示">
                 <td class="cell-name" style="white-space:nowrap;">
@@ -507,8 +537,8 @@ function renderEvents() {
                     ${ev.Date_End && ev.Date_End !== ev.Date ? '<br><span class="text-muted" style="font-size:0.8rem;">〜 ' + escapeHtml(ev.Date_End) + '</span>' : ''}
                 </td>
                 <td>
+                    <span class="cat-dot" style="color:${cat.bg};" title="${cat.short}">&#9679;</span>
                     <a href="event-series.html?event=${encodeURIComponent(ev.ID)}" data-action="open" style="font-weight:600;color:inherit;text-decoration:none;">${escapeHtml(displayTitle)}</a>
-                    <span class="cat-badge" style="background:${cat.bg};color:${cat.text};margin-left:6px;">${cat.short}</span>
                     ${occ ? `<a href="event-series.html?key=${encodeURIComponent(eventSeriesKey(ev))}" class="occ-badge occ-link" title="通算${occ.total}回 — シリーズ履歴を見る" data-action="series">${occ.num}回目</a>` : ''}
                     ${voteBadge}
                 </td>
@@ -559,8 +589,8 @@ function openEventPreviewModal(id) {
                 ? `<table class="d1-table">${rows.map(([label, value]) =>
                     `<tr><th style="width:110px;">${escapeHtml(label)}</th><td style="white-space:pre-wrap;">${escapeHtml(value)}</td></tr>`).join('')}</table>`
                 : '<p class="text-hint">詳細情報は未入力です</p>'}
+            ${isUpcoming ? '<div id="preview-vote-widget" style="margin-top:12px;"></div>' : ''}
             <div class="action-buttons" style="margin-top:16px;">
-                ${isUpcoming ? `<a class="btn btn-secondary" href="vote.html?id=${encodeURIComponent(ev.ID)}">出欠を回答</a>` : ''}
                 <button type="button" class="btn btn-text" data-close>閉じる</button>
                 <a class="btn btn-primary-solid" style="width:auto;" href="event-series.html?event=${encodeURIComponent(ev.ID)}">詳細ページへ</a>
             </div>
@@ -571,47 +601,119 @@ function openEventPreviewModal(id) {
     bindModalEscape(overlay, close);
     document.body.appendChild(overlay);
     trapFocus(overlay.querySelector('.modal-content'));
+
+    // ページ遷移せずこの場で出欠を回答できるようにする（vote.html 廃止に伴うインライン化）
+    if (isUpcoming) renderPreviewVoteWidget(ev);
 }
 
-// --- Modal & New Event Logic ---
+// プレビューモーダル内の出欠回答ウィジェット。
+// 投票データ未取得（初回読み込み中など）の間は描画をスキップする。
+function renderPreviewVoteWidget(ev) {
+    const box = document.getElementById('preview-vote-widget');
+    if (!box) return;
+    if (allVotesData === null || membersData.length === 0) {
+        box.innerHTML = '<span class="text-hint" style="font-size:0.85rem;">参加状況を読み込み中です…</span>';
+        return;
+    }
+    const evVotes = allVotesData.filter(v => v.eventId === ev.ID);
+    renderVoteWidget(box, {
+        event: ev,
+        members: membersData,
+        votes: evVotes,
+        onChange: (votes) => {
+            // モーダル内での回答を一覧バッジにも反映する
+            allVotesData = allVotesData.filter(v => v.eventId !== ev.ID).concat(votes);
+            api.saveCache('votes', allVotesData);
+            rebuildVotesByEvent();
+            renderEvents();
+        }
+    });
+}
+
+// --- 複製選択モード ---
+
+let _duplicateMode = false;
 
 function openNewEventModal() {
-    _modalPrevFocus = document.activeElement;
-    document.getElementById('modal-overlay').classList.remove('hidden');
-    document.getElementById('category-selection-modal').classList.remove('hidden');
-    bindModalEscape(document.getElementById('modal-overlay'), closeModal);
-    populateTemplateDropdown();
+    enterDuplicateMode();
 }
 
-function populateTemplateDropdown() {
-    const sel = document.getElementById('template-source');
-    if (!sel) return;
-    const sorted = eventsData.slice().sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
-    // カテゴリ表記はフィルタチップ等と同じ CONFIG の短縮名に統一する（表記ゆれ防止）
-    sel.innerHTML = '<option value="">-- 過去の日程を選んで複製 --</option>' +
-        sorted.slice(0, 50).map(e => {
-            const catLabel = getEventCategory(e.Category).short;
-            return `<option value="${escapeAttr(e.ID)}">${escapeHtml(e.Date)} ${catLabel}: ${escapeHtml(e.Title)}</option>`;
-        }).join('');
-    sel.value = '';
+function enterDuplicateMode() {
+    _duplicateMode = true;
+    document.getElementById('duplicate-mode-banner').classList.remove('hidden');
+    document.getElementById('events-table').classList.add('duplicate-mode');
+    document.querySelector('.fab')?.classList.add('hidden');
 }
 
-function onTemplateSelect(sourceId) {
-    if (!sourceId) return;
-    const source = eventsData.find(e => e.ID === sourceId);
-    if (!source) return;
-    // カテゴリは元イベントを継承して新規作成フローへ
-    startNewEvent(source.Category || 'normal', source);
+function exitDuplicateMode() {
+    _duplicateMode = false;
+    document.getElementById('duplicate-mode-banner').classList.add('hidden');
+    document.getElementById('events-table').classList.remove('duplicate-mode');
+    document.querySelector('.fab')?.classList.remove('hidden');
 }
 
-function closeModal() {
-    document.getElementById('modal-overlay').classList.add('hidden');
-    if (_modalPrevFocus) { _modalPrevFocus.focus(); _modalPrevFocus = null; }
+function startNewEventBlank() {
+    exitDuplicateMode();
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="cat-modal-title">
+            <h2 id="cat-modal-title">日程の種類を選択</h2>
+            <div class="category-buttons">
+                <button class="btn btn-category cat-normal-btn" data-cat="normal">イベント</button>
+                <button class="btn btn-category cat-other-btn" data-cat="other">その他</button>
+                <button class="btn btn-category cat-general-btn" data-cat="general">全体ミーティング</button>
+                <button class="btn btn-category cat-admin-btn" data-cat="admin">幹部ミーティング</button>
+            </div>
+            <button class="btn btn-text mt-2" data-close>キャンセル</button>
+        </div>`;
+    const close = () => overlay.remove();
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    overlay.querySelectorAll('[data-cat]').forEach(btn => {
+        btn.addEventListener('click', () => { close(); startNewEvent(btn.dataset.cat); });
+    });
+    bindOverlayClose(overlay, close);
+    bindModalEscape(overlay, close);
+    document.body.appendChild(overlay);
+    trapFocus(overlay.querySelector('.modal-content'));
 }
-let _modalPrevFocus = null;
+
+function confirmDuplicate(id) {
+    const src = eventsData.find(x => x.ID === id);
+    if (!src) return;
+    const cat = getEventCategory(src.Category);
+    let title = src.Title || '(無題)';
+    if (cat.isMeeting && src.Meeting_Number) title = `第${src.Meeting_Number}回 ${title}`;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal-content" style="max-width:400px;" role="dialog" aria-modal="true">
+            <h2 style="margin-top:0;">この日程を複製しますか？</h2>
+            <p style="margin:8px 0 16px;">
+                <span class="cat-badge" style="background:${cat.bg};color:${cat.text};">${cat.short}</span>
+                <strong>${escapeHtml(title)}</strong><br>
+                <span class="text-muted">${escapeHtml(src.Date || '')}${src.Date_End && src.Date_End !== src.Date ? ' 〜 ' + escapeHtml(src.Date_End) : ''}</span>
+            </p>
+            <div class="action-buttons" style="margin-top:16px;">
+                <button class="btn btn-text" data-close>キャンセル</button>
+                <button class="btn btn-primary-solid" data-confirm>複製する</button>
+            </div>
+        </div>`;
+    const close = () => overlay.remove();
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    overlay.querySelector('[data-confirm]').addEventListener('click', () => {
+        close();
+        exitDuplicateMode();
+        startNewEvent(src.Category || 'normal', src);
+    });
+    bindOverlayClose(overlay, close);
+    bindModalEscape(overlay, close);
+    document.body.appendChild(overlay);
+    trapFocus(overlay.querySelector('.modal-content'));
+}
 
 function startNewEvent(category, template) {
-    closeModal();
     openQuickCreate(category, template);
 }
 
@@ -643,6 +745,7 @@ function openQuickCreate(category, template) {
         Meeting_Logistics: template ? (template.Meeting_Logistics || '') : '',
         PartsList: template ? (template.PartsList || '') : '',
         Accompany: template ? (template.Accompany || '') : '',
+        PlanName: template ? (template.PlanName || '') : '',
         Admin_Kyoka: template ? (template.Admin_Kyoka || '') : '',
         Admin_Houkoku: template ? (template.Admin_Houkoku || '') : '',
         Kyoka_Deadline: '', Houkoku_Deadline: '',

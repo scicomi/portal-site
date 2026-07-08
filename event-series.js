@@ -21,7 +21,9 @@ let indexFilter = 'event';   // 一覧モードのフィルタ: event / other / 
 let membersCache = [];
 let experimentsCache = [];
 const votesCache = {};       // eventId -> votes[]
+let votesPrimed = false;     // listAll で全投票を取得済みなら true（getEventVotes の個別往復を省く）
 let scrollToFeedback = false;
+let scrollToVotes = false;   // ?vote=1 で来たら参加状況カードへスクロール（共有リンク用）
 let detailFbOpen = false;    // 「この回の振り返り」トグルの開閉状態（再描画をまたいで維持）
 
 // 許可願・報告書の提出ステータス定義（config.js に集約）
@@ -149,6 +151,7 @@ function toGasForm(e) {
     g.AdminHoukoku = e.Admin_Houkoku || '';
     g.KyokaDeadline = e.Kyoka_Deadline || '';
     g.HoukokuDeadline = e.Houkoku_Deadline || '';
+    g.VoteDeadline = e.Vote_Deadline || '';
     g.MeetingNumber = e.Meeting_Number || '';
     return g;
 }
@@ -162,6 +165,7 @@ async function init() {
     seriesKey = params.get('key') || '';
     currentEventId = params.get('event') || '';
     scrollToFeedback = params.get('tab') === 'feedback';
+    scrollToVotes = params.get('vote') === '1'; // 出欠回答の共有リンク（旧 vote.html の代替）
     if (scrollToFeedback) detailFbOpen = true; // 未記入通知などから来たら折りたたみを開いておく
     indexMode = !seriesKey && !currentEventId;
 
@@ -184,8 +188,16 @@ async function init() {
     }
 
     try {
-        allEventsData = await api.list('events');
+        // listAll で events / members / experiments / votes を1往復で取得する
+        const all = await api.listAll();
+        allEventsData = all.events || [];
         api.saveCache('events', allEventsData);
+        if (all.members) { membersCache = all.members; api.saveCache('members', membersCache); }
+        if (all.experiments) { experimentsCache = all.experiments; api.saveCache('experiments', experimentsCache); }
+        if (Array.isArray(all.votes)) {
+            primeVotesCache(all.votes);
+            api.saveCache('votes', all.votes);
+        }
         onDataReady(true);
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
@@ -209,19 +221,24 @@ async function init() {
     }
 }
 
-async function loadAuxData() {
-    let members = (api.loadCache('members') || {}).items;
-    let experiments = (api.loadCache('experiments') || {}).items;
-    if (!members) {
-        try { members = await api.list('members'); api.saveCache('members', members); } catch (_) { members = []; }
-    }
-    if (!experiments) {
-        try { experiments = await api.list('experiments'); api.saveCache('experiments', experiments); } catch (_) { experiments = []; }
-    }
-    membersCache = members || [];
-    experimentsCache = experiments || [];
+function loadAuxData() {
+    // メンバー・実験・投票はキャッシュから即時反映する。最新は init() の listAll が一括で持ってくる。
+    membersCache = ((api.loadCache('members') || {}).items) || [];
+    experimentsCache = ((api.loadCache('experiments') || {}).items) || [];
+    const cachedVotes = api.loadCache('votes');
+    if (cachedVotes && Array.isArray(cachedVotes.items)) primeVotesCache(cachedVotes.items);
     // 実験リンク・未回答数の表示が変わるので、詳細を描画済みなら再描画
     if (!indexMode && seriesEvents.length > 0) renderDetail();
+}
+
+// listAll / キャッシュで受け取った全投票を eventId ごとに votesCache へ展開する。
+// これ以降は getEventVotes の個別取得を行わない（votesPrimed）。
+function primeVotesCache(votes) {
+    Object.keys(votesCache).forEach(k => delete votesCache[k]);
+    (votes || []).forEach(v => {
+        (votesCache[v.eventId] || (votesCache[v.eventId] = [])).push(v);
+    });
+    votesPrimed = true;
 }
 
 function onDataReady(isFresh) {
@@ -601,6 +618,7 @@ function renderDetail() {
                 <th style="width:140px;">${isMeeting ? 'ミーティング名' : 'イベント名'}</th>
                 <td><span class="text-primary" style="font-size:1.15rem; font-weight:600;">${escapeHtml(displayTitle)}</span></td>
             </tr>
+            ${!isMeeting && ev.PlanName ? `<tr><th>企画名</th><td>${escapeHtml(ev.PlanName)}</td></tr>` : ''}
             <tr><th>日にち</th><td>${dateStr}</td></tr>
             ${ev.TimeStart && ev.TimeEnd ? `<tr><th>時間</th><td>${timeStr}</td></tr>` : ''}
             ${!isMeeting && (ev.GatherTime || ev.DismissTime) ? `<tr><th>集合・解散</th><td>${gatherDismiss}</td></tr>` : ''}
@@ -608,7 +626,7 @@ function renderDetail() {
             ${!isMeeting && ev.Audience ? `<tr><th>対象・人数</th><td>${escapeHtml(ev.Audience)}</td></tr>` : ''}
             ${!isMeeting && parts.length > 0 ? `<tr><th>実験内容・発表者</th><td>${expHtml}</td></tr>` : ''}
             ${!isMeeting && ev.Logistics ? `<tr><th>スケジュール・運搬</th><td style="white-space:pre-wrap;">${escapeHtml(ev.Logistics)}</td></tr>` : ''}
-            ${!isMeeting && ev.Accompany ? `<tr><th>帯同</th><td>${escapeHtml(ev.Accompany)}</td></tr>` : ''}
+            ${!isMeeting && ev.Accompany ? `<tr><th>帯同</th><td>${renderAccompanyHtml(ev.Accompany)}</td></tr>` : ''}
             ${(ev.Remarks || '').trim() ? `<tr><th>${isMeeting ? '議題 / 備考' : '備考'}</th><td style="white-space:pre-wrap;">${escapeHtml(ev.Remarks)}</td></tr>` : ''}
             ${files.length > 0 ? `<tr><th>関連ファイル</th><td class="file-list">${filesHtml}</td></tr>` : ''}
             ${!isMeeting ? `<tr><th>書類</th><td>${docsHtml}</td></tr>` : ''}
@@ -616,10 +634,9 @@ function renderDetail() {
 
         <div class="detail-section-card" id="series-detail-votes">
             <h3 class="detail-section-title">参加状況</h3>
-            <div id="series-vote-summary" class="loading-text" style="padding:8px 0;">読み込み中</div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <button type="button" class="btn btn-primary btn-sm" onclick="openVoteListModal()">回答一覧</button>
-                <a class="btn btn-secondary btn-sm" href="vote.html?id=${encodeURIComponent(ev.ID)}" title="投票ページで出欠を回答・変更する">回答する</a>
+            <div id="series-vote-widget" class="loading-text" style="padding:8px 0;">読み込み中</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="openVoteListModal()">回答一覧</button>
             </div>
         </div>
 
@@ -667,136 +684,69 @@ function renderDetail() {
         sel.addEventListener('change', () => saveDocStatus(ev.ID, sel.dataset.doc, sel.value));
     });
 
-    renderVoteSummary(ev);
+    renderSeriesVoteWidget(ev);
 }
 
-// ---- 参加状況（投票サマリー） ----
+// ---- 参加状況（出欠のインライン回答＋サマリー。vote-widget.js の共通実装を使う） ----
 
-// 出欠の回答・集計はコーディネーター・アドバイザーを対象外にする
-function staffMemberIds() {
-    return new Set(membersCache.filter(m => {
-        const r = memberRoleOf(m);
-        return r === 'アドバイザー' || r === 'コーディネーター';
-    }).map(m => m.ID));
-}
-
-// イベント年度に在籍する出欠対象メンバー（コーディネーター・アドバイザー除く）
-function voteEligibleMembers(ev, staffIds) {
-    const eventFY = getFiscalYear(ev.Date) || currentFiscalYear();
-    return membersCache.filter(m => {
-        if (m.Active === 'false') return false;
-        if (staffIds.has(m.ID)) return false;
-        const fy = m.FiscalYear ? parseInt(m.FiscalYear) : currentFiscalYear();
-        return fy === eventFY;
-    });
-}
-
-async function renderVoteSummary(ev) {
-    const box = document.getElementById('series-vote-summary');
-    if (!box) return;
-    try {
-        let votes = votesCache[ev.ID];
-        if (!votes) {
+// このイベントの投票を取得する（listAll で取得済みならキャッシュ、未取得なら個別取得）
+async function loadEventVotes(ev) {
+    let votes = votesCache[ev.ID];
+    if (!votes) {
+        if (votesPrimed) {
+            votes = votesCache[ev.ID] = []; // 全件取得済みで無い = このイベントの回答は0件
+        } else {
             votes = await api.getEventVotes(ev.ID);
             votesCache[ev.ID] = votes;
         }
-        // 描画中に開催回が切り替わっていたら何もしない
-        if (currentEventId !== ev.ID) return;
+    }
+    return votes;
+}
 
-        const staffIds = staffMemberIds();
-        const counts = { attend: 0, absent: 0, undecided: 0 };
-        const voted = new Set();
-        votes.forEach(v => {
-            if (staffIds.has(v.memberId)) return;
-            if (counts[v.status] !== undefined) counts[v.status]++;
-            voted.add(v.memberId);
-        });
-
-        // 未回答 = 出欠対象メンバー − 回答済み
-        const eligible = voteEligibleMembers(ev, staffIds);
-        const noAnswer = Math.max(0, eligible.length - voted.size);
-
-        box.classList.remove('loading-text');
-        box.innerHTML = `
-            <div class="vote-mini-summary">
-                <span class="vote-mini vote-mini-attend">参加 <strong>${counts.attend}</strong></span>
-                <span class="vote-mini vote-mini-absent">不参加 <strong>${counts.absent}</strong></span>
-                <span class="vote-mini vote-mini-undecided">未定 <strong>${counts.undecided}</strong></span>
-                ${eligible.length > 0 ? `<span class="vote-mini vote-mini-noanswer">未回答 <strong>${noAnswer}</strong></span>` : ''}
-            </div>`;
+async function renderSeriesVoteWidget(ev) {
+    const box = document.getElementById('series-vote-widget');
+    if (!box) return;
+    let votes;
+    try {
+        votes = await loadEventVotes(ev);
     } catch (_) {
         box.classList.remove('loading-text');
         box.innerHTML = '<span class="text-hint" style="font-size:0.85rem;">参加状況を取得できませんでした</span>';
+        return;
+    }
+    // 取得中に開催回が切り替わっていたら何もしない
+    if (currentEventId !== ev.ID) return;
+
+    box.classList.remove('loading-text');
+    box.style.padding = '';
+    renderVoteWidget(box, {
+        event: ev,
+        members: membersCache,
+        votes,
+        onChange: (v) => { votesCache[ev.ID] = v; }
+    });
+
+    // ?vote=1（共有リンク）で来たら参加状況カードへスクロールして目立たせる
+    if (scrollToVotes) {
+        scrollToVotes = false;
+        setTimeout(() => {
+            document.getElementById('series-detail-votes')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
     }
 }
 
-// 参加回答一覧ポップアップ（vote.html へ行かなくても誰が何と答えたか見られる）
+// 参加回答一覧ポップアップ（日時・メモつき。実装は vote-widget.js の showVoteListModal）
 async function openVoteListModal() {
     const ev = currentEvent();
     if (!ev) return;
-
-    let votes = votesCache[ev.ID];
-    if (!votes) {
-        try {
-            votes = await api.getEventVotes(ev.ID);
-            votesCache[ev.ID] = votes;
-        } catch (e) {
-            toast('参加状況を取得できませんでした: ' + e.message, 'error');
-            return;
-        }
+    let votes;
+    try {
+        votes = await loadEventVotes(ev);
+    } catch (e) {
+        toast('参加状況を取得できませんでした: ' + humanizeApiError(e), 'error');
+        return;
     }
-
-    const staffIds = staffMemberIds();
-    const nameOf = {};
-    membersCache.forEach(m => { nameOf[m.ID] = m.Name || m.ID; });
-
-    const grouped = { attend: [], absent: [], undecided: [] };
-    const voted = new Set();
-    votes.forEach(v => {
-        if (staffIds.has(v.memberId)) return;
-        if (grouped[v.status]) grouped[v.status].push(nameOf[v.memberId] || v.memberId);
-        voted.add(v.memberId);
-    });
-    const noanswer = voteEligibleMembers(ev, staffIds)
-        .filter(m => !voted.has(m.ID))
-        .map(m => m.Name || m.ID);
-
-    const sections = [
-        { label: '参加',   type: 'attend',    names: grouped.attend },
-        { label: '不参加', type: 'absent',    names: grouped.absent },
-        { label: '未定',   type: 'undecided', names: grouped.undecided },
-        { label: '未回答', type: 'noanswer',  names: noanswer }
-    ];
-    const sectionsHtml = sections.map(s => {
-        if (s.names.length === 0) return '';
-        const names = s.names.slice().sort((a, b) => a.localeCompare(b, 'ja'));
-        return `<div class="vote-detail-group">
-            <h4 class="vote-detail-label vote-detail-label-${s.type}">${s.label} (${s.names.length})</h4>
-            <ul class="vote-detail-names">${names.map(n => `<li>${escapeHtml(n)}</li>`).join('')}</ul>
-        </div>`;
-    }).join('');
-
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-        <div class="modal-content" style="max-width:520px;" role="dialog" aria-modal="true" aria-labelledby="vote-list-modal-title">
-            <h2 id="vote-list-modal-title" style="margin-top:0;">参加回答一覧</h2>
-            <p class="text-muted" style="font-size:0.85rem; margin:0 0 12px;">
-                ${escapeHtml(ev.Title || '(無題)')} — ${escapeHtml(ev.Date)} (${dayOfWeekJP(ev.Date)})
-            </p>
-            ${sectionsHtml || '<p class="text-hint">まだ回答はありません</p>'}
-            <div class="action-buttons" style="margin-top:16px;">
-                <a class="btn btn-secondary" href="vote.html?id=${encodeURIComponent(ev.ID)}">回答する</a>
-                <button type="button" class="btn btn-primary-solid" style="width:auto;" data-close>閉じる</button>
-            </div>
-        </div>`;
-
-    const close = () => overlay.remove();
-    overlay.querySelector('[data-close]').addEventListener('click', close);
-    bindOverlayClose(overlay, close);
-    bindModalEscape(overlay, close);
-    document.body.appendChild(overlay);
-    trapFocus(overlay.querySelector('.modal-content'));
+    showVoteListModal(ev, votes, membersCache);
 }
 
 // 「この回の振り返り」の開閉（再描画せずDOMだけ切り替え、入力途中の文章を守る）
@@ -932,6 +882,71 @@ async function saveExperimentFeedbackEntries(eventData) {
     experimentsCache = experiments;
 }
 
+// ---- 帯同メンバーのクリッカブル表示 ----
+
+function renderAccompanyHtml(accompanyStr) {
+    const names = (accompanyStr || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (names.length === 0) return '---';
+    return names.map(name => {
+        const member = membersCache.find(m => m.Name === name);
+        if (member) {
+            const role = memberRoleOf(member);
+            const isStaff = role === 'アドバイザー' || role === 'コーディネーター';
+            if (isStaff) {
+                return `<button type="button" class="accompany-staff-link" onclick="openStaffDetailModal('${escapeAttr(member.ID)}')">${escapeHtml(name)}</button>`;
+            }
+        }
+        return escapeHtml(name);
+    }).join(', ');
+}
+
+function openStaffDetailModal(id) {
+    const m = membersCache.find(x => x.ID === id);
+    if (!m) return;
+    const role = memberRoleOf(m);
+    const roleInfo = role ? getRoleDisplay(role) : null;
+
+    const rows = [
+        ['教職員番号', m.StudentID || ''],
+        ['ふりがな', m.Furigana || ''],
+        ['名前', m.Name || ''],
+        ['メールアドレス', m.Email || ''],
+        ['所属', m.Affiliation || ''],
+        ['内線', m.Extension || ''],
+        ['緊急連絡先', m.EmergencyContact || '']
+    ].filter(r => r[1]);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal-content" style="max-width:460px;" role="dialog" aria-modal="true">
+            <h2 style="margin-top:0;">
+                ${escapeHtml(m.Name || '')}
+                ${roleInfo ? `<span class="cat-badge" style="background:${roleInfo.color};margin-left:8px;font-size:0.75rem;vertical-align:middle;">${escapeHtml(role)}</span>` : ''}
+            </h2>
+            ${rows.length > 0
+                ? `<table class="d1-table">${rows.map(([label, value]) =>
+                    `<tr><th style="width:130px;">${escapeHtml(label)}</th>
+                     <td class="copy-cell" data-copy="${escapeAttr(value)}" data-copy-label="${escapeAttr(label)}" title="タップでコピー" style="white-space:pre-wrap;">${escapeHtml(value)}<span class="copy-icon" aria-hidden="true">&#x2398;</span></td></tr>`).join('')}</table>
+                  <p class="text-hint" style="font-size:0.78rem; margin:8px 0 0;">各項目はタップでコピーできます</p>`
+                : '<p class="text-hint">登録されている詳細情報はありません</p>'}
+            <div class="action-buttons" style="margin-top:16px;">
+                <button type="button" class="btn btn-primary-solid" style="width:auto;" data-close>閉じる</button>
+            </div>
+        </div>`;
+
+    const close = () => overlay.remove();
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => {
+        const cell = e.target.closest('.copy-cell');
+        if (cell) copyTextToClipboard(cell.dataset.copy, cell.dataset.copyLabel);
+    });
+    bindOverlayClose(overlay, close);
+    bindModalEscape(overlay, close);
+    document.body.appendChild(overlay);
+    trapFocus(overlay.querySelector('.modal-content'));
+}
+
 // ---- 振り返りタイムラインタブ ----
 
 function renderFeedbackTimeline() {
@@ -1035,6 +1050,7 @@ function renderStats() {
     html += `<div class="stats-card">
         <h3 class="stats-card-title">開催回数</h3>
         <div class="stats-big-number">${seriesEvents.length}<span class="stats-unit">回</span></div>
+        <p class="stats-detail" style="font-size:0.75rem; color:#888;">※ 2023年度以降の集計</p>
     </div>`;
 
     html += `<div class="stats-card">

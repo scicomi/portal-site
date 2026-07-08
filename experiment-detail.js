@@ -103,21 +103,7 @@ function renderPage() {
         slidesLink.classList.add('hidden');
     }
 
-    const section = (title, content) => {
-        if (!content || !content.trim()) return '';
-        const items = content.split('\n').map(s => s.trim()).filter(Boolean);
-        return `<div class="expd-info-section">
-            <h3>${title}</h3>
-            <ul>${items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>
-        </div>`;
-    };
-
-    document.getElementById('expd-info-body').innerHTML =
-        section('使用物品', e.Materials) +
-        section('事前準備', e.Preparation) +
-        section('発表の流れ', e.Flow) +
-        section('注意事項', e.Notes) ||
-        '<p class="text-muted" style="padding:12px;">詳細情報はまだ登録されていません。</p>';
+    renderInfoSections();
 
     renderEventsSection();
     renderFeedback();
@@ -500,5 +486,176 @@ async function deletePhoto(index) {
         toast('写真を削除しました', 'success');
     } catch (e) {
         toast('削除失敗: ' + e.message, 'error');
+    }
+}
+
+// ---- カスタムセクション（実験情報タブのインライン編集） ----
+
+const FIXED_SECTIONS = [
+    { key: 'Materials',    title: '使用物品' },
+    { key: 'Preparation',  title: '事前準備' },
+    { key: 'Flow',         title: '発表の流れ' },
+    { key: 'Notes',        title: '注意事項' }
+];
+
+function getCustomSections() {
+    try { return JSON.parse(currentExp.Sections || '[]'); } catch (_) { return []; }
+}
+
+function getAllSections() {
+    const sections = [];
+    FIXED_SECTIONS.forEach(f => {
+        const content = currentExp[f.key] || '';
+        if (content.trim()) sections.push({ type: 'fixed', key: f.key, title: f.title, content });
+    });
+    getCustomSections().forEach((s, i) => {
+        sections.push({ type: 'custom', index: i, title: s.title || '', content: s.content || '' });
+    });
+    return sections;
+}
+
+function renderInfoSections() {
+    const body = document.getElementById('expd-info-body');
+    const sections = getAllSections();
+
+    if (sections.length === 0) {
+        body.innerHTML = `<p class="text-muted" style="padding:12px;">詳細情報はまだ登録されていません。</p>
+            <button class="btn btn-secondary expd-add-section-btn" onclick="addCustomSection()">+ セクション追加</button>`;
+        return;
+    }
+
+    body.innerHTML = sections.map((s, i) => {
+        const items = s.content.split('\n').map(l => l.trim()).filter(Boolean);
+        const id = s.type === 'fixed' ? `section-fixed-${s.key}` : `section-custom-${s.index}`;
+        const editAttr = s.type === 'fixed'
+            ? `data-edit-fixed="${s.key}"`
+            : `data-edit-custom="${s.index}"`;
+        return `<div class="expd-info-section" id="${id}">
+            <div class="expd-info-section-header">
+                <h3>${escapeHtml(s.title)}</h3>
+                <button class="expd-section-edit-btn" ${editAttr} title="編集">&#9998;</button>
+            </div>
+            <ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+        </div>`;
+    }).join('') +
+    `<button class="btn btn-secondary expd-add-section-btn" onclick="addCustomSection()">+ セクション追加</button>`;
+
+    body.querySelectorAll('[data-edit-fixed]').forEach(btn => {
+        btn.addEventListener('click', () => enterEditMode(btn.closest('.expd-info-section'), 'fixed', btn.dataset.editFixed));
+    });
+    body.querySelectorAll('[data-edit-custom]').forEach(btn => {
+        btn.addEventListener('click', () => enterEditMode(btn.closest('.expd-info-section'), 'custom', parseInt(btn.dataset.editCustom)));
+    });
+}
+
+function enterEditMode(sectionEl, type, keyOrIndex) {
+    const isFixed = type === 'fixed';
+    let title, content;
+    if (isFixed) {
+        const f = FIXED_SECTIONS.find(s => s.key === keyOrIndex);
+        title = f ? f.title : '';
+        content = currentExp[keyOrIndex] || '';
+    } else {
+        const customs = getCustomSections();
+        const s = customs[keyOrIndex];
+        title = s ? s.title : '';
+        content = s ? s.content : '';
+    }
+
+    sectionEl.classList.add('editing');
+    sectionEl.innerHTML = `
+        <div class="expd-edit-section">
+            ${isFixed
+                ? `<h3>${escapeHtml(title)}</h3>`
+                : `<input class="expd-edit-title" type="text" value="${escapeAttr(title)}" placeholder="見出し">`
+            }
+            <textarea class="expd-edit-content" rows="6" placeholder="内容（1行に1項目）">${escapeHtml(content)}</textarea>
+            <div class="expd-edit-actions">
+                ${!isFixed ? '<button class="btn btn-danger btn-sm" data-delete>削除</button>' : ''}
+                <div class="expd-edit-actions-spacer"></div>
+                <button class="btn btn-text btn-sm" data-cancel>キャンセル</button>
+                <button class="btn btn-primary-solid btn-sm" data-save>保存</button>
+            </div>
+        </div>`;
+
+    sectionEl.querySelector('[data-cancel]').addEventListener('click', () => renderInfoSections());
+    sectionEl.querySelector('[data-save]').addEventListener('click', () => saveSection(sectionEl, type, keyOrIndex));
+    const delBtn = sectionEl.querySelector('[data-delete]');
+    if (delBtn) delBtn.addEventListener('click', () => deleteSection(keyOrIndex));
+
+    const textarea = sectionEl.querySelector('.expd-edit-content');
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+}
+
+async function saveSection(sectionEl, type, keyOrIndex) {
+    const isFixed = type === 'fixed';
+    const contentEl = sectionEl.querySelector('.expd-edit-content');
+    const content = contentEl.value;
+
+    if (isFixed) {
+        currentExp[keyOrIndex] = content;
+    } else {
+        const titleEl = sectionEl.querySelector('.expd-edit-title');
+        const title = titleEl ? titleEl.value.trim() : '';
+        if (!title) { toast('見出しを入力してください', 'error'); titleEl.focus(); return; }
+        const customs = getCustomSections();
+        customs[keyOrIndex] = { title, content };
+        currentExp.Sections = JSON.stringify(customs);
+    }
+
+    const item = { ...currentExp, _baseUpdatedAt: currentExp.UpdatedAt || '' };
+
+    try {
+        const saved = await api.save('experiments', item);
+        Object.assign(currentExp, saved);
+        const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
+        if (idx >= 0) allExperiments[idx] = currentExp;
+        api.saveCache('experiments', allExperiments);
+        renderInfoSections();
+        toast('保存しました', 'success');
+    } catch (e) {
+        if (String(e.message).includes('conflict')) {
+            toast('他の人が編集しました。ページを再読み込みしてください。', 'error', 5000);
+        } else {
+            toast('保存失敗: ' + e.message, 'error');
+        }
+    }
+}
+
+async function deleteSection(index) {
+    const customs = getCustomSections();
+    if (index < 0 || index >= customs.length) return;
+
+    customs.splice(index, 1);
+    currentExp.Sections = JSON.stringify(customs);
+
+    const item = { ...currentExp, _baseUpdatedAt: currentExp.UpdatedAt || '' };
+
+    try {
+        const saved = await api.save('experiments', item);
+        Object.assign(currentExp, saved);
+        const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
+        if (idx >= 0) allExperiments[idx] = currentExp;
+        api.saveCache('experiments', allExperiments);
+        renderInfoSections();
+        toast('セクションを削除しました', 'success');
+    } catch (e) {
+        toast('削除失敗: ' + e.message, 'error');
+    }
+}
+
+function addCustomSection() {
+    const customs = getCustomSections();
+    customs.push({ title: '', content: '' });
+    currentExp.Sections = JSON.stringify(customs);
+    renderInfoSections();
+
+    const newIndex = customs.length - 1;
+    const el = document.getElementById(`section-custom-${newIndex}`);
+    if (el) {
+        enterEditMode(el, 'custom', newIndex);
+        const titleInput = el.querySelector('.expd-edit-title');
+        if (titleInput) titleInput.focus();
     }
 }
