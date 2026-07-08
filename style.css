@@ -2637,16 +2637,18 @@ textarea:focus {
 .expd-info-body { padding: 0 24px 20px; }
 .expd-info-section { margin-top: 16px; }
 .expd-info-section-header {
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 6px;
+    flex-direction: row;
 }
-.expd-info-section-header h3 { flex: 1; }
+.expd-info-section-header h3 { flex: 1; order: 1; }
 .expd-section-edit-btn {
+    order: 0;
     background: none; border: none; cursor: pointer;
-    color: var(--text-tertiary); font-size: 1rem; padding: 2px 6px;
-    border-radius: var(--radius-sm); opacity: 0; transition: opacity 0.15s;
+    color: var(--text-tertiary); font-size: 0.85rem; padding: 3px 5px;
+    border-radius: var(--radius-sm); opacity: 0.5; transition: opacity 0.15s, color 0.15s;
+    flex-shrink: 0;
 }
-.expd-info-section:hover .expd-section-edit-btn { opacity: 1; }
-.expd-section-edit-btn:hover { color: var(--primary-color); background: var(--primary-bg); }
+.expd-section-edit-btn:hover { opacity: 1; color: var(--primary-color); background: var(--primary-bg); }
 .expd-info-section h3 {
     color: var(--primary-color);
     font-size: 0.95rem;
@@ -2679,7 +2681,17 @@ textarea:focus {
 }
 .expd-edit-content:focus { border-color: var(--primary-color); outline: none; box-shadow: 0 0 0 2px var(--primary-bg); }
 .expd-edit-actions {
-    display: flex; align-items: center; gap: 8px; margin-top: 8px;
+    display: flex; align-items: center; gap: 6px; margin-top: 10px;
+    justify-content: flex-end;
+}
+.expd-edit-actions .btn {
+    padding: 5px 14px; font-size: 0.82rem; border-radius: 6px;
+}
+.expd-edit-actions .btn-text {
+    color: var(--text-secondary);
+}
+.expd-edit-actions .btn-primary-solid {
+    box-shadow: none;
 }
 .expd-edit-actions-spacer { flex: 1; }
 .expd-add-section-btn {
@@ -3186,6 +3198,43 @@ textarea:focus {
     color: var(--text-color);
 }
 .expd-tab-pane.hidden {
+    display: none !important;
+}
+
+/* Detail sub-tabs (inside イベント詳細) */
+.detail-sub-tab-bar {
+    display: flex;
+    gap: 0;
+    background: var(--bg-subtle, #f7f8fa);
+    border-radius: 8px;
+    padding: 3px;
+    margin-bottom: 16px;
+}
+.detail-sub-tab {
+    flex: 1;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border-radius: 6px;
+    font-family: inherit;
+    transition: background 0.15s, color 0.15s;
+    text-align: center;
+}
+.detail-sub-tab.active {
+    background: white;
+    color: var(--primary-color);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    font-weight: 600;
+}
+.detail-sub-tab:hover:not(.active) {
+    background: rgba(255,255,255,0.5);
+    color: var(--text-color);
+}
+.detail-sub-pane.hidden {
     display: none !important;
 }
 

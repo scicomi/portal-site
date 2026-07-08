@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light">
-    <title>イベント詳細 | SciComi Portal</title>
+    <title>イベント別 | SciComi Portal</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
@@ -20,7 +20,7 @@
         <!-- ===== シリーズ一覧モード（?key / ?event なしでアクセスした時） ===== -->
         <div id="series-index" class="hidden">
             <div class="page-header">
-                <h1 class="page-title" style="margin:0; flex:1;">イベント一覧</h1>
+                <h1 class="page-title" style="margin:0; flex:1;">イベント別</h1>
                 <input id="series-index-search" class="search-input" type="text" placeholder="イベント名・場所で検索" oninput="renderSeriesIndex()">
             </div>
             <p class="text-muted" style="font-size:0.85rem; margin:0 0 12px;">
@@ -41,8 +41,8 @@
         <!-- ===== シリーズ詳細モード ===== -->
         <div id="series-view" class="hidden">
             <div style="margin-bottom: 16px; display:flex; gap:16px;">
-                <a href="event-series.html" class="back-link">&larr; イベント一覧</a>
-                <a href="events.html" class="back-link">日程一覧へ</a>
+                <a href="event-series.html" class="back-link">&larr; イベント別一覧</a>
+                <a href="events.html" class="back-link">予定一覧へ</a>
             </div>
 
             <div id="series-loading" class="loading-text">読み込み中</div>
@@ -53,40 +53,52 @@
                     <p id="series-subtitle" class="series-subtitle"></p>
                 </div>
 
-                <!-- 緊急連絡先・現地情報 -->
-                <div id="series-safety-card" class="series-safety-card hidden">
-                    <div class="series-safety-title">&#x1F6A8; 緊急連絡先・現地情報</div>
-                    <div class="series-safety-grid">
-                        <div class="series-safety-item" style="grid-column: 1 / -1;">
-                            <span class="series-safety-label">&#x1F4CD; 住所</span>
-                            <span id="series-address" class="series-safety-value"></span>
-                        </div>
-                        <div class="series-safety-item">
-                            <span class="series-safety-label">&#x1F3E5; 近隣の病院・診療所</span>
-                            <span id="series-hospital" class="series-safety-value"></span>
-                        </div>
-                        <div class="series-safety-item">
-                            <span class="series-safety-label">&#x1F46E; 近隣の警察署</span>
-                            <span id="series-police" class="series-safety-value"></span>
-                        </div>
-                    </div>
-                </div>
-
                 <div class="expd-tab-bar">
                     <button class="expd-tab active" data-tab="detail" onclick="switchSeriesTab(this)">イベント詳細</button>
-                    <button class="expd-tab" data-tab="feedback" onclick="switchSeriesTab(this)">振り返り</button>
+                    <button class="expd-tab" data-tab="local-info" onclick="switchSeriesTab(this)">現地情報</button>
                     <button class="expd-tab" data-tab="stats" onclick="switchSeriesTab(this)">統計・開催履歴</button>
                 </div>
 
-                <!-- Tab: イベント詳細（開催回ごとの全情報＋書類・参加・振り返り記入） -->
+                <!-- Tab: イベント詳細（サブタブ: 内容 / 参加状況 / 振り返り記入） -->
                 <div class="expd-tab-pane" data-tab-pane="detail">
                     <div id="series-occ-selector"></div>
-                    <div id="series-detail"></div>
+                    <div class="detail-sub-tab-bar">
+                        <button class="detail-sub-tab active" data-subtab="content" onclick="switchDetailSubTab(this)">内容</button>
+                        <button class="detail-sub-tab" data-subtab="attendance" onclick="switchDetailSubTab(this)">参加状況</button>
+                        <button class="detail-sub-tab" data-subtab="reflection" onclick="switchDetailSubTab(this)">振り返り記入</button>
+                    </div>
+                    <div class="detail-sub-pane" data-sub-pane="content">
+                        <div id="series-detail"></div>
+                    </div>
+                    <div class="detail-sub-pane hidden" data-sub-pane="attendance">
+                        <div id="series-attendance-detail"></div>
+                    </div>
+                    <div class="detail-sub-pane hidden" data-sub-pane="reflection">
+                        <div id="series-reflection-entry"></div>
+                    </div>
                 </div>
 
-                <!-- Tab: 振り返りタイムライン -->
-                <div class="expd-tab-pane hidden" data-tab-pane="feedback">
+                <!-- Tab: 現地情報（緊急連絡先＋振り返りタイムライン） -->
+                <div class="expd-tab-pane hidden" data-tab-pane="local-info">
+                    <div id="series-safety-card" class="series-safety-card hidden">
+                        <div class="series-safety-title">&#x1F6A8; 緊急連絡先・現地情報</div>
+                        <div class="series-safety-grid">
+                            <div class="series-safety-item" style="grid-column: 1 / -1;">
+                                <span class="series-safety-label">&#x1F4CD; 住所</span>
+                                <span id="series-address" class="series-safety-value"></span>
+                            </div>
+                            <div class="series-safety-item">
+                                <span class="series-safety-label">&#x1F3E5; 近隣の病院・診療所</span>
+                                <span id="series-hospital" class="series-safety-value"></span>
+                            </div>
+                            <div class="series-safety-item">
+                                <span class="series-safety-label">&#x1F46E; 近隣の警察署</span>
+                                <span id="series-police" class="series-safety-value"></span>
+                            </div>
+                        </div>
+                    </div>
                     <div class="expd-section">
+                        <h2 class="expd-section-title">振り返り</h2>
                         <div class="expd-feedback-filters">
                             <button class="filter-chip active" data-fb="all" aria-pressed="true" onclick="filterSeriesFb('all')">全て</button>
                             <button class="filter-chip" data-fb="positive" aria-pressed="false" onclick="filterSeriesFb('positive')">良かった点</button>

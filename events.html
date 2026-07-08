@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light">
-    <title>日程 | SciComi Portal</title>
+    <title>予定 | SciComi Portal</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js">
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
@@ -24,9 +24,9 @@
 
     <main class="container">
         <div class="page-header">
-            <h1 class="page-title" style="margin:0; flex:1;">日程</h1>
+            <h1 class="page-title" style="margin:0; flex:1;">予定</h1>
             <input id="event-search" class="search-input" type="text" placeholder="タイトル・場所・発表者で検索" title="ショートカット: / キーで検索欄へ" oninput="onSearchChange()">
-            <button class="btn btn-primary page-new-btn" onclick="openNewEventModal()" title="ショートカット: n キー">＋ 日程を追加</button>
+            <button class="btn btn-primary page-new-btn" onclick="openNewEventModal()" title="ショートカット: n キー">＋ 予定を追加</button>
         </div>
         <div class="page-filters">
             <button class="filter-chip active" data-cat="all" aria-pressed="true" onclick="onCategoryFilter('all')">全部</button>
@@ -67,20 +67,10 @@
     </main>
 
 
-    <!-- 複製選択モードのバナー（script.js で表示制御） -->
-    <div id="duplicate-mode-banner" class="duplicate-mode-banner hidden">
-        <div class="duplicate-mode-inner">
-            <span class="duplicate-mode-text">複製する日程をタップしてください</span>
-            <div class="duplicate-mode-actions">
-                <button class="btn btn-text" onclick="startNewEventBlank()">白紙から作成</button>
-                <button class="btn btn-secondary btn-sm" onclick="exitDuplicateMode()">キャンセル</button>
-            </div>
-        </div>
-    </div>
     <!-- 行タップ→概要ポップアップ（script.js openEventPreviewModal）。フル情報は event-series.html?event=<ID> へ -->
 
     <!-- FAB -->
-    <button class="fab" onclick="openNewEventModal()" aria-label="日程を追加"><span class="fab-icon">＋</span>日程を追加</button>
+    <button class="fab" onclick="openNewEventModal()" aria-label="予定を追加"><span class="fab-icon">＋</span>予定を追加</button>
 
     <script src="config.js"></script>
     <script src="api.js"></script>

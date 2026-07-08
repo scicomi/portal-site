@@ -170,7 +170,7 @@ async function init() {
     indexMode = !seriesKey && !currentEventId;
 
     document.getElementById(indexMode ? 'series-index' : 'series-view').classList.remove('hidden');
-    if (indexMode) document.title = 'イベント一覧 | SciComi Portal';
+    if (indexMode) document.title = 'イベント別 | SciComi Portal';
 
     loadAuxData(); // メンバー・実験は補助情報。裏で読み込み、揃い次第再描画する。
 
@@ -396,8 +396,8 @@ function renderAll() {
     if (scrollToFeedback) {
         scrollToFeedback = false;
         setTimeout(() => {
-            const el = document.getElementById('series-detail-feedback');
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const refBtn = document.querySelector('.detail-sub-tab[data-subtab="reflection"]');
+            if (refBtn) switchDetailSubTab(refBtn);
         }, 150);
     }
 }
@@ -440,6 +440,11 @@ function selectOccurrence(id) {
     renderSafetyInfo();
     renderOccurrenceSelector();
     renderDetail();
+    const activeSubTab = document.querySelector('.detail-sub-tab.active');
+    if (activeSubTab) {
+        if (activeSubTab.dataset.subtab === 'attendance') renderAttendanceTab();
+        if (activeSubTab.dataset.subtab === 'reflection') renderReflectionTab();
+    }
 }
 
 // 統計・振り返りタブから特定の開催回の詳細へ飛ぶ
@@ -633,49 +638,8 @@ function renderDetail() {
         </table>
 
         <div class="detail-section-card" id="series-detail-votes">
-            <h3 class="detail-section-title">参加状況</h3>
+            <h3 class="detail-section-title">参加投票</h3>
             <div id="series-vote-widget" class="loading-text" style="padding:8px 0;">読み込み中</div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
-                <button type="button" class="btn btn-secondary btn-sm" onclick="openVoteListModal()">回答一覧</button>
-            </div>
-        </div>
-
-        <div class="detail-section-card" id="series-detail-feedback">
-            <button type="button" class="detail-toggle-header" aria-expanded="${detailFbOpen}" aria-controls="series-fb-body" onclick="toggleDetailFeedback()">
-                <span class="detail-section-title" style="margin:0;">この回の振り返り</span>
-                <span class="fy-toggle" id="series-fb-arrow">${detailFbOpen ? '&#9660;' : '&#9654;'}</span>
-            </button>
-            <div id="series-fb-body" class="${detailFbOpen ? '' : 'hidden'}" style="margin-top:10px;">
-                ${!isMeeting ? `
-                <div id="series-exp-feedback">
-                    ${parts.filter(p => p.name).map(p => `
-                        <div class="exp-fb-card" data-exp-name="${escapeAttr(p.name)}">
-                            <div class="exp-fb-card-title">${expLinkHtml(p.name)} の振り返り（実験ページに蓄積されます）</div>
-                            <div class="exp-fb-row">
-                                <label>良かった点</label>
-                                <textarea class="e1-input exp-fb-positive" rows="2" placeholder="この実験で良かったこと"></textarea>
-                            </div>
-                            <div class="exp-fb-row">
-                                <label>改善点</label>
-                                <textarea class="e1-input exp-fb-reflection" rows="2" placeholder="この実験の改善点"></textarea>
-                            </div>
-                        </div>`).join('')}
-                </div>` : ''}
-                <div class="exp-fb-card">
-                    <div class="exp-fb-card-title">会場・運営の振り返り</div>
-                    <div class="exp-fb-row">
-                        <label>良かった点</label>
-                        <textarea class="e1-input" id="series-fb-positives" rows="3" placeholder="会場・運営で良かったこと">${escapeHtml(ev.Positives || '')}</textarea>
-                    </div>
-                    <div class="exp-fb-row">
-                        <label>改善点</label>
-                        <textarea class="e1-input" id="series-fb-reflections" rows="3" placeholder="会場・運営の改善点">${escapeHtml(ev.Reflections || '')}</textarea>
-                    </div>
-                </div>
-                <div style="margin-top:12px; text-align:right;">
-                    <button id="series-fb-save-btn" class="btn btn-primary-solid" style="width:auto; padding:8px 24px;" onclick="saveDetailFeedback()">振り返りを保存</button>
-                </div>
-            </div>
         </div>
     `;
 
@@ -726,12 +690,11 @@ async function renderSeriesVoteWidget(ev) {
         onChange: (v) => { votesCache[ev.ID] = v; }
     });
 
-    // ?vote=1（共有リンク）で来たら参加状況カードへスクロールして目立たせる
+    // ?vote=1（共有リンク）で来たら参加状況サブタブへ切り替え
     if (scrollToVotes) {
         scrollToVotes = false;
-        setTimeout(() => {
-            document.getElementById('series-detail-votes')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 100);
+        const attendBtn = document.querySelector('.detail-sub-tab[data-subtab="attendance"]');
+        if (attendBtn) switchDetailSubTab(attendBtn);
     }
 }
 
@@ -749,15 +712,123 @@ async function openVoteListModal() {
     showVoteListModal(ev, votes, membersCache);
 }
 
-// 「この回の振り返り」の開閉（再描画せずDOMだけ切り替え、入力途中の文章を守る）
-function toggleDetailFeedback() {
-    detailFbOpen = !detailFbOpen;
-    const body = document.getElementById('series-fb-body');
-    const header = document.querySelector('#series-detail-feedback .detail-toggle-header');
-    const arrow = document.getElementById('series-fb-arrow');
-    if (body) body.classList.toggle('hidden', !detailFbOpen);
-    if (header) header.setAttribute('aria-expanded', String(detailFbOpen));
-    if (arrow) arrow.innerHTML = detailFbOpen ? '&#9660;' : '&#9654;';
+// ---- 参加状況サブタブ（回答一覧を常時表示） ----
+
+async function renderAttendanceTab() {
+    const box = document.getElementById('series-attendance-detail');
+    if (!box) return;
+    const ev = currentEvent();
+    if (!ev) { box.innerHTML = ''; return; }
+
+    box.innerHTML = '<div class="loading-text" style="padding:16px 0;">読み込み中</div>';
+
+    let votes;
+    try {
+        votes = await loadEventVotes(ev);
+    } catch (_) {
+        box.innerHTML = '<span class="text-hint" style="font-size:0.85rem; padding:16px 0; display:block;">参加状況を取得できませんでした</span>';
+        return;
+    }
+    if (currentEventId !== ev.ID) return;
+
+    const eligible = membersCache.length > 0 ? voteEligibleMembers(membersCache, ev) : [];
+    const staffIds = voteStaffIds(membersCache);
+
+    const memberVotes = (votes || []).filter(v => !staffIds.has(v.memberId));
+    const attend = memberVotes.filter(v => v.status === 'attend');
+    const absent = memberVotes.filter(v => v.status === 'absent');
+    const undecided = memberVotes.filter(v => v.status === 'undecided');
+    const answeredIds = new Set(memberVotes.map(v => v.memberId));
+    const noAnswer = eligible.filter(m => !answeredIds.has(m.ID));
+
+    const renderList = (label, items, icon) => {
+        if (items.length === 0) return '';
+        const names = items.map(v => {
+            if (v.memberId) {
+                const m = membersCache.find(x => x.ID === v.memberId);
+                return m ? escapeHtml(m.Name) : escapeHtml(v.memberId);
+            }
+            return escapeHtml(v.Name || v.ID || '');
+        });
+        return `<div style="margin-bottom:12px;">
+            <div style="font-weight:600; font-size:0.9rem; margin-bottom:4px;">${icon} ${label} (${items.length})</div>
+            <div style="font-size:0.85rem; color:var(--text-secondary); line-height:1.8;">
+                ${names.join('、')}
+            </div>
+        </div>`;
+    };
+
+    box.innerHTML = `
+        <div class="detail-section-card">
+            <h3 class="detail-section-title">参加回答一覧</h3>
+            <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:16px; font-size:0.9rem;">
+                <span style="font-weight:600; color:#10b981;">参加 ${attend.length}</span>
+                <span style="font-weight:600; color:#ef4444;">不参加 ${absent.length}</span>
+                <span style="font-weight:600; color:#f59e0b;">未定 ${undecided.length}</span>
+                <span style="font-weight:600; color:#9ca3af;">未回答 ${noAnswer.length}</span>
+            </div>
+            ${renderList('参加', attend, '&#9679;')}
+            ${renderList('不参加', absent, '&#9679;')}
+            ${renderList('未定', undecided, '&#9679;')}
+            ${renderList('未回答', noAnswer.map(m => ({ memberId: m.ID })), '&#9679;')}
+        </div>
+    `;
+}
+
+// ---- 振り返り記入サブタブ ----
+
+function renderReflectionTab() {
+    const box = document.getElementById('series-reflection-entry');
+    if (!box) return;
+    const ev = currentEvent();
+    if (!ev) { box.innerHTML = ''; return; }
+
+    const isMeeting = ev.Category === 'general' || ev.Category === 'admin';
+    const parts = normalizeParts(ev.PartsList).filter(p => p.name || (p.presenters && p.presenters.length));
+
+    box.innerHTML = `
+        <div class="detail-section-card">
+            <h3 class="detail-section-title">成果・自由記入</h3>
+            <p class="text-muted" style="font-size:0.82rem; margin:0 0 12px;">参加者数や成果など、この回の実績を自由に記録できます。</p>
+            <div class="exp-fb-row" style="margin-bottom:12px;">
+                <label style="font-weight:600; font-size:0.85rem;">成果メモ</label>
+                <textarea class="e1-input" id="series-results-memo" rows="4" placeholder="例: 参加者数 45人、子ども 30人&#10;天候: 晴れ&#10;実験キット配布 20個">${escapeHtml(ev.ResultsMemo || '')}</textarea>
+            </div>
+        </div>
+
+        <div class="detail-section-card" id="series-detail-feedback">
+            <h3 class="detail-section-title">この回の振り返り</h3>
+            ${!isMeeting ? `
+            <div id="series-exp-feedback">
+                ${parts.filter(p => p.name).map(p => `
+                    <div class="exp-fb-card" data-exp-name="${escapeAttr(p.name)}">
+                        <div class="exp-fb-card-title">${expLinkHtml(p.name)} の振り返り（実験ページに蓄積されます）</div>
+                        <div class="exp-fb-row">
+                            <label>良かった点</label>
+                            <textarea class="e1-input exp-fb-positive" rows="2" placeholder="この実験で良かったこと"></textarea>
+                        </div>
+                        <div class="exp-fb-row">
+                            <label>改善点</label>
+                            <textarea class="e1-input exp-fb-reflection" rows="2" placeholder="この実験の改善点"></textarea>
+                        </div>
+                    </div>`).join('')}
+            </div>` : ''}
+            <div class="exp-fb-card">
+                <div class="exp-fb-card-title">会場・運営の振り返り</div>
+                <div class="exp-fb-row">
+                    <label>良かった点</label>
+                    <textarea class="e1-input" id="series-fb-positives" rows="3" placeholder="会場・運営で良かったこと">${escapeHtml(ev.Positives || '')}</textarea>
+                </div>
+                <div class="exp-fb-row">
+                    <label>改善点</label>
+                    <textarea class="e1-input" id="series-fb-reflections" rows="3" placeholder="会場・運営の改善点">${escapeHtml(ev.Reflections || '')}</textarea>
+                </div>
+            </div>
+            <div style="margin-top:12px; text-align:right;">
+                <button id="series-fb-save-btn" class="btn btn-primary-solid" style="width:auto; padding:8px 24px;" onclick="saveDetailFeedback()">保存</button>
+            </div>
+        </div>
+    `;
 }
 
 // ---- 書類ステータス・振り返りの保存（楽観的UI + 競合検知） ----
@@ -799,14 +870,14 @@ async function saveDetailFeedback() {
 
     const positives = document.getElementById('series-fb-positives')?.value || '';
     const reflections = document.getElementById('series-fb-reflections')?.value || '';
+    const resultsMemo = document.getElementById('series-results-memo')?.value || '';
 
-    // 保存には複数リクエストが走ることがあるため、処理中表示＋二度押し防止
     const saveBtn = document.getElementById('series-fb-save-btn');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
 
     try {
         const saved = await api.save('events', {
-            ...ev, Positives: positives, Reflections: reflections,
+            ...ev, Positives: positives, Reflections: reflections, ResultsMemo: resultsMemo,
             _baseUpdatedAt: ev.UpdatedAt || ''
         });
         const idx = allEventsData.findIndex(e => e.ID === ev.ID);
@@ -816,8 +887,9 @@ async function saveDetailFeedback() {
 
         await saveExperimentFeedbackEntries(saved);
 
-        toast('振り返りを保存しました', 'success');
+        toast('保存しました', 'success');
         renderDetail();
+        renderReflectionTab();
         renderFeedbackTimeline();
         renderStats();
         renderOverview();
@@ -828,8 +900,7 @@ async function saveDetailFeedback() {
             return;
         }
         toast('保存失敗: ' + e.message, 'error');
-        // 成功時は renderDetail() でボタンごと再生成されるため、失敗時のみ元へ戻す
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '振り返りを保存'; }
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; }
     }
 }
 
@@ -1135,6 +1206,17 @@ function switchSeriesTab(btn) {
     document.querySelectorAll('.expd-tab-pane').forEach(p => {
         p.classList.toggle('hidden', p.dataset.tabPane !== target);
     });
+}
+
+function switchDetailSubTab(btn) {
+    document.querySelectorAll('.detail-sub-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    const target = btn.dataset.subtab;
+    document.querySelectorAll('.detail-sub-pane').forEach(p => {
+        p.classList.toggle('hidden', p.dataset.subPane !== target);
+    });
+    if (target === 'attendance') renderAttendanceTab();
+    if (target === 'reflection') renderReflectionTab();
 }
 
 // ====== 新規イベント作成（イベント一覧モードから） ======
