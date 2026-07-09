@@ -17,6 +17,24 @@ const EXP_WIZARD_STEPS = [
     { label: '実施・その他', fields: ['flow', 'notes', 'slides'] }
 ];
 
+// 検索フィールド定義（search.js の createSearcher 用）。重要度順に並べる。
+// 複数行フィールドは行単位に分ける（マッチ理由バッジに「一致した行」を出せるように）。
+// 振り返りは JSON 生文字列ではなく本文テキストだけを検索対象にする。
+const EXP_SEARCH_FIELDS = [
+    { key: 'name', label: '実験名', weight: 100, get: e => [e.Name] },
+    { key: 'materials', label: '使用物品', weight: 60, get: e => String(e.Materials || '').split('\n') },
+    { key: 'prep', label: '準備・手順', weight: 40, get: e => [...String(e.Preparation || '').split('\n'), ...String(e.Flow || '').split('\n')] },
+    { key: 'notes', label: '備考', weight: 30, get: e => String(e.Notes || '').split('\n') },
+    { key: 'fb', label: '振り返り', weight: 20, get: e => [...parseFeedbackEntries(e.Positives), ...parseFeedbackEntries(e.Reflections)].map(f => f.text) }
+];
+const expSearcher = createSearcher(() => expData, EXP_SEARCH_FIELDS);
+
+function expSuggestSources() {
+    const names = [];
+    expData.forEach(e => { if (e.Name) names.push(e.Name); });
+    return [{ label: '実験名', values: names }];
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     bootPage('experiments', init);
 });
@@ -45,6 +63,16 @@ function _bindExpTableDelegation() {
 
 async function init() {
     _bindExpTableDelegation();
+
+    // 検索窓（デバウンス・サジェスト・キーボード操作は search.js が面倒を見る）
+    attachSearchBox(document.getElementById('exp-search'), {
+        onSearch: (v) => {
+            expSearchKw = (v || '').trim();
+            render();
+        },
+        suggestSources: expSuggestSources,
+        historyKey: 'experiments'
+    });
 
     const cached = api.loadCache('experiments');
     if (cached && cached.items) {
@@ -125,8 +153,9 @@ function switchExpTab(cat) {
     render();
 }
 
+// focusFromUrl（?focus= で一致しなかった時）から使う。通常の入力は attachSearchBox 経由。
 function onExpSearch() {
-    expSearchKw = (document.getElementById('exp-search').value || '').toLowerCase();
+    expSearchKw = (document.getElementById('exp-search').value || '').trim();
     render();
 }
 
@@ -135,12 +164,15 @@ function render() {
     document.getElementById('tab-cnt-show').textContent = expData.filter(e => e.Category === 'show').length;
     document.getElementById('tab-cnt-other').textContent = expData.filter(e => e.Category === 'other').length;
 
+    // キーワードは検索エンジンで照合（正規化・スコア・マッチ理由付き。search.js）
     let items;
+    let searchMeta = null;
     if (expSearchKw) {
-        items = expData.filter(e => {
-            const hay = [e.Name, e.Materials, e.Preparation, e.Flow, e.Notes, e.Reflections, e.Positives].filter(Boolean).join(' ').toLowerCase();
-            return hay.includes(expSearchKw);
-        });
+        const res = (expSearcher.search(expSearchKw) || []).sort((a, b) => b.score - a.score);
+        searchMeta = {};
+        res.forEach(r => { searchMeta[r.item.ID] = r; });
+        items = res.map(r => r.item);
+        announceSearchResult(`検索結果 ${items.length}件`);
     } else {
         items = expData.filter(e => (e.Category || 'other') === expCurrentTab);
     }
@@ -166,17 +198,27 @@ function render() {
     // 削除は管理者ログイン時のみ表示（誤タップ防止）。編集は全員に表示し、
     // タップ時に管理者認証を挟む（メンバーページと表示ルールを統一）
     const isAdmin = api.isAdmin();
+    const nq = searchMeta ? searchNormalize(expSearchKw) : '';
     tbody.innerHTML = items.map(e => {
         // 使用物品は1行に短縮（先頭項目＋他n点）。全文はポップアップ・詳細ページで見る
         const mats = (e.Materials || '').split('\n').map(s => s.trim()).filter(Boolean);
         const snippet = mats.length === 0 ? '-' : mats[0] + (mats.length > 1 ? ` 他${mats.length - 1}点` : '');
         const safeSlides = safeHttpUrl(e.SlidesURL);
         const fbCount = countFeedback(e);
+        // 検索中はマッチ部分をハイライトし、実験名以外でヒットした行には
+        // 「何に一致したか」バッジを添える
+        const nameHtml = searchMeta ? highlightText(e.Name || '(無題)', nq) : escapeHtml(e.Name || '(無題)');
+        const meta = searchMeta ? searchMeta[e.ID] : null;
+        let matchBadge = '';
+        if (meta && meta.match && meta.match.key !== 'name') {
+            const val = meta.match.value.length > 20 ? meta.match.value.slice(0, 20) + '…' : meta.match.value;
+            matchBadge = `<span class="match-badge" title="${escapeAttr(meta.match.label + 'に一致: ' + meta.match.value)}">${escapeHtml(meta.match.label)}: ${highlightText(val, nq)}</span>`;
+        }
         return `
             <tr class="clickable-row" data-id="${escapeAttr(e.ID)}" title="タップで概要を表示">
                 <td class="cell-name">
-                    <a href="experiment-detail.html?id=${encodeURIComponent(e.ID)}" data-action="open" style="color:inherit;text-decoration:none;">${escapeHtml(e.Name || '(無題)')}</a>
-                    ${fbCount > 0 ? `<span class="badge-fb-count" title="振り返り ${fbCount}件">${fbCount}件</span>` : ''}
+                    <a href="experiment-detail.html?id=${encodeURIComponent(e.ID)}" data-action="open" style="color:inherit;text-decoration:none;">${nameHtml}</a>
+                    ${fbCount > 0 ? `<span class="badge-fb-count" title="振り返り ${fbCount}件">${fbCount}件</span>` : ''}${matchBadge}
                 </td>
                 <td class="hide-mobile cell-snippet">${escapeHtml(snippet)}</td>
                 <td class="hide-mobile">${safeSlides ? `<a href="${escapeAttr(safeSlides)}" target="_blank" rel="noopener" data-action="slides" class="tbl-link">資料を開く</a>` : '-'}</td>

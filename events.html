@@ -25,7 +25,13 @@
     <main class="container">
         <div class="page-header">
             <h1 class="page-title" style="margin:0; flex:1;">予定</h1>
-            <input id="event-search" class="search-input" type="text" placeholder="タイトル・場所・発表者で検索" title="ショートカット: / キーで検索欄へ" oninput="onSearchChange()">
+            <div class="search-box" role="search">
+                <input id="event-search" class="search-input" type="search" placeholder="タイトル・場所・発表者で検索"
+                    title="ショートカット: / キーで検索欄へ" aria-label="予定を検索"
+                    role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="event-search-suggest"
+                    autocomplete="off">
+                <ul id="event-search-suggest" class="search-suggest" role="listbox" aria-label="検索候補" hidden></ul>
+            </div>
             <button class="btn btn-primary page-new-btn" onclick="openNewEventModal()" title="ショートカット: n キー">＋ 予定を追加</button>
         </div>
         <div class="page-filters">
@@ -45,7 +51,7 @@
             <div id="calendar"></div>
         </section>
 
-        <h3 id="event-list-heading" class="event-list-heading"></h3>
+        <h3 id="event-list-heading" class="event-list-heading" aria-live="polite"></h3>
         <div class="table-wrapper">
             <table class="data-table" id="events-table">
                 <thead>
@@ -76,6 +82,7 @@
     <script src="config.js"></script>
     <script src="api.js"></script>
     <script src="app.js"></script>
+    <script src="search.js"></script>
     <script src="vote-widget.js"></script>
     <script src="event-wizard.js"></script>
     <script src="script.js"></script>

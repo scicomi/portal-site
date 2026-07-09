@@ -94,6 +94,16 @@ async function init() {
 
     _bindEventTableDelegation();
 
+    // 検索窓（デバウンス・サジェスト・キーボード操作は search.js が面倒を見る）
+    attachSearchBox(document.getElementById('event-search'), {
+        onSearch: (v) => {
+            filterState.keyword = (v || '').trim();
+            renderEvents();
+        },
+        suggestSources: eventSuggestSources,
+        historyKey: 'events'
+    });
+
     // ?action=new はデータ読込を待たずに新規作成モーダルを開ける
     if (new URLSearchParams(location.search).get('action') === 'new') {
         history.replaceState(null, '', 'events.html');
@@ -222,9 +232,38 @@ async function refreshVotes() {
 }
 
 // ---- 検索・フィルタ ----
-function onSearchChange() {
-    filterState.keyword = (document.getElementById('event-search').value || '').toLowerCase();
-    renderEvents();
+
+// 検索フィールド定義（search.js の createSearcher 用）。重要度順に並べる。
+// 実験名・発表者は PartsList（JSON文字列）に入っているため normalizeParts（app.js）で展開する。
+const EVENT_SEARCH_FIELDS = [
+    { key: 'title', label: 'タイトル', weight: 100, get: e => [e.Title, e.Meeting_Number ? `第${e.Meeting_Number}回 ${e.Title || ''}` : ''] },
+    { key: 'location', label: '場所', weight: 80, get: e => [e.Location] },
+    {
+        key: 'person', label: '人', weight: 70, get: e => {
+            const out = [e.Admin_Kyoka, e.Admin_Houkoku];
+            normalizeParts(e.PartsList).forEach(p => out.push(...(p.presenters || [])));
+            return out;
+        }
+    },
+    { key: 'exp', label: '実験', weight: 50, get: e => normalizeParts(e.PartsList).map(p => p.name) },
+    { key: 'other', label: '備考', weight: 30, get: e => [e.Audience, e.Remarks, e.Belongings] }
+];
+const eventSearcher = createSearcher(() => eventsData, EVENT_SEARCH_FIELDS);
+
+// サジェスト候補（タイトル・場所・人名）。データは数百件規模なので都度組み立てで足りる。
+function eventSuggestSources() {
+    const titles = new Set(), locations = new Set(), people = new Set();
+    eventsData.forEach(e => {
+        if (e.Title) titles.add(e.Title);
+        if (e.Location) locations.add(e.Location);
+        [e.Admin_Kyoka, e.Admin_Houkoku].forEach(v => { if (v) people.add(v); });
+        normalizeParts(e.PartsList).forEach(p => (p.presenters || []).forEach(n => { if (n) people.add(n); }));
+    });
+    return [
+        { label: 'タイトル', values: [...titles] },
+        { label: '場所', values: [...locations] },
+        { label: '人', values: [...people] }
+    ];
 }
 function onCategoryFilter(cat) {
     filterState.category = cat;
@@ -243,24 +282,8 @@ function onPeriodFilter(period) {
     if (sel && sel.value !== period) sel.value = period;
     renderEvents();
 }
-/**
- * イベントの検索対象テキストを生成。
- * 実験名・担当者は PartsList（JSON文字列）に入っているのでパースして含める。
- */
-function eventSearchText(e) {
-    const parts = [e.Title, e.Location, e.Audience, e.Remarks, e.Belongings, e.Admin_Kyoka, e.Admin_Houkoku];
-    if (e.PartsList) {
-        try {
-            const list = parsePartsList(e.PartsList);
-            list.forEach(it => {
-                parts.push(it.name);
-                if (Array.isArray(it.presenters)) parts.push(...it.presenters);
-            });
-        } catch (_) {}
-    }
-    return parts.filter(Boolean).join(' ').toLowerCase();
-}
-
+// カテゴリ・期間の絞り込み（キーワードは renderEvents 側で検索エンジンに通す。
+// スコア順ソートとマッチ理由バッジに検索結果のメタ情報が要るため）。
 function applyFilters(events) {
     const today = todayISO();
     return events.filter(e => {
@@ -272,9 +295,6 @@ function applyFilters(events) {
             const fy = parseInt(filterState.period.slice(3));
             const eventFy = getFiscalYear(e.Date);
             if (eventFy !== fy) return false;
-        }
-        if (filterState.keyword) {
-            if (!eventSearchText(e).includes(filterState.keyword)) return false;
         }
         return true;
     });
@@ -456,8 +476,24 @@ function renderEvents() {
     const heading = document.getElementById('event-list-heading');
     const tbody = document.getElementById('events-tbody');
 
-    const filtered = applyFilters(eventsData);
+    // キーワードは検索エンジンで照合（正規化・スコア・マッチ理由付き）
+    const kw = (filterState.keyword || '').trim();
+    const searchRes = kw ? eventSearcher.search(kw) : null;
+    let searchMeta = null;
+    let source = eventsData;
+    if (searchRes) {
+        searchMeta = {};
+        searchRes.forEach(r => { searchMeta[r.item.ID] = r; });
+        source = searchRes.map(r => r.item);
+    }
+
+    const filtered = applyFilters(source);
     const sorted = filtered.slice().sort((a, b) => {
+        // 検索中は関連度スコア順、同点は従来の日付順
+        if (searchMeta) {
+            const d = (searchMeta[b.ID] ? searchMeta[b.ID].score : 0) - (searchMeta[a.ID] ? searchMeta[a.ID].score : 0);
+            if (d !== 0) return d;
+        }
         if (filterState.period !== 'upcoming') return (b.Date || '').localeCompare(a.Date || '');
         return (a.Date || '').localeCompare(b.Date || '');
     });
@@ -466,7 +502,9 @@ function renderEvents() {
     if (filterState.period.startsWith('fy_')) {
         periodLabel = filterState.period.slice(3) + '年度の予定';
     }
-    heading.textContent = `${periodLabel} (${sorted.length}件)`;
+    heading.textContent = searchMeta
+        ? `検索結果 (${sorted.length}件)`
+        : `${periodLabel} (${sorted.length}件)`;
 
     if (sorted.length === 0) {
         // 何を変えれば表示されるのかが分かるヒントを添える
@@ -488,11 +526,21 @@ function renderEvents() {
     // 必要な操作は実行時に管理者認証を挟む（各ページ共通ルール）
     const isAdmin = api.isAdmin();
     const today = todayISO();
+    const nq = searchMeta ? searchNormalize(kw) : '';
     tbody.innerHTML = sorted.map(ev => {
         const cat = getEventCategory(ev.Category);
         let displayTitle = ev.Title || '(無題)';
         if (cat.isMeeting && ev.Meeting_Number) {
             displayTitle = `第${ev.Meeting_Number}回 ${displayTitle}`;
+        }
+        // 検索中はマッチ部分をハイライトし、タイトル以外でヒットした行には
+        // 「何に一致したか」バッジを添える（結果が平坦に見えないように）
+        const titleHtml = searchMeta ? highlightText(displayTitle, nq) : escapeHtml(displayTitle);
+        const meta = searchMeta ? searchMeta[ev.ID] : null;
+        let matchBadge = '';
+        if (meta && meta.match && meta.match.key !== 'title') {
+            const val = meta.match.value.length > 20 ? meta.match.value.slice(0, 20) + '…' : meta.match.value;
+            matchBadge = `<span class="match-badge" title="${escapeAttr(meta.match.label + 'に一致: ' + meta.match.value)}">${escapeHtml(meta.match.label)}: ${highlightText(val, nq)}</span>`;
         }
         // 参加人数バッジ。今後の日程には回答0件でも常時表示し（最初の1票への導線）、
         // 分母（対象者数）を添える。タップでイベント詳細の参加状況セクションへ。
@@ -501,7 +549,7 @@ function renderEvents() {
         let voteBadge = '';
         if (isUpcoming && allVotesData !== null) {
             const eligibleCount = membersData.length > 0 ? voteEligibleMembers(membersData, ev).length : 0;
-            const label = eligibleCount > 0 ? `参加 ${vc.attend}/${eligibleCount}` : `参加 ${vc.attend}`;
+            const label = eligibleCount > 0 ? `${vc.attend} / ${eligibleCount}` : `${vc.attend}`;
             const noanswer = Math.max(0, eligibleCount - (vc.attend + vc.absent + vc.undecided));
             voteBadge = `<a class="vote-count-badge" href="event-series.html?event=${encodeURIComponent(ev.ID)}&vote=1" data-action="vote" title="参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}${eligibleCount > 0 ? `・未回答${noanswer}` : ''} — タップで出欠を回答">${label}</a>`;
         }
@@ -513,7 +561,7 @@ function renderEvents() {
                 </td>
                 <td>
                     <span class="cat-dot" style="color:${cat.bg};" title="${cat.short}">&#9679;</span>
-                    <a href="event-series.html?event=${encodeURIComponent(ev.ID)}" data-action="open" style="font-weight:600;color:inherit;text-decoration:none;">${escapeHtml(displayTitle)}</a>
+                    <a href="event-series.html?event=${encodeURIComponent(ev.ID)}" data-action="open" style="font-weight:600;color:inherit;text-decoration:none;">${titleHtml}</a>${matchBadge}
                 </td>
                 <td>${voteBadge}</td>
                 <td data-action-cell>

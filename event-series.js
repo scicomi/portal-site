@@ -315,7 +315,8 @@ function buildSeriesIndex() {
 function renderSeriesIndex() {
     const grid = document.getElementById('series-index-grid');
     if (!grid) return;
-    const q = (document.getElementById('series-index-search')?.value || '').toLowerCase().trim();
+    // かな・全角半角の揺れを吸収して照合する（search.js）
+    const q = searchNormalize(document.getElementById('series-index-search')?.value || '');
 
     let list = buildSeriesIndex();
     list = list.filter(s => {
@@ -324,7 +325,7 @@ function renderSeriesIndex() {
         const isOther = s.category === 'other';
         if (indexFilter === 'event' && isOther) return false;
         if (indexFilter === 'other' && !isOther) return false;
-        if (q && !(s.title.toLowerCase().includes(q) || s.location.toLowerCase().includes(q))) return false;
+        if (q && !(searchNormalize(s.title).includes(q) || searchNormalize(s.location).includes(q))) return false;
         return true;
     });
 
@@ -481,14 +482,14 @@ function openOccurrence(id) {
     if (detail) detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ---- 緊急連絡先・現地情報 ----
+// ---- 会場情報・緊急連絡先 ----
 
 // 選択中の開催回を優先し、無ければ同シリーズの他の回から補完する
 function findSafetyInfo() {
     const cur = currentEvent();
-    if (cur && (cur.Address || cur.EmergencyHospital || cur.EmergencyPolice)) return cur;
+    if (cur && (cur.Address || cur.LocationTel || cur.EmergencyHospital || cur.EmergencyPolice)) return cur;
     for (const ev of seriesEvents) {
-        if (ev.Address || ev.EmergencyHospital || ev.EmergencyPolice) return ev;
+        if (ev.Address || ev.LocationTel || ev.EmergencyHospital || ev.EmergencyPolice) return ev;
     }
     return null;
 }
@@ -500,23 +501,35 @@ function renderSafetyInfo() {
     card.classList.remove('hidden');
 
     const info = findSafetyInfo();
+    const ev = currentEvent();
+    const venueName = (ev && ev.Location) || '---';
+
     grid.innerHTML = `
-        <div class="series-safety-item" style="grid-column: 1 / -1;">
-            <span class="series-safety-label">&#x1F4CD; 住所</span>
-            <span class="series-safety-value">${info && info.Address ? escapeHtml(info.Address) : '---'}</span>
+        <div>
+            <div class="series-safety-group-title series-safety-group-title--plain">活動場所</div>
+            <table class="d1-table series-safety-table">
+                <tr><th>施設名</th><td>${escapeHtml(venueName)}</td></tr>
+                <tr><th>住所</th><td>${info && info.Address ? escapeHtml(info.Address) : '---'}</td></tr>
+                <tr><th>連絡先</th><td>${info ? formatTelLink(info.LocationTel) : '---'}</td></tr>
+            </table>
         </div>
-        <div class="series-safety-item">
-            <span class="series-safety-label">&#x1F3E5; 近隣の病院・診療所</span>
-            <span class="series-safety-value">${info ? formatTelLink(info.EmergencyHospital) : '---'}</span>
-        </div>
-        <div class="series-safety-item">
-            <span class="series-safety-label">&#x1F46E; 近隣の警察署</span>
-            <span class="series-safety-value">${info ? formatTelLink(info.EmergencyPolice) : '---'}</span>
+        <div>
+            <div class="series-safety-group-title">緊急連絡先</div>
+            <div class="series-safety-group">
+                <div class="series-safety-item">
+                    <span class="series-safety-label">&#x1F46E; 警察署</span>
+                    <span class="series-safety-value">${info ? formatTelLink(info.EmergencyPolice) : '---'}</span>
+                </div>
+                <div class="series-safety-item">
+                    <span class="series-safety-label">&#x1F3E5; 病院・診療所</span>
+                    <span class="series-safety-value">${info ? formatTelLink(info.EmergencyHospital) : '---'}</span>
+                </div>
+            </div>
         </div>
     `;
 }
 
-// ---- 現地情報のインライン編集（実験ネタページのセクション編集と同じパターン） ----
+// ---- 会場情報のインライン編集（実験ネタページのセクション編集と同じパターン） ----
 
 function editSafetyInfo() {
     const grid = document.getElementById('series-safety-grid');
@@ -524,19 +537,29 @@ function editSafetyInfo() {
     const info = findSafetyInfo() || {};
 
     grid.innerHTML = `
-        <div class="e1-group" style="grid-column: 1 / -1;">
-            <label class="e1-label">住所</label>
-            <input id="series-safety-address-input" class="e1-input" type="text" value="${escapeAttr(info.Address || '')}" placeholder="住所（例: 秋田県大館市桜町1-1）">
+        <div class="series-safety-edit-group">
+            <div class="series-safety-group-title series-safety-group-title--plain">活動場所</div>
+            <div class="e1-group">
+                <label class="e1-label">住所</label>
+                <input id="series-safety-address-input" class="e1-input" type="text" value="${escapeAttr(info.Address || '')}" placeholder="住所（例: 秋田県大館市桜町1-1）">
+            </div>
+            <div class="e1-group">
+                <label class="e1-label">連絡先（Tel）</label>
+                <input id="series-safety-tel-input" class="e1-input" type="text" value="${escapeAttr(info.LocationTel || '')}" placeholder="例: 03-1234-5678">
+            </div>
         </div>
-        <div class="e1-group">
-            <label class="e1-label">近隣の病院・診療所</label>
-            <input id="series-safety-hospital-input" class="e1-input" type="text" value="${escapeAttr(info.EmergencyHospital || '')}" placeholder="○○診療所：0186-45-0223">
+        <div class="series-safety-edit-group">
+            <div class="series-safety-group-title">緊急連絡先</div>
+            <div class="e1-group">
+                <label class="e1-label">警察署</label>
+                <input id="series-safety-police-input" class="e1-input" type="text" value="${escapeAttr(info.EmergencyPolice || '')}" placeholder="○○警察署：018-852-4100">
+            </div>
+            <div class="e1-group">
+                <label class="e1-label">病院・診療所</label>
+                <input id="series-safety-hospital-input" class="e1-input" type="text" value="${escapeAttr(info.EmergencyHospital || '')}" placeholder="○○診療所：0186-45-0223">
+            </div>
         </div>
-        <div class="e1-group">
-            <label class="e1-label">近隣の警察署</label>
-            <input id="series-safety-police-input" class="e1-input" type="text" value="${escapeAttr(info.EmergencyPolice || '')}" placeholder="○○警察署：018-852-4100">
-        </div>
-        <div class="action-buttons" style="grid-column: 1 / -1;">
+        <div class="action-buttons">
             <button type="button" class="btn btn-text" onclick="renderSafetyInfo()">キャンセル</button>
             <button type="button" class="btn btn-primary-solid" style="width:auto;" onclick="saveSafetyInfo()">保存</button>
         </div>
@@ -547,19 +570,20 @@ async function saveSafetyInfo() {
     const ev = currentEvent();
     if (!ev) return;
     const address = document.getElementById('series-safety-address-input')?.value.trim() || '';
+    const tel = document.getElementById('series-safety-tel-input')?.value.trim() || '';
     const hospital = document.getElementById('series-safety-hospital-input')?.value.trim() || '';
     const police = document.getElementById('series-safety-police-input')?.value.trim() || '';
 
     try {
         const saved = await api.save('events', {
-            ...ev, Address: address, EmergencyHospital: hospital, EmergencyPolice: police,
+            ...ev, Address: address, LocationTel: tel, EmergencyHospital: hospital, EmergencyPolice: police,
             _baseUpdatedAt: ev.UpdatedAt || ''
         });
         const idx = allEventsData.findIndex(e => e.ID === ev.ID);
         if (idx >= 0) allEventsData[idx] = saved;
         api.saveCache('events', allEventsData);
         filterSeries();
-        toast('現地情報を保存しました', 'success');
+        toast('会場情報を保存しました', 'success');
         renderSafetyInfo();
     } catch (e) {
         if (String(e.message).includes('conflict')) {
@@ -696,7 +720,7 @@ function renderDetail() {
             <tr><th>日にち</th><td>${dateStr}${isUpcoming ? ' <span class="occ-badge occ-upcoming">開催予定</span>' : ''}</td></tr>
             ${ev.TimeStart && ev.TimeEnd ? `<tr><th>時間</th><td>${timeStr}</td></tr>` : ''}
             ${!isMeeting && (ev.GatherTime || ev.DismissTime) ? `<tr><th>集合・解散</th><td>${gatherDismiss}</td></tr>` : ''}
-            ${ev.Location ? `<tr><th>場所</th><td>${escapeHtml(ev.Location)}</td></tr>` : ''}
+            ${ev.Location ? `<tr><th>場所</th><td><span class="exp-link-inline" style="cursor:pointer;" onclick="goToVenueInfoTab()" title="会場情報タブへ">${escapeHtml(ev.Location)}</span></td></tr>` : ''}
             ${!isMeeting && ev.Audience ? `<tr><th>対象・人数</th><td>${escapeHtml(ev.Audience)}</td></tr>` : ''}
             ${!isMeeting && parts.length > 0 ? `<tr><th>実験内容・発表者</th><td>${expHtml}</td></tr>` : ''}
             ${!isMeeting && ev.Logistics ? `<tr><th>スケジュール・運搬</th><td style="white-space:pre-wrap;">${escapeHtml(ev.Logistics)}</td></tr>` : ''}
@@ -847,16 +871,20 @@ function renderAttendanceListBody() {
         .slice()
         .sort((a, b) => nameOf(a.memberId).localeCompare(nameOf(b.memberId), 'ja'));
     const showDetails = attendanceFilter !== 'noAnswer';
-    const colCount = showDetails ? 4 : 2;
+    const colCount = showDetails ? 5 : 3;
 
     const rowsHtml = items.length === 0
         ? `<tr><td colspan="${colCount}" class="empty-state">該当者はいません</td></tr>`
         : items.map(v => {
             const m = memberOf(v.memberId);
+            const role = m ? memberRoleOf(m) : '';
+            const roleInfo = role ? getRoleDisplay(role) : null;
+            const roleBadge = roleInfo ? `<span class="cat-badge" style="background:${roleInfo.color};">${escapeHtml(role)}</span>` : '';
             return `
-            <tr>
+            <tr data-id="${escapeAttr(v.memberId)}" class="clickable-row" title="タップで詳細を表示">
                 <td>${escapeHtml(m && m.StudentID ? m.StudentID : '')}</td>
-                <td>${escapeHtml(nameOf(v.memberId))}</td>
+                <td class="cell-name">${escapeHtml(nameOf(v.memberId))}</td>
+                <td class="cell-role">${roleBadge}</td>
                 ${showDetails ? `<td>${v.note ? escapeHtml(v.note) : ''}</td><td>${v.updatedAt ? voteTimeShort(v.updatedAt) : ''}</td>` : ''}
             </tr>`;
         }).join('');
@@ -864,10 +892,13 @@ function renderAttendanceListBody() {
     body.innerHTML = `
         ${tabsHtml}
         <table class="data-table">
-            <thead><tr><th>学籍番号</th><th>名前</th>${showDetails ? '<th>メモ</th><th>回答日時</th>' : ''}</tr></thead>
+            <thead><tr><th>学籍番号</th><th>名前</th><th>役職</th>${showDetails ? '<th>メモ</th><th>回答日時</th>' : ''}</tr></thead>
             <tbody>${rowsHtml}</tbody>
         </table>
     `;
+    body.querySelectorAll('tr[data-id]').forEach(row => {
+        row.addEventListener('click', () => openMemberDetailModal(row.dataset.id, membersCache, { hideFurigana: true }));
+    });
 }
 
 // ---- 振り返り記入サブタブ ----
@@ -1301,6 +1332,12 @@ function switchSeriesTab(btn) {
     document.querySelectorAll('.expd-tab-pane').forEach(p => {
         p.classList.toggle('hidden', p.dataset.tabPane !== target);
     });
+}
+
+// 「場所」の値タップで会場情報タブへ（住所・連絡先・緊急連絡先はそちらにまとまっている）
+function goToVenueInfoTab() {
+    const btn = document.querySelector('.expd-tab[data-tab="local-info"]');
+    if (btn) switchSeriesTab(btn);
 }
 
 function switchDetailSubTab(btn) {
