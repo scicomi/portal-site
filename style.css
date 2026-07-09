@@ -1429,6 +1429,17 @@ textarea:focus {
     border-bottom: none;
     margin-bottom: var(--space-sm);
 }
+.unanswered-flag {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 10px;
+    border-radius: var(--radius-full);
+    background: var(--danger-color);
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 700;
+    vertical-align: middle;
+}
 .dash-card-title {
     display: flex; justify-content: space-between; align-items: center;
     margin: 0 0 var(--space-md) 0; padding-bottom: var(--space-sm);
@@ -1826,8 +1837,8 @@ textarea:focus {
 .data-table tbody tr.clickable-row:hover { background: var(--primary-subtle); }
 .data-table tbody tr.clickable-row:active { background: var(--bg-interactive); }
 
-.cell-name { font-weight: 600; white-space: nowrap; }
-.cell-name .member-name-text { color: var(--text-color); }
+.cell-name { font-weight: 600; white-space: nowrap; color: var(--text-color); }
+.cell-role { white-space: nowrap; }
 .cell-snippet {
     max-width: 200px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1962,7 +1973,9 @@ textarea:focus {
 .bot-container {
     max-width: 800px;
     margin: 0 auto;
-    height: calc(100vh - 90px);
+    /* --header-h は app.js が実際のヘッダー高さを測って設定する（固定値だと折り返しや
+       管理者バッジの有無でヘッダーの高さが変わった時にはみ出す） */
+    height: calc(100vh - var(--header-h, 90px));
     display: flex;
     flex-direction: column;
     padding: 0;
@@ -2334,7 +2347,6 @@ textarea:focus {
 
 /* Bot mobile */
 @media (max-width: 768px) {
-    .bot-container { height: calc(100vh - 80px); }
     .bot-msg { max-width: 95%; }
     .bot-messages { padding: 14px; gap: 12px; }
     .bot-input-area { padding: 10px 14px; }
@@ -3161,15 +3173,6 @@ textarea:focus {
 }
 
 /* ========== Furigana Display ========== */
-.member-furigana {
-    display: block;
-    font-size: 0.6rem;
-    color: var(--text-hint);
-    line-height: 1.2;
-    letter-spacing: 0.05em;
-    font-weight: 400;
-}
-
 /* ========== Experiment Detail Tabs ========== */
 .expd-tab-bar {
     display: flex;
@@ -3584,13 +3587,37 @@ textarea:focus {
     flex: 1;
 }
 .series-safety-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.series-safety-group-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #991b1b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+}
+/* 活動場所は緊急連絡先と違い危険情報ではないので、赤ではなく通常の見出し色にする */
+.series-safety-group-title--plain {
+    color: var(--text-label);
+}
+.series-safety-table {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm, 6px);
+    padding: 0 12px;
+}
+.series-safety-group {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 10px;
 }
-@media (max-width: 600px) {
-    .series-safety-grid { grid-template-columns: 1fr; }
+.series-safety-edit-group {
+    margin-bottom: 14px;
 }
+.series-safety-edit-group .e1-group { margin-bottom: 10px; }
 .series-safety-item {
     background: white;
     border: 1px solid #fee2e2;
@@ -3827,21 +3854,18 @@ textarea:focus {
     font-weight: 700;
 }
 
-/* --- イベント一覧: 参加人数バッジ --- */
+/* --- イベント一覧: 参加者数（表の列。バッジではなく素の数値表示） --- */
 .vote-count-badge {
     display: inline-block;
-    margin-left: 6px;
-    padding: 1px 8px;
-    border-radius: var(--radius-full);
-    background: #e1f5ee;
-    color: #085041;
-    font-size: 0.72rem;
+    font-size: 0.9rem;
     font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
     white-space: nowrap;
 }
-/* バッジはイベント詳細の参加状況セクションへのリンク（タップで出欠回答） */
+/* リンクはイベント詳細の参加状況セクションへ（タップで出欠回答） */
 a.vote-count-badge { text-decoration: none; cursor: pointer; }
-a.vote-count-badge:hover { background: #c9ecdf; }
+a.vote-count-badge:hover { color: var(--primary-color); text-decoration: underline; }
 /* ポップアップ内のリンクボタン（<a class="btn">）は下線を消す */
 .action-buttons a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 
@@ -4244,4 +4268,113 @@ button.wizard-step-dot:hover:not(.active) {
 }
 .copy-cell:hover .copy-icon {
     opacity: 0.85;
+}
+
+/* ============================================================
+   検索（search.js: サジェスト・ハイライト・マッチ理由バッジ）
+   ============================================================ */
+
+/* 検索窓ラッパー。サジェストの位置基準になる（.search-input の flex 挙動を引き継ぐ） */
+.search-box {
+    position: relative;
+    flex: 1;
+    max-width: 400px;
+}
+.search-box .search-input {
+    width: 100%;
+    max-width: none;
+}
+
+/* サジェストドロップダウン */
+.search-suggest {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 60;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+    max-height: 320px;
+    overflow-y: auto;
+}
+.search-suggest-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+.search-suggest-item:hover,
+.search-suggest-item.active {
+    background: var(--primary-subtle);
+}
+.search-suggest-type {
+    flex: 0 0 auto;
+    font-size: 0.7rem;
+    color: var(--text-label);
+    background: var(--bg-muted);
+    border-radius: var(--radius-full);
+    padding: 1px 8px;
+}
+.search-suggest-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* マッチ部分のハイライト。色だけに頼らず下線も付ける（WCAG 1.4.1） */
+mark.search-hit {
+    background: #fff3bf;
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
+/* タイトル以外でヒットした行の「何に一致したか」バッジ */
+.match-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 8px;
+    font-size: 0.72rem;
+    color: var(--text-label);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-full);
+    vertical-align: middle;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* スクリーンリーダー専用テキスト（aria-live の件数アナウンス用） */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+    .search-box {
+        max-width: 100%;
+        width: 100%;
+    }
 }

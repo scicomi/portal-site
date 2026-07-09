@@ -825,8 +825,8 @@ function deleteResource(resource, id) {
 
 const EVENTS_HEADERS = [
   'ID', 'Date', 'DateEnd', 'Title', 'Category', 'Location', 'Audience',
-  // 現地情報（住所・緊急連絡先）。シリーズページ（event-series.html）で表示する。
-  'Address', 'EmergencyHospital', 'EmergencyPolice',
+  // 会場情報（住所・連絡先・緊急連絡先）。シリーズページ（event-series.html）の「会場情報」タブで表示する。
+  'Address', 'LocationTel', 'EmergencyHospital', 'EmergencyPolice',
   'TimeStart', 'TimeEnd', 'GatherTime', 'DismissTime', 'MeetingNumber', 'PartsList',
   'AdminKyoka', 'AdminHoukoku', 'KyokaDeadline', 'HoukokuDeadline',
   // 出欠回答の締切（任意・YYYY-MM-DD）。未設定ならイベント最終日23:59まで回答可。

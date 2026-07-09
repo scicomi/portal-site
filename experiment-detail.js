@@ -158,11 +158,12 @@ function renderFeedback() {
         items = items.filter(f => f.type === feedbackFilter);
     }
 
-    const kw = (document.getElementById('feedback-search')?.value || '').toLowerCase();
+    // かな・全角半角の揺れを吸収して照合する（search.js）
+    const kw = searchNormalize(document.getElementById('feedback-search')?.value || '');
     if (kw) {
         items = items.filter(f =>
-            (f.text || '').toLowerCase().includes(kw) ||
-            (f.eventTitle || '').toLowerCase().includes(kw)
+            searchNormalize(f.text).includes(kw) ||
+            searchNormalize(f.eventTitle).includes(kw)
         );
     }
 

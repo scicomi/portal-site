@@ -20,7 +20,13 @@
 
         <div class="page-section-actions">
             <select id="fiscal-year-select" class="e1-input" style="width:auto; padding:6px 12px;" onchange="onFiscalYearChange()"></select>
-            <input id="member-search" class="search-input" type="text" placeholder="名前・役職で検索" oninput="onMemberSearch()" style="flex:1;">
+            <div class="search-box" role="search">
+                <input id="member-search" class="search-input" type="search" placeholder="名前・役職で検索"
+                    aria-label="メンバーを検索"
+                    role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="member-search-suggest"
+                    autocomplete="off">
+                <ul id="member-search-suggest" class="search-suggest" role="listbox" aria-label="検索候補" hidden></ul>
+            </div>
         </div>
 
         <!-- 区分と学年は1行に統合（フィルタだけで画面上部を占有しないように） -->
@@ -74,6 +80,7 @@
     <script src="config.js"></script>
     <script src="api.js"></script>
     <script src="app.js"></script>
+    <script src="search.js"></script>
     <script src="members.js"></script>
 </body>
 </html>

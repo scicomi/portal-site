@@ -136,8 +136,10 @@ async function refreshData(isManual = false) {
     }
 }
 
+// かな・全角半角の揺れを吸収して照合する（search.js の searchNormalize）。
+// このページは検索語自体が機微情報になり得るため、履歴・サジェストは付けない。
 function onPwSearch() {
-    pwSearchKw = (document.getElementById('pw-search').value || '').toLowerCase();
+    pwSearchKw = searchNormalize(document.getElementById('pw-search').value || '');
     renderPasswords();
 }
 
@@ -173,7 +175,7 @@ function renderPasswords() {
     if (pwSearchKw) {
         items = items.filter(p => {
             const catLabel = (PW_CATS[p.Category] || {}).label || '';
-            const hay = [p.SiteName, p.URL, p.LoginID, p.Note, catLabel].filter(Boolean).join(' ').toLowerCase();
+            const hay = searchNormalize([p.SiteName, p.URL, p.LoginID, p.Note, catLabel].filter(Boolean).join(' '));
             return hay.includes(pwSearchKw);
         });
     }

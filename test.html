@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>search.js テスト | SciComi Portal</title>
+    <style>
+        body { font-family: sans-serif; margin: 24px; }
+        h1 { font-size: 1.2rem; }
+        #summary { font-weight: bold; margin: 12px 0; font-size: 1.05rem; }
+        #summary.ok { color: #1a7f37; }
+        #summary.ng { color: #c0392b; }
+        li { margin: 3px 0; font-size: 0.9rem; }
+        li.pass { color: #1a7f37; }
+        li.fail { color: #c0392b; font-weight: bold; }
+        code { background: #f5f5f5; padding: 1px 4px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>search.js ユニットテスト（ブラウザで開くだけで実行）</h1>
+    <div id="summary">実行中...</div>
+    <ul id="results"></ul>
+
+    <!-- テスト用の検索窓（attachSearchBox の DOM テストに使う） -->
+    <div class="search-box" style="max-width:300px;">
+        <input id="t-search" type="search" aria-controls="t-suggest" autocomplete="off">
+        <ul id="t-suggest" role="listbox" hidden></ul>
+    </div>
+
+    <script src="app.js"></script>
+    <script src="search.js"></script>
+    <script>
+        const results = [];
+        function report(name, ok, detail) {
+            results.push({ name, ok, detail: detail || '' });
+            const li = document.createElement('li');
+            li.className = ok ? 'pass' : 'fail';
+            li.textContent = (ok ? '✔ ' : '✘ ') + name + (ok ? '' : ' — ' + detail);
+            document.getElementById('results').appendChild(li);
+        }
+        function assertEq(name, actual, expected) {
+            const ok = actual === expected;
+            report(name, ok, ok ? '' : `期待: ${JSON.stringify(expected)} / 実際: ${JSON.stringify(actual)}`);
+        }
+        function assertTrue(name, cond, detail) {
+            report(name, !!cond, cond ? '' : (detail || '条件が false'));
+        }
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+        async function run() {
+            // ====== 段階1: searchNormalize ======
+            assertEq('カタカナ→ひらがな', searchNormalize('キョウシツ'), 'きょうしつ');
+            assertEq('全角英数→半角小文字', searchNormalize('Ａ１２３'), 'a123');
+            assertEq('半角カナ→ひらがな（濁点合成込み）', searchNormalize('ｻｲｴﾝｽｼｮｰ'), 'さいえんすしょー');
+            assertEq('長音「ー」が壊れない', searchNormalize('ラーメン'), 'らーめん');
+            assertEq('中黒「・」が壊れない', searchNormalize('実験・工作'), '実験・工作');
+            assertEq('空白の正規化', searchNormalize('  foo　 bar '), 'foo bar');
+            assertEq('null 安全', searchNormalize(null), '');
+
+            // ====== 段階6: highlightText ======
+            assertEq('カナ違いでも正しい範囲をハイライト',
+                highlightText('サイエンス実験', searchNormalize('さいえんす')),
+                '<mark class="search-hit">サイエンス</mark>実験');
+            assertEq('全角データ×半角クエリのハイライト',
+                highlightText('Ａ１２３Ｂ', searchNormalize('a123')),
+                '<mark class="search-hit">Ａ１２３</mark>Ｂ');
+            const xss = highlightText('<script>alert(1)<\/script>abc', 'abc');
+            assertTrue('XSS: タグがエスケープされる', xss.indexOf('&lt;script&gt;') >= 0 && xss.indexOf('<script>') < 0, xss);
+            assertTrue('XSS: マッチ部はハイライトされる', xss.indexOf('<mark class="search-hit">abc</mark>') >= 0, xss);
+            assertEq('クエリ空なら escape のみ', highlightText('a<b', ''), 'a&lt;b');
+            assertEq('複数マッチ', highlightText('abcabc', 'abc'),
+                '<mark class="search-hit">abc</mark><mark class="search-hit">abc</mark>');
+
+            // ====== 段階2: createSearcher スコアリング ======
+            let data = [
+                { ID: '1', Title: '実験教室', Remarks: '' },
+                { ID: '2', Title: 'ミーティング', Remarks: '実験の話をする' },
+                { ID: '3', Title: '工作会', Remarks: '' }
+            ];
+            const fields = [
+                { key: 'title', label: 'タイトル', weight: 100, get: e => [e.Title] },
+                { key: 'remarks', label: '備考', weight: 30, get: e => [e.Remarks] }
+            ];
+            const searcher = createSearcher(() => data, fields);
+
+            const res1 = searcher.search('実験');
+            assertEq('ヒット件数', res1.length, 2);
+            const byId = {};
+            res1.forEach(r => { byId[r.item.ID] = r; });
+            assertEq('タイトル前方一致のスコア (100×3)', byId['1'].score, 300);
+            assertEq('備考前方一致のスコア (30×3)', byId['2'].score, 90);
+            assertTrue('タイトル一致が備考一致より上位', byId['1'].score > byId['2'].score);
+            assertEq('完全一致は ×5', searcher.search('実験教室')[0].score, 500);
+            assertEq('マッチ理由: 備考', byId['2'].match.key, 'remarks');
+            assertEq('マッチ理由: タイトル', byId['1'].match.key, 'title');
+            assertEq('空クエリは null', searcher.search(''), null);
+            assertEq('漢字データはカナ読みで検索できない（仕様）', searcher.search('ジッケン').length, 0);
+            data.push({ ID: '4', Title: 'さいえんすしょー', Remarks: '' });
+            assertEq('ひらがなデータ×カタカナクエリ', searcher.search('サイエンスショー').length, 1);
+
+            // WeakMap キャッシュ: オブジェクト差し替えで即反映されるか
+            data[0] = { ID: '1', Title: '化学教室', Remarks: '' };
+            assertEq('データ差し替え後に旧タイトルでヒットしない', searcher.search('実験教室').length, 0);
+            assertEq('データ差し替え後に新タイトルでヒットする', searcher.search('化学教室').length, 1);
+
+            // ====== 段階8: パフォーマンス（1000件） ======
+            const big = [];
+            for (let i = 0; i < 1000; i++) {
+                big.push({ ID: 'x' + i, Title: (i % 3 === 0 ? '実験' : 'イベント') + 'その' + i, Remarks: 'メモ'.repeat(20) + i });
+            }
+            const bigSearcher = createSearcher(() => big, fields);
+            let t0 = performance.now();
+            bigSearcher.search('実験');           // 初回 = キャッシュ構築込み
+            const buildMs = performance.now() - t0;
+            t0 = performance.now();
+            const bigRes = bigSearcher.search('実験');  // 2回目 = キャッシュ済み
+            const cachedMs = performance.now() - t0;
+            assertTrue(`1000件 初回検索 < 200ms (実測 ${buildMs.toFixed(1)}ms)`, buildMs < 200);
+            assertTrue(`1000件 キャッシュ済み検索 < 50ms (実測 ${cachedMs.toFixed(1)}ms)`, cachedMs < 50);
+            assertEq('1000件の正答数 (334件)', bigRes.length, 334);
+
+            // ====== 段階4・5・10: attachSearchBox（サジェスト + キーボード + ARIA） ======
+            localStorage.removeItem('scicomi_search_history_test');
+            const input = document.getElementById('t-search');
+            let lastQuery = null;
+            attachSearchBox(input, {
+                onSearch: v => { lastQuery = v; },
+                suggestSources: () => [{ label: 'タイトル', values: ['実験教室', '実験ショー', '工作会'] }],
+                historyKey: 'test',
+                debounceMs: 30
+            });
+            input.focus();
+            input.value = '実験';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            await sleep(120);   // デバウンス待ち
+            assertEq('デバウンス後に onSearch が呼ばれる', lastQuery, '実験');
+            const listEl = document.getElementById('t-suggest');
+            assertTrue('サジェストが表示される', !listEl.hidden && listEl.children.length === 2,
+                `hidden=${listEl.hidden} children=${listEl.children.length}`);
+            assertEq('combobox の aria-expanded が更新される', input.getAttribute('aria-expanded'), 'true');
+
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+            const opt0 = listEl.children[0];
+            assertEq('↓キーで候補選択（aria-selected）', opt0.getAttribute('aria-selected'), 'true');
+            assertEq('aria-activedescendant が候補を指す', input.getAttribute('aria-activedescendant'), opt0.id);
+
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            assertEq('Enter で候補が確定する', input.value, '実験教室');
+            assertEq('確定した語で onSearch が呼ばれる', lastQuery, '実験教室');
+            assertTrue('サジェストが閉じる', listEl.hidden);
+            const hist = JSON.parse(localStorage.getItem('scicomi_search_history_test') || '[]');
+            assertEq('検索履歴に保存される', hist[0], '実験教室');
+
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            assertEq('Esc で入力がクリアされる', input.value, '');
+            assertEq('クリア時に onSearch("") が呼ばれる', lastQuery, '');
+
+            // ====== 段階9: ログアウトで履歴が消えるか（キー掃除ロジックの単体確認） ======
+            localStorage.setItem('scicomi_search_history_events', '["a"]');
+            Object.keys(localStorage)
+                .filter(k => k.indexOf('scicomi_search_history_') === 0)
+                .forEach(k => localStorage.removeItem(k));
+            assertTrue('scicomi_search_history_* が全て消える',
+                Object.keys(localStorage).every(k => k.indexOf('scicomi_search_history_') !== 0));
+
+            // ====== 集計 ======
+            const passed = results.filter(r => r.ok).length;
+            const failed = results.length - passed;
+            const el = document.getElementById('summary');
+            el.textContent = `${results.length} 件中 ${passed} 件成功 / ${failed} 件失敗`;
+            el.className = failed === 0 ? 'ok' : 'ng';
+            window.__testDone = true;
+            window.__testResults = results;
+        }
+        run().catch(e => {
+            const el = document.getElementById('summary');
+            el.textContent = '実行エラー: ' + e.message;
+            el.className = 'ng';
+            window.__testDone = true;
+            window.__testError = String(e.stack || e);
+        });
+    </script>
+</body>
+</html>

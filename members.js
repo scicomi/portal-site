@@ -40,6 +40,28 @@ function isGradStudent(m) {
 
 // 役職の導出は app.js の memberRoleOf を使用
 
+// 検索フィールド定義（search.js の createSearcher 用）。重要度順に並べる。
+// Furigana を含めるので「やまだ」等の読みでも Name にたどり着ける。
+const MEMBER_SEARCH_FIELDS = [
+    { key: 'name', label: '名前', weight: 100, get: m => [m.Name, m.Furigana] },
+    { key: 'role', label: '役職', weight: 70, get: m => [memberRoleOf(m)] },
+    { key: 'attr', label: '所属', weight: 50, get: m => [m.Affiliation, m.StudentID] },
+    { key: 'note', label: '備考', weight: 30, get: m => [m.Note, m.Email, m.Extension] }
+];
+const memberSearcher = createSearcher(() => membersData, MEMBER_SEARCH_FIELDS);
+
+function memberSuggestSources() {
+    const names = new Set(), affils = new Set();
+    membersData.forEach(m => {
+        if (m.Name) names.add(m.Name);
+        if (m.Affiliation) affils.add(m.Affiliation);
+    });
+    return [
+        { label: '名前', values: [...names] },
+        { label: '所属', values: [...affils] }
+    ];
+}
+
 function deriveCategoryFromRole(role) {
     if (role === 'アドバイザー') return 'adviser';
     if (role === 'コーディネーター') return 'coordinator';
@@ -63,7 +85,7 @@ function _bindMemberTableDelegation() {
         if (e.target.closest('[data-action-cell]')) return;
         // 行タップで詳細ポップアップを開く（全行共通）
         const row = e.target.closest('tr[data-id][data-detail]');
-        if (row) openMemberDetailModal(row.dataset.id);
+        if (row) openMemberDetailModal(row.dataset.id, membersData, { onEdit: openMemberWizard });
     });
 }
 
@@ -74,6 +96,16 @@ document.addEventListener('DOMContentLoaded', () => {
 async function init() {
     bindOverlayClose(document.getElementById('year-copy-modal'), closeYearCopyModal);
     _bindMemberTableDelegation();
+
+    // 検索窓（デバウンス・サジェスト・キーボード操作は search.js が面倒を見る）
+    attachSearchBox(document.getElementById('member-search'), {
+        onSearch: (v) => {
+            memberSearchKw = (v || '').trim();
+            renderMembers();
+        },
+        suggestSources: memberSuggestSources,
+        historyKey: 'members'
+    });
 
     const cached = api.loadCache('members');
     if (cached && cached.items) {
@@ -221,11 +253,6 @@ function sortStudents(list) {
     });
 }
 
-function onMemberSearch() {
-    memberSearchKw = (document.getElementById('member-search').value || '').toLowerCase();
-    renderMembers();
-}
-
 function getMemberFiscalYear(m) {
     if (m.FiscalYear) return parseInt(m.FiscalYear);
     return currentFiscalYear();
@@ -261,22 +288,22 @@ function renderMembers() {
         base = fyMembers;
     }
 
-    if (memberSearchKw) {
-        base = base.filter(m => {
-            const role = memberRoleOf(m);
-            const hay = [m.Name, m.Furigana, role, m.Affiliation, m.StudentID, m.Note, m.Email, m.Extension].filter(Boolean).join(' ').toLowerCase();
-            return hay.includes(memberSearchKw);
-        });
+    // キーワードは検索エンジンで照合（かな・全角半角の揺れを吸収。search.js）。
+    // メンバー一覧は学年・役職の並び順自体に意味があるため、スコア順ソートはしない。
+    const nq = memberSearchKw ? searchNormalize(memberSearchKw) : '';
+    if (nq) {
+        base = base.filter(m => memberSearcher.matchItem(m, nq));
     }
 
     // 学生タブは学番サイクル順、コーディネーター・アドバイザーは役職→名前順
     const sorted = roleFilter === 'member' ? sortStudents(base) : sortByRoleThenName(base);
+    if (nq) announceSearchResult(`検索結果 ${sorted.length}件`);
 
     const thead = document.getElementById('members-thead');
     const tbody = document.getElementById('members-tbody');
     const isAdmin = api.isAdmin();
     const isStaffTab = roleFilter === 'staff';
-    const colCount = isStaffTab ? 4 : 3;
+    const colCount = isStaffTab ? 5 : 4;
 
     document.querySelectorAll('.admin-only').forEach(el => {
         el.style.display = isAdmin ? 'inline-block' : 'none';
@@ -284,8 +311,8 @@ function renderMembers() {
 
     if (thead) {
         thead.innerHTML = isStaffTab
-            ? `<tr><th>教職員番号</th><th>名前</th><th>メールアドレス</th><th style="width:1px;"></th></tr>`
-            : `<tr><th>学籍番号</th><th>名前</th><th style="width:1px;"></th></tr>`;
+            ? `<tr><th>教職員番号</th><th>名前</th><th>役職</th><th>メールアドレス</th><th style="width:1px;"></th></tr>`
+            : `<tr><th>学籍番号</th><th>名前</th><th>役職</th><th style="width:1px;"></th></tr>`;
     }
 
     if (sorted.length === 0) {
@@ -297,19 +324,19 @@ function renderMembers() {
             ${hasFilter ? '<div class="empty-hint">検索キーワードや絞り込みを変更してみてください</div>' : ''}
         </td></tr>`;
     } else {
+        // 検索中はマッチ部分をハイライト表示（search.js の highlightText は escape 込み）
+        const hl = v => nq ? highlightText(v || '', nq) : escapeHtml(v || '');
         tbody.innerHTML = sorted.map(m => {
             const role = memberRoleOf(m);
             const roleInfo = role ? getRoleDisplay(role) : null;
             const roleBadge = roleInfo
-                ? `<span class="cat-badge" style="background:${roleInfo.color};margin-left:6px;font-size:0.7rem;">${escapeHtml(role)}</span>`
+                ? `<span class="cat-badge" style="background:${roleInfo.color};">${escapeHtml(role)}</span>`
                 : '';
-            // ふりがな行は無い行でも高さ分の空行を確保する（無いと名前の縦位置が行ごとにずれて見える）
-            const nameCell = `
-                <td class="cell-name">
-                    <span class="member-furigana">${m.Furigana ? escapeHtml(m.Furigana) : '&nbsp;'}</span>
-                    <span class="member-name-text">${escapeHtml(m.Name || '')}</span>
-                    ${roleBadge}
-                </td>`;
+            // 学籍番号・名前・役職を別セルに分けておくと、範囲選択してExcelにコピペした時に
+            // 列がきれいに分かれる（1セルに複数行を詰め込まない）。ふりがなは表では出さず、
+            // タップした詳細ポップアップ側でのみ確認できるようにする。
+            const nameCell = `<td class="cell-name">${hl(m.Name)}</td>`;
+            const roleCell = `<td class="cell-role">${roleBadge}</td>`;
             // 削除は管理者ログイン時のみ表示（誤タップ防止）。編集は全員に表示し、
             // タップ時に管理者認証を挟む（実験ページ等と表示ルールを統一）
             const actionCell = `
@@ -324,80 +351,23 @@ function renderMembers() {
             if (isStaffTab) {
                 return `
                 <tr data-id="${escapeAttr(m.ID)}" data-detail="1" class="clickable-row" title="タップで詳細を表示">
-                    <td>${escapeHtml(m.StudentID || '')}</td>
+                    <td>${hl(m.StudentID)}</td>
                     ${nameCell}
-                    <td>${escapeHtml(m.Email || '')}</td>
+                    ${roleCell}
+                    <td>${hl(m.Email)}</td>
                     ${actionCell}
                 </tr>`;
             }
 
             return `
             <tr data-id="${escapeAttr(m.ID)}" data-detail="1" class="clickable-row" title="タップで詳細を表示">
-                <td>${escapeHtml(m.StudentID || '')}</td>
+                <td>${hl(m.StudentID)}</td>
                 ${nameCell}
+                ${roleCell}
                 ${actionCell}
             </tr>`;
         }).join('');
     }
-}
-
-// ---- 詳細ポップアップ（コーディネーター・アドバイザー行のタップで開く） ----
-
-function openMemberDetailModal(id) {
-    const m = membersData.find(x => x.ID === id);
-    if (!m) return;
-    const role = memberRoleOf(m);
-    const roleInfo = role ? getRoleDisplay(role) : null;
-    const isStaff = role === 'アドバイザー' || role === 'コーディネーター';
-
-    const rows = isStaff
-        ? [
-            ['教職員番号', m.StudentID || ''],
-            ['ふりがな', m.Furigana || ''],
-            ['名前', m.Name || ''],
-            ['メールアドレス', m.Email || ''],
-            ['所属', m.Affiliation || ''],
-            ['内線', m.Extension || ''],
-            ['緊急連絡先', m.EmergencyContact || '']
-        ].filter(r => r[1])
-        : [
-            ['学籍番号', m.StudentID || ''],
-            ['ふりがな', m.Furigana || ''],
-            ['名前', m.Name || '']
-        ].filter(r => r[1]);
-
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-        <div class="modal-content" style="max-width:460px;" role="dialog" aria-modal="true" aria-labelledby="member-detail-title">
-            <h2 id="member-detail-title" style="margin-top:0;">
-                ${escapeHtml(m.Name || '')}
-                ${roleInfo ? `<span class="cat-badge" style="background:${roleInfo.color};margin-left:8px;font-size:0.75rem;vertical-align:middle;">${escapeHtml(role)}</span>` : ''}
-            </h2>
-            ${rows.length > 0
-                ? `<table class="d1-table">${rows.map(([label, value]) =>
-                    `<tr><th style="width:130px;">${escapeHtml(label)}</th>
-                     <td class="copy-cell" data-copy="${escapeAttr(value)}" data-copy-label="${escapeAttr(label)}" title="タップでコピー" style="white-space:pre-wrap;">${escapeHtml(value)}<span class="copy-icon" aria-hidden="true">&#x2398;</span></td></tr>`).join('')}</table>
-                  <p class="text-hint" style="font-size:0.78rem; margin:8px 0 0;">各項目はタップでコピーできます</p>`
-                : '<p class="text-hint">登録されている詳細情報はありません</p>'}
-            <div class="action-buttons" style="margin-top:16px;">
-                ${api.isAdmin() ? '<button type="button" class="btn btn-secondary" data-edit>編集</button>' : ''}
-                <button type="button" class="btn btn-primary-solid" style="width:auto;" data-close>閉じる</button>
-            </div>
-        </div>`;
-
-    const close = () => overlay.remove();
-    overlay.querySelector('[data-close]').addEventListener('click', close);
-    const editBtn = overlay.querySelector('[data-edit]');
-    if (editBtn) editBtn.addEventListener('click', () => { close(); openMemberWizard(id); });
-    overlay.addEventListener('click', (e) => {
-        const cell = e.target.closest('.copy-cell');
-        if (cell) copyTextToClipboard(cell.dataset.copy, cell.dataset.copyLabel);
-    });
-    bindOverlayClose(overlay, close);
-    bindModalEscape(overlay, close);
-    document.body.appendChild(overlay);
-    trapFocus(overlay.querySelector('.modal-content'));
 }
 
 // ---- ウィザード形式の新規作成・編集 ----

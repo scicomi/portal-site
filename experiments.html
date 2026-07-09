@@ -14,7 +14,13 @@
     <main class="container">
         <div class="page-section-actions">
             <h1 class="page-title" style="margin:0; flex:1;">実験ネタ</h1>
-            <input id="exp-search" class="search-input" type="text" placeholder="名前・材料で検索" oninput="onExpSearch()">
+            <div class="search-box" role="search">
+                <input id="exp-search" class="search-input" type="search" placeholder="名前・材料で検索"
+                    aria-label="実験を検索"
+                    role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="exp-search-suggest"
+                    autocomplete="off">
+                <ul id="exp-search-suggest" class="search-suggest" role="listbox" aria-label="検索候補" hidden></ul>
+            </div>
             <button class="btn btn-primary page-new-btn" onclick="openExpWizard()">＋ 実験を追加</button>
         </div>
 
@@ -47,6 +53,7 @@
     <script src="config.js"></script>
     <script src="api.js"></script>
     <script src="app.js"></script>
+    <script src="search.js"></script>
     <script src="experiments.js"></script>
 </body>
 </html>

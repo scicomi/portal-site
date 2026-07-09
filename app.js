@@ -150,6 +150,64 @@ function memberRoleOf(m) {
   return '';
 }
 
+// メンバー詳細ポップアップ（メンバーページ・イベント別の参加回答一覧など、
+// メンバーをタップして詳細を見せたい箇所すべてで共通利用する）。
+// opts.hideFurigana: ふりがな行を省く（参加回答一覧など、ふりがなを表示していない一覧から開く場合）
+// opts.onEdit: 指定時のみ「編集」ボタンを表示し、タップで onEdit(id) を呼ぶ
+function openMemberDetailModal(id, members, opts) {
+  opts = opts || {};
+  const m = (members || []).find(x => x.ID === id);
+  if (!m) return;
+  const role = memberRoleOf(m);
+  const roleInfo = role ? getRoleDisplay(role) : null;
+  const isStaff = role === 'アドバイザー' || role === 'コーディネーター';
+
+  const rows = [
+    [isStaff ? '教職員番号' : '学籍番号', m.StudentID || ''],
+    opts.hideFurigana ? null : ['ふりがな', m.Furigana || ''],
+    ['名前', m.Name || ''],
+    ...(isStaff ? [
+      ['メールアドレス', m.Email || ''],
+      ['所属', m.Affiliation || ''],
+      ['内線', m.Extension || ''],
+      ['緊急連絡先', m.EmergencyContact || '']
+    ] : [])
+  ].filter(Boolean).filter(r => r[1]);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+        <div class="modal-content" style="max-width:460px;" role="dialog" aria-modal="true" aria-labelledby="member-detail-title">
+            <h2 id="member-detail-title" style="margin-top:0;">
+                ${escapeHtml(m.Name || '')}
+                ${roleInfo ? `<span class="cat-badge" style="background:${roleInfo.color};margin-left:8px;font-size:0.75rem;vertical-align:middle;">${escapeHtml(role)}</span>` : ''}
+            </h2>
+            ${rows.length > 0
+                ? `<table class="d1-table">${rows.map(([label, value]) =>
+                    `<tr><th style="width:130px;">${escapeHtml(label)}</th>
+                     <td class="copy-cell" data-copy="${escapeAttr(value)}" data-copy-label="${escapeAttr(label)}" title="タップでコピー" style="white-space:pre-wrap;">${escapeHtml(value)}<span class="copy-icon" aria-hidden="true">&#x2398;</span></td></tr>`).join('')}</table>
+                  <p class="text-hint" style="font-size:0.78rem; margin:8px 0 0;">各項目はタップでコピーできます</p>`
+                : '<p class="text-hint">登録されている詳細情報はありません</p>'}
+            <div class="action-buttons" style="margin-top:16px;">
+                ${api.isAdmin() && opts.onEdit ? '<button type="button" class="btn btn-secondary" data-edit>編集</button>' : ''}
+                <button type="button" class="btn btn-primary-solid" style="width:auto;" data-close>閉じる</button>
+            </div>
+        </div>`;
+
+  const close = () => overlay.remove();
+  overlay.querySelector('[data-close]').addEventListener('click', close);
+  const editBtn = overlay.querySelector('[data-edit]');
+  if (editBtn) editBtn.addEventListener('click', () => { close(); opts.onEdit(id); });
+  overlay.addEventListener('click', (e) => {
+    const cell = e.target.closest('.copy-cell');
+    if (cell) copyTextToClipboard(cell.dataset.copy, cell.dataset.copyLabel);
+  });
+  bindOverlayClose(overlay, close);
+  bindModalEscape(overlay, close);
+  document.body.appendChild(overlay);
+  trapFocus(overlay.querySelector('.modal-content'));
+}
+
 // ====== ナビゲーション ======
 
 function renderHeader(activePage) {
@@ -185,7 +243,18 @@ function renderHeader(activePage) {
       ${navHtml}
     </nav>
   `;
+  syncHeaderHeightVar();
 }
+
+// ヘッダーは折り返しや管理者バッジの有無で実際の高さが変わる。AI検索ページ（bot.html）は
+// ヘッダーの下でぴったりビューポート高に収まるチャットレイアウトのため、固定px値ではなく
+// 実測値を --header-h に反映する（ズレるとページがビューポートより少しはみ出す）。
+function syncHeaderHeightVar() {
+  const header = document.querySelector('.app-header');
+  if (!header) return;
+  document.documentElement.style.setProperty('--header-h', header.offsetHeight + 'px');
+}
+window.addEventListener('resize', syncHeaderHeightVar);
 
 function handleLogout(btn) {
   if (btn.dataset.confirming) {
@@ -195,6 +264,10 @@ function handleLogout(btn) {
     // サーバー設定由来のキャッシュも消す（次のログインで再取得される）
     localStorage.removeItem('scicomi_site_settings');
     localStorage.removeItem('scicomi_welcome_message');
+    // 検索履歴も消す（検索語から活動内容が推測できるため。共有端末を想定）
+    Object.keys(localStorage)
+      .filter(k => k.indexOf('scicomi_search_history_') === 0)
+      .forEach(k => localStorage.removeItem(k));
     location.href = 'index.html';
     return;
   }
