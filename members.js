@@ -303,9 +303,10 @@ function renderMembers() {
             const roleBadge = roleInfo
                 ? `<span class="cat-badge" style="background:${roleInfo.color};margin-left:6px;font-size:0.7rem;">${escapeHtml(role)}</span>`
                 : '';
+            // ふりがな行は無い行でも高さ分の空行を確保する（無いと名前の縦位置が行ごとにずれて見える）
             const nameCell = `
                 <td class="cell-name">
-                    ${m.Furigana ? '<span class="member-furigana">' + escapeHtml(m.Furigana) + '</span>' : ''}
+                    <span class="member-furigana">${m.Furigana ? escapeHtml(m.Furigana) : '&nbsp;'}</span>
                     <span class="member-name-text">${escapeHtml(m.Name || '')}</span>
                     ${roleBadge}
                 </td>`;

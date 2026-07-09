@@ -170,7 +170,6 @@ function renderBulkVoteList() {
             <span class="dl-date">${shortDate(e.Date)}</span>
             <span class="dl-title">
                 <a href="event-series.html?event=${encodeURIComponent(e.ID)}" class="report-event-link">${escapeHtml(title)}</a>
-                <span class="bv-counts">参加${agg.attend}・不参加${agg.absent}・未定${agg.undecided}${eligibleCount > 0 ? ` / 対象${eligibleCount}` : ''}</span>
                 ${agg.mineNote ? `<span class="bv-note">メモ: ${escapeHtml(agg.mineNote)}</span>` : ''}
             </span>
             ${btns}

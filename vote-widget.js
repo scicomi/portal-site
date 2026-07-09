@@ -124,17 +124,6 @@ function renderVoteWidget(container, opts) {
     deadlineHtml = `<div class="vw-deadline">出欠締切: ${shortDate(explicitDl)}(${dayOfWeekJP(explicitDl)}) まで</div>`;
   }
 
-  const counts = voteCounts(votes, members, ev);
-  const allDone = counts.eligibleCount > 0 && counts.noanswer === 0;
-  const summaryHtml = `
-    <div class="vote-mini-summary">
-      <span class="vote-mini vote-mini-attend">参加 <strong>${counts.attend}</strong></span>
-      <span class="vote-mini vote-mini-absent">不参加 <strong>${counts.absent}</strong></span>
-      <span class="vote-mini vote-mini-undecided">未定 <strong>${counts.undecided}</strong></span>
-      ${counts.eligibleCount > 0 ? `<span class="vote-mini vote-mini-noanswer">未回答 <strong>${counts.noanswer}</strong> / 対象 ${counts.eligibleCount}</span>` : ''}
-      ${allDone ? '<span class="vote-mini vote-mini-alldone">全員回答済み</span>' : ''}
-    </div>`;
-
   const btnsHtml = memberValid && canEdit ? `
     <div class="vw-btns">
       ${Object.keys(VOTE_STATUS_LABELS).map(st =>
@@ -159,7 +148,6 @@ function renderVoteWidget(container, opts) {
         ${memberValid && mine ? `<span class="vw-mine">回答済み: ${VOTE_STATUS_LABELS[mine.status] || ''}${mine.updatedAt ? ' (' + voteTimeShort(mine.updatedAt) + ')' : ''}</span>` : ''}
       </div>
       ${btnsHtml}
-      ${summaryHtml}
     </div>`;
 
   // 名前変更 → 端末に記憶して再描画（全ページ共通キーなのでホームの一括回答等とも同期する）
