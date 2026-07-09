@@ -5,25 +5,6 @@ let membersData = [];
 let allVotesData = null;   // null = 未取得
 
 
-// ---- 開催回数（同名イベントの紐付け） ----
-// SeriesKey（無ければ Title）が一致するイベントを「同じ催し」とみなし、
-// 日付順に何回目かと通算回数を算出する。毎年やるイベントの開催回数把握に使う。
-function eventSeriesKey(e) {
-    const k = (e.SeriesKey && String(e.SeriesKey).trim()) || (e.Title || '');
-    return k.replace(/\s+/g, '').replace(/^第\d+回/, '');
-}
-
-function occurrenceInfo(e) {
-    const key = eventSeriesKey(e);
-    if (!key) return null;
-    const series = eventsData
-        .filter(x => eventSeriesKey(x) === key && x.Date)
-        .sort((a, b) => (a.Date || '').localeCompare(b.Date || ''));
-    if (series.length < 2) return null;
-    const idx = series.findIndex(x => x.ID === e.ID);
-    return { num: idx >= 0 ? idx + 1 : series.length, total: series.length };
-}
-
 // ---- グローバルキーボードショートカット ----
 document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
@@ -82,7 +63,7 @@ function _bindEventTableDelegation() {
         const actionEl = e.target.closest('[data-action]');
         if (actionEl) {
             const action = actionEl.dataset.action;
-            if (action === 'series' || action === 'open' || action === 'vote') return; // <a> のデフォルト遷移に任せる
+            if (action === 'open' || action === 'vote') return; // <a> のデフォルト遷移に任せる
             e.stopPropagation();
             const row = actionEl.closest('tr[data-id]');
             if (!row) return;
@@ -98,7 +79,7 @@ function _bindEventTableDelegation() {
         if (e.target.closest('[data-action-cell]')) return;
         const row = e.target.closest('tr[data-id]');
         if (!row) return;
-        openEventPreviewModal(row.dataset.id);
+        location.href = `event-series.html?event=${encodeURIComponent(row.dataset.id)}`;
     });
 }
 
@@ -438,7 +419,7 @@ function initFullCalendar(attempt = 0) {
 }
 
 // ※ カスタムグリッド暦（#calendar-grid）は廃止。カレンダーは FullCalendar(#calendar) に一本化。
-// ※ 行タップは概要ポップアップ（openEventPreviewModal）。フル情報はシリーズ詳細ページ（event-series.html?event=<ID>）。
+// ※ 行タップは詳細ページへ直接遷移（event-series.html?event=<ID>）。
 
 // Calendar toggle（表示状態は端末に記憶し、次回訪問時に復元する）
 const CALENDAR_VISIBLE_KEY = 'scicomi_calendar_visible';
@@ -495,7 +476,7 @@ function renderEvents() {
             : (filterState.period === 'upcoming' && eventsData.length > 0
                 ? '年度を選択すると過去の予定を確認できます'
                 : '');
-        tbody.innerHTML = `<tr><td colspan="3" class="empty-state">
+        tbody.innerHTML = `<tr><td colspan="4" class="empty-state">
             <span class="empty-icon">&#x1F4C5;</span>
             <div class="empty-text">該当する予定はありません</div>
             ${hint ? `<div class="empty-hint">${hint}</div>` : ''}
@@ -513,7 +494,6 @@ function renderEvents() {
         if (cat.isMeeting && ev.Meeting_Number) {
             displayTitle = `第${ev.Meeting_Number}回 ${displayTitle}`;
         }
-        const occ = occurrenceInfo(ev);
         // 参加人数バッジ。今後の日程には回答0件でも常時表示し（最初の1票への導線）、
         // 分母（対象者数）を添える。タップでイベント詳細の参加状況セクションへ。
         const vc = votesByEvent[ev.ID] || { attend: 0, absent: 0, undecided: 0 };
@@ -526,7 +506,7 @@ function renderEvents() {
             voteBadge = `<a class="vote-count-badge" href="event-series.html?event=${encodeURIComponent(ev.ID)}&vote=1" data-action="vote" title="参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}${eligibleCount > 0 ? `・未回答${noanswer}` : ''} — タップで出欠を回答">${label}</a>`;
         }
         return `
-            <tr class="clickable-row" data-id="${escapeAttr(ev.ID)}" title="タップで概要を表示">
+            <tr class="clickable-row" data-id="${escapeAttr(ev.ID)}" title="タップで詳細ページへ">
                 <td class="cell-name" style="white-space:nowrap;">
                     ${escapeHtml(ev.Date || '')} <span class="text-muted">(${dayOfWeekJP(ev.Date)})</span>
                     ${ev.Date_End && ev.Date_End !== ev.Date ? '<br><span class="text-muted" style="font-size:0.8rem;">〜 ' + escapeHtml(ev.Date_End) + '</span>' : ''}
@@ -534,9 +514,8 @@ function renderEvents() {
                 <td>
                     <span class="cat-dot" style="color:${cat.bg};" title="${cat.short}">&#9679;</span>
                     <a href="event-series.html?event=${encodeURIComponent(ev.ID)}" data-action="open" style="font-weight:600;color:inherit;text-decoration:none;">${escapeHtml(displayTitle)}</a>
-                    ${occ ? `<a href="event-series.html?key=${encodeURIComponent(eventSeriesKey(ev))}" class="occ-badge occ-link" title="通算${occ.total}回 — シリーズ履歴を見る" data-action="series">${occ.num}回目</a>` : ''}
-                    ${voteBadge}
                 </td>
+                <td>${voteBadge}</td>
                 <td data-action-cell>
                     <div class="inline-actions">
                         <button class="inline-action-btn" data-action="duplicate" title="この予定を複製して新規作成">複製</button>
@@ -549,81 +528,6 @@ function renderEvents() {
     }).join('');
 }
 
-// ---- 日程プレビュー（行タップで概要をポップアップ表示） ----
-// メンバーページと同じ「一覧 → ポップアップ →（必要なら）詳細ページ」の2段構え。
-// 時間・場所の確認だけならページ遷移せずに済む。
-function openEventPreviewModal(id) {
-    const ev = eventsData.find(x => x.ID === id);
-    if (!ev) return;
-    const cat = getEventCategory(ev.Category);
-    let displayTitle = ev.Title || '(無題)';
-    if (cat.isMeeting && ev.Meeting_Number) displayTitle = `第${ev.Meeting_Number}回 ${displayTitle}`;
-    const dateStr = ev.Date
-        ? `${ev.Date} (${dayOfWeekJP(ev.Date)})` + (ev.Date_End && ev.Date_End !== ev.Date ? ` 〜 ${ev.Date_End} (${dayOfWeekJP(ev.Date_End)})` : '')
-        : '';
-    const rows = [
-        ['日にち', dateStr],
-        ['時間', ev.Event_Time || ''],
-        ['場所', ev.Location || ''],
-        ['集合', ev.Gather_Time || ''],
-        ['解散', ev.Dismiss_Time || ''],
-        ['対象', ev.Audience || ''],
-        ['持ち物', ev.Belongings || '']
-    ].filter(r => r[1]);
-    const isUpcoming = (ev.Date_End || ev.Date) >= todayISO();
-
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-        <div class="modal-content" style="max-width:480px;" role="dialog" aria-modal="true" aria-labelledby="event-preview-title">
-            <h2 id="event-preview-title" style="margin-top:0;">
-                ${escapeHtml(displayTitle)}
-                <span class="cat-badge" style="background:${cat.bg};color:${cat.text};margin-left:8px;font-size:0.75rem;vertical-align:middle;">${cat.short}</span>
-            </h2>
-            ${rows.length > 0
-                ? `<table class="d1-table">${rows.map(([label, value]) =>
-                    `<tr><th style="width:110px;">${escapeHtml(label)}</th><td style="white-space:pre-wrap;">${escapeHtml(value)}</td></tr>`).join('')}</table>`
-                : '<p class="text-hint">詳細情報は未入力です</p>'}
-            ${isUpcoming ? '<div id="preview-vote-widget" style="margin-top:12px;"></div>' : ''}
-            <div class="action-buttons" style="margin-top:16px;">
-                <button type="button" class="btn btn-text" data-close>閉じる</button>
-                <a class="btn btn-primary-solid" style="width:auto;" href="event-series.html?event=${encodeURIComponent(ev.ID)}">詳細ページへ</a>
-            </div>
-        </div>`;
-    const close = () => overlay.remove();
-    overlay.querySelector('[data-close]').addEventListener('click', close);
-    bindOverlayClose(overlay, close);
-    bindModalEscape(overlay, close);
-    document.body.appendChild(overlay);
-    trapFocus(overlay.querySelector('.modal-content'));
-
-    // ページ遷移せずこの場で出欠を回答できるようにする（vote.html 廃止に伴うインライン化）
-    if (isUpcoming) renderPreviewVoteWidget(ev);
-}
-
-// プレビューモーダル内の出欠回答ウィジェット。
-// 投票データ未取得（初回読み込み中など）の間は描画をスキップする。
-function renderPreviewVoteWidget(ev) {
-    const box = document.getElementById('preview-vote-widget');
-    if (!box) return;
-    if (allVotesData === null || membersData.length === 0) {
-        box.innerHTML = '<span class="text-hint" style="font-size:0.85rem;">参加状況を読み込み中です…</span>';
-        return;
-    }
-    const evVotes = allVotesData.filter(v => v.eventId === ev.ID);
-    renderVoteWidget(box, {
-        event: ev,
-        members: membersData,
-        votes: evVotes,
-        onChange: (votes) => {
-            // モーダル内での回答を一覧バッジにも反映する
-            allVotesData = allVotesData.filter(v => v.eventId !== ev.ID).concat(votes);
-            api.saveCache('votes', allVotesData);
-            rebuildVotesByEvent();
-            renderEvents();
-        }
-    });
-}
 
 function openNewEventModal() {
     startNewEventBlank();
@@ -654,17 +558,20 @@ function startNewEventBlank() {
     trapFocus(overlay.querySelector('.modal-content'));
 }
 
+// template あり（複製）の場合は、枠だけのクイック作成ではなく実験・担当などの詳細も
+// その場で全て入力できるフルウィザードを開く。template 無し（真っさらな新規）はクイック作成のまま。
 function startNewEvent(category, template) {
-    openQuickCreate(category, template);
+    if (template) openEventWizard(null, template);
+    else openQuickCreate(category);
 }
 
 // ---- クイック作成（案C: 「枠だけ作って後から埋める」2段階運用） ----
-// 必須はカテゴリ＋名前＋日付だけ。保存後はイベント詳細ページへ遷移し、
+// 真っさらな新規作成のみで使う。必須はカテゴリ＋名前＋日付だけ。保存後はイベント詳細ページへ遷移し、
 // 残りの項目（実験・担当・ファイル等）は詳細ページの「編集」から追記する。
-// template（複製元）がある場合は、表示されない項目も含めて内容を引き継ぐ。
+// （複製の場合はここを通らず、フルウィザード（openEventWizard）で詳細も一度に入力する）
 
-function openQuickCreate(category, template) {
-    const cat = category || (template && template.Category) || 'normal';
+function openQuickCreate(category) {
+    const cat = category || 'normal';
     const isMeeting = cat === 'general' || cat === 'admin';
     const catInfo = getEventCategory(cat);
 
@@ -674,31 +581,18 @@ function openQuickCreate(category, template) {
     window.tempStart = null;
     window.tempEnd = null;
 
-    // 下書きイベント（クイック作成で見せないフィールドは template から引き継ぐ）
     const draft = {
         ID: genId('ev_'),
         Date: startDate, Date_End: endDate,
-        Title: template ? (template.Title || '') : '',
-        Location: template ? (template.Location || '') : '',
-        Audience: template ? (template.Audience || '') : '',
+        Title: '', Location: '', Audience: '',
         Meeting_Number: '', Category: cat,
-        Event_Time: template ? (template.Event_Time || '') : '',
-        Meeting_Logistics: template ? (template.Meeting_Logistics || '') : '',
-        PartsList: template ? (template.PartsList || '') : '',
-        Accompany: template ? (template.Accompany || '') : '',
-        PlanName: template ? (template.PlanName || '') : '',
-        Admin_Kyoka: template ? (template.Admin_Kyoka || '') : '',
-        Admin_Houkoku: template ? (template.Admin_Houkoku || '') : '',
+        Event_Time: '', Meeting_Logistics: '', PartsList: '', Accompany: '', PlanName: '',
+        Admin_Kyoka: '', Admin_Houkoku: '',
         Kyoka_Deadline: '', Houkoku_Deadline: '',
-        Remarks: template ? (template.Remarks || '') : '',
-        Belongings: template ? (template.Belongings || '') : '',
-        Files: [],
-        Gather_Time: template ? (template.Gather_Time || '') : '',
-        Dismiss_Time: template ? (template.Dismiss_Time || '') : '',
-        Address: template ? (template.Address || '') : '',
-        EmergencyHospital: template ? (template.EmergencyHospital || '') : '',
-        EmergencyPolice: template ? (template.EmergencyPolice || '') : '',
-        SeriesKey: template ? (template.SeriesKey || '') : ''
+        Remarks: '', Belongings: '', Files: [],
+        Gather_Time: '', Dismiss_Time: '',
+        Address: '', EmergencyHospital: '', EmergencyPolice: '',
+        SeriesKey: ''
     };
     tempNewEvent = draft;
 
@@ -713,7 +607,7 @@ function openQuickCreate(category, template) {
     overlay.innerHTML = `
         <div class="wizard-panel" role="dialog" aria-modal="true" style="max-width:480px;">
             <div class="wizard-header">
-                <h2 class="wizard-title">${template ? '予定を複製して追加' : '予定を追加'}</h2>
+                <h2 class="wizard-title">予定を追加</h2>
                 <p class="wizard-subtitle">まず枠だけ登録できます。実験・担当などの詳細はあとから追記できます。</p>
             </div>
             <div class="wizard-body">

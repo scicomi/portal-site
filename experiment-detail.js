@@ -128,7 +128,7 @@ function renderEventsSection() {
         return `<a href="event-series.html?event=${encodeURIComponent(ev.ID)}" class="expd-event-chip" title="${escapeAttr(ev.Title)}">
             <span class="expd-event-date">${escapeHtml(ev.Date || '')}</span>
             <span class="expd-event-title">${escapeHtml(ev.Title || '(無題)')}</span>
-            <span class="cat-badge" style="background:${cat.bg};color:${cat.text};font-size:0.65rem;">${cat.short}</span>
+            <span class="cat-dot" style="color:${cat.bg};" title="${cat.short}">&#9679;</span>
         </a>`;
     }).join('');
 }
@@ -491,11 +491,12 @@ async function deletePhoto(index) {
 
 // ---- カスタムセクション（実験情報タブのインライン編集） ----
 
+// alwaysShow: 未入力でも見出しだけは常に表示し、✎から追記できるようにする
 const FIXED_SECTIONS = [
-    { key: 'Materials',    title: '使用物品' },
-    { key: 'Preparation',  title: '事前準備' },
+    { key: 'Materials',    title: '使用物品',   alwaysShow: true },
+    { key: 'Preparation',  title: '事前準備',   alwaysShow: true },
     { key: 'Flow',         title: '発表の流れ' },
-    { key: 'Notes',        title: '注意事項' }
+    { key: 'Notes',        title: '注意事項',   alwaysShow: true }
 ];
 
 function getCustomSections() {
@@ -506,7 +507,7 @@ function getAllSections() {
     const sections = [];
     FIXED_SECTIONS.forEach(f => {
         const content = currentExp[f.key] || '';
-        if (content.trim()) sections.push({ type: 'fixed', key: f.key, title: f.title, content });
+        if (content.trim() || f.alwaysShow) sections.push({ type: 'fixed', key: f.key, title: f.title, content });
     });
     getCustomSections().forEach((s, i) => {
         sections.push({ type: 'custom', index: i, title: s.title || '', content: s.content || '' });
@@ -518,24 +519,21 @@ function renderInfoSections() {
     const body = document.getElementById('expd-info-body');
     const sections = getAllSections();
 
-    if (sections.length === 0) {
-        body.innerHTML = `<p class="text-muted" style="padding:12px;">詳細情報はまだ登録されていません。</p>
-            <button class="btn btn-secondary expd-add-section-btn" onclick="addCustomSection()">+ セクション追加</button>`;
-        return;
-    }
-
     body.innerHTML = sections.map((s, i) => {
         const items = s.content.split('\n').map(l => l.trim()).filter(Boolean);
         const id = s.type === 'fixed' ? `section-fixed-${s.key}` : `section-custom-${s.index}`;
         const editAttr = s.type === 'fixed'
             ? `data-edit-fixed="${s.key}"`
             : `data-edit-custom="${s.index}"`;
+        const bodyHtml = items.length > 0
+            ? `<ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
+            : `<p class="text-muted" style="font-size:0.85rem; margin:4px 0 0;">未入力です。✎から追加できます</p>`;
         return `<div class="expd-info-section" id="${id}">
             <div class="expd-info-section-header">
                 <h3>${escapeHtml(s.title)}</h3>
                 <button class="expd-section-edit-btn" ${editAttr} title="編集">&#9998;</button>
             </div>
-            <ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+            ${bodyHtml}
         </div>`;
     }).join('') +
     `<button class="btn btn-secondary expd-add-section-btn" onclick="addCustomSection()">+ セクション追加</button>`;

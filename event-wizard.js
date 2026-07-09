@@ -210,7 +210,12 @@ function initDateRangePicker(card) {
     const state = {
         start: startInput.value || '',
         end: endInput.value || '',
-        view: parseISODate(startInput.value || todayISO())
+        view: parseISODate(startInput.value || todayISO()),
+        // 新規作成時は開始日欄に「今日」が初期値として入っている状態で、これはまだ
+        // ユーザーが選んだものではない。touched が false のうちは最初のクリックを
+        // 必ず開始日として扱う（そうしないと初期値のせいで最初のクリックが終了日
+        // 扱いになってしまう）。
+        touched: false
     };
     const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -301,13 +306,14 @@ function initDateRangePicker(card) {
         const day = e.target.closest('.drp-day');
         if (day && day.dataset.iso) {
             const iso = day.dataset.iso;
-            if (!state.start || (state.start && state.end) || iso < state.start) {
+            if (!state.touched || !state.start || (state.start && state.end) || iso < state.start) {
                 // 新しい開始日として設定（終了日はリセット）
                 state.start = iso; state.end = '';
             } else {
                 // 終了日を設定
                 state.end = iso;
             }
+            state.touched = true;
             syncDisplay(); renderCal();
             if (state.start && state.end) closePopup();
         }
@@ -573,16 +579,34 @@ function genTimeOpts(startH, endH, withEmpty) {
     return html;
 }
 
-function openEventWizard(editId) {
+// editId のみ: 既存イベントの編集。template のみ（editId 無し）: 複製して新規作成
+// （この場合だけは、クイック作成の「枠だけ」ではなく実験・担当などの詳細もこの場で全て入力する）。
+function openEventWizard(editId, template) {
     editingEventId = editId || null;
     evWizardStep = 0;
 
-    // 新規作成はクイック作成（openQuickCreate）に一本化した。ここは既存イベントの編集専用。
-    const existing = editingEventId ? _wzHost().getEvent(editingEventId) : null;
-    if (!existing) return;
-    const isEdit = true;
-
-    const e = { ...existing, Files: Array.isArray(existing.Files) ? [...existing.Files] : [] };
+    let e, isEdit;
+    if (editingEventId) {
+        const existing = _wzHost().getEvent(editingEventId);
+        if (!existing) return;
+        isEdit = true;
+        e = { ...existing, Files: Array.isArray(existing.Files) ? [...existing.Files] : [] };
+    } else if (template) {
+        isEdit = false;
+        e = {
+            ...template,
+            ID: genId('ev_'),
+            Date: todayISO(), Date_End: '',
+            Meeting_Number: '',
+            Files: [],
+            Kyoka_Deadline: '', Houkoku_Deadline: '',
+            ReportStatus: '', KyokaStatus: '',
+            Positives: '', Reflections: '', ResultsMemo: '',
+            UpdatedAt: '', CreatedAt: ''
+        };
+    } else {
+        return; // 新規作成（複製ではない）はクイック作成（openQuickCreate）に一本化した
+    }
     evWizardCategory = e.Category || 'normal';
 
     tempNewEvent = e;
@@ -746,14 +770,6 @@ function openEventWizard(editId) {
                     <textarea id="wz-ev-remarks" class="e1-input" rows="3" placeholder="その他メモ">${escapeHtml(e.Remarks || '')}</textarea>
                 </div>
                 <div class="e1-group">
-                    <label class="e1-label">現地情報（任意・イベント詳細ページの「緊急連絡先・現地情報」に表示）</label>
-                    <input id="wz-ev-address" class="e1-input" type="text" placeholder="住所（例: 秋田県大館市桜町1-1）" value="${escapeAttr(e.Address || '')}" style="margin-bottom:8px;">
-                    <div class="flex-row">
-                        <input id="wz-ev-hospital" class="e1-input" type="text" placeholder="近隣の病院（例: ○○診療所：0186-45-0223）" value="${escapeAttr(e.EmergencyHospital || '')}" style="flex:1;">
-                        <input id="wz-ev-police" class="e1-input" type="text" placeholder="近隣の警察署（例: ○○警察署：018-852-4100）" value="${escapeAttr(e.EmergencyPolice || '')}" style="flex:1;">
-                    </div>
-                </div>
-                <div class="e1-group">
                     <label class="e1-label">関連ファイル</label>
                     <div class="file-upload-area">
                         <div class="file-drop-zone" id="wz-ev-drop-zone">
@@ -785,8 +801,8 @@ function openEventWizard(editId) {
     overlay.innerHTML = `
         <div class="wizard-panel" role="dialog" aria-modal="true" style="max-width:560px;">
             <div class="wizard-header">
-                <h2 class="wizard-title">${isEdit ? 'イベントを編集' : '新規イベント作成'}</h2>
-                <p class="wizard-subtitle">${isEdit ? (e.Title || '') : 'ステップに沿って入力してください'}</p>
+                <h2 class="wizard-title">${isEdit ? 'イベントを編集' : '予定を複製して追加'}</h2>
+                <p class="wizard-subtitle">${isEdit ? (e.Title || '') : `「${escapeHtml(template.Title || '(無題)')}」の内容を引き継いで作成します`}</p>
             </div>
             <div class="wizard-progress">
                 ${steps.map((s, i) => `
@@ -1049,14 +1065,6 @@ function saveEventFromWizard() {
     tempNewEvent.Location = (document.getElementById('wz-ev-location')?.value || '').trim();
     const planNameEl = document.getElementById('wz-ev-planname');
     if (planNameEl) tempNewEvent.PlanName = planNameEl.value.trim();
-    // 現地情報の入力欄はイベントの Step 4 のみに存在する。
-    // ミーティング編集時は欄が無いので、既存値を消さないよう存在チェックしてから反映する。
-    const addrEl = document.getElementById('wz-ev-address');
-    if (addrEl) tempNewEvent.Address = addrEl.value.trim();
-    const hospEl = document.getElementById('wz-ev-hospital');
-    if (hospEl) tempNewEvent.EmergencyHospital = hospEl.value.trim();
-    const polEl = document.getElementById('wz-ev-police');
-    if (polEl) tempNewEvent.EmergencyPolice = polEl.value.trim();
     tempNewEvent.Category = evWizardCategory;
     tempNewEvent.Date = document.getElementById('wz-ev-date')?.value || '';
     tempNewEvent.Date_End = document.getElementById('wz-ev-date-end')?.value || '';

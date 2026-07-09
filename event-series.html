@@ -23,15 +23,18 @@
                 <h1 class="page-title" style="margin:0; flex:1;">イベント別</h1>
                 <input id="series-index-search" class="search-input" type="text" placeholder="イベント名・場所で検索" oninput="renderSeriesIndex()">
             </div>
-            <p class="text-muted" style="font-size:0.85rem; margin:0 0 12px;">
-                同じ名前の催しは1つにまとめています。開くと詳細・現地情報・過去の振り返り・統計が見られます。<br>
-                <span style="font-size:0.78rem;">※ 開催数は2023年度以降の集計です</span>
-            </p>
-            <div class="page-filters">
+            <div id="series-index-filters" class="page-filters">
                 <button class="filter-chip active" data-sidx="event" aria-pressed="true" onclick="onSeriesIndexFilter('event')">イベント</button>
                 <button class="filter-chip" data-sidx="other" aria-pressed="false" onclick="onSeriesIndexFilter('other')">その他</button>
                 <button class="filter-chip" data-sidx="all" aria-pressed="false" onclick="onSeriesIndexFilter('all')">全部</button>
-                <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="openSeriesNewEventModal()">＋ 新規イベント</button>
+                <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="startSeriesPickMode()">＋ 新規イベント</button>
+            </div>
+            <div id="series-pick-banner" class="series-pick-banner hidden">
+                <span>複製したいイベントのカードを選んでください</span>
+                <div class="series-pick-actions">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="goToNewEvent()">複製せず新しく作成</button>
+                    <button type="button" class="btn btn-text btn-sm" onclick="cancelSeriesPickMode()">キャンセル</button>
+                </div>
             </div>
             <div id="series-index-grid" class="series-index-grid">
                 <div class="loading-text">読み込み中</div>
@@ -49,8 +52,14 @@
 
             <div id="series-content" class="hidden">
                 <div class="series-header-card">
-                    <h1 id="series-title" class="series-title"></h1>
-                    <p id="series-subtitle" class="series-subtitle"></p>
+                    <div class="series-header-top">
+                        <div class="series-header-titles">
+                            <h1 id="series-title" class="series-title"></h1>
+                            <p id="series-subtitle" class="series-subtitle"></p>
+                        </div>
+                        <div id="series-header-actions" class="series-header-actions"></div>
+                    </div>
+                    <div id="series-occ-selector"></div>
                 </div>
 
                 <div class="expd-tab-bar">
@@ -61,7 +70,6 @@
 
                 <!-- Tab: イベント詳細（サブタブ: 内容 / 参加状況 / 振り返り記入） -->
                 <div class="expd-tab-pane" data-tab-pane="detail">
-                    <div id="series-occ-selector"></div>
                     <div class="detail-sub-tab-bar">
                         <button class="detail-sub-tab active" data-subtab="content" onclick="switchDetailSubTab(this)">内容</button>
                         <button class="detail-sub-tab" data-subtab="attendance" onclick="switchDetailSubTab(this)">参加状況</button>
@@ -81,21 +89,11 @@
                 <!-- Tab: 現地情報（緊急連絡先＋振り返りタイムライン） -->
                 <div class="expd-tab-pane hidden" data-tab-pane="local-info">
                     <div id="series-safety-card" class="series-safety-card hidden">
-                        <div class="series-safety-title">&#x1F6A8; 緊急連絡先・現地情報</div>
-                        <div class="series-safety-grid">
-                            <div class="series-safety-item" style="grid-column: 1 / -1;">
-                                <span class="series-safety-label">&#x1F4CD; 住所</span>
-                                <span id="series-address" class="series-safety-value"></span>
-                            </div>
-                            <div class="series-safety-item">
-                                <span class="series-safety-label">&#x1F3E5; 近隣の病院・診療所</span>
-                                <span id="series-hospital" class="series-safety-value"></span>
-                            </div>
-                            <div class="series-safety-item">
-                                <span class="series-safety-label">&#x1F46E; 近隣の警察署</span>
-                                <span id="series-police" class="series-safety-value"></span>
-                            </div>
+                        <div class="series-safety-header">
+                            <div class="series-safety-title">&#x1F6A8; 緊急連絡先・現地情報</div>
+                            <button type="button" class="expd-section-edit-btn" title="編集" onclick="editSafetyInfo()">&#9998;</button>
                         </div>
+                        <div id="series-safety-grid" class="series-safety-grid"></div>
                     </div>
                     <div class="expd-section">
                         <h2 class="expd-section-title">振り返り</h2>
@@ -117,23 +115,6 @@
             </div>
         </div>
     </main>
-
-    <!-- 新規イベント作成モーダル -->
-    <div id="series-new-modal" class="modal-overlay hidden">
-        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="series-new-title">
-            <h2 id="series-new-title">新規イベント</h2>
-            <p>複製するイベントを選択するか、新しく作成してください。</p>
-            <div class="e1-group">
-                <label class="e1-label">複製するイベントを選択</label>
-                <select id="series-dup-source" class="e1-input" onchange="onSeriesDupSelect(this.value)">
-                    <option value="">-- イベントを選んで複製 --</option>
-                </select>
-            </div>
-            <div class="text-center-or">または</div>
-            <button class="btn btn-primary-solid" style="width:100%;" onclick="goToNewEvent()">新しくイベントを作成</button>
-            <button class="btn btn-text mt-2" onclick="closeSeriesNewModal()">キャンセル</button>
-        </div>
-    </div>
 
     <script src="config.js"></script>
     <script src="api.js"></script>
