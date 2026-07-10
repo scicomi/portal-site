@@ -63,6 +63,7 @@ function _bindExpTableDelegation() {
 
 async function init() {
     _bindExpTableDelegation();
+    renderExpRecruit();
 
     // 検索窓（デバウンス・サジェスト・キーボード操作は search.js が面倒を見る）
     attachSearchBox(document.getElementById('exp-search'), {
@@ -104,6 +105,73 @@ async function refreshData(isManual = false) {
                 <button type="button" class="btn btn-secondary" onclick="refreshData(true)">再読み込み</button>
             </td></tr>`;
         }
+    }
+}
+
+// ---- 新規実験の募集案内（管理者が編集。Config のキーバリューに保存する） ----
+
+function renderExpRecruit() {
+    const card = document.getElementById('exp-recruit-card');
+    const editBtn = document.getElementById('exp-recruit-edit-btn');
+    const body = document.getElementById('exp-recruit-body');
+    if (!card || !body) return;
+    const isAdmin = api.isAdmin();
+    if (editBtn) editBtn.classList.toggle('hidden', !isAdmin);
+
+    const cfg = _readCachedSiteSettings() || {};
+    const url = (cfg.experiment_recruit_url || '').trim();
+    const note = (cfg.experiment_recruit_note || '').trim();
+
+    if (!url && !note && !isAdmin) {
+        card.classList.add('hidden');
+        return;
+    }
+    card.classList.remove('hidden');
+    body.innerHTML = (url || note)
+        ? `
+            ${note ? `<p class="exp-recruit-note">${escapeHtml(note)}</p>` : ''}
+            ${url ? `<a class="btn btn-primary-solid" style="width:auto;" href="${escapeAttr(safeHttpUrl(url))}" target="_blank" rel="noopener">応募フォームを開く</a>` : ''}
+        `
+        : `<p class="text-muted" style="font-size:0.85rem;">募集中の案内はまだ登録されていません。✎から追加できます</p>`;
+}
+
+function editExpRecruit() {
+    const body = document.getElementById('exp-recruit-body');
+    if (!body) return;
+    const cfg = _readCachedSiteSettings() || {};
+    body.innerHTML = `
+        <div class="e1-group">
+            <label class="e1-label">案内文</label>
+            <textarea id="exp-recruit-note-input" class="e1-input" rows="3" placeholder="例: 新しい実験ネタを募集しています！アイデアがある人はフォームから応募してください。">${escapeHtml(cfg.experiment_recruit_note || '')}</textarea>
+        </div>
+        <div class="e1-group">
+            <label class="e1-label">応募フォームURL</label>
+            <input id="exp-recruit-url-input" class="e1-input" type="text" value="${escapeAttr(cfg.experiment_recruit_url || '')}" placeholder="https://forms.gle/...">
+        </div>
+        <div class="action-buttons">
+            <button type="button" class="btn btn-text" onclick="renderExpRecruit()">キャンセル</button>
+            <button type="button" class="btn btn-primary-solid" style="width:auto;" onclick="saveExpRecruit()">保存</button>
+        </div>
+    `;
+}
+
+async function saveExpRecruit() {
+    const note = document.getElementById('exp-recruit-note-input')?.value.trim() || '';
+    const url = document.getElementById('exp-recruit-url-input')?.value.trim() || '';
+    try {
+        await api.adminSetConfig('experiment_recruit_note', note);
+        await api.adminSetConfig('experiment_recruit_url', url);
+        // 他ページ用にキャッシュは破棄しつつ、このページ内ではすぐ最新値で再表示できるよう
+        // 破棄後のキャッシュに今保存した値を書き戻しておく
+        invalidateSettingsCache();
+        const cached = _readCachedSiteSettings() || {};
+        cached.experiment_recruit_note = note;
+        cached.experiment_recruit_url = url;
+        localStorage.setItem('scicomi_site_settings', JSON.stringify({ data: cached, ts: Date.now() }));
+        toast('募集案内を保存しました', 'success');
+        renderExpRecruit();
+    } catch (e) {
+        toast('保存失敗: ' + e.message, 'error');
     }
 }
 

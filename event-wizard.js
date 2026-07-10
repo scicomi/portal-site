@@ -90,8 +90,11 @@ function gasToUi(g) {
     u.Accompany = g.Accompany || '';
     u.PlanName = g.PlanName || '';
     u.Address = g.Address || '';
+    u.LocationTel = g.LocationTel || '';
     u.EmergencyHospital = g.EmergencyHospital || '';
     u.EmergencyPolice = g.EmergencyPolice || '';
+    u.KyokaNotRequired = g.KyokaNotRequired || '';
+    u.HoukokuNotRequired = g.HoukokuNotRequired || '';
     u.PartsList = Array.isArray(g.PartsList) ? JSON.stringify(g.PartsList) : (g.PartsList || '');
     u.Files = Array.isArray(g.Files)
         ? g.Files.map(f => typeof f === 'string' ? { name: '', url: f } : f)
@@ -131,12 +134,15 @@ function uiToGas(u) {
         AdminHoukoku: u.Admin_Houkoku || '',
         KyokaDeadline: u.Kyoka_Deadline || '',
         HoukokuDeadline: u.Houkoku_Deadline || '',
+        KyokaNotRequired: u.KyokaNotRequired || '',
+        HoukokuNotRequired: u.HoukokuNotRequired || '',
         VoteDeadline: u.Vote_Deadline || '',
         Logistics: u.Meeting_Logistics || '',
         Remarks: u.Remarks || '',
         Belongings: u.Belongings || '',
         Files: Array.isArray(u.Files) ? u.Files : [],
         Address: u.Address || '',
+        LocationTel: u.LocationTel || '',
         EmergencyHospital: u.EmergencyHospital || '',
         EmergencyPolice: u.EmergencyPolice || '',
         SeriesKey: u.SeriesKey || '',
@@ -784,14 +790,26 @@ function openEventWizard(editId, template) {
                     <label class="e1-label">書類期限（日付は自動計算されます）</label>
                     <div class="deadline-grid">
                         <div>
-                            <label class="text-label" style="font-size:0.85rem; display:block; margin-bottom:4px;">許可願 (担当)</label>
-                            <div id="wz-ev-admin-kyoka"></div>
-                            <span class="text-muted" style="font-size:0.8rem;">期限: <span id="wz-ev-kyoka-dl">${escapeHtml(e.Kyoka_Deadline || '---')}</span></span>
+                            <label class="text-label doc-not-required-toggle">
+                                <input type="checkbox" id="wz-ev-kyoka-not-required" ${e.KyokaNotRequired ? 'checked' : ''} onchange="onDocNotRequiredToggle('kyoka')">
+                                許可願は不要
+                            </label>
+                            <div id="wz-ev-kyoka-fields" class="${e.KyokaNotRequired ? 'hidden' : ''}">
+                                <label class="text-label" style="font-size:0.85rem; display:block; margin-bottom:4px;">許可願 (担当)</label>
+                                <div id="wz-ev-admin-kyoka"></div>
+                                <span class="text-muted" style="font-size:0.8rem;">期限: <span id="wz-ev-kyoka-dl">${escapeHtml(e.Kyoka_Deadline || '---')}</span></span>
+                            </div>
                         </div>
                         <div>
-                            <label class="text-label" style="font-size:0.85rem; display:block; margin-bottom:4px;">報告書 (担当)</label>
-                            <div id="wz-ev-admin-houkoku"></div>
-                            <span class="text-muted" style="font-size:0.8rem;">期限: <span id="wz-ev-houkoku-dl">${escapeHtml(e.Houkoku_Deadline || '---')}</span></span>
+                            <label class="text-label doc-not-required-toggle">
+                                <input type="checkbox" id="wz-ev-houkoku-not-required" ${e.HoukokuNotRequired ? 'checked' : ''} onchange="onDocNotRequiredToggle('houkoku')">
+                                報告書は不要
+                            </label>
+                            <div id="wz-ev-houkoku-fields" class="${e.HoukokuNotRequired ? 'hidden' : ''}">
+                                <label class="text-label" style="font-size:0.85rem; display:block; margin-bottom:4px;">報告書 (担当)</label>
+                                <div id="wz-ev-admin-houkoku"></div>
+                                <span class="text-muted" style="font-size:0.8rem;">期限: <span id="wz-ev-houkoku-dl">${escapeHtml(e.Houkoku_Deadline || '---')}</span></span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1116,23 +1134,35 @@ function saveEventFromWizard() {
             tempNewEvent.PartsList = JSON.stringify(collected);
         }
 
-        // Collect tag inputs
+        // 書類が不要な場合は担当者・期限を持たせない（チェックを外せばまた計算に戻る）
+        tempNewEvent.KyokaNotRequired = document.getElementById('wz-ev-kyoka-not-required')?.checked ? 'true' : '';
+        tempNewEvent.HoukokuNotRequired = document.getElementById('wz-ev-houkoku-not-required')?.checked ? 'true' : '';
+
+        // Collect tag inputs（不要チェック時は、非表示のタグ入力に値が残っていても採用しない）
         const accompanyEl = document.getElementById('wz-ev-accompany');
         if (accompanyEl?._tagInput) tempNewEvent.Accompany = accompanyEl._tagInput.getValues().join(', ');
-        const kyokaEl = document.getElementById('wz-ev-admin-kyoka');
-        if (kyokaEl?._tagInput) tempNewEvent.Admin_Kyoka = kyokaEl._tagInput.getValues().join(', ');
-        const houkokuEl = document.getElementById('wz-ev-admin-houkoku');
-        if (houkokuEl?._tagInput) tempNewEvent.Admin_Houkoku = houkokuEl._tagInput.getValues().join(', ');
+        if (tempNewEvent.KyokaNotRequired) {
+            tempNewEvent.Admin_Kyoka = '';
+        } else {
+            const kyokaEl = document.getElementById('wz-ev-admin-kyoka');
+            if (kyokaEl?._tagInput) tempNewEvent.Admin_Kyoka = kyokaEl._tagInput.getValues().join(', ');
+        }
+        if (tempNewEvent.HoukokuNotRequired) {
+            tempNewEvent.Admin_Houkoku = '';
+        } else {
+            const houkokuEl = document.getElementById('wz-ev-admin-houkoku');
+            if (houkokuEl?._tagInput) tempNewEvent.Admin_Houkoku = houkokuEl._tagInput.getValues().join(', ');
+        }
     }
 
-    // Recalculate deadlines
+    // Recalculate deadlines（不要フラグが立っている方は期限を持たせない）
     if (isMeeting) {
         tempNewEvent.Kyoka_Deadline = '';
         tempNewEvent.Houkoku_Deadline = '';
     } else {
         const dl = calculateDeadlines(tempNewEvent.Date);
-        tempNewEvent.Kyoka_Deadline = dl.kyoka;
-        tempNewEvent.Houkoku_Deadline = dl.houkoku;
+        tempNewEvent.Kyoka_Deadline = tempNewEvent.KyokaNotRequired ? '' : dl.kyoka;
+        tempNewEvent.Houkoku_Deadline = tempNewEvent.HoukokuNotRequired ? '' : dl.houkoku;
     }
 
     // Uploading check
@@ -1178,6 +1208,14 @@ function saveEventFromWizard() {
             toast('保存失敗: ' + err.message, 'error');
         }
     });
+}
+
+// 「許可願/報告書は不要」チェック時、担当者・期限入力を隠す（保存時は担当も期限も送らない）
+function onDocNotRequiredToggle(type) {
+    const checkbox = document.getElementById(`wz-ev-${type}-not-required`);
+    const fields = document.getElementById(`wz-ev-${type}-fields`);
+    if (!checkbox || !fields) return;
+    fields.classList.toggle('hidden', checkbox.checked);
 }
 
 // ---- イベント削除（ウィザード内から） ----

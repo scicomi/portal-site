@@ -8,6 +8,11 @@ document.addEventListener('DOMContentLoaded', () => {
     bootPage('settings', init);
 });
 
+// セクション見出しタップで開閉（見出し内のリンク・ボタン等の誤爆は無いのでシンプルに丸ごとトグル）
+function toggleSettingsSection(headerEl) {
+    headerEl.closest('.settings-section')?.classList.toggle('collapsed');
+}
+
 async function init() {
     if (!api.isAdmin()) {
         // 認証モーダルを閉じられても「読み込み中」が残らないよう、案内に置き換える
@@ -49,6 +54,10 @@ async function loadSettings() {
         }
         modelSel.value = cur;
 
+        // ヘッダーのブランド表示
+        document.getElementById('cfg-brand-icon').value = cfg.brand_icon || 'SC';
+        document.getElementById('cfg-brand-name').value = cfg.brand_name || 'SciComi Portal';
+
         // 挨拶メッセージ
         document.getElementById('cfg-welcome-message').value = cfg.welcome_message || '';
 
@@ -84,10 +93,6 @@ async function _withBusyBtn(btn, fn) {
     finally { btn.disabled = false; btn.textContent = orig; }
 }
 
-function invalidateSettingsCache() {
-    localStorage.removeItem('scicomi_site_settings');
-}
-
 // --- 個別保存ヘルパー ---
 
 async function saveSettingField(key, inputId, btn) {
@@ -102,6 +107,14 @@ async function saveSettingField(key, inputId, btn) {
                 } else {
                     localStorage.removeItem('scicomi_welcome_message');
                 }
+            }
+            if (key === 'brand_icon') {
+                const el = document.getElementById('header-brand-icon');
+                if (el) el.textContent = value || 'SC';
+            }
+            if (key === 'brand_name') {
+                const el = document.getElementById('header-brand-name');
+                if (el) el.textContent = value || 'SciComi Portal';
             }
             toast('保存しました', 'success');
         } catch (e) {

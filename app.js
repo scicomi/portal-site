@@ -210,10 +210,23 @@ function openMemberDetailModal(id, members, opts) {
 
 // ====== ナビゲーション ======
 
+// 直近取得済みのサーバー設定キャッシュを読む（renderHeader は applySiteSettings より先に
+// 走るため、ヘッダーのブランド表示だけは同期的にキャッシュから先出しし、後から _applyCfg で更新する）
+function _readCachedSiteSettings() {
+  try {
+    const raw = localStorage.getItem('scicomi_site_settings');
+    if (!raw) return null;
+    return JSON.parse(raw).data || null;
+  } catch (_) { return null; }
+}
+
 function renderHeader(activePage) {
   const header = document.querySelector('.app-header');
   if (!header) return;
   const isAdmin = api.isAdmin();
+  const cachedCfg = _readCachedSiteSettings();
+  const brandIcon = (cachedCfg && cachedCfg.brand_icon) || 'SC';
+  const brandName = (cachedCfg && cachedCfg.brand_name) || 'SciComi Portal';
 
   const navItems = CONFIG.NAV_ITEMS.filter(item => !item.adminOnly || isAdmin);
   let navHtml = '';
@@ -226,8 +239,8 @@ function renderHeader(activePage) {
     <div class="header-top">
       <div class="header-brand">
         <a href="index.html" style="color:inherit;text-decoration:none;display:flex;align-items:center;gap:8px;">
-          <span class="brand-icon">SC</span>
-          <span class="brand-name">SciComi Portal</span>
+          <span class="brand-icon" id="header-brand-icon">${escapeHtml(brandIcon)}</span>
+          <span class="brand-name" id="header-brand-name">${escapeHtml(brandName)}</span>
         </a>
       </div>
       <div class="header-actions">
@@ -720,6 +733,12 @@ function toastUndo(message, onUndo, onCommit, delay = 5000) {
 
 // ====== サーバー設定の反映 ======
 
+// 設定を書き換えた直後にキャッシュを捨てる（次回 applySiteSettings で必ずサーバーへ取りに行く）。
+// settings.js・experiments.js など、Config キーを保存する複数ページから使う共通処理。
+function invalidateSettingsCache() {
+  localStorage.removeItem('scicomi_site_settings');
+}
+
 async function applySiteSettings() {
     const SETTINGS_CACHE_KEY = 'scicomi_site_settings';
     const SETTINGS_TTL = 10 * 60 * 1000; // 10分
@@ -757,6 +776,15 @@ function _applyCfg(cfg) {
     if (cfg.welcome_message !== undefined) {
         if (cfg.welcome_message) localStorage.setItem('scicomi_welcome_message', cfg.welcome_message);
         else localStorage.removeItem('scicomi_welcome_message');
+    }
+    // ヘッダーはキャッシュ値で先出し済みのことがあるため、取得できた最新値で上書きする
+    if (cfg.brand_icon) {
+        const el = document.getElementById('header-brand-icon');
+        if (el) el.textContent = cfg.brand_icon;
+    }
+    if (cfg.brand_name) {
+        const el = document.getElementById('header-brand-name');
+        if (el) el.textContent = cfg.brand_name;
     }
 }
 

@@ -36,10 +36,10 @@
         </div>
         <div class="page-filters">
             <button class="filter-chip active" data-cat="all" aria-pressed="true" onclick="onCategoryFilter('all')">全部</button>
-            <button class="filter-chip" data-cat="normal" aria-pressed="false" onclick="onCategoryFilter('normal')">イベント</button>
-            <button class="filter-chip" data-cat="other" aria-pressed="false" onclick="onCategoryFilter('other')">その他</button>
-            <button class="filter-chip" data-cat="general" aria-pressed="false" onclick="onCategoryFilter('general')">全体MTG</button>
-            <button class="filter-chip" data-cat="admin" aria-pressed="false" onclick="onCategoryFilter('admin')">幹部MTG</button>
+            <button class="filter-chip" data-cat="normal" aria-pressed="false" onclick="onCategoryFilter('normal')"><span class="cat-dot" style="color:#f8b4b4;">&#9679;</span>イベント</button>
+            <button class="filter-chip" data-cat="other" aria-pressed="false" onclick="onCategoryFilter('other')"><span class="cat-dot" style="color:#86efac;">&#9679;</span>その他</button>
+            <button class="filter-chip" data-cat="general" aria-pressed="false" onclick="onCategoryFilter('general')"><span class="cat-dot" style="color:#93c5fd;">&#9679;</span>全体MTG</button>
+            <button class="filter-chip" data-cat="admin" aria-pressed="false" onclick="onCategoryFilter('admin')"><span class="cat-dot" style="color:#fde68a;">&#9679;</span>幹部MTG</button>
             <span class="filter-divider"></span>
             <select id="period-filter" class="e1-input" style="width:auto; padding:4px 10px; font-size:0.85rem;" title="表示する期間" onchange="onPeriodFilter(this.value)">
                 <option value="upcoming" selected>今後</option>

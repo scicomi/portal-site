@@ -24,6 +24,15 @@
             <button class="btn btn-primary page-new-btn" onclick="openExpWizard()">＋ 実験を追加</button>
         </div>
 
+        <!-- 新規実験の募集案内（管理者が編集。フォームURL・注意文を掲載） -->
+        <div id="exp-recruit-card" class="exp-recruit-card hidden">
+            <div class="exp-recruit-header">
+                <h3>&#x1F4E2; 新規実験を募集中</h3>
+                <button type="button" id="exp-recruit-edit-btn" class="expd-section-edit-btn hidden" title="編集" onclick="editExpRecruit()">&#9998;</button>
+            </div>
+            <div id="exp-recruit-body"></div>
+        </div>
+
         <div class="page-section-actions">
             <button class="filter-chip active" data-cat="workshop" aria-pressed="true" onclick="switchExpTab('workshop')">工作 <span id="tab-cnt-workshop">0</span></button>
             <button class="filter-chip" data-cat="show" aria-pressed="false" onclick="switchExpTab('show')">実験ショー <span id="tab-cnt-show">0</span></button>
