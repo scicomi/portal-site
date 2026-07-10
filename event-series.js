@@ -390,22 +390,32 @@ function renderAll() {
     document.getElementById('series-subtitle').textContent =
         seriesEvents.length > 1 ? `通算${seriesEvents.length}回開催（${earliest}年〜）` : '';
 
+    // ミーティングでは不要なタブを隠す
+    const ev0 = currentEvent();
+    const isMtg = ev0 && (ev0.Category === 'general' || ev0.Category === 'admin');
+    document.querySelectorAll('.expd-tab[data-tab="local-info"], .expd-tab[data-tab="stats"]').forEach(t => {
+        t.style.display = isMtg ? 'none' : '';
+    });
+    const reflTab = document.querySelector('.detail-sub-tab[data-subtab="reflection"]');
+    if (reflTab) reflTab.style.display = isMtg ? 'none' : '';
+
     renderHeaderActions();
     renderSafetyInfo();
     renderOccurrenceSelector();
     renderDetail();
-    renderFeedbackTimeline();
-    renderStats();
-    renderOverview();
+    if (!isMtg) {
+        renderFeedbackTimeline();
+        renderStats();
+        renderOverview();
+    }
 
-    if (scrollToFeedback) {
+    if (scrollToFeedback && !isMtg) {
         scrollToFeedback = false;
         setTimeout(() => {
             const refBtn = document.querySelector('.detail-sub-tab[data-subtab="reflection"]');
             if (refBtn) switchDetailSubTab(refBtn);
         }, 150);
     }
-    // ?vote=1（共有リンク）で来たら参加状況サブタブへ切り替え
     if (scrollToVotes) {
         scrollToVotes = false;
         setTimeout(() => {

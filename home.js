@@ -6,17 +6,11 @@ document.addEventListener('DOMContentLoaded', () => {
     bootPage('home', init);
 });
 
-// 書類（許可願・報告書）の提出ステータス定義（config.js に集約）
 const REPORT_STATUS = CONFIG.REPORT_STATUS;
 const KYOKA_STATUS = CONFIG.KYOKA_STATUS;
 
-// 出欠一括回答（名前記憶・対象者算出・ラベルは vote-widget.js の共通実装を使う）
-let allVotes = null;        // null = 未取得（読み込み中表示に使う）
 let allMembersData = [];
 
-// 報告書ステータスの保存に使う、GAS 正準形（listAll 由来）のイベント配列。
-// UI形（イベントページが書いたキャッシュ）を誤って保存して列がずれるのを防ぐため、
-// 正準形と判定できる場合のみセットする。
 let latestEvents = [];
 function looksGasForm(items) {
     if (!items || items.length === 0) return true;
@@ -29,8 +23,6 @@ async function init() {
     const cachedMb = api.loadCache('members');
     const cachedEx = api.loadCache('experiments');
 
-    // latestEvents（報告書ステータス保存に使う）は GAS正準形のときだけ採用する。
-    // 表示用カードは新旧どちらのキャッシュでも動くよう各 render 側で吸収する。
     if (cachedEv && looksGasForm(cachedEv.items)) latestEvents = cachedEv.items || [];
     if (cachedEv) { renderEventsCard(cachedEv.items || []); renderFeedbackPending(cachedEv.items || []); updateActionNeeded(); }
     if (cachedMb) {
@@ -57,7 +49,7 @@ async function refreshData(isManual = false) {
         api.saveCache('members', all.members);
         api.saveCache('experiments', all.experiments);
 
-        latestEvents = all.events;  // 正準形を保持（書類ステータス保存に使う）
+        latestEvents = all.events;
         allMembersData = all.members || [];
         renderEventsCard(all.events);
         renderFeedbackPending(all.events);
@@ -65,13 +57,6 @@ async function refreshData(isManual = false) {
         renderMembersCard(all.members);
         renderStats(all);
         updateSyncStatus('fresh', Date.now());
-        // 投票は listAll に同梱されて届く。旧バックエンド（votes 未同梱）のみ別途取得する。
-        if (Array.isArray(all.votes)) {
-            allVotes = all.votes;
-            renderBulkVote();
-        } else {
-            loadVotesAndRenderBulk();
-        }
     } catch (e) {
         if (e.handled) return;
         updateSyncStatus('error', null, e.message);
@@ -79,10 +64,8 @@ async function refreshData(isManual = false) {
     }
 }
 
-// 初回読み込みに失敗（キャッシュも無い）場合、「読み込み中」スピナーが残り続けないよう
-// エラー表示＋再読み込みボタンに置き換える。キャッシュ表示済みのカードには触らない。
 function renderLoadError() {
-    document.querySelectorAll('#upcoming-events .loading-text, #member-summary .loading-text, #bulk-vote-list .loading-text').forEach(el => {
+    document.querySelectorAll('#upcoming-events .loading-text, #member-summary .loading-text').forEach(el => {
         el.outerHTML = `<li class="empty-state">
             <div class="empty-text">データを読み込めませんでした</div>
             <div class="empty-hint">通信環境を確認して、もう一度お試しください</div>
@@ -91,140 +74,7 @@ function renderLoadError() {
     });
 }
 
-// ---- 出欠一括回答 ----
-
-async function loadVotesAndRenderBulk() {
-    try {
-        allVotes = await api.listVotes();
-    } catch (_) {
-        allVotes = [];
-    }
-    renderBulkVote();
-}
-
-function renderBulkVote() {
-    const select = document.getElementById('bulk-vote-member');
-    if (!select) return;
-
-    const eligible = voteEligibleMembers(allMembersData)
-        .sort((a, b) => (a.Name || '').localeCompare(b.Name || '', 'ja'));
-
-    const saved = getSavedVoteMemberId();
-    select.innerHTML = '<option value="">-- 名前を選択 --</option>' + eligible.map(m =>
-        `<option value="${escapeAttr(m.ID)}" ${m.ID === saved ? 'selected' : ''}>${escapeHtml(m.Name)}</option>`
-    ).join('');
-    select.onchange = () => {
-        setSavedVoteMemberId(select.value);
-        renderBulkVoteList();
-    };
-    renderBulkVoteList();
-}
-
-function renderBulkVoteList() {
-    const listEl = document.getElementById('bulk-vote-list');
-    if (!listEl) return;
-    const flag = document.getElementById('bulk-vote-unanswered-flag');
-    if (allVotes === null) {
-        listEl.innerHTML = '<li class="loading-text">読み込み中</li>';
-        if (flag) flag.classList.add('hidden');
-        return;
-    }
-    const memberId = document.getElementById('bulk-vote-member')?.value || '';
-    const today = todayISO();
-    const upcoming = (latestEvents || [])
-        .filter(e => (e.DateEnd || e.Date) >= today)
-        .sort((a, b) => (a.Date || '').localeCompare(b.Date || ''))
-        .slice(0, 10);
-
-    if (upcoming.length === 0) {
-        listEl.innerHTML = '<li class="empty-state"><span class="empty-text">今後の予定はありません</span></li>';
-        if (flag) flag.classList.add('hidden');
-        return;
-    }
-
-    const staffIds = voteStaffIds(allMembersData);
-    const byEvent = {};
-    (allVotes || []).forEach(v => {
-        if (staffIds.has(v.memberId)) return;
-        const b = byEvent[v.eventId] || (byEvent[v.eventId] = { attend: 0, absent: 0, undecided: 0, mine: '', mineNote: '' });
-        if (b[v.status] !== undefined) b[v.status]++;
-        if (memberId && v.memberId === memberId) { b.mine = v.status; b.mineNote = v.note || ''; }
-    });
-
-    // 名前選択済みなのにまだ回答が無い件数。行ごとにバッジを出すのではなく、
-    // セクション見出し横にまとめて「未回答あり」を表示する。
-    let unansweredCount = 0;
-
-    listEl.innerHTML = upcoming.map(e => {
-        let title = e.Title || '(無題)';
-        const c = getEventCategory(e.Category);
-        if (c.isMeeting && e.MeetingNumber) title = `第${e.MeetingNumber}回 ${title}`;
-        const agg = byEvent[e.ID] || { attend: 0, absent: 0, undecided: 0, mine: '', mineNote: '' };
-        // 対象者数を分母として添える（例: 参加5 / 対象12）
-        const eligibleCount = voteEligibleMembers(allMembersData, e).length;
-        const closed = voteDeadlinePassed(e);
-        if (memberId && !agg.mine && !closed) unansweredCount++;
-        const btns = !memberId ? '' : closed
-            ? '<span class="bv-closed" title="出欠の締切を過ぎています。変更は管理者に連絡してください">締切済み</span>'
-            : `
-            <span class="bv-btns" data-event-id="${escapeAttr(e.ID)}">
-                ${Object.keys(VOTE_STATUS_LABELS).map(st =>
-                    `<button type="button" class="bv-btn bv-${st} ${agg.mine === st ? 'active' : ''}" data-status="${st}">${VOTE_STATUS_LABELS[st]}</button>`
-                ).join('')}
-            </span>`;
-        return `<li class="bv-row">
-            <span class="dl-date">${shortDate(e.Date)}</span>
-            <span class="dl-title">
-                <a href="event-series.html?event=${encodeURIComponent(e.ID)}" class="report-event-link">${escapeHtml(title)}</a>
-                ${agg.mineNote ? `<span class="bv-note">メモ: ${escapeHtml(agg.mineNote)}</span>` : ''}
-            </span>
-            ${btns}
-        </li>`;
-    }).join('');
-
-    if (flag) {
-        if (unansweredCount > 0) {
-            flag.textContent = `未回答あり (${unansweredCount})`;
-            flag.classList.remove('hidden');
-        } else {
-            flag.classList.add('hidden');
-        }
-    }
-
-    listEl.querySelectorAll('.bv-btns').forEach(box => {
-        box.addEventListener('click', (ev) => {
-            const btn = ev.target.closest('.bv-btn');
-            if (btn) submitBulkVote(box.dataset.eventId, btn.dataset.status);
-        });
-    });
-}
-
-async function submitBulkVote(eventId, status) {
-    const memberId = document.getElementById('bulk-vote-member')?.value || '';
-    if (!memberId) { toast('先に名前を選択してください', 'info'); return; }
-
-    // 楽観的更新（失敗時は巻き戻す）。note は送らない = サーバー側で既存メモを保持する。
-    const idx = allVotes.findIndex(v => v.eventId === eventId && v.memberId === memberId);
-    const before = idx >= 0 ? { ...allVotes[idx] } : null;
-    if (before && before.status === status) return;
-    if (idx >= 0) allVotes[idx] = { ...allVotes[idx], status };
-    else allVotes.push({ eventId, memberId, status, updatedAt: '' });
-    renderBulkVoteList();
-
-    try {
-        const saved = await api.submitVote({ eventId, memberId, status });
-        const j = allVotes.findIndex(v => v.eventId === eventId && v.memberId === memberId);
-        if (j >= 0) allVotes[j] = saved;
-        renderBulkVoteList();
-        toast(`「${VOTE_STATUS_LABELS[status]}」で回答しました`, 'success', 2000);
-    } catch (e) {
-        const j = allVotes.findIndex(v => v.eventId === eventId && v.memberId === memberId);
-        if (before) { if (j >= 0) allVotes[j] = before; }
-        else if (j >= 0) allVotes.splice(j, 1);
-        renderBulkVoteList();
-        toast(voteErrorMessage(e), 'error');
-    }
-}
+// ---- 挨拶メッセージ（リッチテキスト対応） ----
 
 function renderWelcome() {
     const hour = new Date().getHours();
@@ -233,8 +83,70 @@ function renderWelcome() {
     else if (hour >= 18) greeting = 'こんばんは';
     const custom = localStorage.getItem('scicomi_welcome_message');
     const body = custom || '今日も活動を楽しんでいきましょう。';
-    document.getElementById('welcome-msg').textContent = `${greeting} -- ${body}`;
+    const el = document.getElementById('welcome-msg');
+    el.innerHTML = `${escapeHtml(greeting)} &mdash; ${sanitizeRichHtml(body)}`;
+
+    const editBtn = document.getElementById('welcome-edit-btn');
+    if (editBtn) editBtn.classList.toggle('hidden', !api.isAdmin());
 }
+
+function editWelcomeMessage() {
+    const area = document.getElementById('welcome-editor-area');
+    const msgEl = document.getElementById('welcome-msg');
+    const editBtn = document.getElementById('welcome-edit-btn');
+    if (!area) return;
+
+    msgEl.style.display = 'none';
+    if (editBtn) editBtn.style.display = 'none';
+    area.classList.remove('hidden');
+
+    const custom = localStorage.getItem('scicomi_welcome_message') || '';
+    area.innerHTML = `
+        <div id="welcome-rich-editor"></div>
+        <div class="action-buttons" style="margin-top:8px;">
+            <button type="button" class="btn btn-text" onclick="cancelWelcomeEdit()">キャンセル</button>
+            <button type="button" class="btn btn-primary" style="width:auto;" onclick="saveWelcomeMessage()">保存</button>
+        </div>
+    `;
+    createRichEditor(
+        document.getElementById('welcome-rich-editor'),
+        custom,
+        { placeholder: '今日も活動を楽しんでいきましょう。' }
+    );
+}
+
+function cancelWelcomeEdit() {
+    const area = document.getElementById('welcome-editor-area');
+    const msgEl = document.getElementById('welcome-msg');
+    const editBtn = document.getElementById('welcome-edit-btn');
+    area.classList.add('hidden');
+    area.innerHTML = '';
+    msgEl.style.display = '';
+    if (editBtn) editBtn.style.display = '';
+}
+
+async function saveWelcomeMessage() {
+    const editor = document.getElementById('welcome-rich-editor')?._richEditor;
+    if (!editor) return;
+    const html = editor.getHtml().trim();
+    const value = html === '<br>' || !html ? '' : html;
+    try {
+        await api.adminSetConfig('welcome_message', value);
+        if (value) localStorage.setItem('scicomi_welcome_message', value);
+        else localStorage.removeItem('scicomi_welcome_message');
+        invalidateSettingsCache();
+        const cached = _readCachedSiteSettings() || {};
+        cached.welcome_message = value;
+        localStorage.setItem('scicomi_site_settings', JSON.stringify({ data: cached, ts: Date.now() }));
+        toast('挨拶メッセージを保存しました', 'success');
+        cancelWelcomeEdit();
+        renderWelcome();
+    } catch (e) {
+        toast('保存失敗: ' + e.message, 'error');
+    }
+}
+
+// ---- ダッシュボード ----
 
 function renderStats(all) {
     const today = todayISO();
@@ -264,7 +176,6 @@ function renderEventsCard(events) {
             if (c.isMeeting && meetingNo) {
                 title = `第${meetingNo}回 ${title}`;
             }
-            // 行全体タップでも、キーボード(Tab→Enter)でリンクからでも開けるようにする
             return `
                 <li onclick="location.href='event-series.html?event=${encodeURIComponent(e.ID)}'" style="cursor:pointer;">
                     <span class="dl-date">${shortDate(e.Date)}</span>
@@ -279,8 +190,6 @@ function renderEventsCard(events) {
     renderReportsCard(events);
 }
 
-// 「許可願の期限」カード。イベント開催前に必要な書類なので、
-// 期限が30日以内（超過含む）かつイベントがまだ終わっていない未提出分を表示する。
 function renderKyokaCard(events) {
     const container = document.getElementById('upcoming-kyoka');
     if (!container) return;
@@ -289,15 +198,13 @@ function renderKyokaCard(events) {
 
     const items = [];
     (events || []).forEach(e => {
-        // ミーティングには許可願が無い
         if (e.Category === 'general' || e.Category === 'admin') return;
-        // GAS形 / UI形どちらのキャッシュでも拾う
         const deadline = e.KyokaDeadline || e.Kyoka_Deadline || '';
         if (!deadline) return;
         if ((e.KyokaStatus || '') === 'submitted') return;
         const endDate = e.DateEnd || e.Date_End || e.Date;
-        if (!endDate || endDate < today) return; // イベントが終わっていれば対象外
-        if (deadline > in30) return;             // 30日より先はまだ表示しない
+        if (!endDate || endDate < today) return;
+        if (deadline > in30) return;
         items.push({ id: e.ID, date: deadline, event: e.Title, admin: e.AdminKyoka || e.Admin_Kyoka || '', status: e.KyokaStatus || '' });
     });
     items.sort((a, b) => a.date.localeCompare(b.date));
@@ -330,9 +237,6 @@ function renderKyokaCard(events) {
     });
 }
 
-// 「期限が近い報告書」カード。報告書（HoukokuDeadline）だけを対象に、
-// 締切日・担当者・イベント名を表示し、タップで提出ステータス（未提出→コーディネーター→CLC）を管理する。
-// ※ 期限アラートの色分け／残り日数バッジは廃止（書類アラート不要のため）。
 function renderReportsCard(events) {
     const container = document.getElementById('upcoming-deadlines');
     if (!container) return;
@@ -342,14 +246,10 @@ function renderReportsCard(events) {
 
     const reports = [];
     (events || []).forEach(e => {
-        // ミーティング（全体MTG/幹部MTG）には報告書が無いので除外
         if (e.Category === 'general' || e.Category === 'admin') return;
-        // 報告書期限は GAS形(HoukokuDeadline) / UI形(Houkoku_Deadline) のどちらでも拾う。
-        // これが GAS形のみ参照だったため、イベントページが書いた UI形キャッシュだと空表示になっていた。
         const deadline = e.HoukokuDeadline || e.Houkoku_Deadline || '';
         if (!deadline) return;
         const status = e.ReportStatus || '';
-        // CLC提出済（完了）は表示しない。締切が直近30日以内、または過去90日以内の未完了分を表示。
         if (status === 'clc') return;
         if (deadline > in30 || deadline < past90) return;
         reports.push({ id: e.ID, date: deadline, event: e.Title, admin: e.AdminHoukoku || e.Admin_Houkoku || '', status });
@@ -384,7 +284,6 @@ function renderReportsCard(events) {
     });
 }
 
-// 書類ステータス（許可願/報告書）を更新（楽観的UI + 競合検知）。GAS 正準形イベントに対してのみ実行する。
 async function setDocStatus(id, field, value) {
     const ev = latestEvents.find(e => e.ID === id);
     if (!ev) { toast('データを読み込み中です。少し待ってから操作してください。', 'info', 3000); return; }
@@ -447,7 +346,6 @@ function renderFeedbackPending(events) {
     const container = document.getElementById('feedback-pending');
     if (!container) return;
     const today = todayISO();
-    // 終了から2週間を過ぎたイベントはもう通知しない（古い未記入で埋まらないように）
     const cutoff = toISODate((() => { const d = new Date(); d.setDate(d.getDate() - 14); return d; })());
     const pending = (events || [])
         .filter(e => {
@@ -476,7 +374,6 @@ function renderFeedbackPending(events) {
 function updateActionNeeded() {
     const section = document.getElementById('action-needed');
     if (!section) return;
-    // 中身のあるカードだけ表示し、1つも無ければセクションごと隠す
     let hasContent = false;
     ['upcoming-kyoka', 'upcoming-deadlines', 'feedback-pending'].forEach(id => {
         const list = document.getElementById(id);
@@ -488,4 +385,3 @@ function updateActionNeeded() {
     });
     section.style.display = hasContent ? '' : 'none';
 }
-

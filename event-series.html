@@ -62,15 +62,15 @@
                     <div id="series-occ-selector"></div>
                 </div>
 
-                <div class="expd-tab-bar">
+                <div class="expd-tab-bar" id="series-tab-bar">
                     <button class="expd-tab active" data-tab="detail" onclick="switchSeriesTab(this)">イベント詳細</button>
                     <button class="expd-tab" data-tab="local-info" onclick="switchSeriesTab(this)">会場情報</button>
                     <button class="expd-tab" data-tab="stats" onclick="switchSeriesTab(this)">統計・開催履歴</button>
                 </div>
 
-                <!-- Tab: イベント詳細（サブタブ: 内容 / 参加状況 / 振り返り記入） -->
+                <!-- Tab: イベント詳細（子タブ: 内容 / 参加状況 / 振り返り） -->
                 <div class="expd-tab-pane" data-tab-pane="detail">
-                    <div class="detail-sub-tab-bar">
+                    <div class="detail-sub-tab-bar" id="detail-sub-tabs">
                         <button class="detail-sub-tab active" data-subtab="content" onclick="switchDetailSubTab(this)">内容</button>
                         <button class="detail-sub-tab" data-subtab="attendance" onclick="switchDetailSubTab(this)">参加状況</button>
                         <button class="detail-sub-tab" data-subtab="reflection" onclick="switchDetailSubTab(this)">振り返りを記入</button>
@@ -90,7 +90,7 @@
                 <div class="expd-tab-pane hidden" data-tab-pane="local-info">
                     <div id="series-safety-card" class="series-safety-card hidden">
                         <div class="series-safety-header">
-                            <div class="series-safety-title">&#x1F6A8; 会場情報・緊急連絡先</div>
+                            <div class="series-safety-title">会場情報・緊急連絡先</div>
                             <button type="button" class="expd-section-edit-btn" title="編集" onclick="editSafetyInfo()">&#9998;</button>
                         </div>
                         <div id="series-safety-grid" class="series-safety-grid"></div>
@@ -106,7 +106,7 @@
                     </div>
                 </div>
 
-                <!-- Tab: 統計・開催履歴（旧「概要」の開催カードもここに統合） -->
+                <!-- Tab: 統計・開催履歴 -->
                 <div class="expd-tab-pane hidden" data-tab-pane="stats">
                     <div id="series-stats"></div>
                     <h3 class="series-history-heading">開催履歴</h3>
