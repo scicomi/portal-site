@@ -981,6 +981,16 @@ textarea:focus {
     border-radius: 6px;
     border-left: 4px solid var(--danger-color);
 }
+.doc-not-required-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    cursor: pointer;
+}
+.doc-not-required-toggle input { margin: 0; }
 
 @media (max-width: 600px) {
     .deadline-grid {
@@ -2387,12 +2397,18 @@ textarea:focus {
     margin: 0 0 12px 0;
 }
 
-/* ========== 設定ページ ========== */
+/* ========== 設定ページ（各セクションはトグルで開閉できるアコーディオン） ========== */
 .settings-section {
-    margin-bottom: 32px;
+    margin-bottom: 16px;
 }
 .settings-section-header {
     margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
 }
 .settings-section-header h2 {
     color: var(--primary-color);
@@ -2405,6 +2421,15 @@ textarea:focus {
     font-size: 0.85rem;
     margin: 0;
 }
+.settings-section-chevron {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    transition: transform 0.15s;
+}
+.settings-section.collapsed .settings-section-chevron { transform: rotate(-90deg); }
+.settings-section.collapsed .settings-card { display: none !important; }
+.settings-section.collapsed .settings-section-header { margin-bottom: 0; }
 .settings-card {
     background: white;
     border: 1px solid var(--border-color);
@@ -2739,6 +2764,33 @@ textarea:focus {
     margin-bottom: 12px;
 }
 .expd-section-header .expd-section-title { margin-bottom: 0; }
+
+/* 実験ネタ: 新規実験募集の案内カード */
+.exp-recruit-card {
+    background: var(--primary-subtle);
+    border: 1px solid var(--primary-light);
+    border-radius: var(--radius-md, 10px);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+}
+.exp-recruit-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.exp-recruit-header h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    flex: 1;
+}
+.exp-recruit-note {
+    margin: 0 0 10px;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+}
 
 .expd-feedback-filters {
     display: flex;

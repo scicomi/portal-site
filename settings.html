@@ -18,11 +18,31 @@
 
             <!-- 表示カスタマイズ -->
             <div class="settings-section">
-                <div class="settings-section-header">
-                    <h2>表示カスタマイズ</h2>
-                    <p class="settings-section-desc">ホーム画面の表示をカスタマイズします。</p>
+                <div class="settings-section-header" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h2>表示カスタマイズ</h2>
+                        <p class="settings-section-desc">ホーム画面・ヘッダーの表示をカスタマイズします。</p>
+                    </div>
+                    <span class="settings-section-chevron">&#9662;</span>
                 </div>
                 <div class="settings-card">
+                    <div class="e1-group">
+                        <label class="e1-label">ヘッダーのアイコン・タイトル</label>
+                        <p class="settings-hint">全ページ共通のヘッダーに表示される名前です。アイコンは1〜4文字（例: SC）。</p>
+                        <div class="settings-row-grid">
+                            <div style="display:flex;gap:8px;">
+                                <input type="text" id="cfg-brand-icon" class="e1-input" maxlength="4" placeholder="SC" style="width:100px;">
+                                <button class="btn btn-primary-solid" onclick="saveSettingField('brand_icon','cfg-brand-icon', this)" style="width:auto;padding:8px 20px;">保存</button>
+                            </div>
+                            <div style="display:flex;gap:8px;">
+                                <input type="text" id="cfg-brand-name" class="e1-input" maxlength="40" placeholder="SciComi Portal" style="flex:1;">
+                                <button class="btn btn-primary-solid" onclick="saveSettingField('brand_name','cfg-brand-name', this)" style="width:auto;padding:8px 20px;">保存</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="divider">
+
                     <div class="e1-group">
                         <label class="e1-label">挨拶メッセージ</label>
                         <p class="settings-hint">ホーム画面の「こんにちは -- ...」の部分をカスタマイズできます。<br>時間帯の挨拶（おはよう/こんにちは/こんばんは）は自動で切り替わります。<br>空欄にするとデフォルトに戻ります。</p>
@@ -35,10 +55,13 @@
             </div>
 
             <!-- 書類期限設定 -->
-            <div class="settings-section">
-                <div class="settings-section-header">
-                    <h2>書類期限の設定</h2>
-                    <p class="settings-section-desc">イベントの書類提出期限を自動計算する際のルールを設定します。</p>
+            <div class="settings-section collapsed">
+                <div class="settings-section-header" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h2>書類期限の設定</h2>
+                        <p class="settings-section-desc">イベントの書類提出期限を自動計算する際のルールを設定します。</p>
+                    </div>
+                    <span class="settings-section-chevron">&#9662;</span>
                 </div>
                 <div class="settings-card">
                     <div class="settings-row-grid">
@@ -66,10 +89,13 @@
             </div>
 
             <!-- パスワード管理 -->
-            <div class="settings-section">
-                <div class="settings-section-header">
-                    <h2>パスワード管理</h2>
-                    <p class="settings-section-desc">サービスおよび管理者のログインパスワードを管理します。</p>
+            <div class="settings-section collapsed">
+                <div class="settings-section-header" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h2>パスワード管理</h2>
+                        <p class="settings-section-desc">サービスおよび管理者のログインパスワードを管理します。</p>
+                    </div>
+                    <span class="settings-section-chevron">&#9662;</span>
                 </div>
                 <div class="settings-card">
                     <div class="e1-group">
@@ -107,10 +133,13 @@
             </div>
 
             <!-- Gemini API設定 -->
-            <div class="settings-section">
-                <div class="settings-section-header">
-                    <h2>Gemini API設定</h2>
-                    <p class="settings-section-desc">Bot機能で使用するAIモデルの設定です。サーバー側で安全に管理されます。</p>
+            <div class="settings-section collapsed">
+                <div class="settings-section-header" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h2>Gemini API設定</h2>
+                        <p class="settings-section-desc">Bot機能で使用するAIモデルの設定です。サーバー側で安全に管理されます。</p>
+                    </div>
+                    <span class="settings-section-chevron">&#9662;</span>
                 </div>
                 <div class="settings-card">
                     <div class="e1-group">
@@ -141,9 +170,12 @@
             </div>
 
             <!-- セッション管理 -->
-            <div class="settings-section">
-                <div class="settings-section-header">
-                    <h2>セッション</h2>
+            <div class="settings-section collapsed">
+                <div class="settings-section-header" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h2>セッション</h2>
+                    </div>
+                    <span class="settings-section-chevron">&#9662;</span>
                 </div>
                 <div class="settings-card" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
                     <button class="btn btn-secondary" onclick="doAdminLogoutFromSettings()" style="padding:10px 24px;">管理者モードを解除</button>

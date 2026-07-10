@@ -65,13 +65,21 @@ const DEFAULT_CONFIG = {
   deadline_kyoka: -10,        // イベント日の10日前
   deadline_houkoku: 7,        // イベント日の7日後
   deadline_alert_danger: 3,
-  deadline_alert_warning: 7
+  deadline_alert_warning: 7,
+  // ヘッダーのブランド表示（アイコンの短い文字列とタイトル）。全員に表示するため公開設定に含める。
+  brand_icon: 'SC',
+  brand_name: 'SciComi Portal',
+  // 実験ネタページ上部の「新規実験募集」案内。全員に見せるため公開設定に含める。
+  experiment_recruit_url: '',
+  experiment_recruit_note: ''
 };
 
 // メンバー（非管理者）にも公開してよい表示系設定。getPublicConfig で返す（機密値は含めない）。
 const PUBLIC_CONFIG_KEYS = [
   'welcome_message', 'deadline_kyoka', 'deadline_houkoku',
-  'deadline_alert_danger', 'deadline_alert_warning', 'reminder_days'
+  'deadline_alert_danger', 'deadline_alert_warning', 'reminder_days',
+  'brand_icon', 'brand_name',
+  'experiment_recruit_url', 'experiment_recruit_note'
 ];
 
 // 既定値を返す。password 系だけは毎回ランダム生成する。
@@ -128,6 +136,10 @@ function validateConfigValue_(key, value) {
     case 'password':
     case 'admin_password':
       return v.length >= 4 ? '' : 'パスワードは4文字以上にしてください';
+    case 'brand_icon':
+      return v.trim().length >= 1 && v.trim().length <= 4 ? '' : 'アイコンは1〜4文字で指定してください';
+    case 'brand_name':
+      return v.trim().length >= 1 && v.trim().length <= 40 ? '' : 'タイトルは1〜40文字で指定してください';
     default:
       return '';
   }
@@ -829,6 +841,9 @@ const EVENTS_HEADERS = [
   'Address', 'LocationTel', 'EmergencyHospital', 'EmergencyPolice',
   'TimeStart', 'TimeEnd', 'GatherTime', 'DismissTime', 'MeetingNumber', 'PartsList',
   'AdminKyoka', 'AdminHoukoku', 'KyokaDeadline', 'HoukokuDeadline',
+  // 書類が不要なイベント（許可願・報告書のどちらか、または両方）用のフラグ（'true'/''）。
+  // true の間は該当の期限計算・担当必須チェック・ホームの期限カードから除外する。
+  'KyokaNotRequired', 'HoukokuNotRequired',
   // 出欠回答の締切（任意・YYYY-MM-DD）。未設定ならイベント最終日23:59まで回答可。
   // 締切後の変更は管理者トークン必須（submitVote 参照）。
   'VoteDeadline',

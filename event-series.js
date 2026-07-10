@@ -619,8 +619,8 @@ function missingFields(ev) {
         if (!ev.Audience) miss.push('対象・人数');
         if (normalizeParts(ev.PartsList).filter(p => p.name).length === 0) miss.push('実験内容');
         if (!ev.GatherTime) miss.push('集合時間');
-        if (!ev.AdminKyoka) miss.push('許可願の担当');
-        if (!ev.AdminHoukoku) miss.push('報告書の担当');
+        if (!ev.KyokaNotRequired && !ev.AdminKyoka) miss.push('許可願の担当');
+        if (!ev.HoukokuNotRequired && !ev.AdminHoukoku) miss.push('報告書の担当');
     }
     return miss;
 }
@@ -685,19 +685,23 @@ function renderDetail() {
     const docsHtml = `
         <div class="doc-status-row">
             <span class="doc-status-name">許可願</span>
-            <span class="doc-status-info">期限 <span class="tag-deadline ${kyokaOverdue ? 'deadline-past' : ''}">${escapeHtml(ev.KyokaDeadline || '---')}</span>
+            ${ev.KyokaNotRequired
+                ? '<span class="doc-status-info text-muted">不要</span>'
+                : `<span class="doc-status-info">期限 <span class="tag-deadline ${kyokaOverdue ? 'deadline-past' : ''}">${escapeHtml(ev.KyokaDeadline || '---')}</span>
                 ／ 担当 <strong>${escapeHtml(ev.AdminKyoka || '未定')}</strong></span>
             <select class="report-status-select status-${docStatusClass(KYOKA_STATUS, ev.KyokaStatus || '')}" data-doc="KyokaStatus" title="許可願の提出ステータスを変更">
                 ${Object.keys(KYOKA_STATUS).map(v => `<option value="${v}" ${v === (ev.KyokaStatus || '') ? 'selected' : ''}>${KYOKA_STATUS[v].label}</option>`).join('')}
-            </select>
+            </select>`}
         </div>
         <div class="doc-status-row">
             <span class="doc-status-name">報告書</span>
-            <span class="doc-status-info">期限 <span class="tag-deadline ${houkokuOverdue ? 'deadline-past' : ''}">${escapeHtml(ev.HoukokuDeadline || '---')}</span>
+            ${ev.HoukokuNotRequired
+                ? '<span class="doc-status-info text-muted">不要</span>'
+                : `<span class="doc-status-info">期限 <span class="tag-deadline ${houkokuOverdue ? 'deadline-past' : ''}">${escapeHtml(ev.HoukokuDeadline || '---')}</span>
                 ／ 担当 <strong>${escapeHtml(ev.AdminHoukoku || '未定')}</strong></span>
             <select class="report-status-select status-${docStatusClass(REPORT_STATUS, ev.ReportStatus || '')}" data-doc="ReportStatus" title="報告書の提出ステータスを変更">
                 ${Object.keys(REPORT_STATUS).map(v => `<option value="${v}" ${v === (ev.ReportStatus || '') ? 'selected' : ''}>${REPORT_STATUS[v].label}</option>`).join('')}
-            </select>
+            </select>`}
         </div>`;
 
     // 集合・解散
