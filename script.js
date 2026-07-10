@@ -63,8 +63,9 @@ function _bindEventTableDelegation() {
         const actionEl = e.target.closest('[data-action]');
         if (actionEl) {
             const action = actionEl.dataset.action;
-            if (action === 'open' || action === 'vote') return; // <a> のデフォルト遷移に任せる
+            if (action === 'open' || action === 'vote') return;
             e.stopPropagation();
+            if (action === 'stoprow') return;
             const row = actionEl.closest('tr[data-id]');
             if (!row) return;
             const id = row.dataset.id;
@@ -197,7 +198,7 @@ async function refreshData(isManual = false) {
         // キャッシュも無く一覧が空のままなら、「読み込み中」を残さずエラー＋再試行を表示
         if (eventsData.length === 0) {
             const tbody = document.getElementById('events-tbody');
-            if (tbody) tbody.innerHTML = `<tr><td colspan="3" class="empty-state">
+            if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-state">
                 <div class="empty-text">データを読み込めませんでした</div>
                 <div class="empty-hint">${escapeHtml(humanizeApiError(e))}</div>
                 <button type="button" class="btn btn-secondary" onclick="refreshData(true)">再読み込み</button>
@@ -229,6 +230,52 @@ async function refreshVotes() {
         rebuildVotesByEvent();
         renderEvents();
     } catch (_) { /* 集計は補助情報。失敗しても一覧表示は継続する */ }
+}
+
+// ---- 出欠投票（テーブル行内ドロップダウン） ----
+
+function populateVoteMemberSelector() {
+    const bar = document.getElementById('ev-vote-member-bar');
+    const sel = document.getElementById('ev-vote-member-select');
+    if (!bar || !sel) return;
+    const eligible = voteEligibleMembers(membersData).sort((a, b) => (a.Name || '').localeCompare(b.Name || '', 'ja'));
+    if (eligible.length === 0) { bar.classList.add('hidden'); return; }
+    bar.classList.remove('hidden');
+    const saved = getSavedVoteMemberId();
+    sel.innerHTML = '<option value="">-- 選択 --</option>' +
+        eligible.map(m => `<option value="${escapeAttr(m.ID)}" ${m.ID === saved ? 'selected' : ''}>${escapeHtml(m.Name)}</option>`).join('');
+    sel.onchange = () => {
+        setSavedVoteMemberId(sel.value);
+        renderEvents();
+    };
+}
+
+function getMyVoteForEvent(eventId) {
+    const memberId = getSavedVoteMemberId();
+    if (!memberId || !allVotesData) return null;
+    return allVotesData.find(v => v.eventId === eventId && v.memberId === memberId) || null;
+}
+
+function onInlineVoteChange(selectEl, eventId) {
+    const memberId = getSavedVoteMemberId();
+    if (!memberId) { toast('先に名前を選択してください', 'info'); selectEl.value = ''; return; }
+    const status = selectEl.value;
+    if (!status) return;
+    const ev = eventsData.find(e => e.ID === eventId);
+    if (!ev) return;
+    const votes = (allVotesData || []).filter(v => v.eventId === eventId);
+    submitVoteOptimistic({
+        event: ev, votes, memberId, status,
+        rerender: () => {
+            rebuildVotesByEvent();
+            renderEvents();
+        },
+        onChange: (updatedVotes) => {
+            allVotesData = (allVotesData || []).filter(v => v.eventId !== eventId).concat(updatedVotes);
+            api.saveCache('votes', allVotesData);
+            rebuildVotesByEvent();
+        }
+    });
 }
 
 // ---- 検索・フィルタ ----
@@ -514,27 +561,25 @@ function renderEvents() {
             : (filterState.period === 'upcoming' && eventsData.length > 0
                 ? '年度を選択すると過去の予定を確認できます'
                 : '');
-        tbody.innerHTML = `<tr><td colspan="4" class="empty-state">
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-state">
             <span class="empty-icon">&#x1F4C5;</span>
             <div class="empty-text">該当する予定はありません</div>
             ${hint ? `<div class="empty-hint">${hint}</div>` : ''}
         </td></tr>`;
+        populateVoteMemberSelector();
         return;
     }
 
-    // 削除は管理者ログイン時のみ表示（誤タップ防止）。編集・複製は全員に表示し、
-    // 必要な操作は実行時に管理者認証を挟む（各ページ共通ルール）
     const isAdmin = api.isAdmin();
     const today = todayISO();
     const nq = searchMeta ? searchNormalize(kw) : '';
+    const memberId = getSavedVoteMemberId();
     tbody.innerHTML = sorted.map(ev => {
         const cat = getEventCategory(ev.Category);
         let displayTitle = ev.Title || '(無題)';
         if (cat.isMeeting && ev.Meeting_Number) {
             displayTitle = `第${ev.Meeting_Number}回 ${displayTitle}`;
         }
-        // 検索中はマッチ部分をハイライトし、タイトル以外でヒットした行には
-        // 「何に一致したか」バッジを添える（結果が平坦に見えないように）
         const titleHtml = searchMeta ? highlightText(displayTitle, nq) : escapeHtml(displayTitle);
         const meta = searchMeta ? searchMeta[ev.ID] : null;
         let matchBadge = '';
@@ -542,8 +587,6 @@ function renderEvents() {
             const val = meta.match.value.length > 20 ? meta.match.value.slice(0, 20) + '…' : meta.match.value;
             matchBadge = `<span class="match-badge" title="${escapeAttr(meta.match.label + 'に一致: ' + meta.match.value)}">${escapeHtml(meta.match.label)}: ${highlightText(val, nq)}</span>`;
         }
-        // 参加人数バッジ。今後の日程には回答0件でも常時表示し（最初の1票への導線）、
-        // 分母（対象者数）を添える。タップでイベント詳細の参加状況セクションへ。
         const vc = votesByEvent[ev.ID] || { attend: 0, absent: 0, undecided: 0 };
         const isUpcoming = (ev.Date_End || ev.Date) >= today;
         let voteBadge = '';
@@ -552,6 +595,22 @@ function renderEvents() {
             const label = eligibleCount > 0 ? `${vc.attend} / ${eligibleCount}` : `${vc.attend}`;
             const noanswer = Math.max(0, eligibleCount - (vc.attend + vc.absent + vc.undecided));
             voteBadge = `<a class="vote-count-badge" href="event-series.html?event=${encodeURIComponent(ev.ID)}&vote=1" data-action="vote" title="参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}${eligibleCount > 0 ? `・未回答${noanswer}` : ''} — タップで出欠を回答">${label}</a>`;
+        }
+        // 出欠ドロップダウン（今後の予定のみ）
+        let voteCell = '';
+        if (isUpcoming && allVotesData !== null) {
+            const myVote = getMyVoteForEvent(ev.ID);
+            const curStatus = myVote ? myVote.status : '';
+            const colorClass = curStatus ? 'vote-' + curStatus : '';
+            const closed = voteDeadlinePassed(ev);
+            voteCell = `<select class="ev-vote-select ${colorClass}" data-vote-event="${escapeAttr(ev.ID)}"
+                onchange="onInlineVoteChange(this, '${escapeAttr(ev.ID)}')"
+                ${closed && !isAdmin ? 'disabled title="締切済み"' : ''}>
+                <option value="">--</option>
+                <option value="attend" ${curStatus === 'attend' ? 'selected' : ''}>参加</option>
+                <option value="absent" ${curStatus === 'absent' ? 'selected' : ''}>不参加</option>
+                <option value="undecided" ${curStatus === 'undecided' ? 'selected' : ''}>未定</option>
+            </select>`;
         }
         return `
             <tr class="clickable-row" data-id="${escapeAttr(ev.ID)}" title="タップで詳細ページへ">
@@ -563,6 +622,7 @@ function renderEvents() {
                     <span class="cat-dot" style="color:${cat.bg};" title="${cat.short}">&#9679;</span>
                     <a href="event-series.html?event=${encodeURIComponent(ev.ID)}" data-action="open" style="font-weight:600;color:inherit;text-decoration:none;">${titleHtml}</a>${matchBadge}
                 </td>
+                <td class="ev-vote-cell" data-action="stoprow">${voteCell}</td>
                 <td>${voteBadge}</td>
                 <td data-action-cell>
                     <div class="inline-actions">
@@ -574,6 +634,7 @@ function renderEvents() {
             </tr>
         `;
     }).join('');
+    populateVoteMemberSelector();
 }
 
 
@@ -590,8 +651,7 @@ function startNewEventBlank() {
             <div class="category-buttons">
                 <button class="btn btn-category cat-normal-btn" data-cat="normal">イベント</button>
                 <button class="btn btn-category cat-other-btn" data-cat="other">その他</button>
-                <button class="btn btn-category cat-general-btn" data-cat="general">全体ミーティング</button>
-                <button class="btn btn-category cat-admin-btn" data-cat="admin">幹部ミーティング</button>
+                <button class="btn btn-category cat-meeting-btn" data-cat="meeting">ミーティング</button>
             </div>
             <button class="btn btn-text mt-2" data-close>キャンセル</button>
         </div>`;
@@ -619,9 +679,10 @@ function startNewEvent(category, template) {
 // （複製の場合はここを通らず、フルウィザード（openEventWizard）で詳細も一度に入力する）
 
 function openQuickCreate(category) {
-    const cat = category || 'normal';
-    const isMeeting = cat === 'general' || cat === 'admin';
-    const catInfo = getEventCategory(cat);
+    let cat = category || 'normal';
+    const isMeeting = cat === 'general' || cat === 'admin' || cat === 'meeting';
+    if (cat === 'meeting') cat = 'general';
+    const catInfo = isMeeting ? { bg: '#93c5fd', text: '#1e3a5f', short: 'ミーティング' } : getEventCategory(cat);
 
     // カレンダーのドラッグ選択で渡された日付があれば初期値に使う
     const startDate = window.tempStart || todayISO();
@@ -656,11 +717,18 @@ function openQuickCreate(category) {
         <div class="wizard-panel" role="dialog" aria-modal="true" style="max-width:480px;">
             <div class="wizard-header">
                 <h2 class="wizard-title">予定を追加</h2>
-                <p class="wizard-subtitle">まず枠だけ登録できます。実験・担当などの詳細はあとから追記できます。</p>
+                <p class="wizard-subtitle">まず枠だけ登録できます。${isMeeting ? '' : '実験・担当などの詳細はあとから追記できます。'}</p>
             </div>
             <div class="wizard-body">
                 <div style="margin-bottom:12px;"><span class="cat-badge" style="background:${catInfo.bg};color:${catInfo.text};">${catInfo.short}</span></div>
                 ${isMeeting ? `
+                <div class="e1-group">
+                    <label class="e1-label">種別</label>
+                    <div class="qc-meeting-type-row">
+                        <label class="qc-meeting-type-option"><input type="radio" name="qc-meeting-type" value="general" checked> 全体会</label>
+                        <label class="qc-meeting-type-option"><input type="radio" name="qc-meeting-type" value="admin"> 幹部会</label>
+                    </div>
+                </div>
                 <div class="flex-row">
                     <div class="e1-group" style="flex:0 0 100px;">
                         <label class="e1-label">回数</label>
@@ -738,6 +806,9 @@ function closeQuickCreate() {
 async function saveQuickCreate() {
     if (!tempNewEvent) return;
     const draft = tempNewEvent;
+    // ミーティング種別ラジオの反映
+    const mtgRadio = document.querySelector('input[name="qc-meeting-type"]:checked');
+    if (mtgRadio) draft.Category = mtgRadio.value;
     const isMeeting = draft.Category === 'general' || draft.Category === 'admin';
 
     draft.Title = (document.getElementById('qc-title')?.value || '').trim();

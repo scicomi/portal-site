@@ -788,6 +788,68 @@ function _applyCfg(cfg) {
     }
 }
 
+// ====== リッチテキスト編集 ======
+
+function createRichEditor(container, initialHtml, options = {}) {
+  container.innerHTML = '';
+  const wrapper = document.createElement('div');
+  wrapper.className = 'rich-editor';
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'rich-editor-toolbar';
+  toolbar.innerHTML = `
+    <button type="button" class="re-btn" data-cmd="bold" title="太字"><b>B</b></button>
+    <button type="button" class="re-btn" data-cmd="underline" title="下線"><u>U</u></button>
+    <button type="button" class="re-btn" data-cmd="createLink" title="リンクを挿入">🔗</button>
+    <button type="button" class="re-btn" data-cmd="unlink" title="リンクを解除">✂</button>
+  `;
+
+  const content = document.createElement('div');
+  content.className = 'rich-editor-content';
+  content.contentEditable = 'true';
+  content.innerHTML = initialHtml || '';
+  if (options.placeholder) content.dataset.placeholder = options.placeholder;
+
+  toolbar.addEventListener('click', (e) => {
+    const btn = e.target.closest('.re-btn');
+    if (!btn) return;
+    e.preventDefault();
+    const cmd = btn.dataset.cmd;
+    if (cmd === 'createLink') {
+      const url = prompt('URLを入力してください', 'https://');
+      if (url) document.execCommand('createLink', false, url);
+    } else {
+      document.execCommand(cmd, false, null);
+    }
+    content.focus();
+  });
+
+  wrapper.appendChild(toolbar);
+  wrapper.appendChild(content);
+  container.appendChild(wrapper);
+
+  const api = {
+    getHtml: () => content.innerHTML,
+    setHtml: (html) => { content.innerHTML = html; },
+    focus: () => content.focus()
+  };
+  container._richEditor = api;
+  return api;
+}
+
+function sanitizeRichHtml(html) {
+  if (!html) return '';
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  div.querySelectorAll('script,style,iframe,object,embed,form').forEach(el => el.remove());
+  div.querySelectorAll('*').forEach(el => {
+    for (const attr of [...el.attributes]) {
+      if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+    }
+  });
+  return div.innerHTML;
+}
+
 // ====== 起動共通 ======
 
 async function bootPage(activePage, onAuthReady) {

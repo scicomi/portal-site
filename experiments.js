@@ -129,10 +129,10 @@ function renderExpRecruit() {
     card.classList.remove('hidden');
     body.innerHTML = (url || note)
         ? `
-            ${note ? `<p class="exp-recruit-note">${escapeHtml(note)}</p>` : ''}
-            ${url ? `<a class="btn btn-primary-solid" style="width:auto;" href="${escapeAttr(safeHttpUrl(url))}" target="_blank" rel="noopener">応募フォームを開く</a>` : ''}
+            ${note ? `<div class="exp-recruit-note">${sanitizeRichHtml(note)}</div>` : ''}
+            ${url ? `<a class="btn-recruit-link" href="${escapeAttr(safeHttpUrl(url))}" target="_blank" rel="noopener">応募フォームを開く</a>` : ''}
         `
-        : `<p class="text-muted" style="font-size:0.85rem;">募集中の案内はまだ登録されていません。✎から追加できます</p>`;
+        : `<p class="text-muted" style="font-size:0.85rem;">募集中の案内はまだ登録されていません。&#9998;から追加できます</p>`;
 }
 
 function editExpRecruit() {
@@ -142,7 +142,7 @@ function editExpRecruit() {
     body.innerHTML = `
         <div class="e1-group">
             <label class="e1-label">案内文</label>
-            <textarea id="exp-recruit-note-input" class="e1-input" rows="3" placeholder="例: 新しい実験ネタを募集しています！アイデアがある人はフォームから応募してください。">${escapeHtml(cfg.experiment_recruit_note || '')}</textarea>
+            <div id="exp-recruit-note-editor"></div>
         </div>
         <div class="e1-group">
             <label class="e1-label">応募フォームURL</label>
@@ -150,19 +150,23 @@ function editExpRecruit() {
         </div>
         <div class="action-buttons">
             <button type="button" class="btn btn-text" onclick="renderExpRecruit()">キャンセル</button>
-            <button type="button" class="btn btn-primary-solid" style="width:auto;" onclick="saveExpRecruit()">保存</button>
+            <button type="button" class="btn btn-primary" style="width:auto;" onclick="saveExpRecruit()">保存</button>
         </div>
     `;
+    createRichEditor(
+        document.getElementById('exp-recruit-note-editor'),
+        cfg.experiment_recruit_note || '',
+        { placeholder: '新しい実験ネタを募集しています！アイデアがある人はフォームから応募してください。' }
+    );
 }
 
 async function saveExpRecruit() {
-    const note = document.getElementById('exp-recruit-note-input')?.value.trim() || '';
+    const editor = document.getElementById('exp-recruit-note-editor')?._richEditor;
+    const note = editor ? editor.getHtml().trim() : '';
     const url = document.getElementById('exp-recruit-url-input')?.value.trim() || '';
     try {
         await api.adminSetConfig('experiment_recruit_note', note);
         await api.adminSetConfig('experiment_recruit_url', url);
-        // 他ページ用にキャッシュは破棄しつつ、このページ内ではすぐ最新値で再表示できるよう
-        // 破棄後のキャッシュに今保存した値を書き戻しておく
         invalidateSettingsCache();
         const cached = _readCachedSiteSettings() || {};
         cached.experiment_recruit_note = note;

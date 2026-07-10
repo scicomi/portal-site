@@ -52,22 +52,29 @@
         </section>
 
         <h3 id="event-list-heading" class="event-list-heading" aria-live="polite"></h3>
+        <div id="ev-vote-member-bar" class="ev-vote-member-bar hidden">
+            <label>あなたの名前:</label>
+            <select id="ev-vote-member-select">
+                <option value="">-- 選択 --</option>
+            </select>
+        </div>
         <div class="table-wrapper">
             <table class="data-table" id="events-table">
                 <thead>
                     <tr>
                         <th>日付</th>
                         <th>タイトル</th>
+                        <th class="ev-vote-cell">出欠</th>
                         <th>参加者数</th>
                         <th style="width:1px;"></th>
                     </tr>
                 </thead>
                 <tbody id="events-tbody">
-                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:60%;height:16px;display:inline-block;"></div></td><td><div class="skeleton" style="width:50px;height:18px;border-radius:10px;"></div></td><td></td></tr>
-                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:45%;height:16px;display:inline-block;"></div></td><td><div class="skeleton" style="width:60px;height:18px;border-radius:10px;"></div></td><td></td></tr>
-                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:70%;height:16px;display:inline-block;"></div></td><td><div class="skeleton" style="width:40px;height:18px;border-radius:10px;"></div></td><td></td></tr>
-                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:55%;height:16px;display:inline-block;"></div></td><td><div class="skeleton" style="width:55px;height:18px;border-radius:10px;"></div></td><td></td></tr>
-                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:50%;height:16px;display:inline-block;"></div></td><td><div class="skeleton" style="width:45px;height:18px;border-radius:10px;"></div></td><td></td></tr>
+                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:60%;height:16px;display:inline-block;"></div></td><td></td><td><div class="skeleton" style="width:50px;height:18px;border-radius:10px;"></div></td><td></td></tr>
+                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:45%;height:16px;display:inline-block;"></div></td><td></td><td><div class="skeleton" style="width:60px;height:18px;border-radius:10px;"></div></td><td></td></tr>
+                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:70%;height:16px;display:inline-block;"></div></td><td></td><td><div class="skeleton" style="width:40px;height:18px;border-radius:10px;"></div></td><td></td></tr>
+                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:55%;height:16px;display:inline-block;"></div></td><td></td><td><div class="skeleton" style="width:55px;height:18px;border-radius:10px;"></div></td><td></td></tr>
+                    <tr class="skeleton-row"><td><div class="skeleton" style="width:90px;height:16px;"></div></td><td><div class="skeleton" style="width:50%;height:16px;display:inline-block;"></div></td><td></td><td><div class="skeleton" style="width:45px;height:18px;border-radius:10px;"></div></td><td></td></tr>
                 </tbody>
             </table>
         </div>
