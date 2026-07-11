@@ -13,10 +13,9 @@
 
     <main class="container">
         <div class="welcome-hero">
-            <h2>サイエンスコミュニケーター</h2>
             <div class="welcome-msg-wrapper">
-                <div id="welcome-msg">こんにちは。今日もいい日にしましょう。</div>
-                <button type="button" id="welcome-edit-btn" class="expd-section-edit-btn hidden" title="挨拶を編集" onclick="editWelcomeMessage()">&#9998;</button>
+                <div id="welcome-msg"></div>
+                <button type="button" id="welcome-edit-btn" class="expd-section-edit-btn hidden" title="メッセージを編集" onclick="editWelcomeMessage()">&#9998;</button>
             </div>
             <div id="welcome-editor-area" class="hidden"></div>
             <div class="quick-actions">
@@ -24,6 +23,20 @@
                 <a href="events.html" class="quick-action-btn">予定を見る</a>
                 <a href="experiments.html" class="quick-action-btn">実験ネタを見る</a>
             </div>
+        </div>
+
+        <div id="name-select-banner" class="vote-reminder-banner hidden">
+            <span class="unanswered-flag">未設定</span>
+            <span>出欠の回答などに使う「あなたの名前」が未設定です。</span>
+            <select id="name-select-banner-select" class="e1-input" style="width:auto;">
+                <option value="">-- 名前を選択 --</option>
+            </select>
+            <button id="name-select-banner-btn" class="btn btn-sm btn-primary-solid" disabled>設定</button>
+        </div>
+        <div id="vote-reminder-banner" class="vote-reminder-banner hidden">
+            <span class="unanswered-flag">未回答</span>
+            <span id="vote-reminder-text"></span>
+            <a id="vote-reminder-link" href="#" class="btn btn-sm btn-primary-solid">出欠を回答</a>
         </div>
 
         <div class="dash-stats" id="dash-stats">

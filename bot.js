@@ -280,7 +280,6 @@ const queryEngine = {
     return `<div class="bot-result-count">${items.length}件</div>
       <div class="bot-result-list">${items.slice(0, BOT_MAX_LIST_ITEMS).map(e => {
         const d = e.Date ? shortDate(e.Date) : '未定';
-        const dow = e.Date ? `(${dayOfWeekJP(e.Date)})` : '';
         const cat = catLabels[e.Category] || e.Category;
         const catCfg = getEventCategory(e.Category);
         const loc = e.Location ? ` | ${escapeHtml(e.Location)}` : '';
@@ -289,7 +288,7 @@ const queryEngine = {
         if (e.AdminHoukoku) admin.push(`報告書: ${escapeHtml(e.AdminHoukoku)}`);
         const adminStr = admin.length ? `<div class="bot-ri-detail">${admin.join(' | ')}</div>` : '';
         return `<div class="bot-result-item event-item bot-clickable" data-bot-open="event" data-id="${escapeAttr(e.ID)}" role="button" tabindex="0" title="クリックで詳細を表示">
-          <div class="bot-ri-date">${d}${dow}</div>
+          <div class="bot-ri-date">${d}</div>
           <div class="bot-ri-body">
             <div class="bot-ri-main">${escapeHtml(e.Title)} <span class="bot-ri-badge" style="background:${catCfg.bg};color:${catCfg.text}">${escapeHtml(cat)}</span></div>
             <div class="bot-ri-sub">${escapeHtml(e.Location || '')}</div>
@@ -634,7 +633,9 @@ async function processQuery(text, isRetry) {
     if (query.intent === 'summarize') {
       const out = await runSummarize(query.params || {});
       hideTyping();
-      addMessage('bot', out.intro || query.response_text || '', out.html || '', 'ai');
+      // out.intro は「見つかりませんでした」等の案内のみに使う。
+      // 生成成功時（out.html あり）は見出しに同じ内容が入るため、response_text と二重に出さない。
+      addMessage('bot', out.intro, out.html || '', 'ai');
       renderGauge();
       return;
     }
@@ -651,63 +652,100 @@ async function processQuery(text, isRetry) {
 
 // ====== 要約・文章生成 ======
 // 対象（実験/イベント）をローカルキャッシュから特定し、個人情報を除いた本文を
-// サーバー(geminiGenerate)へ送って文章を生成する。生成不可ならリンク表示にフォールバック。
+// サーバー(geminiGenerate)へ送って文章を生成する。
+// 「商工祭り」のように毎年開催されるイベントは同名の行が年度分だけ存在するため、
+// 名前が一致する行は1件目だけでなく全件集めて文脈に渡す（過去のある年度だけを見て
+// 要約してしまう見当違いを防ぐ）。
 async function runSummarize(params) {
   const target = params.target === 'event' ? 'event' : 'experiment';
 
   if (target === 'event') {
-    const ev = findEventForSummary(params);
-    if (!ev) return { intro: '要約対象のイベントが見つかりませんでした。イベント名を含めてお試しください。' };
-    const context = buildEventContext(ev);
-    return await generateSummary(params, context, `「${ev.Title || '(無題)'}」の要約`, () => openEventDetailFromBot(ev.ID));
+    const evs = findEventsForSummary(params);
+    if (!evs.length) return { intro: '要約対象のイベントが見つかりませんでした。イベント名を含めてお試しください。' };
+    const title = (evs.find(e => e.Title) || {}).Title || '(無題)';
+    const context = buildCombinedContext(evs, buildEventContext, true);
+    const note = buildFetchNote(evs, title, false);
+    return await generateSummary(params, context, `「${title}」の要約`, note, evs.length);
   }
 
-  const exp = findExperimentForSummary(params);
-  if (!exp) return { intro: '要約対象の実験が見つかりませんでした。実験名を含めてお試しください。' };
-  const context = buildExperimentContext(exp);
-  return await generateSummary(params, context, `「${exp.Name}」の要約`, () => openExpDetailFromBot(exp.ID));
+  const exps = findExperimentsForSummary(params);
+  if (!exps.length) return { intro: '要約対象の実験が見つかりませんでした。実験名を含めてお試しください。' };
+  const title = (exps.find(e => e.Name) || {}).Name || '(無題)';
+  const context = buildCombinedContext(exps, buildExperimentContext, false);
+  const note = buildFetchNote(exps, title, true);
+  return await generateSummary(params, context, `「${title}」の要約`, note, exps.length);
 }
 
-async function generateSummary(params, context, heading, _openDetail) {
-  const instruction = params.instruction || '次の内容を分かりやすく要約してください。';
-  try {
-    const res = await api.geminiGenerate(instruction, context);
-    if (res.usage !== undefined) usageTracker.setFromServer(res.usage, res.limit);
-    const html = `<div class="bot-generated"><div class="bot-generated-head">${escapeHtml(heading)}</div>${formatGeneratedText(res.text)}</div>`;
-    return { intro: '', html };
-  } catch (e) {
-    // 生成が使えない場合は、対象の本文をそのまま整形して表示（リンク同等の情報提供）。
-    const fallback = `<div class="bot-generated"><div class="bot-generated-head">${escapeHtml(heading)}（AI生成が使えないため内容を表示）</div><div class="exp-text">${escapeHtml(context)}</div></div>`;
-    return { intro: '', html: fallback };
+// 複数件を「---」区切りで結合。イベントは年度ラベルを付け、AIが別々の開催として扱えるようにする。
+function buildCombinedContext(items, buildFn, withFiscalYear) {
+  if (items.length === 1) return buildFn(items[0]);
+  return items.map(item => {
+    const label = withFiscalYear ? fiscalYearLabel(item.Date) : '';
+    return (label ? `【${label}】\n` : '') + buildFn(item);
+  }).join('\n\n---\n\n');
+}
+
+function fiscalYearLabel(dateStr) {
+  const fy = getFiscalYear(dateStr);
+  return fy !== null ? `${fy}年度` : '';
+}
+
+// 「何年度から何年度の・何件を取得したか」をユーザーに明示するための一文。
+function buildFetchNote(items, title, isExperiment) {
+  const count = items.length;
+  if (isExperiment) {
+    return count > 1 ? `「${title}」に関する実験ネタを${count}件取得しました。` : '';
   }
+  const fys = items.map(e => getFiscalYear(e.Date)).filter(y => y !== null);
+  if (!fys.length) return `「${title}」を${count}件取得しました。`;
+  const minFy = Math.min(...fys), maxFy = Math.max(...fys);
+  const range = minFy === maxFy ? `${minFy}年度` : `${minFy}年度から${maxFy}年度`;
+  return `${range}の「${title}」を${count}件取得しました。`;
 }
 
-function findExperimentForSummary(p) {
+async function generateSummary(params, context, heading, note, itemCount) {
+  // チャット欄に収まる分量にするため、常に「Markdown記法を使わない・簡潔に」を指示する。
+  // 複数年度分を渡す場合は、共通点・変化点に触れつつ全体の文字数を抑えるよう追加で指示する
+  // （指示なしだと見出し付きの長い構造化回答になりがちなため）。
+  const styleNote = '\n\n（出力は「##」「**」「-」などのMarkdown記法を使わず、自然な文章のみで簡潔に。）';
+  const multiNote = itemCount > 1
+    ? '\n\n（複数年度・複数件分の資料です。共通点と年度ごとの変化点に触れつつ、全体で250字程度に収めてください。）'
+    : '';
+  const instruction = (params.instruction || '次の内容を分かりやすく要約してください。') + multiNote + styleNote;
+  // Gemini呼び出しのエラー（レート制限・キー未設定など）はここで握りつぶさず、
+  // 呼び出し元(processQuery)の catch → handleBotError に渡して適切な案内・再試行をさせる。
+  const res = await api.geminiGenerate(instruction, context);
+  if (res.usage !== undefined) usageTracker.setFromServer(res.usage, res.limit);
+  const noteHtml = note ? `<div class="bot-note">${escapeHtml(note)}</div>` : '';
+  const html = `<div class="bot-generated">${noteHtml}<div class="bot-generated-head">${escapeHtml(heading)}</div>${formatGeneratedText(res.text)}</div>`;
+  return { intro: '', html };
+}
+
+// 実験名にマッチする全件を返す（正規化・カタカナ折りたたみ込みの searchNormalize を使用）。
+function findExperimentsForSummary(p) {
   const items = (allData.experiments || []).filter(x => x.Active !== 'false');
-  const probe = (p.name || p.keyword || '').toLowerCase();
-  if (probe) {
-    return items.find(x => (x.Name || '').toLowerCase() === probe)
-        || items.find(x => (x.Name || '').toLowerCase().includes(probe))
-        || items.find(x => (x.Materials || '').toLowerCase().includes(probe))
-        || null;
-  }
-  return null;
+  const probe = searchNormalize(p.name || p.keyword || '');
+  if (!probe) return [];
+  const byName = items.filter(x => searchNormalize(x.Name || '').includes(probe));
+  if (byName.length) return byName;
+  return items.filter(x => searchNormalize(x.Materials || '').includes(probe));
 }
 
-function findEventForSummary(p) {
+// イベント名にマッチする全件を返す（毎年開催される同名イベントも年度をまたいで全て集める）。
+function findEventsForSummary(p) {
   let items = (allData.events || []).slice();
   if (p.date_from) items = items.filter(e => (e.Date || '') >= p.date_from);
   if (p.date_to) items = items.filter(e => (e.Date || '') <= p.date_to);
-  const probe = (p.name || p.keyword || '').toLowerCase();
+  const probe = searchNormalize(p.name || p.keyword || '');
   if (probe) {
-    const hit = items.find(e => (e.Title || '').toLowerCase().includes(probe));
-    if (hit) return hit;
+    const hits = items.filter(e => searchNormalize(e.Title || '').includes(probe));
+    return hits.sort((a, b) => (a.Date || '').localeCompare(b.Date || ''));
   }
   // 名前指定が無く日付範囲のみなら、最新の1件を対象にする
-  if (!probe && items.length) {
-    return items.sort((a, b) => (b.Date || '').localeCompare(a.Date || ''))[0];
+  if (items.length) {
+    return [items.sort((a, b) => (b.Date || '').localeCompare(a.Date || ''))[0]];
   }
-  return null;
+  return [];
 }
 
 // 実験の本文（個人情報なし）。振り返りはテキストのみ抽出して送る。
@@ -748,8 +786,18 @@ function eventExperimentNames(ev) {
 }
 
 // 生成テキストを安全にHTML化（XSS対策のうえ改行を反映）
+// 指示にもかかわらずGeminiがMarkdown記法で返してきた場合の保険。
+// 見出し記号・太字記号を除去し、行頭の箇条書き記号は「・」に統一する。
+function stripMarkdown(text) {
+  return String(text || '')
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/^[*\-]\s+/gm, '・')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
 function formatGeneratedText(text) {
-  return '<div class="exp-text">' + escapeHtml(text || '').replace(/\n/g, '<br>') + '</div>';
+  return '<div class="exp-text">' + escapeHtml(stripMarkdown(text)).replace(/\n/g, '<br>') + '</div>';
 }
 
 function fallbackToKeyword(text) {
@@ -916,14 +964,12 @@ async function init() {
   // ゲージ初期描画
   renderGauge();
 
-  // サーバーのレート上限を取得してゲージを正確に表示する（CONFIG.GEMINI.DAILY_LIMIT はフォールバック値）
-  api.getPublicConfig().then(function(cfg) {
-    var lim = parseInt(cfg && cfg.gemini_daily_limit);
-    if (isFinite(lim) && lim > 0) {
-      var stored = usageTracker.get();
-      if (stored.limit !== lim) usageTracker.setFromServer(stored.count, lim);
-    }
-  }).catch(function() {});  // 取得失敗は無視（フォールバック値で継続）
+  // サーバーの実使用量・上限を取得してゲージを正確に表示する（サイト全体・本日分。
+  // localStorage は各ブラウザ個別のキャッシュに過ぎず、このブラウザでまだ一度も送信していない場合
+  // 他ユーザーの使用で上限に達していても 0 のまま表示されてしまうため、毎回サーバーから取得する）
+  api.geminiUsage().then(function(res) {
+    if (res && res.success) usageTracker.setFromServer(res.usage, res.limit);
+  }).catch(function() {});  // 取得失敗は無視（ローカルの値で継続）
 
   // キャッシュからデータ読み込み
   RESOURCE_NAMES.forEach(r => {

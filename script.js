@@ -18,14 +18,10 @@ document.addEventListener('keydown', (e) => {
     }
     if (e.key === 'Escape') { closeAnyOpenModal(); return; }
     // ウィザード・確認ダイアログ・認証モーダル表示中や修飾キー付きでは
-    // ページ用ショートカット（n / /）を発動しない
+    // ページ用ショートカット（n）を発動しない。/ と ? は search.js が全ページ共通で扱う。
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (document.querySelector('.wizard-overlay, .confirm-dialog-overlay, #admin-auth-modal, #pw-modal')) return;
     if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openNewEventModal(); }
-    if (e.key === '/' && document.getElementById('event-search')) {
-        e.preventDefault();
-        document.getElementById('event-search').focus();
-    }
 });
 
 function closeAnyOpenModal() {
@@ -37,6 +33,76 @@ let filterState = {
     category: 'all',
     period: 'upcoming'
 };
+
+// ---- 検索・絞り込み状態の URL 同期（?q= / ?cat= / ?period=） ----
+// 検索結果をリロード・共有できるようにする。?edit= 等の既存パラメータとは共存させる。
+
+// 指定パラメータだけを URL から取り除く（?q= 等の他のパラメータは保持する）
+function stripUrlParams(names) {
+    const p = new URLSearchParams(location.search);
+    names.forEach(n => p.delete(n));
+    const qs = p.toString();
+    history.replaceState(null, '', qs ? 'events.html?' + qs : 'events.html');
+}
+
+function syncFilterToUrl() {
+    const p = new URLSearchParams(location.search);
+    ['q', 'cat', 'period'].forEach(k => p.delete(k));
+    if (filterState.keyword) p.set('q', filterState.keyword);
+    if (filterState.category !== 'all') p.set('cat', filterState.category);
+    if (filterState.period !== 'upcoming') p.set('period', filterState.period);
+    const qs = p.toString();
+    history.replaceState(null, '', qs ? 'events.html?' + qs : 'events.html');
+}
+
+// init() の冒頭で呼ぶ。period のセレクトは選択肢がデータ読込後に作られるため、
+// ここでは filterState に入れるだけで良い（buildPeriodFilterOptions が反映する）。
+function restoreFilterFromUrl() {
+    const p = new URLSearchParams(location.search);
+    const q = p.get('q');
+    const cat = p.get('cat');
+    const period = p.get('period');
+    if (q) {
+        filterState.keyword = q.trim();
+        const input = document.getElementById('event-search');
+        if (input) input.value = q;
+    }
+    if (cat) {
+        filterState.category = cat;
+        document.querySelectorAll('.filter-chip[data-cat]').forEach(c => {
+            const isActive = c.dataset.cat === cat;
+            c.classList.toggle('active', isActive);
+            c.setAttribute('aria-pressed', String(isActive));
+        });
+    }
+    if (period) filterState.period = period;
+}
+
+// 「リセット」ボタン（キーワード・カテゴリ・期間のいずれかが初期値以外の時だけ表示）
+function updateResetButton() {
+    const btn = document.getElementById('filter-reset-btn');
+    if (!btn) return;
+    const active = !!(filterState.keyword || filterState.category !== 'all' || filterState.period !== 'upcoming');
+    btn.classList.toggle('hidden', !active);
+}
+
+function resetFilters() {
+    filterState.keyword = '';
+    filterState.category = 'all';
+    filterState.period = 'upcoming';
+    const input = document.getElementById('event-search');
+    if (input) input.value = '';
+    document.querySelectorAll('.filter-chip[data-cat]').forEach(c => {
+        const isActive = c.dataset.cat === 'all';
+        c.classList.toggle('active', isActive);
+        c.setAttribute('aria-pressed', String(isActive));
+    });
+    const sel = document.getElementById('period-filter');
+    if (sel) sel.value = 'upcoming';
+    syncFilterToUrl();
+    renderEvents();
+    if (calendarVisible) refreshCalendar();
+}
 
 function buildPeriodFilterOptions() {
     const sel = document.getElementById('period-filter');
@@ -95,19 +161,27 @@ async function init() {
 
     _bindEventTableDelegation();
 
+    // URL の ?q= / ?cat= / ?period= から検索・絞り込み状態を復元（共有リンク・リロード対応）
+    restoreFilterFromUrl();
+
     // 検索窓（デバウンス・サジェスト・キーボード操作は search.js が面倒を見る）
     attachSearchBox(document.getElementById('event-search'), {
         onSearch: (v) => {
             filterState.keyword = (v || '').trim();
+            syncFilterToUrl();
             renderEvents();
         },
         suggestSources: eventSuggestSources,
-        historyKey: 'events'
+        historyKey: 'events',
+        helpShortcuts: [
+            ['n', '新しい予定を追加'],
+            ['Ctrl+S', '編集モーダルの保存']
+        ]
     });
 
     // ?action=new はデータ読込を待たずに新規作成モーダルを開ける
     if (new URLSearchParams(location.search).get('action') === 'new') {
-        history.replaceState(null, '', 'events.html');
+        stripUrlParams(['action']);
         openNewEventModal();
     }
 
@@ -164,7 +238,7 @@ function handleUrlActionParams() {
     const target = eventsData.find(e => e.ID === (editId || dupId));
     if (!target) return; // まだ読み込まれていない → リフレッシュ後に再試行
     urlActionHandled = true;
-    history.replaceState(null, '', 'events.html');
+    stripUrlParams(['edit', 'duplicate']);
     if (editId) openEventWizard(editId);
     else startNewEvent(target.Category || 'normal', target);
 }
@@ -238,12 +312,13 @@ function populateVoteMemberSelector() {
     const bar = document.getElementById('ev-vote-member-bar');
     const sel = document.getElementById('ev-vote-member-select');
     if (!bar || !sel) return;
-    const eligible = voteEligibleMembers(membersData).sort((a, b) => (a.Name || '').localeCompare(b.Name || '', 'ja'));
+    const eligible = voteEligibleMembers(membersData);
     if (eligible.length === 0) { bar.classList.add('hidden'); return; }
     bar.classList.remove('hidden');
     const saved = getSavedVoteMemberId();
+    const groups = groupMembersByGrade(eligible);
     sel.innerHTML = '<option value="">-- 選択 --</option>' +
-        eligible.map(m => `<option value="${escapeAttr(m.ID)}" ${m.ID === saved ? 'selected' : ''}>${escapeHtml(m.Name)}</option>`).join('');
+        groups.map(g => `<optgroup label="${escapeAttr(g.label)}">${g.members.map(m => `<option value="${escapeAttr(m.ID)}" ${m.ID === saved ? 'selected' : ''}>${escapeHtml(m.Name)}</option>`).join('')}</optgroup>`).join('');
     sel.onchange = () => {
         setSavedVoteMemberId(sel.value);
         renderEvents();
@@ -283,10 +358,10 @@ function onInlineVoteChange(selectEl, eventId) {
 // 検索フィールド定義（search.js の createSearcher 用）。重要度順に並べる。
 // 実験名・発表者は PartsList（JSON文字列）に入っているため normalizeParts（app.js）で展開する。
 const EVENT_SEARCH_FIELDS = [
-    { key: 'title', label: 'タイトル', weight: 100, get: e => [e.Title, e.Meeting_Number ? `第${e.Meeting_Number}回 ${e.Title || ''}` : ''] },
-    { key: 'location', label: '場所', weight: 80, get: e => [e.Location] },
+    { key: 'title', label: 'タイトル', weight: 100, aliases: ['title', 'タイトル'], get: e => [e.Title, e.Meeting_Number ? `第${e.Meeting_Number}回 ${e.Title || ''}` : ''] },
+    { key: 'location', label: '場所', weight: 80, aliases: ['location', '場所'], get: e => [e.Location] },
     {
-        key: 'person', label: '人', weight: 70, get: e => {
+        key: 'person', label: '人', weight: 70, aliases: ['person', '人', '担当'], get: e => {
             const out = [e.Admin_Kyoka, e.Admin_Houkoku];
             normalizeParts(e.PartsList).forEach(p => out.push(...(p.presenters || [])));
             return out;
@@ -319,6 +394,7 @@ function onCategoryFilter(cat) {
         c.classList.toggle('active', isActive);
         c.setAttribute('aria-pressed', String(isActive));
     });
+    syncFilterToUrl();
     renderEvents();
     if (calendarVisible) refreshCalendar();
 }
@@ -327,23 +403,41 @@ function onPeriodFilter(period) {
     // 期間はチップからセレクトボックスへ変更（フィルタ行の要素数を減らすため）
     const sel = document.getElementById('period-filter');
     if (sel && sel.value !== period) sel.value = period;
+    syncFilterToUrl();
     renderEvents();
 }
 // カテゴリ・期間の絞り込み（キーワードは renderEvents 側で検索エンジンに通す。
 // スコア順ソートとマッチ理由バッジに検索結果のメタ情報が要るため）。
-function applyFilters(events) {
+// 期間だけの絞り込みはチップ件数バッジでも使うため分離してある。
+function applyPeriodFilter(events) {
     const today = todayISO();
     return events.filter(e => {
-        if (filterState.category !== 'all' && (e.Category || 'normal') !== filterState.category) return false;
         if (filterState.period === 'upcoming') {
             const endDate = e.Date_End || e.Date;
             if (endDate < today) return false;
         } else if (filterState.period.startsWith('fy_')) {
             const fy = parseInt(filterState.period.slice(3));
-            const eventFy = getFiscalYear(e.Date);
-            if (eventFy !== fy) return false;
+            if (getFiscalYear(e.Date) !== fy) return false;
         }
         return true;
+    });
+}
+
+function applyFilters(events) {
+    const periodFiltered = applyPeriodFilter(events);
+    if (filterState.category === 'all') return periodFiltered;
+    return periodFiltered.filter(e => (e.Category || 'normal') === filterState.category);
+}
+
+// 検索中はカテゴリチップに「その条件でのヒット件数」を添える（list = 期間絞り込み済みのヒット）。
+// 検索していない時は元のラベルに戻す。
+function updateCategoryChipCounts(list) {
+    document.querySelectorAll('.filter-chip[data-cat]').forEach(chip => {
+        if (!chip.dataset.baseLabel) chip.dataset.baseLabel = chip.textContent.trim();
+        if (!list) { chip.textContent = chip.dataset.baseLabel; return; }
+        const cat = chip.dataset.cat;
+        const n = cat === 'all' ? list.length : list.filter(e => (e.Category || 'normal') === cat).length;
+        chip.textContent = `${chip.dataset.baseLabel} (${n})`;
     });
 }
 
@@ -523,9 +617,10 @@ function renderEvents() {
     const heading = document.getElementById('event-list-heading');
     const tbody = document.getElementById('events-tbody');
 
-    // キーワードは検索エンジンで照合（正規化・スコア・マッチ理由付き）
+    // キーワードは検索エンジンで照合（正規化・演算子・スコア・マッチ理由付き）
     const kw = (filterState.keyword || '').trim();
-    const searchRes = kw ? eventSearcher.search(kw) : null;
+    const pq = kw ? parseSearchQuery(kw) : null;
+    const searchRes = pq ? eventSearcher.search(pq) : null;
     let searchMeta = null;
     let source = eventsData;
     if (searchRes) {
@@ -553,6 +648,10 @@ function renderEvents() {
         ? `検索結果 (${sorted.length}件)`
         : `${periodLabel} (${sorted.length}件)`;
 
+    // チップ件数バッジ（検索中は期間絞り込み後のヒット数をカテゴリ別に表示）と「リセット」の表示更新
+    updateCategoryChipCounts(searchMeta ? applyPeriodFilter(source) : null);
+    updateResetButton();
+
     if (sorted.length === 0) {
         // 何を変えれば表示されるのかが分かるヒントを添える
         const hasNarrowing = filterState.keyword || filterState.category !== 'all';
@@ -572,7 +671,7 @@ function renderEvents() {
 
     const isAdmin = api.isAdmin();
     const today = todayISO();
-    const nq = searchMeta ? searchNormalize(kw) : '';
+    const hlTerms = searchMeta ? searchQueryTerms(pq) : [];
     const memberId = getSavedVoteMemberId();
     tbody.innerHTML = sorted.map(ev => {
         const cat = getEventCategory(ev.Category);
@@ -580,25 +679,25 @@ function renderEvents() {
         if (cat.isMeeting && ev.Meeting_Number) {
             displayTitle = `第${ev.Meeting_Number}回 ${displayTitle}`;
         }
-        const titleHtml = searchMeta ? highlightText(displayTitle, nq) : escapeHtml(displayTitle);
+        const titleHtml = searchMeta ? highlightText(displayTitle, hlTerms) : escapeHtml(displayTitle);
         const meta = searchMeta ? searchMeta[ev.ID] : null;
         let matchBadge = '';
         if (meta && meta.match && meta.match.key !== 'title') {
             const val = meta.match.value.length > 20 ? meta.match.value.slice(0, 20) + '…' : meta.match.value;
-            matchBadge = `<span class="match-badge" title="${escapeAttr(meta.match.label + 'に一致: ' + meta.match.value)}">${escapeHtml(meta.match.label)}: ${highlightText(val, nq)}</span>`;
+            matchBadge = `<span class="match-badge" title="${escapeAttr(meta.match.label + 'に一致: ' + meta.match.value)}">${escapeHtml(meta.match.label)}: ${highlightText(val, hlTerms)}</span>`;
         }
         const vc = votesByEvent[ev.ID] || { attend: 0, absent: 0, undecided: 0 };
         const isUpcoming = (ev.Date_End || ev.Date) >= today;
         let voteBadge = '';
-        if (isUpcoming && allVotesData !== null) {
+        if (isUpcoming && allVotesData !== null && ev.Category !== 'admin') {
             const eligibleCount = membersData.length > 0 ? voteEligibleMembers(membersData, ev).length : 0;
             const label = eligibleCount > 0 ? `${vc.attend} / ${eligibleCount}` : `${vc.attend}`;
             const noanswer = Math.max(0, eligibleCount - (vc.attend + vc.absent + vc.undecided));
             voteBadge = `<a class="vote-count-badge" href="event-series.html?event=${encodeURIComponent(ev.ID)}&vote=1" data-action="vote" title="参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}${eligibleCount > 0 ? `・未回答${noanswer}` : ''} — タップで出欠を回答">${label}</a>`;
         }
-        // 出欠ドロップダウン（今後の予定のみ）
+        // 出欠ドロップダウン（今後の予定のみ、幹部会は対象外）
         let voteCell = '';
-        if (isUpcoming && allVotesData !== null) {
+        if (isUpcoming && allVotesData !== null && ev.Category !== 'admin') {
             const myVote = getMyVoteForEvent(ev.ID);
             const curStatus = myVote ? myVote.status : '';
             const colorClass = curStatus ? 'vote-' + curStatus : '';
@@ -618,7 +717,7 @@ function renderEvents() {
                     ${escapeHtml(ev.Date || '')} <span class="text-muted">(${dayOfWeekJP(ev.Date)})</span>
                     ${ev.Date_End && ev.Date_End !== ev.Date ? '<br><span class="text-muted" style="font-size:0.8rem;">〜 ' + escapeHtml(ev.Date_End) + '</span>' : ''}
                 </td>
-                <td>
+                <td style="white-space:nowrap;">
                     <span class="cat-dot" style="color:${cat.bg};" title="${cat.short}">&#9679;</span>
                     <a href="event-series.html?event=${encodeURIComponent(ev.ID)}" data-action="open" style="font-weight:600;color:inherit;text-decoration:none;">${titleHtml}</a>${matchBadge}
                 </td>
@@ -729,15 +828,13 @@ function openQuickCreate(category) {
                         <label class="qc-meeting-type-option"><input type="radio" name="qc-meeting-type" value="admin"> 幹部会</label>
                     </div>
                 </div>
-                <div class="flex-row">
-                    <div class="e1-group" style="flex:0 0 100px;">
-                        <label class="e1-label">回数</label>
-                        <input id="qc-meeting-num" class="e1-input" type="number" placeholder="3" value="${escapeAttr(draft.Meeting_Number || '')}">
-                    </div>
-                    <div class="e1-group" style="flex:1;">
-                        <label class="e1-label">ミーティング名 *</label>
-                        <input id="qc-title" class="e1-input" type="text" placeholder="例: イベント振り返り" value="${escapeAttr(draft.Title || '')}">
-                    </div>
+                <div class="e1-group" style="max-width:140px;">
+                    <label class="e1-label">回数</label>
+                    <input id="qc-meeting-num" class="e1-input" type="number" placeholder="3" value="${escapeAttr(draft.Meeting_Number || '')}">
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">参加メンバー（任意）</label>
+                    <div id="qc-meeting-members"></div>
                 </div>` : `
                 <div class="e1-group">
                     <label class="e1-label">イベント名 *</label>
@@ -778,6 +875,11 @@ function openQuickCreate(category) {
     trapFocus(overlay.querySelector('.wizard-panel'));
     initDateRangePicker(overlay);
 
+    if (isMeeting) {
+        const memberContainer = document.getElementById('qc-meeting-members');
+        if (memberContainer) initTagInput(memberContainer, [], 'メンバーを検索...');
+    }
+
     const tsEl = document.getElementById('qc-time-start');
     const teEl = document.getElementById('qc-time-end');
     if (tsEl) tsEl.value = timeStart;
@@ -792,7 +894,7 @@ function openQuickCreate(category) {
     bindEditDismissGuard(overlay, closeQuickCreate);
 
     setTimeout(() => {
-        const firstInput = overlay.querySelector('#qc-title');
+        const firstInput = overlay.querySelector('#qc-title, #qc-meeting-num');
         if (firstInput) firstInput.focus();
     }, 80);
 }
@@ -811,11 +913,15 @@ async function saveQuickCreate() {
     if (mtgRadio) draft.Category = mtgRadio.value;
     const isMeeting = draft.Category === 'general' || draft.Category === 'admin';
 
-    draft.Title = (document.getElementById('qc-title')?.value || '').trim();
-    if (!draft.Title) {
-        toast(isMeeting ? 'ミーティング名を入力してください' : 'イベント名を入力してください', 'error');
-        document.getElementById('qc-title')?.focus();
-        return;
+    if (isMeeting) {
+        draft.Title = draft.Category === 'admin' ? '幹部会' : '全体会';
+    } else {
+        draft.Title = (document.getElementById('qc-title')?.value || '').trim();
+        if (!draft.Title) {
+            toast('イベント名を入力してください', 'error');
+            document.getElementById('qc-title')?.focus();
+            return;
+        }
     }
     const overlay = document.getElementById('qc-overlay');
     draft.Date = overlay.querySelector('[data-field="Date"]')?.value || '';
@@ -825,7 +931,11 @@ async function saveQuickCreate() {
         return;
     }
     draft.Location = (document.getElementById('qc-location')?.value || '').trim();
-    if (isMeeting) draft.Meeting_Number = document.getElementById('qc-meeting-num')?.value || '';
+    if (isMeeting) {
+        draft.Meeting_Number = document.getElementById('qc-meeting-num')?.value || '';
+        const memberContainer = document.getElementById('qc-meeting-members');
+        draft.Audience = memberContainer?._tagInput ? memberContainer._tagInput.getValues().join('、') : '';
+    }
 
     const ts = document.getElementById('qc-time-start')?.value || '';
     const te = document.getElementById('qc-time-end')?.value || '';

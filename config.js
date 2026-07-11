@@ -79,14 +79,15 @@ const CONFIG = {
     USAGE_KEY: 'scicomi_bot_usage'
   },
 
+  // ===== 広報媒体（サーバー設定 pr_channels から上書きされる） =====
+  PR_CHANNELS: ['Twitter', 'Instagram', 'HP'],
+
   // ===== パスワード一覧カテゴリ =====
   PASSWORD_CATEGORIES: {
-    account:  { label: 'アカウント',     color: '#6264a7' },
-    sns:      { label: 'SNS',           color: '#e74c8b' },
-    purchase: { label: '購買・印刷',     color: '#10b981' },
-    server:   { label: 'サーバー・開発', color: '#f59e0b' },
-    tool:     { label: 'ツール',         color: '#3b82f6' },
-    other:    { label: 'その他',         color: '#8b8b8b' }
+    sns:      { label: 'SNS・メールアドレス', color: '#e74c8b' },
+    purchase: { label: '購買・印刷',         color: '#10b981' },
+    server:   { label: 'サーバー・開発',     color: '#f59e0b' },
+    other:    { label: 'その他',             color: '#8b8b8b' }
   },
 
   // ===== ログイン方法 =====

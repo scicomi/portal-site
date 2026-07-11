@@ -41,16 +41,6 @@
                         </div>
                     </div>
 
-                    <hr class="divider">
-
-                    <div class="e1-group">
-                        <label class="e1-label">挨拶メッセージ</label>
-                        <p class="settings-hint">ホーム画面の「こんにちは -- ...」の部分をカスタマイズできます。<br>時間帯の挨拶（おはよう/こんにちは/こんばんは）は自動で切り替わります。<br>空欄にするとデフォルトに戻ります。</p>
-                        <div style="display:flex;gap:8px;">
-                            <input type="text" id="cfg-welcome-message" class="e1-input" placeholder="今日も活動を楽しんでいきましょう。" style="flex:1;">
-                            <button class="btn btn-primary-solid" onclick="saveSettingField('welcome_message','cfg-welcome-message', this)" style="width:auto;padding:8px 20px;">保存</button>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -164,6 +154,27 @@
                                 <option value="gemini-2.0-flash" disabled>gemini-2.0-flash（廃止・使用不可）</option>
                             </select>
                             <button class="btn btn-primary-solid" onclick="saveSettingDirect('gemini_model','cfg-gemini-model', this)" style="width:auto;padding:8px 20px;">保存</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 広報媒体設定 -->
+            <div class="settings-section collapsed">
+                <div class="settings-section-header" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h2>広報媒体</h2>
+                        <p class="settings-section-desc">イベントごとの広報担当を記録する媒体名を管理します。</p>
+                    </div>
+                    <span class="settings-section-chevron">&#9662;</span>
+                </div>
+                <div class="settings-card">
+                    <div class="e1-group">
+                        <label class="e1-label">広報媒体リスト</label>
+                        <p class="settings-hint">カンマ区切りで入力してください（例: Twitter,Instagram,HP）</p>
+                        <div style="display:flex;gap:8px;">
+                            <input type="text" id="cfg-pr-channels" class="e1-input" placeholder="Twitter,Instagram,HP" style="flex:1;">
+                            <button class="btn btn-primary-solid" onclick="saveSettingField('pr_channels','cfg-pr-channels', this)" style="width:auto;padding:8px 20px;">保存</button>
                         </div>
                     </div>
                 </div>

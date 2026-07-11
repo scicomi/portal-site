@@ -27,16 +27,7 @@ function normalizeStudentId(s) {
         .toUpperCase();
 }
 
-function gradeOf(m) {
-    const id = (m.StudentID || '').trim();
-    if (id.length < 2) return '';
-    return id.slice(0, 2).toUpperCase();
-}
-
-function isGradStudent(m) {
-    const id = (m.StudentID || '').trim();
-    return id.length >= 5 && (id[4] === 'm' || id[4] === 'M');
-}
+// gradeOf / isGradStudent は app.js の共通ヘルパーを使う（出欠・発表者選択などとも共有）。
 
 // 役職の導出は app.js の memberRoleOf を使用
 
@@ -288,16 +279,16 @@ function renderMembers() {
         base = fyMembers;
     }
 
-    // キーワードは検索エンジンで照合（かな・全角半角の揺れを吸収。search.js）。
+    // キーワードは検索エンジンで照合（かな・全角半角の揺れ吸収 + AND/-除外/"フレーズ"。search.js）。
     // メンバー一覧は学年・役職の並び順自体に意味があるため、スコア順ソートはしない。
-    const nq = memberSearchKw ? searchNormalize(memberSearchKw) : '';
-    if (nq) {
-        base = base.filter(m => memberSearcher.matchItem(m, nq));
+    const pq = memberSearchKw ? parseSearchQuery(memberSearchKw) : null;
+    if (pq) {
+        base = base.filter(m => memberSearcher.matchItem(m, pq));
     }
 
     // 学生タブは学番サイクル順、コーディネーター・アドバイザーは役職→名前順
     const sorted = roleFilter === 'member' ? sortStudents(base) : sortByRoleThenName(base);
-    if (nq) announceSearchResult(`検索結果 ${sorted.length}件`);
+    if (pq) announceSearchResult(`検索結果 ${sorted.length}件`);
 
     const thead = document.getElementById('members-thead');
     const tbody = document.getElementById('members-tbody');
@@ -325,7 +316,8 @@ function renderMembers() {
         </td></tr>`;
     } else {
         // 検索中はマッチ部分をハイライト表示（search.js の highlightText は escape 込み）
-        const hl = v => nq ? highlightText(v || '', nq) : escapeHtml(v || '');
+        const hlTerms = pq ? searchQueryTerms(pq) : [];
+        const hl = v => pq ? highlightText(v || '', hlTerms) : escapeHtml(v || '');
         tbody.innerHTML = sorted.map(m => {
             const role = memberRoleOf(m);
             const roleInfo = role ? getRoleDisplay(role) : null;
@@ -335,7 +327,7 @@ function renderMembers() {
             // 学籍番号・名前・役職を別セルに分けておくと、範囲選択してExcelにコピペした時に
             // 列がきれいに分かれる（1セルに複数行を詰め込まない）。ふりがなは表では出さず、
             // タップした詳細ポップアップ側でのみ確認できるようにする。
-            const nameCell = `<td class="cell-name">${hl(m.Name)}</td>`;
+            const nameCell = `<td class="cell-name card-inline card-fill">${hl(m.Name)}</td>`;
             const roleCell = `<td class="cell-role">${roleBadge}</td>`;
             // 削除は管理者ログイン時のみ表示（誤タップ防止）。編集は全員に表示し、
             // タップ時に管理者認証を挟む（実験ページ等と表示ルールを統一）
@@ -351,7 +343,7 @@ function renderMembers() {
             if (isStaffTab) {
                 return `
                 <tr data-id="${escapeAttr(m.ID)}" data-detail="1" class="clickable-row" title="タップで詳細を表示">
-                    <td>${hl(m.StudentID)}</td>
+                    <td class="card-inline">${hl(m.StudentID)}</td>
                     ${nameCell}
                     ${roleCell}
                     <td>${hl(m.Email)}</td>
@@ -361,7 +353,7 @@ function renderMembers() {
 
             return `
             <tr data-id="${escapeAttr(m.ID)}" data-detail="1" class="clickable-row" title="タップで詳細を表示">
-                <td>${hl(m.StudentID)}</td>
+                <td class="card-inline">${hl(m.StudentID)}</td>
                 ${nameCell}
                 ${roleCell}
                 ${actionCell}

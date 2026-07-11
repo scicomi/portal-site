@@ -88,11 +88,51 @@ function dayOfWeekJP(str) {
 function shortDate(str) {
   const parts = String(str || '').split('-');
   if (parts.length < 3) return str || '';
-  return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
+  const md = `${parseInt(parts[1])}/${parseInt(parts[2])}`;
+  const dow = dayOfWeekJP(str);
+  return dow ? `${md}(${dow})` : md;
 }
 
 function genId(prefix) {
   return prefix + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+// 学籍番号の先頭2文字（例: "1C"）を学年グループとして返す。members.js の学年フィルタと共有。
+function gradeOf(m) {
+  const id = (m.StudentID || '').trim();
+  if (id.length < 2) return '';
+  return id.slice(0, 2).toUpperCase();
+}
+
+function isGradStudent(m) {
+  const id = (m.StudentID || '').trim();
+  return id.length >= 5 && (id[4] === 'm' || id[4] === 'M');
+}
+
+// メンバーを学年グループ（1A生・2C生…）ごとにまとめる。出欠・発表者・書類担当などの
+// メンバー選択UIで候補を探しやすくするための共通ヘルパー。院生・学籍番号なしは末尾にまとめる。
+function groupMembersByGrade(members) {
+  const groups = {};
+  const grad = [];
+  const other = [];
+  (members || []).forEach(m => {
+    if (isGradStudent(m)) { grad.push(m); return; }
+    const g = gradeOf(m);
+    if (g && /^\d[A-Z]$/.test(g)) {
+      (groups[g] = groups[g] || []).push(m);
+    } else {
+      other.push(m);
+    }
+  });
+  const sortByName = (a, b) => (a.Name || '').localeCompare(b.Name || '', 'ja');
+  const gradeKeys = Object.keys(groups).sort((a, b) => {
+    const da = parseInt(a[0], 10), db = parseInt(b[0], 10);
+    return da !== db ? da - db : a.localeCompare(b);
+  });
+  const result = gradeKeys.map(g => ({ label: `${g}生`, members: groups[g].sort(sortByName) }));
+  if (grad.length) result.push({ label: '院生', members: grad.sort(sortByName) });
+  if (other.length) result.push({ label: 'その他', members: other.sort(sortByName) });
+  return result;
 }
 
 function formatFileSize(bytes) {
@@ -772,11 +812,12 @@ function _applyCfg(cfg) {
         const days = String(cfg.reminder_days).split(/[,\s]+/).map(Number).filter(n => n > 0);
         if (days.length) CONFIG.REMINDER.days = days;
     }
-    // 挨拶メッセージは空なら削除（管理者がクリアしたら既定文へ戻す）
+    // ホームのメッセージは空なら削除（管理者がクリアしたら既定文へ戻す）
     if (cfg.welcome_message !== undefined) {
         if (cfg.welcome_message) localStorage.setItem('scicomi_welcome_message', cfg.welcome_message);
         else localStorage.removeItem('scicomi_welcome_message');
     }
+    if (cfg.pr_channels) CONFIG.PR_CHANNELS = cfg.pr_channels.split(',').map(s => s.trim()).filter(Boolean);
     // ヘッダーはキャッシュ値で先出し済みのことがあるため、取得できた最新値で上書きする
     if (cfg.brand_icon) {
         const el = document.getElementById('header-brand-icon');

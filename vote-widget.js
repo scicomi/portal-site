@@ -6,7 +6,7 @@
  *   読み込み順: config.js → api.js → app.js → vote-widget.js → 各ページJS
  *   利用ページ: index.html（出欠一括回答）
  *               events.html（プレビューモーダル内のインライン回答・参加バッジ）
- *               event-series.html（「参加状況」カードのインライン回答・回答一覧モーダル）
+ *               event-series.html（「参加状況」タブのトグル式インライン回答・回答一覧モーダル）
  *
  * データは GAS の EventVotes シート（EventID, MemberID, Status, UpdatedAt, Note）。
  * 名前選択は localStorage（VOTE_MEMBER_KEY）で端末に記憶し、全ページで共有する。
@@ -97,7 +97,7 @@ function voteErrorMessage(e) {
 // ====== インライン投票ウィジェット ======
 
 /**
- * container に「名前選択＋参加/不参加/未定＋一言メモ＋集計」を描画する。
+ * container に「名前選択＋参加/不参加/未定＋一言メモ」を描画する。
  * opts:
  *   event    : 対象イベント（GAS形・UI形どちらでも可）
  *   members  : メンバー配列
@@ -109,8 +109,9 @@ function renderVoteWidget(container, opts) {
   const { event: ev, members, votes } = opts;
   const memberId = getSavedVoteMemberId();
   const eligible = voteEligibleMembers(members, ev);
-  const selectable = eligible.slice().sort((a, b) => (a.Name || '').localeCompare(b.Name || '', 'ja'));
+  const selectable = eligible;
   const memberValid = selectable.some(m => m.ID === memberId);
+  const memberGroups = groupMembersByGrade(selectable);
   const closed = voteDeadlinePassed(ev);
   const canEdit = !closed || api.isAdmin();
   const mine = memberValid ? (votes || []).find(v => v.memberId === memberId) : null;
@@ -121,7 +122,7 @@ function renderVoteWidget(container, opts) {
   if (closed) {
     deadlineHtml = `<div class="vw-deadline vw-deadline-passed">出欠の締切を過ぎています${api.isAdmin() ? '（管理者として変更できます）' : '。変更が必要な場合は管理者に連絡してください'}</div>`;
   } else if (explicitDl) {
-    deadlineHtml = `<div class="vw-deadline">出欠締切: ${shortDate(explicitDl)}(${dayOfWeekJP(explicitDl)}) まで</div>`;
+    deadlineHtml = `<div class="vw-deadline">出欠締切: ${shortDate(explicitDl)} まで</div>`;
   }
 
   const btnsHtml = memberValid && canEdit ? `
@@ -143,7 +144,7 @@ function renderVoteWidget(container, opts) {
         <label class="vw-label">あなたの名前</label>
         <select class="vw-member e1-input" ${!canEdit ? 'disabled' : ''}>
           <option value="">-- 名前を選択 --</option>
-          ${selectable.map(m => `<option value="${escapeAttr(m.ID)}" ${m.ID === memberId ? 'selected' : ''}>${escapeHtml(m.Name)}</option>`).join('')}
+          ${memberGroups.map(g => `<optgroup label="${escapeAttr(g.label)}">${g.members.map(m => `<option value="${escapeAttr(m.ID)}" ${m.ID === memberId ? 'selected' : ''}>${escapeHtml(m.Name)}</option>`).join('')}</optgroup>`).join('')}
         </select>
         ${memberValid && mine ? `<span class="vw-mine">回答済み: ${VOTE_STATUS_LABELS[mine.status] || ''}${mine.updatedAt ? ' (' + voteTimeShort(mine.updatedAt) + ')' : ''}</span>` : ''}
       </div>
@@ -290,7 +291,7 @@ function showVoteListModal(ev, votes, members) {
   if (copyBtn) {
     copyBtn.addEventListener('click', () => {
       const url = new URL(`event-series.html?event=${encodeURIComponent(ev.ID)}&vote=1`, location.href).href;
-      const text = `【${title} ${shortDate(ev.Date)}(${dayOfWeekJP(ev.Date)})】出欠が未回答の方: ${noanswerNames.join('、')}\n回答はこちら → ${url}`;
+      const text = `【${title} ${shortDate(ev.Date)}】出欠が未回答の方: ${noanswerNames.join('、')}\n回答はこちら → ${url}`;
       copyTextToClipboard(text, '未回答者リスト');
     });
   }

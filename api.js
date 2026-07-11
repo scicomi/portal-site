@@ -324,6 +324,15 @@ const api = {
     return res; // { success, text, usage, limit }
   },
 
+  // 本日のGemini使用量だけを取得（実際にAPIを呼ばないため、ページ表示時のゲージ初期化に使う）
+  async geminiUsage() {
+    const res = await this._post({
+      action: 'geminiUsage',
+      token: this.getToken()
+    });
+    return res; // { success, usage, limit }
+  },
+
   // ---- イベント投票 ----
   async getEventVotes(eventId) {
     const res = await this._post({

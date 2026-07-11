@@ -44,6 +44,7 @@
             <select id="period-filter" class="e1-input" style="width:auto; padding:4px 10px; font-size:0.85rem;" title="表示する期間" onchange="onPeriodFilter(this.value)">
                 <option value="upcoming" selected>今後</option>
             </select>
+            <button class="btn btn-text btn-sm hidden" id="filter-reset-btn" onclick="resetFilters()" title="検索・絞り込みをすべて解除">リセット</button>
             <button class="btn btn-secondary btn-sm" id="calendar-toggle-btn" aria-pressed="false" onclick="toggleCalendar()" style="margin-left:auto;">カレンダーを表示</button>
         </div>
 
@@ -64,7 +65,7 @@
                     <tr>
                         <th>日付</th>
                         <th>タイトル</th>
-                        <th class="ev-vote-cell">出欠</th>
+                        <th class="ev-vote-cell">参加を回答</th>
                         <th>参加者数</th>
                         <th style="width:1px;"></th>
                     </tr>

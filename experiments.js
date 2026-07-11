@@ -236,11 +236,12 @@ function render() {
     document.getElementById('tab-cnt-show').textContent = expData.filter(e => e.Category === 'show').length;
     document.getElementById('tab-cnt-other').textContent = expData.filter(e => e.Category === 'other').length;
 
-    // キーワードは検索エンジンで照合（正規化・スコア・マッチ理由付き。search.js）
+    // キーワードは検索エンジンで照合（正規化・演算子・スコア・マッチ理由付き。search.js）
     let items;
     let searchMeta = null;
-    if (expSearchKw) {
-        const res = (expSearcher.search(expSearchKw) || []).sort((a, b) => b.score - a.score);
+    const pq = expSearchKw ? parseSearchQuery(expSearchKw) : null;
+    if (pq) {
+        const res = (expSearcher.search(pq) || []).sort((a, b) => b.score - a.score);
         searchMeta = {};
         res.forEach(r => { searchMeta[r.item.ID] = r; });
         items = res.map(r => r.item);
@@ -270,7 +271,7 @@ function render() {
     // 削除は管理者ログイン時のみ表示（誤タップ防止）。編集は全員に表示し、
     // タップ時に管理者認証を挟む（メンバーページと表示ルールを統一）
     const isAdmin = api.isAdmin();
-    const nq = searchMeta ? searchNormalize(expSearchKw) : '';
+    const hlTerms = searchMeta ? searchQueryTerms(pq) : [];
     tbody.innerHTML = items.map(e => {
         // 使用物品は1行に短縮（先頭項目＋他n点）。全文はポップアップ・詳細ページで見る
         const mats = (e.Materials || '').split('\n').map(s => s.trim()).filter(Boolean);
@@ -279,12 +280,12 @@ function render() {
         const fbCount = countFeedback(e);
         // 検索中はマッチ部分をハイライトし、実験名以外でヒットした行には
         // 「何に一致したか」バッジを添える
-        const nameHtml = searchMeta ? highlightText(e.Name || '(無題)', nq) : escapeHtml(e.Name || '(無題)');
+        const nameHtml = searchMeta ? highlightText(e.Name || '(無題)', hlTerms) : escapeHtml(e.Name || '(無題)');
         const meta = searchMeta ? searchMeta[e.ID] : null;
         let matchBadge = '';
         if (meta && meta.match && meta.match.key !== 'name') {
             const val = meta.match.value.length > 20 ? meta.match.value.slice(0, 20) + '…' : meta.match.value;
-            matchBadge = `<span class="match-badge" title="${escapeAttr(meta.match.label + 'に一致: ' + meta.match.value)}">${escapeHtml(meta.match.label)}: ${highlightText(val, nq)}</span>`;
+            matchBadge = `<span class="match-badge" title="${escapeAttr(meta.match.label + 'に一致: ' + meta.match.value)}">${escapeHtml(meta.match.label)}: ${highlightText(val, hlTerms)}</span>`;
         }
         return `
             <tr class="clickable-row" data-id="${escapeAttr(e.ID)}" title="タップで概要を表示">
