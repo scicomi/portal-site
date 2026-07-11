@@ -327,7 +327,7 @@ function renderMembers() {
             // 学籍番号・名前・役職を別セルに分けておくと、範囲選択してExcelにコピペした時に
             // 列がきれいに分かれる（1セルに複数行を詰め込まない）。ふりがなは表では出さず、
             // タップした詳細ポップアップ側でのみ確認できるようにする。
-            const nameCell = `<td class="cell-name card-inline card-fill">${hl(m.Name)}</td>`;
+            const nameCell = `<td class="cell-name">${hl(m.Name)}</td>`;
             const roleCell = `<td class="cell-role">${roleBadge}</td>`;
             // 削除は管理者ログイン時のみ表示（誤タップ防止）。編集は全員に表示し、
             // タップ時に管理者認証を挟む（実験ページ等と表示ルールを統一）
@@ -343,10 +343,10 @@ function renderMembers() {
             if (isStaffTab) {
                 return `
                 <tr data-id="${escapeAttr(m.ID)}" data-detail="1" class="clickable-row" title="タップで詳細を表示">
-                    <td class="card-inline">${hl(m.StudentID)}</td>
+                    <td>${hl(m.StudentID)}</td>
                     ${nameCell}
                     ${roleCell}
-                    <td>${hl(m.Email)}</td>
+                    <td style="white-space:nowrap;">${hl(m.Email)}</td>
                     ${actionCell}
                 </tr>`;
             }

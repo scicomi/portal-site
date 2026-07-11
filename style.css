@@ -1471,9 +1471,14 @@ textarea:focus {
 }
 .vote-reminder-banner .unanswered-flag { margin-left: 0; flex-shrink: 0; white-space: nowrap; }
 .vote-reminder-banner span:not(.unanswered-flag) { flex: 1; }
-.vote-reminder-banner select { flex: initial; }
+.vote-reminder-banner select { flex: initial; min-width: 0; }
 .vote-reminder-banner a.btn, .vote-reminder-banner button.btn { width: auto; flex-shrink: 0; white-space: nowrap; }
-@media (max-width: 600px) { .vote-reminder-banner { flex-wrap: wrap; } }
+.vote-reminder-action { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+@media (max-width: 600px) {
+    .vote-reminder-banner { flex-wrap: wrap; }
+    .vote-reminder-action { width: 100%; }
+    .vote-reminder-action select { flex: 1; min-width: 0; }
+}
 .dash-card-title {
     display: flex; justify-content: space-between; align-items: center;
     margin: 0 0 var(--space-md) 0; padding-bottom: var(--space-sm);
@@ -1939,45 +1944,6 @@ textarea:focus {
 
 .tbl-link { color: var(--primary-light); text-decoration: none; }
 .tbl-link:hover { text-decoration: underline; }
-
-/* ============================================================
-   Data Table → カード表示（スマホ; .data-table--cards を付与したテーブルのみ対象）
-   多列テーブルを1件=1カードの縦積みに変換する。予定一覧・イベント別一覧・参加状況は
-   カード化すると却って窮屈になるため、通常の .data-table（.table-wrapper の横スクロール）に戻した。
-   ============================================================ */
-@media (max-width: 600px) {
-    .data-table--cards thead { display: none; }
-    .data-table--cards, .data-table--cards tbody { display: block; width: 100%; }
-    .data-table--cards tbody tr {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        column-gap: 10px;
-        row-gap: 6px;
-        padding: 12px 14px;
-        border-bottom: 1px solid var(--border-subtle);
-    }
-    .data-table--cards tbody tr:last-child { border-bottom: none; }
-    .data-table--cards td {
-        display: block;
-        flex: 1 1 100%; /* デフォルトは1項目=1行 */
-        min-width: 0;
-        border-bottom: none;
-        padding: 0;
-        white-space: normal;
-        word-break: break-word;
-        font-size: 0.85rem;
-    }
-    .data-table--cards td:empty { display: none; }
-    /* 同じ行に並べたい小さな項目（アイコン・バッジ・セレクトなど） */
-    .data-table--cards td.card-inline { flex: 0 0 auto; }
-    /* 同じ行内で残り幅いっぱいに広がる項目（タイトルなど） */
-    .data-table--cards td.card-fill { flex: 1 1 0%; }
-    /* 行の右端に寄せたい項目 */
-    .data-table--cards td.card-push-end { margin-left: auto; text-align: right; }
-    /* アクション列は詳細ページから操作するため引き続き非表示 */
-    .data-table--cards td[data-action-cell] { display: none; }
-}
 
 /* ============================================================
    ラベル/値テーブル（d1-table系）のスマホ表示

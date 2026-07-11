@@ -411,11 +411,12 @@ function renderNameSelectBanner(members) {
 
     const sel = document.getElementById('name-select-banner-select');
     const btn = document.getElementById('name-select-banner-btn');
-    const eligible = voteEligibleMembers(members).sort((a, b) => (a.Name || '').localeCompare(b.Name || '', 'ja'));
+    const eligible = voteEligibleMembers(members);
     if (eligible.length === 0) { banner.classList.add('hidden'); return; }
 
+    const groups = groupMembersByGrade(eligible);
     sel.innerHTML = '<option value="">-- 名前を選択 --</option>' +
-        eligible.map(m => `<option value="${escapeAttr(m.ID)}">${escapeHtml(m.Name)}</option>`).join('');
+        groups.map(g => `<optgroup label="${escapeAttr(g.label)}">${g.members.map(m => `<option value="${escapeAttr(m.ID)}">${escapeHtml(m.Name)}</option>`).join('')}</optgroup>`).join('');
     btn.disabled = true;
     sel.onchange = () => { btn.disabled = !sel.value; };
     btn.onclick = () => {
