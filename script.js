@@ -433,11 +433,12 @@ function applyFilters(events) {
 // 検索していない時は元のラベルに戻す。
 function updateCategoryChipCounts(list) {
     document.querySelectorAll('.filter-chip[data-cat]').forEach(chip => {
-        if (!chip.dataset.baseLabel) chip.dataset.baseLabel = chip.textContent.trim();
-        if (!list) { chip.textContent = chip.dataset.baseLabel; return; }
+        const labelEl = chip.querySelector('.chip-label') || chip;
+        if (!chip.dataset.baseLabel) chip.dataset.baseLabel = labelEl.textContent.trim();
+        if (!list) { labelEl.textContent = chip.dataset.baseLabel; return; }
         const cat = chip.dataset.cat;
         const n = cat === 'all' ? list.length : list.filter(e => (e.Category || 'normal') === cat).length;
-        chip.textContent = `${chip.dataset.baseLabel} (${n})`;
+        labelEl.textContent = `${chip.dataset.baseLabel} (${n})`;
     });
 }
 
