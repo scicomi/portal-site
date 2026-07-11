@@ -34,6 +34,13 @@ async function init() {
     }
     showAdminBody();
     bindOverlayClose(document.getElementById('pw-modal-edit'), closePwModal);
+    // 検索窓（デバウンスのみ。このページは検索語自体が機微なため履歴・サジェストは付けない）
+    attachSearchBox(document.getElementById('pw-search'), {
+        onSearch: (v) => {
+            pwSearchKw = (v || '').trim();
+            renderPasswords();
+        }
+    });
     buildCategoryDropdown();
     buildLoginTypeDropdown();
     buildCategoryFilter();
@@ -136,13 +143,6 @@ async function refreshData(isManual = false) {
     }
 }
 
-// かな・全角半角の揺れを吸収して照合する（search.js の searchNormalize）。
-// このページは検索語自体が機微情報になり得るため、履歴・サジェストは付けない。
-function onPwSearch() {
-    pwSearchKw = searchNormalize(document.getElementById('pw-search').value || '');
-    renderPasswords();
-}
-
 function hostOf(url) {
     if (!url) return '';
     try { return new URL(/^https?:\/\//i.test(url) ? url : 'https://' + url).host; }
@@ -172,11 +172,13 @@ function renderPasswords() {
     }
 
     // テキスト検索
-    if (pwSearchKw) {
+    // かな・全角半角の揺れ吸収 + AND/-除外/"フレーズ" で照合する（search.js）
+    const pq = pwSearchKw ? parseSearchQuery(pwSearchKw) : null;
+    if (pq) {
         items = items.filter(p => {
             const catLabel = (PW_CATS[p.Category] || {}).label || '';
             const hay = searchNormalize([p.SiteName, p.URL, p.LoginID, p.Note, catLabel].filter(Boolean).join(' '));
-            return hay.includes(pwSearchKw);
+            return matchesParsedQuery(hay, pq);
         });
     }
     items.sort((a, b) => (a.SiteName || '').localeCompare(b.SiteName || '', 'ja'));
@@ -198,22 +200,22 @@ function renderPasswords() {
         const open = expandedPw.has(p.ID);
         const host = hostOf(p.URL);
         const urlHref = p.URL ? (/^https?:\/\//i.test(p.URL) ? p.URL : 'https://' + p.URL) : '';
+        let photos = [];
+        try { photos = JSON.parse(p.Photos || '[]'); } catch (_) {}
+        const photo = Array.isArray(photos) && photos.length > 0 ? photos[0] : null;
         return `
         <div class="pw-card ${open ? 'open' : ''}" data-id="${escapeAttr(p.ID)}">
             <button type="button" class="pw-card-head" aria-expanded="${open}" onclick="togglePwCard('${escapeAttr(p.ID)}')">
                 <div class="pw-card-title">
                     ${catBadgeHtml(p.Category)}
                     <span class="pw-card-name">${escapeHtml(p.SiteName || '(名称未設定)')}</span>
-                    ${host ? `<span class="pw-card-host">${escapeHtml(host)}</span>` : ''}
+                    ${urlHref ? `<span class="pw-card-link" role="link" tabindex="0" title="${escapeAttr(host || p.URL)} を開く"
+                        onclick="event.stopPropagation(); window.open('${escapeAttr(urlHref)}', '_blank', 'noopener');"
+                        onkeydown="if(event.key==='Enter'){event.stopPropagation(); window.open('${escapeAttr(urlHref)}', '_blank', 'noopener');}">&#x2197;</span>` : ''}
                 </div>
                 <span class="pw-card-chevron">${open ? '▲' : '▼'}</span>
             </button>
             <div class="pw-card-body" ${open ? '' : 'style="display:none;"'}>
-                ${urlHref ? `
-                <div class="pw-row">
-                    <span class="pw-row-label">URL</span>
-                    <a class="pw-row-value tbl-link" href="${escapeAttr(urlHref)}" target="_blank" rel="noopener">${escapeHtml(p.URL)}</a>
-                </div>` : ''}
                 <div class="pw-row">
                     <span class="pw-row-label">ID / メール</span>
                     <span class="pw-row-value pw-mono">${escapeHtml(p.LoginID || '—')}</span>
@@ -228,10 +230,16 @@ function renderPasswords() {
                     <span class="pw-row-label">パスワード</span>
                     <span class="pw-row-value pw-mono pw-secret" id="pw-secret-${escapeAttr(p.ID)}" data-revealed="false">${p.Password ? '••••••••' : '—'}</span>
                     ${p.Password ? `
-                    <button class="pw-copy-btn" onclick="toggleSecret('${escapeAttr(p.ID)}', this)" title="表示切替">👁 表示</button>
+                    <button class="pw-copy-btn" onclick="toggleSecret('${escapeAttr(p.ID)}', this)" title="表示切替">表示</button>
                     <button class="pw-copy-btn" onclick="copyPwField('${escapeAttr(p.ID)}', 'Password', this)" title="コピー">コピー</button>` : ''}
                 </div>`}
                 ${p.Note ? `<div class="pw-row pw-row-note"><span class="pw-row-label">メモ</span><span class="pw-row-value pw-note-body">${noteToHtml(p.Note)}</span></div>` : ''}
+                ${photo ? `<div class="pw-row pw-row-photo">
+                    <span class="pw-row-label">写真</span>
+                    <a href="${escapeAttr(photo.url || '')}" target="_blank" rel="noopener" title="${escapeAttr(photo.name || '')}">
+                        <img class="pw-photo-thumb" src="${escapeAttr(photo.driveId ? `https://drive.google.com/thumbnail?id=${photo.driveId}&sz=w200` : photo.url)}" alt="${escapeAttr(photo.name || '')}" loading="lazy" referrerpolicy="no-referrer">
+                    </a>
+                </div>` : ''}
                 <div class="pw-card-actions">
                     <button class="tbl-btn" onclick="editPwEntry('${escapeAttr(p.ID)}')">編集</button>
                     <button class="tbl-btn tbl-btn-danger" onclick="deletePwEntry('${escapeAttr(p.ID)}')">削除</button>
@@ -256,11 +264,11 @@ function toggleSecret(id, btn) {
     if (revealed) {
         el.textContent = '••••••••';
         el.setAttribute('data-revealed', 'false');
-        btn.textContent = '👁 表示';
+        btn.textContent = '表示';
     } else {
         el.textContent = p.Password || '';
         el.setAttribute('data-revealed', 'true');
-        btn.textContent = '🙈 隠す';
+        btn.textContent = '隠す';
     }
 }
 
@@ -284,13 +292,93 @@ function togglePwField(inputId, btn) {
     const el = document.getElementById(inputId);
     if (!el) return;
     el.type = el.type === 'password' ? 'text' : 'password';
-    btn.textContent = el.type === 'password' ? '👁' : '🙈';
+    btn.textContent = el.type === 'password' ? '表示' : '隠す';
 }
 
-// ---- 追加 / 編集 モーダル ----
+// ---- 追加 / 編集 モーダル（Step 1: 基本情報 / Step 2: 認証情報・写真） ----
+
+let pwWizardStep = 0;
+let pwEditingPhotos = []; // [{name,url,driveId}] 最大1枚
+
+function pwWizardSetStep(step) {
+    pwWizardStep = step;
+    document.querySelectorAll('#pw-modal-edit [data-pw-step]').forEach(el => {
+        el.classList.toggle('active', parseInt(el.dataset.pwStep, 10) === step);
+    });
+    document.querySelectorAll('#pw-modal-edit [data-pw-dot]').forEach(el => {
+        const i = parseInt(el.dataset.pwDot, 10);
+        el.classList.toggle('active', i === step);
+        el.classList.toggle('done', i < step);
+    });
+    document.querySelectorAll('#pw-modal-edit [data-pw-line]').forEach(el => {
+        el.classList.toggle('done', step >= 1);
+    });
+    document.getElementById('pw-f-back-btn').style.display = step > 0 ? '' : 'none';
+    document.getElementById('pw-f-next-btn').textContent = step === 1 ? '保存' : '次へ';
+}
+
+// 進捗ドットのクリックで任意のステップへ移動（イベントウィザードと同様、入力チェックはしない）
+function pwWizardGoto(step) {
+    pwWizardSetStep(step);
+}
+
+function pwWizardNext() {
+    if (pwWizardStep === 0) {
+        const name = document.getElementById('pw-f-name').value.trim();
+        if (!name) { toast('サービス名を入力してください', 'error'); document.getElementById('pw-f-name').focus(); return; }
+        pwWizardSetStep(1);
+    } else {
+        savePwEntry();
+    }
+}
+
+function pwWizardBack() {
+    pwWizardSetStep(0);
+}
+
+function renderPwPhotoPreview() {
+    const wrap = document.getElementById('pw-f-photo-preview');
+    const img = document.getElementById('pw-f-photo-img');
+    const btn = document.getElementById('pw-f-photo-btn');
+    const has = pwEditingPhotos.length > 0;
+    wrap.classList.toggle('hidden', !has);
+    if (has) {
+        const p = pwEditingPhotos[0];
+        const id = p.driveId || extractPwDriveId(p.url);
+        img.src = id ? `https://drive.google.com/thumbnail?id=${id}&sz=w400` : p.url;
+    }
+    btn.classList.toggle('hidden', has);
+}
+
+function extractPwDriveId(url) {
+    if (!url) return '';
+    const m = String(url).match(/\/d\/([-\w]{20,})/) || String(url).match(/[?&]id=([-\w]{20,})/);
+    return m ? m[1] : '';
+}
+
+async function handlePwPhotoSelect(input) {
+    const file = input.files[0];
+    input.value = '';
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { toast(file.name + ' は10MBを超えています', 'error'); return; }
+    toast('アップロード中: ' + file.name, 'info', 2000);
+    try {
+        const result = await api.uploadFile(file);
+        pwEditingPhotos = [{ name: file.name, url: result.url, driveId: result.driveId }];
+        renderPwPhotoPreview();
+    } catch (e) {
+        toast('アップロード失敗: ' + e.message, 'error');
+    }
+}
+
+function removePwPhoto() {
+    pwEditingPhotos = [];
+    renderPwPhotoPreview();
+}
 
 function openPwModal() {
     editingPwId = null;
+    pwEditingPhotos = [];
     document.getElementById('pw-modal-title').textContent = 'パスワードを追加';
     document.getElementById('pw-f-category').value = 'other';
     document.getElementById('pw-f-logintype').value = 'normal';
@@ -299,6 +387,8 @@ function openPwModal() {
     });
     document.getElementById('pw-f-password').type = 'password';
     document.getElementById('pw-f-password-group').style.display = '';
+    renderPwPhotoPreview();
+    pwWizardSetStep(0);
     document.getElementById('pw-modal-edit').classList.remove('hidden');
     bindModalEscape(document.getElementById('pw-modal-edit'), closePwModal);
     setTimeout(() => document.getElementById('pw-f-name').focus(), 50);
@@ -308,6 +398,8 @@ function editPwEntry(id) {
     const p = pwData.find(x => x.ID === id);
     if (!p) return;
     editingPwId = id;
+    try { pwEditingPhotos = JSON.parse(p.Photos || '[]'); } catch (_) { pwEditingPhotos = []; }
+    if (!Array.isArray(pwEditingPhotos)) pwEditingPhotos = [];
     document.getElementById('pw-modal-title').textContent = 'パスワードを編集';
     document.getElementById('pw-f-category').value = p.Category || 'other';
     document.getElementById('pw-f-logintype').value = p.LoginType || 'normal';
@@ -319,6 +411,8 @@ function editPwEntry(id) {
     document.getElementById('pw-f-note').value = p.Note || '';
     // ソーシャルログインの場合はパスワード欄を非表示
     document.getElementById('pw-f-password-group').style.display = isSocialLogin(p.LoginType) ? 'none' : '';
+    renderPwPhotoPreview();
+    pwWizardSetStep(0);
     document.getElementById('pw-modal-edit').classList.remove('hidden');
     bindModalEscape(document.getElementById('pw-modal-edit'), closePwModal);
 }
@@ -331,7 +425,7 @@ async function savePwEntry() {
     const name = document.getElementById('pw-f-name').value.trim();
     if (!name) { toast('サービス名を入力してください', 'error'); document.getElementById('pw-f-name').focus(); return; }
 
-    const saveBtn = document.getElementById('pw-f-save-btn');
+    const saveBtn = document.getElementById('pw-f-next-btn');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
 
     const existing = editingPwId ? pwData.find(p => p.ID === editingPwId) : null;
@@ -343,7 +437,8 @@ async function savePwEntry() {
         LoginID: document.getElementById('pw-f-loginid').value.trim(),
         LoginType: document.getElementById('pw-f-logintype').value || 'normal',
         Password: isSocialLogin(document.getElementById('pw-f-logintype').value) ? '' : document.getElementById('pw-f-password').value,
-        Note: document.getElementById('pw-f-note').value.trim()
+        Note: document.getElementById('pw-f-note').value.trim(),
+        Photos: JSON.stringify(pwEditingPhotos)
     };
     if (editingPwId && existing) item._baseUpdatedAt = existing.UpdatedAt || '';
 

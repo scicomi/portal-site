@@ -58,14 +58,14 @@ async function loadSettings() {
         document.getElementById('cfg-brand-icon').value = cfg.brand_icon || 'SC';
         document.getElementById('cfg-brand-name').value = cfg.brand_name || 'SciComi Portal';
 
-        // 挨拶メッセージ
-        document.getElementById('cfg-welcome-message').value = cfg.welcome_message || '';
-
         // 書類期限ルール（サーバーに保存されていない場合はCONFIGのデフォルト値を使用）
         const kyokaDays = cfg.deadline_kyoka != null ? Math.abs(parseInt(cfg.deadline_kyoka)) : Math.abs(CONFIG.DEADLINE_RULES.kyoka);
         const houkokuDays = cfg.deadline_houkoku != null ? parseInt(cfg.deadline_houkoku) : CONFIG.DEADLINE_RULES.houkoku;
         document.getElementById('cfg-deadline-kyoka').value = kyokaDays;
         document.getElementById('cfg-deadline-houkoku').value = houkokuDays;
+
+        // 広報媒体
+        document.getElementById('cfg-pr-channels').value = cfg.pr_channels || 'Twitter,Instagram,HP';
 
         // 設定キャッシュを更新（他ページで applySiteSettings が即座に反映できるように）
         localStorage.setItem('scicomi_site_settings', JSON.stringify({ data: cfg, ts: Date.now() }));
@@ -101,13 +101,6 @@ async function saveSettingField(key, inputId, btn) {
         try {
             await api.adminSetConfig(key, value);
             invalidateSettingsCache();
-            if (key === 'welcome_message') {
-                if (value) {
-                    localStorage.setItem('scicomi_welcome_message', value);
-                } else {
-                    localStorage.removeItem('scicomi_welcome_message');
-                }
-            }
             if (key === 'brand_icon') {
                 const el = document.getElementById('header-brand-icon');
                 if (el) el.textContent = value || 'SC';

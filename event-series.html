@@ -21,23 +21,47 @@
         <div id="series-index" class="hidden">
             <div class="page-header">
                 <h1 class="page-title" style="margin:0; flex:1;">イベント別</h1>
-                <input id="series-index-search" class="search-input" type="text" placeholder="イベント名・場所で検索" oninput="renderSeriesIndex()">
+                <div class="search-box" role="search">
+                    <input id="series-index-search" class="search-input" type="search" placeholder="イベント名・場所で検索"
+                        aria-label="イベントを検索"
+                        role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="series-index-search-suggest"
+                        autocomplete="off">
+                    <ul id="series-index-search-suggest" class="search-suggest" role="listbox" aria-label="検索候補" hidden></ul>
+                </div>
             </div>
             <div id="series-index-filters" class="page-filters">
                 <button class="filter-chip active" data-sidx="event" aria-pressed="true" onclick="onSeriesIndexFilter('event')"><span class="cat-dot" style="color:#f8b4b4;">&#9679;</span>イベント</button>
                 <button class="filter-chip" data-sidx="other" aria-pressed="false" onclick="onSeriesIndexFilter('other')"><span class="cat-dot" style="color:#86efac;">&#9679;</span>その他</button>
                 <button class="filter-chip" data-sidx="all" aria-pressed="false" onclick="onSeriesIndexFilter('all')">全部</button>
+                <span class="filter-divider"></span>
+                <select id="series-index-status-filter" class="e1-input" style="width:auto; padding:4px 10px; font-size:0.85rem;" title="開催状況で絞り込み" onchange="onSeriesIndexStatusFilter(this.value)">
+                    <option value="all" selected>すべて</option>
+                    <option value="upcoming">次回開催あり</option>
+                    <option value="past">終了のみ</option>
+                </select>
                 <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="startSeriesPickMode()">＋ 新規イベント</button>
             </div>
             <div id="series-pick-banner" class="series-pick-banner hidden">
-                <span>複製したいイベントのカードを選んでください</span>
+                <span>複製したいイベントの行を選んでください</span>
                 <div class="series-pick-actions">
                     <button type="button" class="btn btn-secondary btn-sm" onclick="goToNewEvent()">複製せず新しく作成</button>
                     <button type="button" class="btn btn-text btn-sm" onclick="cancelSeriesPickMode()">キャンセル</button>
                 </div>
             </div>
-            <div id="series-index-grid" class="series-index-grid">
-                <div class="loading-text">読み込み中</div>
+            <div class="table-wrapper">
+                <table class="data-table" id="series-index-table">
+                    <thead>
+                        <tr>
+                            <th style="width:1px;"></th>
+                            <th>タイトル</th>
+                            <th>開催回数</th>
+                            <th>次回/直近開催</th>
+                        </tr>
+                    </thead>
+                    <tbody id="series-index-tbody">
+                        <tr><td colspan="4" class="loading-text">読み込み中</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
@@ -68,12 +92,13 @@
                     <button class="expd-tab" data-tab="stats" onclick="switchSeriesTab(this)">統計・開催履歴</button>
                 </div>
 
-                <!-- Tab: イベント詳細（子タブ: 内容 / 参加状況 / 振り返り） -->
+                <!-- Tab: イベント詳細（子タブ: 内容 / 参加状況 / 振り返りを記入 / 振り返りを表示） -->
                 <div class="expd-tab-pane" data-tab-pane="detail">
                     <div class="detail-sub-tab-bar" id="detail-sub-tabs">
                         <button class="detail-sub-tab active" data-subtab="content" onclick="switchDetailSubTab(this)">内容</button>
                         <button class="detail-sub-tab" data-subtab="attendance" onclick="switchDetailSubTab(this)">参加状況</button>
                         <button class="detail-sub-tab" data-subtab="reflection" onclick="switchDetailSubTab(this)">振り返りを記入</button>
+                        <button class="detail-sub-tab" data-subtab="results" onclick="switchDetailSubTab(this)">振り返りを表示</button>
                     </div>
                     <div class="detail-sub-pane" data-sub-pane="content">
                         <div id="series-detail"></div>
@@ -84,19 +109,27 @@
                     <div class="detail-sub-pane hidden" data-sub-pane="reflection">
                         <div id="series-reflection-entry"></div>
                     </div>
+                    <div class="detail-sub-pane hidden" data-sub-pane="results">
+                        <div id="series-results-view"></div>
+                    </div>
                 </div>
 
-                <!-- Tab: 会場情報（活動場所・緊急連絡先＋振り返りタイムライン） -->
+                <!-- Tab: 会場情報（子タブ: 会場情報 / 会場運営の振り返り） -->
                 <div class="expd-tab-pane hidden" data-tab-pane="local-info">
-                    <div id="series-safety-card" class="series-safety-card hidden">
-                        <div class="series-safety-header">
-                            <div class="series-safety-title">会場情報・緊急連絡先</div>
-                            <button type="button" class="expd-section-edit-btn" title="編集" onclick="editSafetyInfo()">&#9998;</button>
-                        </div>
-                        <div id="series-safety-grid" class="series-safety-grid"></div>
+                    <div class="detail-sub-tab-bar" id="local-info-sub-tabs">
+                        <button class="detail-sub-tab active" data-subtab="venue" onclick="switchLocalInfoSubTab(this)">会場情報</button>
+                        <button class="detail-sub-tab" data-subtab="venue-fb" onclick="switchLocalInfoSubTab(this)">会場運営の振り返り</button>
                     </div>
-                    <div class="expd-section">
-                        <h2 class="expd-section-title">振り返り</h2>
+                    <div class="detail-sub-pane" data-li-pane="venue">
+                        <div id="series-safety-card" class="series-safety-card hidden">
+                            <div class="series-safety-header">
+                                <div class="series-safety-title">会場情報・緊急連絡先</div>
+                                <button type="button" class="expd-section-edit-btn" title="編集" onclick="editSafetyInfo()">&#9998;</button>
+                            </div>
+                            <div id="series-safety-grid" class="series-safety-grid"></div>
+                        </div>
+                    </div>
+                    <div class="detail-sub-pane hidden" data-li-pane="venue-fb">
                         <div class="expd-feedback-filters">
                             <button class="filter-chip active" data-fb="all" aria-pressed="true" onclick="filterSeriesFb('all')">全て</button>
                             <button class="filter-chip" data-fb="positive" aria-pressed="false" onclick="filterSeriesFb('positive')">良かった点</button>
@@ -106,11 +139,18 @@
                     </div>
                 </div>
 
-                <!-- Tab: 統計・開催履歴 -->
+                <!-- Tab: 統計・開催履歴（子タブ: 統計 / 開催履歴） -->
                 <div class="expd-tab-pane hidden" data-tab-pane="stats">
-                    <div id="series-stats"></div>
-                    <h3 class="series-history-heading">開催履歴</h3>
-                    <div id="series-overview-list"></div>
+                    <div class="detail-sub-tab-bar" id="stats-sub-tabs">
+                        <button class="detail-sub-tab active" data-subtab="stats-main" onclick="switchStatsSubTab(this)">統計</button>
+                        <button class="detail-sub-tab" data-subtab="stats-history" onclick="switchStatsSubTab(this)">開催履歴</button>
+                    </div>
+                    <div class="detail-sub-pane" data-st-pane="stats-main">
+                        <div id="series-stats"></div>
+                    </div>
+                    <div class="detail-sub-pane hidden" data-st-pane="stats-history">
+                        <div id="series-overview-list"></div>
+                    </div>
                 </div>
             </div>
         </div>

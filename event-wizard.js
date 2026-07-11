@@ -428,9 +428,19 @@ function initTagInput(container, selectedValues, placeholder, filterFn) {
                 : '<div class="tag-input-empty">候補なし</div>';
         } else {
             const maxShow = 30;
-            let html = filtered.slice(0, maxShow).map(m =>
-                `<div class="tag-input-option" data-value="${escapeAttr(m.Name)}">${escapeHtml(m.Name)}${m.Furigana ? ' <span class="text-hint" style="font-size:0.8em;">(' + escapeHtml(m.Furigana) + ')</span>' : ''}</div>`
-            ).join('');
+            const groups = groupMembersByGrade(filtered);
+            let shown = 0;
+            let html = '';
+            groups.forEach(grp => {
+                if (shown >= maxShow) return;
+                const take = grp.members.slice(0, maxShow - shown);
+                if (take.length === 0) return;
+                html += `<div class="tag-input-group-label">${escapeHtml(grp.label)}</div>`;
+                html += take.map(m =>
+                    `<div class="tag-input-option" data-value="${escapeAttr(m.Name)}">${escapeHtml(m.Name)}${m.Furigana ? ' <span class="text-hint" style="font-size:0.8em;">(' + escapeHtml(m.Furigana) + ')</span>' : ''}</div>`
+                ).join('');
+                shown += take.length;
+            });
             if (filtered.length > maxShow) {
                 html += `<div class="tag-input-empty">他 ${filtered.length - maxShow} 件（入力で絞り込み）</div>`;
             }

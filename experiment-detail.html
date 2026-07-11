@@ -60,7 +60,7 @@
                         <button class="filter-chip active" data-fb="all" aria-pressed="true" onclick="filterFeedback('all')">全て</button>
                         <button class="filter-chip" data-fb="positive" aria-pressed="false" onclick="filterFeedback('positive')">良かった点</button>
                         <button class="filter-chip" data-fb="reflection" aria-pressed="false" onclick="filterFeedback('reflection')">改善点</button>
-                        <input id="feedback-search" class="search-input" type="text" placeholder="キーワードで検索" style="max-width:220px; margin-left:auto;" oninput="renderFeedback()">
+                        <input id="feedback-search" class="search-input" type="search" placeholder="キーワードで検索" aria-label="振り返りを検索" style="max-width:220px; margin-left:auto;" autocomplete="off">
                     </div>
                     <div id="feedback-timeline"></div>
                 </div>

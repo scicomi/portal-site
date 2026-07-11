@@ -12,6 +12,7 @@ const KYOKA_STATUS = CONFIG.KYOKA_STATUS;
 let allMembersData = [];
 
 let latestEvents = [];
+let latestVotes = [];
 function looksGasForm(items) {
     if (!items || items.length === 0) return true;
     const e = items[0];
@@ -22,13 +23,16 @@ async function init() {
     const cachedEv = api.loadCache('events');
     const cachedMb = api.loadCache('members');
     const cachedEx = api.loadCache('experiments');
+    const cachedVo = api.loadCache('votes');
 
     if (cachedEv && looksGasForm(cachedEv.items)) latestEvents = cachedEv.items || [];
+    if (cachedVo) latestVotes = cachedVo.items || [];
     if (cachedEv) { renderEventsCard(cachedEv.items || []); renderFeedbackPending(cachedEv.items || []); updateActionNeeded(); }
     if (cachedMb) {
         allMembersData = cachedMb.items || [];
         renderMembersCard(allMembersData);
     }
+    if (cachedMb) renderIdentityBanners(latestEvents, allMembersData, latestVotes);
     renderStats({
         events: cachedEv ? cachedEv.items : [],
         members: cachedMb ? cachedMb.items : [],
@@ -51,10 +55,17 @@ async function refreshData(isManual = false) {
 
         latestEvents = all.events;
         allMembersData = all.members || [];
+        if (Array.isArray(all.votes)) {
+            latestVotes = all.votes;
+            api.saveCache('votes', latestVotes);
+        } else {
+            try { latestVotes = await api.listVotes(); api.saveCache('votes', latestVotes); } catch (_) {}
+        }
         renderEventsCard(all.events);
         renderFeedbackPending(all.events);
         updateActionNeeded();
         renderMembersCard(all.members);
+        renderIdentityBanners(latestEvents, allMembersData, latestVotes);
         renderStats(all);
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
@@ -74,17 +85,14 @@ function renderLoadError() {
     });
 }
 
-// ---- 挨拶メッセージ（リッチテキスト対応） ----
+// ---- ホームのメッセージ（管理者が任意の文章を掲載できる。リッチテキスト対応） ----
 
 function renderWelcome() {
-    const hour = new Date().getHours();
-    let greeting = 'こんにちは';
-    if (hour < 11) greeting = 'おはようございます';
-    else if (hour >= 18) greeting = 'こんばんは';
+    const el = document.getElementById('welcome-msg');
+    if (!el) return;
     const custom = localStorage.getItem('scicomi_welcome_message');
     const body = custom || '今日も活動を楽しんでいきましょう。';
-    const el = document.getElementById('welcome-msg');
-    el.innerHTML = `${escapeHtml(greeting)} &mdash; ${sanitizeRichHtml(body)}`;
+    el.innerHTML = sanitizeRichHtml(body);
 
     const editBtn = document.getElementById('welcome-edit-btn');
     if (editBtn) editBtn.classList.toggle('hidden', !api.isAdmin());
@@ -138,7 +146,7 @@ async function saveWelcomeMessage() {
         const cached = _readCachedSiteSettings() || {};
         cached.welcome_message = value;
         localStorage.setItem('scicomi_site_settings', JSON.stringify({ data: cached, ts: Date.now() }));
-        toast('挨拶メッセージを保存しました', 'success');
+        toast('メッセージを保存しました', 'success');
         cancelWelcomeEdit();
         renderWelcome();
     } catch (e) {
@@ -369,6 +377,78 @@ function renderFeedbackPending(events) {
             <span class="dl-badge badge-warning">未記入</span>
         </li>`;
     }).join('');
+}
+
+// ホーム上部の2つの通知バナーをまとめて出し分ける。
+// 名前（VOTE_MEMBER_KEY）が未設定なら「名前を選択」バナー、設定済みなら出欠未回答バナーを出す
+// （両方同時には出さない。名前が無ければ未回答判定もできないため）。
+function renderIdentityBanners(events, members, votes) {
+    const memberId = typeof getSavedVoteMemberId === 'function' ? getSavedVoteMemberId() : '';
+    if (!memberId) {
+        renderNameSelectBanner(members);
+        hideVoteReminderBanner();
+    } else {
+        hideNameSelectBanner();
+        renderVoteReminder(events, members, votes, memberId);
+    }
+}
+
+function hideNameSelectBanner() {
+    const banner = document.getElementById('name-select-banner');
+    if (banner) banner.classList.add('hidden');
+}
+
+function hideVoteReminderBanner() {
+    const banner = document.getElementById('vote-reminder-banner');
+    if (banner) banner.classList.add('hidden');
+}
+
+// 「あなたの名前」が端末に未記憶なら、ホームで選んでもらう（旧: ログイン直後のポップアップを廃止し、こちらに統一）。
+function renderNameSelectBanner(members) {
+    const banner = document.getElementById('name-select-banner');
+    if (!banner) return;
+    if (!members || members.length === 0) { banner.classList.add('hidden'); return; }
+
+    const sel = document.getElementById('name-select-banner-select');
+    const btn = document.getElementById('name-select-banner-btn');
+    const eligible = voteEligibleMembers(members).sort((a, b) => (a.Name || '').localeCompare(b.Name || '', 'ja'));
+    if (eligible.length === 0) { banner.classList.add('hidden'); return; }
+
+    sel.innerHTML = '<option value="">-- 名前を選択 --</option>' +
+        eligible.map(m => `<option value="${escapeAttr(m.ID)}">${escapeHtml(m.Name)}</option>`).join('');
+    btn.disabled = true;
+    sel.onchange = () => { btn.disabled = !sel.value; };
+    btn.onclick = () => {
+        if (!sel.value) return;
+        setSavedVoteMemberId(sel.value);
+        renderIdentityBanners(latestEvents, allMembersData, latestVotes);
+    };
+    banner.classList.remove('hidden');
+}
+
+// 締切前の予定に出欠未回答なら通知バナーを出す（幹部会は出欠対象外なので除外）。
+// 具体的な予定名は出さず、件数だけ知らせる（詳細は「出欠を回答」から確認できる）。
+function renderVoteReminder(events, members, votes, memberId) {
+    const banner = document.getElementById('vote-reminder-banner');
+    if (!banner) return;
+
+    const today = todayISO();
+    const pending = (events || [])
+        .filter(e => e.Category !== 'admin')
+        .filter(e => (e.DateEnd || e.Date_End || e.Date) >= today)
+        .filter(e => !voteDeadlinePassed(e))
+        .filter(e => voteEligibleMembers(members, e).some(m => m.ID === memberId))
+        .filter(e => !(votes || []).some(v => v.eventId === e.ID && v.memberId === memberId))
+        .sort((a, b) => (a.Date || '').localeCompare(b.Date || ''));
+
+    if (pending.length === 0) { banner.classList.add('hidden'); return; }
+
+    const first = pending[0];
+    const textEl = document.getElementById('vote-reminder-text');
+    const linkEl = document.getElementById('vote-reminder-link');
+    textEl.textContent = `出欠が未回答の予定が${pending.length}件あります`;
+    linkEl.href = `event-series.html?event=${encodeURIComponent(first.ID)}&vote=1`;
+    banner.classList.remove('hidden');
 }
 
 function updateActionNeeded() {

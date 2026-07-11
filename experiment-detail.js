@@ -24,6 +24,11 @@ function showLoadMessage(html) {
 async function init() {
     bindOverlayClose(document.getElementById('feedback-modal'), closeFeedbackModal);
 
+    // 振り返り検索（デバウンスは search.js。候補リストが無いのでサジェストは出ない）
+    attachSearchBox(document.getElementById('feedback-search'), {
+        onSearch: () => renderFeedback()
+    });
+
     const id = new URLSearchParams(location.search).get('id');
     if (!id) {
         showLoadMessage(`<div class="empty-state">
@@ -158,13 +163,13 @@ function renderFeedback() {
         items = items.filter(f => f.type === feedbackFilter);
     }
 
-    // かな・全角半角の揺れを吸収して照合する（search.js）
-    const kw = searchNormalize(document.getElementById('feedback-search')?.value || '');
-    if (kw) {
+    // かな・全角半角の揺れ吸収 + AND/-除外/"フレーズ" で照合する（search.js）
+    const pq = parseSearchQuery(document.getElementById('feedback-search')?.value || '');
+    if (pq) {
         items = items.filter(f =>
-            searchNormalize(f.text).includes(kw) ||
-            searchNormalize(f.eventTitle).includes(kw)
+            matchesParsedQuery(searchNormalize((f.text || '') + ' ' + (f.eventTitle || '')), pq)
         );
+        announceSearchResult(`検索結果 ${items.length}件`);
     }
 
     if (items.length === 0) {

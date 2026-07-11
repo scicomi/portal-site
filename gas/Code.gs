@@ -71,7 +71,8 @@ const DEFAULT_CONFIG = {
   brand_name: 'SciComi Portal',
   // 実験ネタページ上部の「新規実験募集」案内。全員に見せるため公開設定に含める。
   experiment_recruit_url: '',
-  experiment_recruit_note: ''
+  experiment_recruit_note: '',
+  pr_channels: 'Twitter,Instagram,HP'
 };
 
 // メンバー（非管理者）にも公開してよい表示系設定。getPublicConfig で返す（機密値は含めない）。
@@ -79,7 +80,8 @@ const PUBLIC_CONFIG_KEYS = [
   'welcome_message', 'deadline_kyoka', 'deadline_houkoku',
   'deadline_alert_danger', 'deadline_alert_warning', 'reminder_days',
   'brand_icon', 'brand_name',
-  'experiment_recruit_url', 'experiment_recruit_note'
+  'experiment_recruit_url', 'experiment_recruit_note',
+  'pr_channels'
 ];
 
 // 既定値を返す。password 系だけは毎回ランダム生成する。
@@ -356,6 +358,12 @@ function doPost(e) {
       return handleGeminiGenerate(body);
     }
 
+    // --- Gemini 本日の使用量取得（実際に呼び出さず、ゲージ表示だけを更新するため） ---
+    if (action === 'geminiUsage') {
+      var todayUsage = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+      return jsonResponse({ success: true, usage: geminiUsageGet_(todayUsage), limit: GEMINI_DAILY_LIMIT });
+    }
+
     // --- 公開設定の読み取り（メンバーも可・表示系のみ） ---
     // 期限ルール・アラート閾値・挨拶メッセージ等を全ユーザーのクライアントへ反映するため、
     // 管理者トークン不要で安全なキーだけを返す（機密値は含めない）。認証は上の checkAuth 済み。
@@ -628,11 +636,11 @@ function trimAuditLog(keepDays) {
 // fileFields: Drive ファイル({driveId,url,...} の配列)を持つ列。孤児ファイル整理の参照収集に使う。
 // 新リソースでファイル列を増やしたら、ここに fileFields を足すだけで cleanupOrphanedFiles が保護する。
 const RESOURCE_REGISTRY = {
-  events:      { sheet: EVENTS_SHEET,      idPrefix: 'ev_', jsonFields: ['PartsList', 'Files'], timeFields: ['TimeStart', 'TimeEnd', 'GatherTime', 'DismissTime'], fileFields: ['Files'] },
+  events:      { sheet: EVENTS_SHEET,      idPrefix: 'ev_', jsonFields: ['PartsList', 'Files', 'PrAssignments'], timeFields: ['TimeStart', 'TimeEnd', 'GatherTime', 'DismissTime'], fileFields: ['Files'] },
   members:     { sheet: MEMBERS_SHEET,     idPrefix: 'mb_', jsonFields: [], timeFields: [], fileFields: [] },
   experiments: { sheet: EXPERIMENTS_SHEET, idPrefix: 'ex_', jsonFields: [], timeFields: [], fileFields: ['Photos'] },
   // パスワード一覧（外部サービスの認証情報）: 閲覧・編集とも管理者専用
-  passwords:   { sheet: PASSWORDS_SHEET,   idPrefix: 'pw_', jsonFields: [], timeFields: [], fileFields: [], adminOnly: true }
+  passwords:   { sheet: PASSWORDS_SHEET,   idPrefix: 'pw_', jsonFields: [], timeFields: [], fileFields: ['Photos'], adminOnly: true }
 };
 
 // 機密リソース（メンバーには公開せず、管理者トークン必須）。
@@ -850,6 +858,9 @@ const EVENTS_HEADERS = [
   'PlanName',
   'Logistics', 'Remarks', 'Files', 'Belongings', 'Accompany',
   'SeriesKey', 'Positives', 'Reflections',
+  // イベント後に記入する実績（成果メモ・来場者数・参加メンバー数）。
+  // ResultsMemo は以前からUIで保存していたがヘッダーに無く消えていたバグ修正を兼ねて追加。
+  'ResultsMemo', 'VisitorCount', 'ParticipantCount', 'PrAssignments',
   // 報告書の提出ステータス（''=未提出 / coordinator=コーディネーター提出済 / clc=CLC提出済）。
   // ホーム画面の「期限が近い報告書」カードから段階的に更新する。
   'ReportStatus',
@@ -868,7 +879,7 @@ const EXPERIMENTS_HEADERS = [
 ];
 // パスワード一覧（外部サービスの認証情報）。管理者専用。
 const PASSWORDS_HEADERS = [
-  'ID', 'Category', 'SiteName', 'URL', 'LoginID', 'LoginType', 'Password', 'Note',
+  'ID', 'Category', 'SiteName', 'URL', 'LoginID', 'LoginType', 'Password', 'Note', 'Photos',
   'CreatedAt', 'UpdatedAt'
 ];
 

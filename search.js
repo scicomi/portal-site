@@ -1,13 +1,16 @@
 /**
  * SciComi Portal - 共通検索エンジン
  *
- * リスト系ページ（events / members / experiments 等）の検索を共通化する
- * （config.js → api.js → app.js の後、各ページ JS の前に読み込む前提）:
- *   - searchNormalize: 日本語正規化（かな統一・全角半角統一）
- *   - createSearcher:  フィールド重み付きスコアリング検索（正規化キャッシュ付き）
- *   - highlightText:   マッチ部分の <mark> ハイライト（XSS 安全）
- *   - attachSearchBox: 検索窓へデバウンス・サジェスト・キーボード操作・ARIA を一括バインド
+ * リスト系ページ（events / members / experiments / event-series / experiment-detail /
+ * passwords）の検索を共通化する（config.js → api.js → app.js の後、各ページ JS の前に読み込む前提）:
+ *   - searchNormalize:     日本語正規化（かな統一・全角半角統一）
+ *   - parseSearchQuery:    検索演算子のパース（スペース=AND / -語=除外 / "フレーズ" / 場所:○○）
+ *   - matchesParsedQuery:  単純 haystack ページ向けの照合ヘルパ
+ *   - createSearcher:      フィールド重み付きスコアリング検索（正規化キャッシュ付き）
+ *   - highlightText:       マッチ部分の <mark> ハイライト（XSS 安全・複数語対応）
+ *   - attachSearchBox:     検索窓へデバウンス・サジェスト・キーボード操作・ARIA を一括バインド
  *   - announceSearchResult: スクリーンリーダー向けの結果件数アナウンス
+ *   - グローバルショートカット: `/` で検索窓フォーカス、`?` でヘルプモーダル
  *
  * 漢字⇔かなの相互変換（「教室」↔「きょうしつ」）は形態素辞書が必要になるため行わない。
  * 読みで探したいデータは読み仮名フィールド（members の Furigana 等）を
@@ -49,48 +52,66 @@ function _searchNormChar(ch) {
     .replace(/\s/g, ' ');
 }
 
-// ====== ハイライト ======
+// ====== 検索演算子のパース ======
 
-// 生テキスト中で正規化クエリに一致する範囲を <mark> で囲んだ HTML を返す。
-// escape 済み文字列への正規表現置換はせず、生テキストを分割してから各断片を
-// escapeHtml（app.js）する。全角・カナ違いの一致でも正しい範囲を囲めるよう、
-// 「正規化後の各文字が生テキストのどの位置由来か」の対応表を経由する。
-function highlightText(rawText, normQuery) {
-  const raw = String(rawText === null || rawText === undefined ? '' : rawText);
-  if (!normQuery) return escapeHtml(raw);
+// Google 流の暗黙構文のみサポートする（AND/OR キーワード構文は利用者層に対して過剰）:
+//   スペース区切り = AND（全語を含む） / -語 = 除外 / "フレーズ" = ひとまとまりで一致
+//   場所:教室 のようなフィールド限定（対応フィールドは各ページの fieldSpec の aliases で定義）
+const SEARCH_FIELD_PREFIXES = ['場所', '人', '担当', 'タイトル', 'title', 'location', 'person'];
 
-  const normChars = [];
-  const srcStart = [];  // 正規化文字 → 生テキスト上の開始 index
-  const srcEnd = [];    // 同・終了 index（排他的）
-  let i = 0;
-  for (const cp of raw) {  // サロゲートペア安全にコードポイント単位で走査
-    const n = _searchNormChar(cp);
-    for (const c of n) {
-      normChars.push(c);
-      srcStart.push(i);
-      srcEnd.push(i + cp.length);
+// 戻り値: { include:[], exclude:[], phrases:[], fields:[{name, value}] }（すべて正規化済み）。
+// 有効な語が1つも無ければ null（呼び出し側は「検索なし」として扱う）。
+function parseSearchQuery(raw) {
+  if (raw === null || raw === undefined) return null;
+  const q = { include: [], exclude: [], phrases: [], fields: [] };
+
+  // 全角記号を半角へ寄せてからパースする（＂ → " / － → - / 全角スペース → 半角）
+  let rest = String(raw).normalize('NFKC').replace(/[“”„]/g, '"');
+
+  // "..." フレーズを先に抜き出す
+  rest = rest.replace(/"([^"]*)"/g, (_, p) => {
+    const norm = searchNormalize(p);
+    if (norm) q.phrases.push(norm);
+    return ' ';
+  });
+
+  rest.split(/\s+/).filter(Boolean).forEach(tok => {
+    // フィールド限定（既知の接頭辞のみ。URL 等の「:」を誤爆させない）
+    const m = tok.match(/^([^:：]+)[:：](.+)$/);
+    if (m && SEARCH_FIELD_PREFIXES.indexOf(m[1]) >= 0) {
+      const value = searchNormalize(m[2]);
+      if (value) q.fields.push({ name: searchNormalize(m[1]), value });
+      return;
     }
-    i += cp.length;
-  }
-  const normStr = normChars.join('');
-
-  let html = '';
-  let cursor = 0;
-  let from = 0;
-  for (;;) {
-    const hit = normStr.indexOf(normQuery, from);
-    if (hit < 0) break;
-    const s = srcStart[hit];
-    const e = srcEnd[hit + normQuery.length - 1];
-    if (s >= cursor) {
-      html += escapeHtml(raw.slice(cursor, s))
-        + '<mark class="search-hit">' + escapeHtml(raw.slice(s, e)) + '</mark>';
-      cursor = e;
+    // -語 = 除外
+    if (tok.length > 1 && tok[0] === '-') {
+      const t = searchNormalize(tok.slice(1));
+      if (t) q.exclude.push(t);
+      return;
     }
-    from = hit + normQuery.length;
-  }
-  html += escapeHtml(raw.slice(cursor));
-  return html;
+    const t = searchNormalize(tok);
+    if (t) q.include.push(t);
+  });
+
+  if (!q.include.length && !q.exclude.length && !q.phrases.length && !q.fields.length) return null;
+  return q;
+}
+
+// ハイライト対象の語（除外以外のすべての正の語）を返す
+function searchQueryTerms(pq) {
+  if (!pq) return [];
+  return pq.include.concat(pq.phrases, pq.fields.map(f => f.value));
+}
+
+// フィールド構造を持たないページ（event-series / experiment-detail / passwords）向けの照合。
+// フィールド指定はこのヘルパでは通常語として扱う。
+function matchesParsedQuery(hayNorm, pq) {
+  if (!pq) return true;
+  if (pq.exclude.some(t => hayNorm.includes(t))) return false;
+  for (const t of pq.include) if (!hayNorm.includes(t)) return false;
+  for (const p of pq.phrases) if (!hayNorm.includes(p)) return false;
+  for (const f of pq.fields) if (!hayNorm.includes(f.value)) return false;
+  return true;
 }
 
 // ====== スコアリング検索 ======
@@ -101,7 +122,8 @@ const SEARCH_MATCH_PREFIX = 3;
 const SEARCH_MATCH_PARTIAL = 1;
 
 /**
- * fieldSpec: [{ key, label, weight, get(item) => [文字列, ...] }] を重要度順に並べる。
+ * fieldSpec: [{ key, label, weight, get(item) => [文字列, ...], aliases?: [...] }] を重要度順に並べる。
+ *   aliases はフィールド限定検索（場所:教室 等）で使う接頭辞（SEARCH_FIELD_PREFIXES に載っているもの）。
  * getData(): 最新のデータ配列を返す関数（ページ側のグローバル配列をそのまま参照）。
  */
 function createSearcher(getData, fieldSpec) {
@@ -131,49 +153,202 @@ function createSearcher(getData, fieldSpec) {
     return en;
   }
 
-  // 1アイテムの照合。ヒットしなければ null、ヒットすれば { score, match }。
+  function fieldIndexFor(name) {
+    return fieldSpec.findIndex(f =>
+      f.key === name || searchNormalize(f.label) === name || (f.aliases || []).indexOf(name) >= 0);
+  }
+
+  // 1アイテムの照合。query は生文字列でもパース済みオブジェクトでも良い。
+  // ヒットしなければ null、ヒットすれば { score, match }。
   // match はスコアが付いた最重要フィールド（「何に一致したか」バッジ用）。
   // フィールド境界をまたいだ一致（score 0）も従来の join 検索と同じく結果に残す。
-  function matchItem(item, normQuery) {
-    if (!normQuery) return null;
+  function matchItem(item, query) {
+    const pq = typeof query === 'string' ? parseSearchQuery(query) : query;
+    if (!pq) return null;
     const en = entryFor(item);
-    if (!en.hay.includes(normQuery)) return null;
+
+    // (1) 除外
+    if (pq.exclude.some(t => en.hay.includes(t))) return null;
+
+    // (2) AND: 全語・全フレーズを含むこと
+    const terms = pq.include.concat(pq.phrases);
+    for (const t of terms) if (!en.hay.includes(t)) return null;
+
+    // (3) フィールド限定。このサーチャーに該当フィールドがあれば限定一致、
+    //     無ければ（members で 場所: を使った等）通常語として扱う。
+    const fieldTerms = [];   // { fi, value }
+    for (const f of pq.fields) {
+      const fi = fieldIndexFor(f.name);
+      if (fi < 0) {
+        if (!en.hay.includes(f.value)) return null;
+        terms.push(f.value);
+      } else {
+        if (!en.fields[fi].some(v => v.norm.includes(f.value))) return null;
+        fieldTerms.push({ fi, value: f.value });
+      }
+    }
+
+    // 除外だけのクエリ（例 "-中止"）は絞り込みとしては有効。スコアは付かない。
+    if (terms.length === 0 && fieldTerms.length === 0) return { score: 0, match: null };
+
+    // (4) スコア: 各語ごとに「フィールド内の最大一致強度 × フィールド重み」を合算
     let score = 0;
     let match = null;
     fieldSpec.forEach((f, fi) => {
-      let best = 0;
+      const applicable = terms.concat(fieldTerms.filter(ft => ft.fi === fi).map(ft => ft.value));
+      let fieldBest = 0;
       let bestRaw = '';
-      for (const v of en.fields[fi]) {
-        const m = v.norm === normQuery ? SEARCH_MATCH_EXACT
-          : v.norm.startsWith(normQuery) ? SEARCH_MATCH_PREFIX
-          : v.norm.includes(normQuery) ? SEARCH_MATCH_PARTIAL
-          : 0;
-        if (m > best) { best = m; bestRaw = v.raw; }
-        if (best === SEARCH_MATCH_EXACT) break;
-      }
-      if (best > 0) {
+      for (const t of applicable) {
+        let best = 0;
+        let raw = '';
+        for (const v of en.fields[fi]) {
+          const m = v.norm === t ? SEARCH_MATCH_EXACT
+            : v.norm.startsWith(t) ? SEARCH_MATCH_PREFIX
+            : v.norm.includes(t) ? SEARCH_MATCH_PARTIAL
+            : 0;
+          if (m > best) { best = m; raw = v.raw; }
+          if (best === SEARCH_MATCH_EXACT) break;
+        }
         score += f.weight * best;
-        if (!match) match = { key: f.key, label: f.label, value: bestRaw };
+        if (best > fieldBest) { fieldBest = best; bestRaw = raw; }
       }
+      if (fieldBest > 0 && !match) match = { key: f.key, label: f.label, value: bestRaw };
     });
     return { score, match };
   }
 
   return {
-    // クエリが空なら null（呼び出し側は従来の全件表示へ）。
+    // クエリが空（または演算子のみで無効）なら null（呼び出し側は従来の全件表示へ）。
     // ヒットのみ [{ item, score, match }] で返す（並び順はデータ順のまま）。
-    search(rawQuery) {
-      const nq = searchNormalize(rawQuery);
-      if (!nq) return null;
+    search(query) {
+      const pq = typeof query === 'string' ? parseSearchQuery(query) : query;
+      if (!pq) return null;
       const out = [];
       for (const item of getData()) {
-        const r = matchItem(item, nq);
+        const r = matchItem(item, pq);
         if (r) out.push({ item, score: r.score, match: r.match });
       }
       return out;
     },
     matchItem
   };
+}
+
+// ====== ハイライト ======
+
+// 生テキスト中で正規化クエリ（文字列 or 語の配列）に一致する範囲を <mark> で囲んだ
+// HTML を返す。escape 済み文字列への正規表現置換はせず、生テキストを分割してから
+// 各断片を escapeHtml（app.js）する。全角・カナ違いの一致でも正しい範囲を囲めるよう、
+// 「正規化後の各文字が生テキストのどの位置由来か」の対応表を経由する。
+function highlightText(rawText, normQuery) {
+  const raw = String(rawText === null || rawText === undefined ? '' : rawText);
+  const terms = (Array.isArray(normQuery) ? normQuery : [normQuery]).filter(Boolean);
+  if (!terms.length) return escapeHtml(raw);
+
+  const normChars = [];
+  const srcStart = [];  // 正規化文字 → 生テキスト上の開始 index
+  const srcEnd = [];    // 同・終了 index（排他的）
+  let i = 0;
+  for (const cp of raw) {  // サロゲートペア安全にコードポイント単位で走査
+    const n = _searchNormChar(cp);
+    for (const c of n) {
+      normChars.push(c);
+      srcStart.push(i);
+      srcEnd.push(i + cp.length);
+    }
+    i += cp.length;
+  }
+  const normStr = normChars.join('');
+
+  let html = '';
+  let rawCursor = 0;
+  let pos = 0;
+  while (pos < normStr.length) {
+    // 全語の中で最も手前（同点なら最長）の一致を採用する
+    let hit = -1;
+    let len = 0;
+    for (const t of terms) {
+      const idx = normStr.indexOf(t, pos);
+      if (idx >= 0 && (hit < 0 || idx < hit || (idx === hit && t.length > len))) { hit = idx; len = t.length; }
+    }
+    if (hit < 0) break;
+    const s = srcStart[hit];
+    const e = srcEnd[hit + len - 1];
+    if (s >= rawCursor) {
+      html += escapeHtml(raw.slice(rawCursor, s))
+        + '<mark class="search-hit">' + escapeHtml(raw.slice(s, e)) + '</mark>';
+      rawCursor = e;
+    }
+    pos = hit + len;
+  }
+  html += escapeHtml(raw.slice(rawCursor));
+  return html;
+}
+
+// ====== グローバルキーボードショートカット（/ と ?） ======
+
+let _searchBoxPrimaryInput = null;   // ページ内で最初に attachSearchBox した入力（/ の飛び先）
+let _searchGlobalKeysBound = false;
+let _searchHelpExtras = [];          // ページ固有のショートカット行（attachSearchBox の helpShortcuts）
+
+function _bindGlobalSearchKeys() {
+  if (_searchGlobalKeysBound) return;
+  _searchGlobalKeysBound = true;
+  document.addEventListener('keydown', (e) => {
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // ウィザード・確認ダイアログ・認証・モーダル表示中は発動しない（ページ側の規約と揃える）
+    if (document.querySelector('.wizard-overlay, .confirm-dialog-overlay, #admin-auth-modal, #pw-modal, .modal-overlay:not(.hidden)')) return;
+    if (e.key === '/' && _searchBoxPrimaryInput && document.contains(_searchBoxPrimaryInput)) {
+      e.preventDefault();
+      _searchBoxPrimaryInput.focus();
+      if (_searchBoxPrimaryInput.select) _searchBoxPrimaryInput.select();
+    } else if (e.key === '?') {
+      e.preventDefault();
+      showSearchHelpModal();
+    }
+  });
+}
+
+// ショートカット・検索構文の一覧モーダル（? キー）。
+function showSearchHelpModal() {
+  if (document.getElementById('search-help-modal')) return;
+  const keyRows = [
+    ['/', '検索ボックスへ移動'],
+    ['↓ ↑', '検索候補を選択'],
+    ['Enter', '候補の確定・検索の実行'],
+    ['Esc', '候補を閉じる → 検索をクリア'],
+    ['?', 'このヘルプを表示']
+  ].concat(_searchHelpExtras);
+  const syntaxRows = [
+    ['実験 教室', 'すべての語を含む（AND）'],
+    ['-中止', 'その語を含まない（除外）'],
+    ['"第1回"', 'ひとまとまりで一致（フレーズ）'],
+    ['場所:教室 / 人:山田', 'フィールドを限定して検索']
+  ];
+  const row = ([k, desc]) => `<tr><td class="search-help-key"><kbd>${escapeHtml(k)}</kbd></td><td>${escapeHtml(desc)}</td></tr>`;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'search-help-modal';
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:440px;" role="dialog" aria-modal="true" aria-labelledby="search-help-title">
+      <h2 id="search-help-title" style="margin-top:0;">キーボードショートカット</h2>
+      <table class="search-help-table">${keyRows.map(row).join('')}</table>
+      <h3 style="font-size:0.95rem;margin:16px 0 4px;">検索の書き方</h3>
+      <table class="search-help-table">${syntaxRows.map(row).join('')}</table>
+      <div class="action-buttons" style="margin-top:16px;">
+        <button type="button" class="btn btn-secondary" data-close>閉じる</button>
+      </div>
+    </div>`;
+  const close = () => overlay.remove();
+  overlay.querySelector('[data-close]').addEventListener('click', close);
+  bindOverlayClose(overlay, close);
+  bindModalEscape(overlay, close);
+  document.body.appendChild(overlay);
+  trapFocus(overlay.querySelector('.modal-content'));
+  setTimeout(() => overlay.querySelector('[data-close]').focus(), 30);
 }
 
 // ====== 検索窓バインド（デバウンス + サジェスト + キーボード + ARIA） ======
@@ -202,10 +377,11 @@ function _searchHistorySave(key, term) {
  *   opts.suggestSources()   : [{ label, values: [...] }] を返す関数（省略時サジェスト無効）
  *   opts.historyKey         : 履歴 localStorage キーの接尾辞（省略で履歴無効。
  *                             パスワード等、検索語自体が機微な画面では指定しない）
+ *   opts.helpShortcuts      : ? ヘルプに追加するページ固有ショートカット [['n','説明'], ...]
  *   opts.debounceMs         : 既定 150ms
  * サジェストの表示先は input の aria-controls が指す <ul role="listbox">（無ければ
  * デバウンス検索のみ動く）。候補の選択は ↓↑ / Enter / クリック、Esc は
- * 1回目でサジェストを閉じ、2回目で入力をクリアする。
+ * 1回目でサジェストを閉じ、2回目で入力をクリアする。`/` はこの入力へフォーカスする。
  */
 function attachSearchBox(input, opts) {
   if (!input) return;
@@ -213,6 +389,12 @@ function attachSearchBox(input, opts) {
   const listEl = document.getElementById(input.getAttribute('aria-controls') || '');
   const histKey = opts.historyKey ? SEARCH_HISTORY_PREFIX + opts.historyKey : null;
   const maxItems = opts.maxItems || 8;
+
+  // グローバルショートカット（/ と ?）の飛び先として登録
+  if (!_searchBoxPrimaryInput) _searchBoxPrimaryInput = input;
+  if (opts.helpShortcuts) _searchHelpExtras = _searchHelpExtras.concat(opts.helpShortcuts);
+  _bindGlobalSearchKeys();
+  if (!input.title) input.title = 'ショートカット: / キーで検索欄へ';
 
   let activeIndex = -1;
   let currentItems = [];

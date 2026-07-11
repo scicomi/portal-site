@@ -155,6 +155,65 @@
             assertEq('Esc で入力がクリアされる', input.value, '');
             assertEq('クリア時に onSearch("") が呼ばれる', lastQuery, '');
 
+            // ====== 段階3: 検索演算子（parseSearchQuery） ======
+            const pq1 = parseSearchQuery('実験 -中止 "第1回" 場所:教室');
+            assertEq('演算子: AND 語', JSON.stringify(pq1.include), '["実験"]');
+            assertEq('演算子: 除外語', JSON.stringify(pq1.exclude), '["中止"]');
+            assertEq('演算子: フレーズ', JSON.stringify(pq1.phrases), '["第1回"]');
+            assertEq('演算子: フィールド指定', JSON.stringify(pq1.fields), '[{"name":"場所","value":"教室"}]');
+            assertEq('演算子: 空白のみは null', parseSearchQuery('   '), null);
+            assertEq('演算子: URL の「:」は誤爆しない', parseSearchQuery('https://example.com').include[0], 'https://example.com');
+            assertEq('演算子: 全角スペース・全角マイナス対応', JSON.stringify(parseSearchQuery('実験　－中止').exclude), '["中止"]');
+
+            // ====== 段階3: 演算子での検索（AND / NOT / フレーズ / フィールド限定） ======
+            const opData = [
+                { ID: 'a', Title: '第1回 実験教室', Location: '教室A', Remarks: '' },
+                { ID: 'b', Title: '実験ショー', Location: '体育館', Remarks: '中止になりました' },
+                { ID: 'c', Title: '工作会', Location: '教室B', Remarks: '実験はなし' }
+            ];
+            const opFields = [
+                { key: 'title', label: 'タイトル', weight: 100, aliases: ['タイトル', 'title'], get: e => [e.Title] },
+                { key: 'location', label: '場所', weight: 80, aliases: ['場所', 'location'], get: e => [e.Location] },
+                { key: 'remarks', label: '備考', weight: 30, get: e => [e.Remarks] }
+            ];
+            const opSearcher = createSearcher(() => opData, opFields);
+            assertEq('AND: 「実験 教室」は両方含む2件', opSearcher.search('実験 教室').length, 2);
+            const notRes = opSearcher.search('実験 -教室');
+            assertEq('NOT: 「実験 -教室」は1件', notRes.length, 1);
+            assertEq('NOT: 残るのは教室を含まない b', notRes[0].item.ID, 'b');
+            assertEq('フレーズ: "第1回 実験教室" は1件', opSearcher.search('"第1回 実験教室"').length, 1);
+            assertEq('フィールド限定: 場所:教室 は2件', opSearcher.search('場所:教室').length, 2);
+            assertEq('フィールド限定 + 語の組合せ', opSearcher.search('実験 場所:教室a').length, 1);
+            const exOnly = opSearcher.search('-教室');
+            assertTrue('除外のみのクエリも絞り込みとして機能', exOnly.length === 1 && exOnly[0].item.ID === 'b' && exOnly[0].score === 0);
+            const andScores = {};
+            opSearcher.search('実験 教室').forEach(r => { andScores[r.item.ID] = r.score; });
+            assertTrue('複数語スコアは語ごとに加算（タイトル+場所一致が上位）', andScores['a'] > andScores['c'],
+                `a=${andScores['a']} c=${andScores['c']}`);
+            // 該当フィールドが無いサーチャーでは フィールド指定 を通常語として扱う
+            const noLocSearcher = createSearcher(() => opData, [{ key: 'name', label: '名前', weight: 100, get: e => [e.Title] }]);
+            assertEq('未対応フィールド指定は通常語にフォールバック', noLocSearcher.search('場所:教室').length, 1);
+
+            // matchesParsedQuery（単純 haystack ページ向け）
+            const pq2 = parseSearchQuery('じっけん -ちゅうし');
+            assertTrue('matchesParsedQuery: AND + 除外',
+                matchesParsedQuery('じっけんきょうしつ', pq2) && !matchesParsedQuery('じっけん ちゅうし', pq2));
+
+            // 複数語ハイライト
+            assertEq('複数語ハイライト', highlightText('実験の教室', ['実験', '教室']),
+                '<mark class="search-hit">実験</mark>の<mark class="search-hit">教室</mark>');
+
+            // ====== 段階5: グローバルショートカット（/ と ?） ======
+            input.blur();
+            document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
+            assertEq('/ キーで検索窓にフォーカス', document.activeElement, input);
+            input.blur();
+            document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }));
+            assertTrue('? キーでヘルプモーダル表示', !!document.getElementById('search-help-modal'));
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            await sleep(30);
+            assertTrue('Esc でヘルプモーダルが閉じる', !document.getElementById('search-help-modal'));
+
             // ====== 段階9: ログアウトで履歴が消えるか（キー掃除ロジックの単体確認） ======
             localStorage.setItem('scicomi_search_history_events', '["a"]');
             Object.keys(localStorage)
