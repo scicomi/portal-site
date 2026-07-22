@@ -32,14 +32,14 @@
             </div>
 
             <!-- Tab Bar -->
-            <div class="expd-tab-bar">
-                <button class="expd-tab active" data-tab="info" onclick="switchExpTab(this)">実験情報</button>
-                <button class="expd-tab" data-tab="feedback" onclick="switchExpTab(this)">振り返り</button>
-                <button class="expd-tab" data-tab="photos" onclick="switchExpTab(this)">写真</button>
+            <div class="expd-tab-bar" role="tablist" aria-label="実験詳細の表示切り替え">
+                <button class="expd-tab active" role="tab" aria-selected="true" data-tab="info" onclick="switchExpTab(this)">実験情報</button>
+                <button class="expd-tab" role="tab" aria-selected="false" data-tab="feedback" onclick="switchExpTab(this)">振り返り</button>
+                <button class="expd-tab" role="tab" aria-selected="false" data-tab="photos" onclick="switchExpTab(this)">写真</button>
             </div>
 
             <!-- Tab: Info（使用物品・事前準備・発表の流れ・注意事項をここで表示） -->
-            <div class="expd-tab-pane" data-tab-pane="info">
+            <div class="expd-tab-pane" role="tabpanel" tabindex="0" data-tab-pane="info">
                 <div class="expd-section">
                     <div id="expd-info-body"></div>
                 </div>
@@ -50,11 +50,11 @@
             </div>
 
             <!-- Tab: Feedback -->
-            <div class="expd-tab-pane hidden" data-tab-pane="feedback">
+            <div class="expd-tab-pane hidden" role="tabpanel" tabindex="0" data-tab-pane="feedback">
                 <div class="expd-section">
                     <div class="expd-section-header">
                         <h2 class="expd-section-title">振り返り</h2>
-                        <button class="btn-primary-solid" style="width:auto; padding:6px 16px; font-size:0.85rem;" onclick="openAddFeedback()">+ 振り返りを追加</button>
+                        <button class="btn-primary-solid" style="width:auto; padding:6px 16px; font-size:0.85rem;" onclick="openAddFeedback()">＋ 振り返りを追加</button>
                     </div>
                     <div class="expd-feedback-filters">
                         <button class="filter-chip active" data-fb="all" aria-pressed="true" onclick="filterFeedback('all')">全て</button>
@@ -67,11 +67,11 @@
             </div>
 
             <!-- Tab: Photos -->
-            <div class="expd-tab-pane hidden" data-tab-pane="photos">
+            <div class="expd-tab-pane hidden" role="tabpanel" tabindex="0" data-tab-pane="photos">
                 <div class="expd-section">
                     <div class="expd-section-header">
                         <h2 class="expd-section-title">写真</h2>
-                        <button class="btn-primary-solid admin-only-btn hidden" style="width:auto; padding:6px 16px; font-size:0.85rem;" onclick="openPhotoUpload()">+ 写真を追加</button>
+                        <button class="btn-primary-solid admin-only-btn hidden" style="width:auto; padding:6px 16px; font-size:0.85rem;" onclick="openPhotoUpload()">＋ 写真を追加</button>
                     </div>
                     <div id="expd-photo-gallery" class="photo-gallery">
                         <p class="empty-state" style="padding:30px 20px;">写真はまだありません</p>

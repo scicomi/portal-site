@@ -5,12 +5,27 @@
 let _settingsPwValues = {};
 
 document.addEventListener('DOMContentLoaded', () => {
+    // アコーディオン見出しはマウスだけでなくキーボード（Enter / Space）でも開閉できるようにし、
+    // 開閉状態を aria-expanded で支援技術へ伝える（見出しは role="button" tabindex="0"）。
+    document.querySelectorAll('.settings-section-header').forEach(h => {
+        const section = h.closest('.settings-section');
+        h.setAttribute('aria-expanded', String(!(section && section.classList.contains('collapsed'))));
+        h.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                e.preventDefault();
+                toggleSettingsSection(h);
+            }
+        });
+    });
     bootPage('settings', init);
 });
 
 // セクション見出しタップで開閉（見出し内のリンク・ボタン等の誤爆は無いのでシンプルに丸ごとトグル）
 function toggleSettingsSection(headerEl) {
-    headerEl.closest('.settings-section')?.classList.toggle('collapsed');
+    const section = headerEl.closest('.settings-section');
+    if (!section) return;
+    const collapsed = section.classList.toggle('collapsed');
+    headerEl.setAttribute('aria-expanded', String(!collapsed));
 }
 
 async function init() {
@@ -66,6 +81,10 @@ async function loadSettings() {
 
         // 広報媒体
         document.getElementById('cfg-pr-channels').value = cfg.pr_channels || 'Twitter,Instagram,HP';
+
+        // LINE通知
+        document.getElementById('cfg-line-url').value = cfg.line_add_friend_url || '';
+        document.getElementById('cfg-line-token').value = cfg.line_channel_access_token || '';
 
         // 設定キャッシュを更新（他ページで applySiteSettings が即座に反映できるように）
         localStorage.setItem('scicomi_site_settings', JSON.stringify({ data: cfg, ts: Date.now() }));

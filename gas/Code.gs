@@ -23,8 +23,8 @@ const CONFIG_SHEET = 'Config';
 const EVENT_VOTES_SHEET = 'EventVotes';
 const AUDIT_LOG_SHEET = 'AuditLog';
 
-const SESSION_TTL = 86400;       // メンバートークン有効期間: 24時間
-const ADMIN_SESSION_TTL = 7200;  // 管理者トークン有効期間: 2時間
+const SESSION_TTL = 180 * 86400;       // メンバートークン有効期間: 180日（頻繁な再ログインを避けるため）
+const ADMIN_SESSION_TTL = 180 * 86400; // 管理者トークン有効期間: 180日（クライアント側 config.js の ADMIN_TOKEN_TTL_MS と一致させること）
 // 既定モデル。gemini-2.0-flash-lite / gemini-2.0-flash は 2026-06 に廃止予定入りし、
 // 無料枠がほぼ没収されて 1 リクエストでも 429 になるため、現行の安定モデルを既定にする。
 const GEMINI_MODEL = 'gemini-2.5-flash-lite';
@@ -72,7 +72,11 @@ const DEFAULT_CONFIG = {
   // 実験ネタページ上部の「新規実験募集」案内。全員に見せるため公開設定に含める。
   experiment_recruit_url: '',
   experiment_recruit_note: '',
-  pr_channels: 'Twitter,Instagram,HP'
+  pr_channels: 'Twitter,Instagram,HP',
+  // LINE公式アカウントによる新規イベント通知（notifyNewEvent_ / sendLineBroadcast_ が使用）
+  line_channel_access_token: '',
+  line_add_friend_url: '',
+  event_notify_enabled: 'true'
 };
 
 // メンバー（非管理者）にも公開してよい表示系設定。getPublicConfig で返す（機密値は含めない）。
@@ -81,7 +85,8 @@ const PUBLIC_CONFIG_KEYS = [
   'deadline_alert_danger', 'deadline_alert_warning', 'reminder_days',
   'brand_icon', 'brand_name',
   'experiment_recruit_url', 'experiment_recruit_note',
-  'pr_channels'
+  'pr_channels',
+  'line_add_friend_url'
 ];
 
 // 既定値を返す。password 系だけは毎回ランダム生成する。
@@ -134,6 +139,7 @@ function validateConfigValue_(key, value) {
       return ['domain', 'anyone'].indexOf(v) >= 0 ? '' : 'domain か anyone を指定してください';
     case 'reminder_enabled':
     case 'annual_report_enabled':
+    case 'event_notify_enabled':
       return ['true', 'false'].indexOf(v) >= 0 ? '' : 'true か false を指定してください';
     case 'password':
     case 'admin_password':
@@ -312,6 +318,7 @@ function doPost(e) {
         const saved = saveResource(resource, body.item || {});
         const role = isAdminOnlyResource(resource) ? 'admin' : 'member';
         appendAuditLog(isNew ? 'create' : 'update', resource + ':' + saved.ID, isAdminOnlyResource(resource) ? body.adminToken : token, role);
+        if (isNew && resource === 'events') notifyNewEvent_(saved);
         return jsonResponse({ success: true, item: saved });
       } catch (err) {
         if (String(err).indexOf('conflict') >= 0) {
@@ -1750,6 +1757,56 @@ function buildReminderHtml(items) {
       </div>
     </div>
   `;
+}
+
+// ====== 新規イベント登録通知（LINE公式アカウントへのブロードキャスト） ======
+// save アクションでイベントが新規作成された直後に呼ばれる。
+// 送信失敗（トークン未設定など）で本体の保存処理を巻き込まないよう、内部で例外を握りつぶす。
+function notifyNewEvent_(event) {
+  if (getConfig('event_notify_enabled') === 'false') return;
+  try {
+    // ラベルはフロント config.js の EVENT_CATEGORIES と一致させる
+    const catLabels = {
+      normal: 'イベント', other: 'その他',
+      general: '全体ミーティング', admin: '幹部ミーティング'
+    };
+    const catLabel = catLabels[event.Category] || event.Category || '';
+    const dateRange = (event.Date || '') + (event.DateEnd && event.DateEnd !== event.Date ? '（〜' + event.DateEnd + '）' : '');
+
+    const text = '📅 新しいイベントが登録されました\n\n'
+      + 'タイトル: ' + (event.Title || '(無題)') + '\n'
+      + '日付: ' + dateRange + '\n'
+      + 'カテゴリ: ' + catLabel + '\n'
+      + '場所: ' + (event.Location || '未定');
+
+    sendLineBroadcast_(text);
+  } catch (err) {
+    Logger.log('Failed to send new event notification: ' + err);
+    appendAuditLog('event_notify_fail', String(err), '');
+  }
+}
+
+// LINE Messaging API のブロードキャスト配信（公式アカウントを友だち追加した全員に送信）。
+// Channel Access Token は Config シートに手動追加する（line_channel_access_token）。
+function sendLineBroadcast_(text) {
+  const token = (getConfig('line_channel_access_token') || '').trim();
+  if (!token) {
+    Logger.log('LINE notify skipped: line_channel_access_token not configured');
+    return;
+  }
+  const res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/broadcast', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + token },
+    payload: JSON.stringify({ messages: [{ type: 'text', text: text }] }),
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) {
+    Logger.log('LINE broadcast failed (' + res.getResponseCode() + '): ' + res.getContentText());
+    appendAuditLog('event_notify_fail', 'LINE broadcast ' + res.getResponseCode() + ': ' + res.getContentText(), '');
+  } else {
+    Logger.log('LINE broadcast sent');
+  }
 }
 
 // ====================================================================

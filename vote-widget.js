@@ -128,7 +128,7 @@ function renderVoteWidget(container, opts) {
   const btnsHtml = memberValid && canEdit ? `
     <div class="vw-btns">
       ${Object.keys(VOTE_STATUS_LABELS).map(st =>
-        `<button type="button" class="bv-btn bv-${st} ${mine && mine.status === st ? 'active' : ''}" data-status="${st}">${VOTE_STATUS_LABELS[st]}</button>`
+        `<button type="button" class="bv-btn bv-${st} ${mine && mine.status === st ? 'active' : ''}" data-status="${st}" aria-pressed="${mine && mine.status === st ? 'true' : 'false'}">${VOTE_STATUS_LABELS[st]}</button>`
       ).join('')}
     </div>
     <div class="vw-note-row">
@@ -142,7 +142,7 @@ function renderVoteWidget(container, opts) {
       ${deadlineHtml}
       <div class="vw-member-row">
         <label class="vw-label">あなたの名前</label>
-        <select class="vw-member e1-input" ${!canEdit ? 'disabled' : ''}>
+        <select class="vw-member e1-input" aria-label="出欠回答に使うあなたの名前を選択" ${!canEdit ? 'disabled' : ''}>
           <option value="">-- 名前を選択 --</option>
           ${memberGroups.map(g => `<optgroup label="${escapeAttr(g.label)}">${g.members.map(m => `<option value="${escapeAttr(m.ID)}" ${m.ID === memberId ? 'selected' : ''}>${escapeHtml(m.Name)}</option>`).join('')}</optgroup>`).join('')}
         </select>

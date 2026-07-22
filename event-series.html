@@ -86,19 +86,19 @@
                     <div id="series-occ-selector"></div>
                 </div>
 
-                <div class="expd-tab-bar" id="series-tab-bar">
-                    <button class="expd-tab active" data-tab="detail" onclick="switchSeriesTab(this)">イベント詳細</button>
-                    <button class="expd-tab" data-tab="local-info" onclick="switchSeriesTab(this)">会場情報</button>
-                    <button class="expd-tab" data-tab="stats" onclick="switchSeriesTab(this)">統計・開催履歴</button>
+                <div class="expd-tab-bar" id="series-tab-bar" role="tablist" aria-label="イベント情報の切り替え">
+                    <button class="expd-tab active" role="tab" aria-selected="true" data-tab="detail" onclick="switchSeriesTab(this)"><span class="expd-tab-icon" aria-hidden="true">&#128196;</span>イベント詳細</button>
+                    <button class="expd-tab" role="tab" aria-selected="false" data-tab="local-info" onclick="switchSeriesTab(this)"><span class="expd-tab-icon" aria-hidden="true">&#128205;</span>会場情報</button>
+                    <button class="expd-tab" role="tab" aria-selected="false" data-tab="stats" onclick="switchSeriesTab(this)"><span class="expd-tab-icon" aria-hidden="true">&#128202;</span>統計・開催履歴</button>
                 </div>
 
                 <!-- Tab: イベント詳細（子タブ: 内容 / 参加状況 / 振り返りを記入 / 振り返りを表示） -->
-                <div class="expd-tab-pane" data-tab-pane="detail">
-                    <div class="detail-sub-tab-bar" id="detail-sub-tabs">
-                        <button class="detail-sub-tab active" data-subtab="content" onclick="switchDetailSubTab(this)">内容</button>
-                        <button class="detail-sub-tab" data-subtab="attendance" onclick="switchDetailSubTab(this)">参加状況</button>
-                        <button class="detail-sub-tab" data-subtab="reflection" onclick="switchDetailSubTab(this)">振り返りを記入</button>
-                        <button class="detail-sub-tab" data-subtab="results" onclick="switchDetailSubTab(this)">振り返りを表示</button>
+                <div class="expd-tab-pane" role="tabpanel" tabindex="0" data-tab-pane="detail">
+                    <div class="detail-sub-tab-bar" id="detail-sub-tabs" role="tablist" aria-label="イベント詳細の表示切り替え">
+                        <button class="detail-sub-tab active" role="tab" aria-selected="true" data-subtab="content" onclick="switchDetailSubTab(this)">内容</button>
+                        <button class="detail-sub-tab" role="tab" aria-selected="false" data-subtab="attendance" onclick="switchDetailSubTab(this)">参加状況</button>
+                        <button class="detail-sub-tab" role="tab" aria-selected="false" data-subtab="reflection" onclick="switchDetailSubTab(this)">振り返りを記入</button>
+                        <button class="detail-sub-tab" role="tab" aria-selected="false" data-subtab="results" onclick="switchDetailSubTab(this)">振り返りを表示</button>
                     </div>
                     <div class="detail-sub-pane" data-sub-pane="content">
                         <div id="series-detail"></div>
@@ -115,10 +115,10 @@
                 </div>
 
                 <!-- Tab: 会場情報（子タブ: 会場情報 / 会場運営の振り返り） -->
-                <div class="expd-tab-pane hidden" data-tab-pane="local-info">
-                    <div class="detail-sub-tab-bar" id="local-info-sub-tabs">
-                        <button class="detail-sub-tab active" data-subtab="venue" onclick="switchLocalInfoSubTab(this)">会場情報</button>
-                        <button class="detail-sub-tab" data-subtab="venue-fb" onclick="switchLocalInfoSubTab(this)">会場運営の振り返り</button>
+                <div class="expd-tab-pane hidden" role="tabpanel" tabindex="0" data-tab-pane="local-info">
+                    <div class="detail-sub-tab-bar" id="local-info-sub-tabs" role="tablist" aria-label="会場情報の表示切り替え">
+                        <button class="detail-sub-tab active" role="tab" aria-selected="true" data-subtab="venue" onclick="switchLocalInfoSubTab(this)">会場情報</button>
+                        <button class="detail-sub-tab" role="tab" aria-selected="false" data-subtab="venue-fb" onclick="switchLocalInfoSubTab(this)">会場運営の振り返り</button>
                     </div>
                     <div class="detail-sub-pane" data-li-pane="venue">
                         <div id="series-safety-card" class="series-safety-card hidden">
@@ -140,10 +140,10 @@
                 </div>
 
                 <!-- Tab: 統計・開催履歴（子タブ: 統計 / 開催履歴） -->
-                <div class="expd-tab-pane hidden" data-tab-pane="stats">
-                    <div class="detail-sub-tab-bar" id="stats-sub-tabs">
-                        <button class="detail-sub-tab active" data-subtab="stats-main" onclick="switchStatsSubTab(this)">統計</button>
-                        <button class="detail-sub-tab" data-subtab="stats-history" onclick="switchStatsSubTab(this)">開催履歴</button>
+                <div class="expd-tab-pane hidden" role="tabpanel" tabindex="0" data-tab-pane="stats">
+                    <div class="detail-sub-tab-bar" id="stats-sub-tabs" role="tablist" aria-label="統計・開催履歴の表示切り替え">
+                        <button class="detail-sub-tab active" role="tab" aria-selected="true" data-subtab="stats-main" onclick="switchStatsSubTab(this)">統計</button>
+                        <button class="detail-sub-tab" role="tab" aria-selected="false" data-subtab="stats-history" onclick="switchStatsSubTab(this)">開催履歴</button>
                     </div>
                     <div class="detail-sub-pane" data-st-pane="stats-main">
                         <div id="series-stats"></div>

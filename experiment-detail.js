@@ -249,8 +249,12 @@ function openAddFeedback() {
     document.getElementById('fb-type').value = 'positive';
     document.getElementById('fb-event').value = '';
     document.getElementById('fb-text').value = '';
-    document.getElementById('feedback-modal').classList.remove('hidden');
-    bindModalEscape(document.getElementById('feedback-modal'), closeFeedbackModal);
+    const modal = document.getElementById('feedback-modal');
+    modal.classList.remove('hidden');
+    bindModalEscape(modal, closeFeedbackModal);
+    // Tab がモーダル外へ抜けないよう閉じ込める。静的モーダル（再利用）なので
+    // リスナーの多重登録を避けて一度だけ束縛する（要素構成は開くたびに不変）。
+    if (!modal._trapBound) { trapFocus(modal.querySelector('.modal-content')); modal._trapBound = true; }
     setTimeout(() => document.getElementById('fb-text').focus(), 50);
 }
 
@@ -372,8 +376,9 @@ function goEdit() {
 // ---- Tab switching ----
 
 function switchExpTab(btn) {
-    document.querySelectorAll('.expd-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.expd-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
     btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
     const target = btn.dataset.tab;
     document.querySelectorAll('.expd-tab-pane').forEach(p => {
         p.classList.toggle('hidden', p.dataset.tabPane !== target);
