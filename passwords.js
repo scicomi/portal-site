@@ -187,7 +187,7 @@ function renderPasswords() {
         list.innerHTML = pwData.length === 0
             ? `<div class="empty-state">
                 <div class="empty-text">まだ登録がありません</div>
-                <div class="empty-hint">右上の「+ 追加」から登録できます</div>
+                <div class="empty-hint">右上の「＋ 追加」から登録できます</div>
             </div>`
             : `<div class="empty-state">
                 <div class="empty-text">該当する項目がありません</div>
@@ -389,8 +389,11 @@ function openPwModal() {
     document.getElementById('pw-f-password-group').style.display = '';
     renderPwPhotoPreview();
     pwWizardSetStep(0);
-    document.getElementById('pw-modal-edit').classList.remove('hidden');
-    bindModalEscape(document.getElementById('pw-modal-edit'), closePwModal);
+    const modal = document.getElementById('pw-modal-edit');
+    modal.classList.remove('hidden');
+    bindModalEscape(modal, closePwModal);
+    // Tab がモーダル外へ抜けないよう閉じ込める（静的モーダルなので一度だけ束縛）
+    if (!modal._trapBound) { trapFocus(modal.querySelector('.wizard-panel')); modal._trapBound = true; }
     setTimeout(() => document.getElementById('pw-f-name').focus(), 50);
 }
 
@@ -413,8 +416,12 @@ function editPwEntry(id) {
     document.getElementById('pw-f-password-group').style.display = isSocialLogin(p.LoginType) ? 'none' : '';
     renderPwPhotoPreview();
     pwWizardSetStep(0);
-    document.getElementById('pw-modal-edit').classList.remove('hidden');
-    bindModalEscape(document.getElementById('pw-modal-edit'), closePwModal);
+    const modal = document.getElementById('pw-modal-edit');
+    modal.classList.remove('hidden');
+    bindModalEscape(modal, closePwModal);
+    // 編集時はこれまでフォーカスがモーダル外に残っていたので、内側へ移し Tab も閉じ込める
+    if (!modal._trapBound) { trapFocus(modal.querySelector('.wizard-panel')); modal._trapBound = true; }
+    setTimeout(() => document.getElementById('pw-f-name').focus(), 50);
 }
 
 function closePwModal() {

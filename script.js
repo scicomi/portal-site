@@ -101,7 +101,6 @@ function resetFilters() {
     if (sel) sel.value = 'upcoming';
     syncFilterToUrl();
     renderEvents();
-    if (calendarVisible) refreshCalendar();
 }
 
 function buildPeriodFilterOptions() {
@@ -185,11 +184,6 @@ async function init() {
         openNewEventModal();
     }
 
-    holidaysData = await api.loadHolidaysCached();
-
-    // 前回カレンダーを表示していたら復元する
-    if (localStorage.getItem(CALENDAR_VISIBLE_KEY) === '1') toggleCalendar();
-
     // キャッシュ即表示（GAS形で書かれていても UI形へ正規化してから使う）
     const cached = api.loadCache('events');
     if (cached && cached.items && cached.items.length > 0) {
@@ -264,7 +258,6 @@ async function refreshData(isManual = false) {
         buildPeriodFilterOptions();
         renderEvents();
         handleUrlActionParams();
-        if (calendarVisible) refreshCalendar();
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
         if (e.handled) return;
@@ -396,7 +389,6 @@ function onCategoryFilter(cat) {
     });
     syncFilterToUrl();
     renderEvents();
-    if (calendarVisible) refreshCalendar();
 }
 function onPeriodFilter(period) {
     filterState.period = period;
@@ -440,177 +432,6 @@ function updateCategoryChipCounts(list) {
         const n = cat === 'all' ? list.length : list.filter(e => (e.Category || 'normal') === cat).length;
         labelEl.textContent = `${chip.dataset.baseLabel} (${n})`;
     });
-}
-
-function refreshCalendar() {
-    if (window.globalCalendar) {
-        window.globalCalendar.refetchEvents();
-    }
-}
-
-function initFullCalendar(attempt = 0) {
-    const calendarEl = document.getElementById('calendar');
-    if (!calendarEl) return;
-    if (typeof FullCalendar === 'undefined') {
-        // CDN 読込待ちの再試行。読込失敗時に無限リトライしないよう約5秒で打ち切る
-        if (attempt > 100) {
-            toast('カレンダーの読み込みに失敗しました。ページを再読込してください。', 'error');
-            return;
-        }
-        setTimeout(() => initFullCalendar(attempt + 1), 50);
-        return;
-    }
-
-    // Custom Jump UI
-    const jumpHtml = `
-        <div style="display:flex; align-items:center; gap:5px; margin-left:10px;">
-            <input type="month" id="fc-month-jump" class="e1-input" style="padding: 2px 5px; height:auto; width:auto;">
-        </div>
-    `;
-
-    const calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'dayGridMonth',
-        locale: 'ja',
-        selectable: true,
-        headerToolbar: {
-            left: 'prev,next today',
-            center: 'title',
-            right: ''
-        },
-        buttonText: {
-            today: '今日'
-        },
-        dayCellClassNames: function (arg) {
-            const dateStr = toISODate(arg.date); // ローカル日付（タイムゾーン安全）
-            if (holidaysData[dateStr]) {
-                return ['holiday'];
-            }
-            return [];
-        },
-        select: function (info) {
-            // info.endStr is exclusive. Convert to inclusive Date_End.
-            // parseISODate は正午基準なのでタイムゾーンによる日付ズレを防げる
-            const endObj = parseISODate(info.endStr);
-            endObj.setDate(endObj.getDate() - 1);
-            const endDateStr = toISODate(endObj);
-
-            window.tempStart = info.startStr;
-            window.tempEnd = endDateStr !== info.startStr ? endDateStr : "";
-            startNewEventBlank();
-
-            calendar.unselect();
-        },
-        events: function (fetchInfo, successCallback, failureCallback) {
-            // カテゴリフィルタを反映（期間は無視。カレンダーは月表示なので）
-            const source = (filterState.category === 'all')
-                ? eventsData
-                : eventsData.filter(e => (e.Category || 'normal') === filterState.category);
-            const fcEvents = source.map(e => {
-                const cat = getEventCategory(e.Category); // CONFIGから色・定義を取得
-                let displayTitle = e.Title;
-                if (cat.isMeeting && e.Meeting_Number) {
-                    displayTitle = `第${e.Meeting_Number}回 ${e.Title}`;
-                }
-
-                let endDate = null;
-                if (e.Date_End) {
-                    const d = parseISODate(e.Date_End);
-                    d.setDate(d.getDate() + 1); // FullCalendarのend排他仕様に合わせ+1日
-                    endDate = toISODate(d);
-                }
-
-                return {
-                    id: e.ID,
-                    title: displayTitle,
-                    start: e.Date,
-                    end: endDate,
-                    backgroundColor: cat.bg,
-                    borderColor: cat.bg,
-                    textColor: cat.text,
-                    display: 'block'
-                };
-            });
-            successCallback(fcEvents);
-        },
-        eventClick: function (info) {
-            location.href = 'event-series.html?event=' + encodeURIComponent(info.event.id);
-        },
-        eventDidMount: function (info) {
-            // ホバーツールチップ
-            const ev = eventsData.find(x => x.ID === info.event.id);
-            if (!ev) return;
-            const lines = [
-                ev.Title,
-                ev.Date + (ev.Date_End && ev.Date_End !== ev.Date ? ' 〜 ' + ev.Date_End : ''),
-                ev.Event_Time,
-                ev.Location,
-                ev.Audience
-            ].filter(Boolean);
-            info.el.title = lines.join('\n');
-        }
-    });
-    calendar.render();
-    window.globalCalendar = calendar;
-
-    // Inject Custom Month Jump Input after the toolbar
-    const toolbar = calendarEl.querySelector('.fc-header-toolbar');
-    if (toolbar) {
-        const jumpWrapper = document.createElement('div');
-        jumpWrapper.style.cssText = 'margin-top: 6px; margin-bottom: 4px;';
-        jumpWrapper.innerHTML = jumpHtml;
-        toolbar.parentNode.insertBefore(jumpWrapper, toolbar.nextSibling);
-
-        const jumpInput = jumpWrapper.querySelector('#fc-month-jump');
-        if (jumpInput) {
-            // Sync with current month（toISODate でローカル日付に。UTC変換による月ズレを防ぐ）
-            jumpInput.value = toISODate(calendar.getDate()).slice(0, 7);
-
-            jumpInput.addEventListener('change', (e) => {
-                if (e.target.value) {
-                    calendar.gotoDate(e.target.value + '-01');
-                }
-            });
-
-            // Keep input synced when navigating with prev/next
-            // info.start は表示範囲先頭（前月末を含む）ため getDate() を使う
-            calendar.on('datesSet', () => {
-                jumpInput.value = toISODate(calendar.getDate()).slice(0, 7);
-            });
-        }
-    }
-}
-
-// ※ カスタムグリッド暦（#calendar-grid）は廃止。カレンダーは FullCalendar(#calendar) に一本化。
-// ※ 行タップは詳細ページへ直接遷移（event-series.html?event=<ID>）。
-
-// Calendar toggle（表示状態は端末に記憶し、次回訪問時に復元する）
-const CALENDAR_VISIBLE_KEY = 'scicomi_calendar_visible';
-let calendarVisible = false;
-let calendarInitialized = false;
-
-function toggleCalendar() {
-    calendarVisible = !calendarVisible;
-    localStorage.setItem(CALENDAR_VISIBLE_KEY, calendarVisible ? '1' : '0');
-    const wrapper = document.getElementById('calendar-wrapper');
-    const btn = document.getElementById('calendar-toggle-btn');
-    if (calendarVisible) {
-        wrapper.classList.remove('hidden');
-        btn.textContent = 'カレンダーを非表示';
-        btn.classList.add('active');
-        btn.setAttribute('aria-pressed', 'true');
-        if (!calendarInitialized) {
-            initFullCalendar();
-            calendarInitialized = true;
-        } else if (window.globalCalendar) {
-            window.globalCalendar.updateSize();
-            refreshCalendar();
-        }
-    } else {
-        wrapper.classList.add('hidden');
-        btn.textContent = 'カレンダーを表示';
-        btn.classList.remove('active');
-        btn.setAttribute('aria-pressed', 'false');
-    }
 }
 
 // Render all events as table
@@ -704,6 +525,7 @@ function renderEvents() {
             const colorClass = curStatus ? 'vote-' + curStatus : '';
             const closed = voteDeadlinePassed(ev);
             voteCell = `<select class="ev-vote-select ${colorClass}" data-vote-event="${escapeAttr(ev.ID)}"
+                aria-label="「${escapeAttr(displayTitle)}」の出欠を回答"
                 onchange="onInlineVoteChange(this, '${escapeAttr(ev.ID)}')"
                 ${closed && !isAdmin ? 'disabled title="締切済み"' : ''}>
                 <option value="">--</option>
@@ -1005,7 +827,6 @@ async function executeDeleteEvent(id) {
     eventsData.splice(eventIndex, 1);
     api.saveCache('events', eventsData);
     renderEvents();
-    if (calendarVisible) refreshCalendar();
 
     try {
         await api.delete('events', id);
@@ -1013,7 +834,6 @@ async function executeDeleteEvent(id) {
         eventsData.splice(eventIndex, 0, backup);
         api.saveCache('events', eventsData);
         renderEvents();
-        if (calendarVisible) refreshCalendar();
         toast('削除失敗: ' + err.message, 'error');
         return;
     }
@@ -1027,7 +847,6 @@ async function executeDeleteEvent(id) {
                 eventsData.splice(insertAt >= 0 ? insertAt : eventsData.length, 0, restored);
                 api.saveCache('events', eventsData);
                 renderEvents();
-                if (calendarVisible) refreshCalendar();
                 toast('元に戻しました', 'success', 2000);
             } catch (err) {
                 toast('復元に失敗しました: ' + err.message, 'error');

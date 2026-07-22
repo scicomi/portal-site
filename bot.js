@@ -354,8 +354,10 @@ function openExpDetailFromBot(id) {
   document.getElementById('bot-exp-detail-body').innerHTML = buildExpDetailBody(e);
   const link = document.getElementById('bot-exp-detail-link');
   if (link) link.href = 'experiments.html?focus=' + encodeURIComponent(e.Name || '');
-  document.getElementById('bot-exp-detail-modal').classList.remove('hidden');
-  bindModalEscape(document.getElementById('bot-exp-detail-modal'), closeBotExpDetail);
+  const modal = document.getElementById('bot-exp-detail-modal');
+  modal.classList.remove('hidden');
+  bindModalEscape(modal, closeBotExpDetail);
+  if (!modal._trapBound) { trapFocus(modal.querySelector('.modal-content')); modal._trapBound = true; }
 }
 
 function closeBotExpDetail() {
@@ -447,8 +449,10 @@ function openEventDetailFromBot(id) {
   document.getElementById('bot-event-detail-body').innerHTML = buildEventDetailBody(e);
   // リンク先は一覧ではなくこのイベントの詳細ページへ（ラベル「詳細ページで開く」と一致させる）
   document.getElementById('bot-event-detail-link').href = 'event-series.html?event=' + encodeURIComponent(e.ID);
-  document.getElementById('bot-event-detail-modal').classList.remove('hidden');
-  bindModalEscape(document.getElementById('bot-event-detail-modal'), closeBotEventDetail);
+  const modal = document.getElementById('bot-event-detail-modal');
+  modal.classList.remove('hidden');
+  bindModalEscape(modal, closeBotEventDetail);
+  if (!modal._trapBound) { trapFocus(modal.querySelector('.modal-content')); modal._trapBound = true; }
 }
 
 function closeBotEventDetail() {
@@ -953,8 +957,11 @@ async function init() {
 
   // ヘルプボタン
   document.getElementById('bot-help-btn').addEventListener('click', () => {
-    document.getElementById('bot-help-modal').classList.remove('hidden');
-    bindModalEscape(document.getElementById('bot-help-modal'), () => document.getElementById('bot-help-modal').classList.add('hidden'));
+    const modal = document.getElementById('bot-help-modal');
+    modal.classList.remove('hidden');
+    bindModalEscape(modal, () => modal.classList.add('hidden'));
+    // Tab がモーダル外へ抜けないよう閉じ込める（静的モーダルなので一度だけ束縛）
+    if (!modal._trapBound) { trapFocus(modal.querySelector('.modal-content')); modal._trapBound = true; }
   });
   bindOverlayClose(document.getElementById('bot-help-modal'), () => document.getElementById('bot-help-modal').classList.add('hidden'));
 

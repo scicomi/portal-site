@@ -7,13 +7,11 @@
     <meta name="color-scheme" content="light">
     <title>予定 | SciComi Portal</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js">
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
     <link rel="preconnect" href="https://script.google.com" crossorigin>
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap"
         rel="stylesheet">
-    <script defer src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js'></script>
 </head>
 
 <body>
@@ -45,17 +43,12 @@
                 <option value="upcoming" selected>今後</option>
             </select>
             <button class="btn btn-text btn-sm hidden" id="filter-reset-btn" onclick="resetFilters()" title="検索・絞り込みをすべて解除">リセット</button>
-            <button class="btn btn-secondary btn-sm" id="calendar-toggle-btn" aria-pressed="false" onclick="toggleCalendar()" style="margin-left:auto;">カレンダーを表示</button>
         </div>
-
-        <section id="calendar-wrapper" class="calendar-section hidden">
-            <div id="calendar"></div>
-        </section>
 
         <h3 id="event-list-heading" class="event-list-heading" aria-live="polite"></h3>
         <div id="ev-vote-member-bar" class="ev-vote-member-bar hidden">
-            <label>あなたの名前:</label>
-            <select id="ev-vote-member-select">
+            <label for="ev-vote-member-select">あなたの名前:</label>
+            <select id="ev-vote-member-select" aria-label="出欠回答に使うあなたの名前">
                 <option value="">-- 選択 --</option>
             </select>
         </div>

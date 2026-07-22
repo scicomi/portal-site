@@ -68,7 +68,7 @@ const CONFIG = {
   // ===== 管理者 =====
   ADMIN_TOKEN_KEY: 'scicomi_admin_token',
   ADMIN_TOKEN_TS_KEY: 'scicomi_admin_token_ts',
-  ADMIN_TOKEN_TTL_MS: 2 * 60 * 60 * 1000, // 2時間
+  ADMIN_TOKEN_TTL_MS: 180 * 24 * 60 * 60 * 1000, // 180日（サーバー側 ADMIN_SESSION_TTL と一致させること）
 
   // ===== Gemini API (Bot用 — APIキー・モデルはサーバー側 Config で管理) =====
   // ※ 実際に使うモデルは GAS の Config シート（gemini_model）が正。ここは表示用の参考値。

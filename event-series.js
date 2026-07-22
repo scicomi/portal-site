@@ -383,10 +383,10 @@ function renderSeriesIndex() {
     tbody.innerHTML = list.map(s => {
         const cat = getEventCategory(s.category);
         return `
-            <tr class="clickable-row" data-key="${escapeAttr(s.key)}" data-latest-id="${escapeAttr(s.latestId)}" title="${seriesPickMode ? 'タップでこのイベントを複製' : 'タップで詳細ページへ'}">
+            <tr class="clickable-row${s.next ? ' row-has-next' : ''}" data-key="${escapeAttr(s.key)}" data-latest-id="${escapeAttr(s.latestId)}" title="${seriesPickMode ? 'タップでこのイベントを複製' : 'タップで詳細ページへ'}">
                 <td><span class="cat-dot" style="color:${cat.bg};" title="${cat.short}">&#9679;</span></td>
                 <td class="cell-name">${hl(s.title)}</td>
-                <td style="white-space:nowrap;">${s.count}回</td>
+                <td style="white-space:nowrap;"><span class="count-chip">${s.count}回</span></td>
                 <td style="white-space:nowrap;">${s.next
                     ? `<span class="series-index-next">次回 ${escapeHtml(s.next.Date)} (${dayOfWeekJP(s.next.Date)})</span>`
                     : `<span class="text-muted">直近 ${escapeHtml(s.latestDate || '---')}</span>`}</td>
@@ -1633,8 +1633,9 @@ function toggleSeriesCard(btn) {
 // ---- タブ切り替え ----
 
 function switchSeriesTab(btn) {
-    document.querySelectorAll('.expd-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.expd-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
     btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
     const target = btn.dataset.tab;
     document.querySelectorAll('.expd-tab-pane').forEach(p => {
         p.classList.toggle('hidden', p.dataset.tabPane !== target);
@@ -1650,8 +1651,9 @@ function goToVenueInfoTab() {
 function switchDetailSubTab(btn) {
     const container = document.querySelector('[data-tab-pane="detail"]');
     if (!container) return;
-    container.querySelectorAll('.detail-sub-tab').forEach(t => t.classList.remove('active'));
+    container.querySelectorAll('.detail-sub-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
     btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
     const target = btn.dataset.subtab;
     container.querySelectorAll('.detail-sub-pane').forEach(p => {
         p.classList.toggle('hidden', p.dataset.subPane !== target);
@@ -1664,8 +1666,9 @@ function switchDetailSubTab(btn) {
 function switchLocalInfoSubTab(btn) {
     const container = document.querySelector('[data-tab-pane="local-info"]');
     if (!container) return;
-    container.querySelectorAll('.detail-sub-tab').forEach(t => t.classList.remove('active'));
+    container.querySelectorAll('.detail-sub-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
     btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
     const target = btn.dataset.subtab;
     container.querySelectorAll('[data-li-pane]').forEach(p => {
         p.classList.toggle('hidden', p.getAttribute('data-li-pane') !== target);
@@ -1675,8 +1678,9 @@ function switchLocalInfoSubTab(btn) {
 function switchStatsSubTab(btn) {
     const container = document.querySelector('[data-tab-pane="stats"]');
     if (!container) return;
-    container.querySelectorAll('.detail-sub-tab').forEach(t => t.classList.remove('active'));
+    container.querySelectorAll('.detail-sub-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
     btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
     const target = btn.dataset.subtab;
     container.querySelectorAll('[data-st-pane]').forEach(p => {
         p.classList.toggle('hidden', p.getAttribute('data-st-pane') !== target);

@@ -13,6 +13,7 @@ let allMembersData = [];
 
 let latestEvents = [];
 let latestVotes = [];
+let holidaysData = {};
 function looksGasForm(items) {
     if (!items || items.length === 0) return true;
     const e = items[0];
@@ -30,7 +31,6 @@ async function init() {
     if (cachedEv) { renderEventsCard(cachedEv.items || []); renderFeedbackPending(cachedEv.items || []); updateActionNeeded(); }
     if (cachedMb) {
         allMembersData = cachedMb.items || [];
-        renderMembersCard(allMembersData);
     }
     if (cachedMb) renderIdentityBanners(latestEvents, allMembersData, latestVotes);
     renderStats({
@@ -39,8 +39,15 @@ async function init() {
         experiments: cachedEx ? cachedEx.items : []
     });
     renderWelcome();
+    renderLineInvite();
 
     updateSyncStatus(cachedEv ? 'cached' : 'initial-loading', cachedEv ? cachedEv.timestamp : null);
+
+    initHomeCalendar();
+    api.loadHolidaysCached().then(data => {
+        holidaysData = data || {};
+        refreshHomeCalendar();
+    });
 
     await refreshData(false);
 }
@@ -64,9 +71,9 @@ async function refreshData(isManual = false) {
         renderEventsCard(all.events);
         renderFeedbackPending(all.events);
         updateActionNeeded();
-        renderMembersCard(all.members);
         renderIdentityBanners(latestEvents, allMembersData, latestVotes);
         renderStats(all);
+        refreshHomeCalendar();
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
         if (e.handled) return;
@@ -76,13 +83,7 @@ async function refreshData(isManual = false) {
 }
 
 function renderLoadError() {
-    document.querySelectorAll('#upcoming-events .loading-text, #member-summary .loading-text').forEach(el => {
-        el.outerHTML = `<li class="empty-state">
-            <div class="empty-text">データを読み込めませんでした</div>
-            <div class="empty-hint">通信環境を確認して、もう一度お試しください</div>
-            <button type="button" class="btn btn-secondary" onclick="refreshData(true)">再読み込み</button>
-        </li>`;
-    });
+    toast('データを読み込めませんでした。通信環境を確認して、もう一度お試しください', 'error');
 }
 
 // ---- ホームのメッセージ（管理者が任意の文章を掲載できる。リッチテキスト対応） ----
@@ -154,6 +155,22 @@ async function saveWelcomeMessage() {
     }
 }
 
+// ---- LINE公式アカウントの友だち追加案内（設定画面の「友だち追加URL」を表示するだけ） ----
+
+function renderLineInvite() {
+    const card = document.getElementById('line-invite-card');
+    const link = document.getElementById('line-invite-link');
+    if (!card || !link) return;
+    const cfg = _readCachedSiteSettings() || {};
+    const url = (cfg.line_add_friend_url || '').trim();
+    if (!url) {
+        card.classList.add('hidden');
+        return;
+    }
+    link.href = safeHttpUrl(url);
+    card.classList.remove('hidden');
+}
+
 // ---- ダッシュボード ----
 
 function renderStats(all) {
@@ -166,36 +183,72 @@ function renderStats(all) {
 }
 
 function renderEventsCard(events) {
-    const container = document.getElementById('upcoming-events');
-    const today = todayISO();
-
-    const upcoming = (events || [])
-        .filter(e => (e.DateEnd || e.Date_End || e.Date) >= today)
-        .sort((a, b) => (a.Date || '').localeCompare(b.Date || ''))
-        .slice(0, 5);
-
-    if (upcoming.length === 0) {
-        container.innerHTML = '<li class="empty-state"><span class="empty-text">今後の予定はありません</span></li>';
-    } else {
-        container.innerHTML = upcoming.map(e => {
-            const c = getEventCategory(e.Category);
-            let title = e.Title || '(無題)';
-            const meetingNo = e.MeetingNumber || e.Meeting_Number;
-            if (c.isMeeting && meetingNo) {
-                title = `第${meetingNo}回 ${title}`;
-            }
-            return `
-                <li onclick="location.href='event-series.html?event=${encodeURIComponent(e.ID)}'" style="cursor:pointer;">
-                    <span class="dl-date">${shortDate(e.Date)}</span>
-                    <span class="dl-title"><a href="event-series.html?event=${encodeURIComponent(e.ID)}" class="report-event-link">${escapeHtml(title)}</a></span>
-                    <span class="dl-badge" style="background:${c.bg};color:${c.text};">${c.short}</span>
-                </li>
-            `;
-        }).join('');
-    }
-
     renderKyokaCard(events);
     renderReportsCard(events);
+}
+
+// ---- ホームのミニカレンダー（概要）。読み取り専用: 予定の追加・選択は不可、タップで詳細ページへ ----
+
+let homeCalendar = null;
+
+function initHomeCalendar(attempt = 0) {
+    const el = document.getElementById('home-calendar');
+    if (!el) return;
+    if (typeof FullCalendar === 'undefined') {
+        if (attempt > 100) return;
+        setTimeout(() => initHomeCalendar(attempt + 1), 50);
+        return;
+    }
+    homeCalendar = new FullCalendar.Calendar(el, {
+        initialView: 'dayGridMonth',
+        locale: 'ja',
+        height: 'auto',
+        dayMaxEvents: 2,
+        selectable: false,
+        headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
+        buttonText: { today: '今日' },
+        dayCellClassNames: function (arg) {
+            const dateStr = toISODate(arg.date);
+            return holidaysData[dateStr] ? ['holiday'] : [];
+        },
+        events: function (fetchInfo, successCallback) {
+            const fcEvents = (latestEvents || []).map(e => {
+                const cat = getEventCategory(e.Category);
+                let displayTitle = e.Title;
+                const meetingNo = e.MeetingNumber || e.Meeting_Number;
+                if (cat.isMeeting && meetingNo) {
+                    displayTitle = `第${meetingNo}回 ${displayTitle}`;
+                }
+                let endDate = null;
+                const rawEnd = e.DateEnd || e.Date_End;
+                if (rawEnd) {
+                    const d = parseISODate(rawEnd);
+                    d.setDate(d.getDate() + 1);
+                    endDate = toISODate(d);
+                }
+                return {
+                    id: e.ID,
+                    title: displayTitle,
+                    start: e.Date,
+                    end: endDate,
+                    backgroundColor: cat.bg,
+                    borderColor: cat.bg,
+                    textColor: cat.text,
+                    display: 'block'
+                };
+            });
+            successCallback(fcEvents);
+        },
+        eventClick: function (info) {
+            location.href = 'event-series.html?event=' + encodeURIComponent(info.event.id);
+        }
+    });
+    homeCalendar.render();
+}
+
+function refreshHomeCalendar() {
+    if (homeCalendar) homeCalendar.refetchEvents();
+    else initHomeCalendar();
 }
 
 function renderKyokaCard(events) {
@@ -325,31 +378,6 @@ async function setDocStatus(id, field, value) {
     }
 }
 
-function renderMembersCard(members) {
-    const container = document.getElementById('member-summary');
-    const curFY = currentFiscalYear();
-    const fy = members.filter(m => parseInt(m.FiscalYear || curFY) === curFY);
-
-    if (fy.length === 0) {
-        container.innerHTML = '<li class="empty-state"><span class="empty-text">今年度のメンバーが登録されていません</span></li>';
-        return;
-    }
-
-    const advisers = fy.filter(m => memberRoleOf(m) === 'アドバイザー');
-    const coordinators = fy.filter(m => memberRoleOf(m) === 'コーディネーター');
-    const regular = fy.filter(m => { const r = memberRoleOf(m); return r !== 'アドバイザー' && r !== 'コーディネーター'; });
-    const withRole = regular.filter(m => memberRoleOf(m));
-
-    container.innerHTML = `
-        <li><span class="dl-date">アドバイザー</span><span class="dl-title">${advisers.length}名</span></li>
-        <li><span class="dl-date">コーディネーター</span><span class="dl-title">${coordinators.length}名</span></li>
-        <li><span class="dl-date">メンバー</span><span class="dl-title">${regular.length}名</span></li>
-        ${withRole.slice(0, 4).map(m => `
-            <li><span class="dl-date" style="min-width:90px;">${escapeHtml(memberRoleOf(m))}</span><span class="dl-title">${escapeHtml(m.Name)}</span></li>
-        `).join('')}
-    `;
-}
-
 function renderFeedbackPending(events) {
     const container = document.getElementById('feedback-pending');
     if (!container) return;
@@ -419,11 +447,16 @@ function renderNameSelectBanner(members) {
         groups.map(g => `<optgroup label="${escapeAttr(g.label)}">${g.members.map(m => `<option value="${escapeAttr(m.ID)}">${escapeHtml(m.Name)}</option>`).join('')}</optgroup>`).join('');
     btn.disabled = true;
     sel.onchange = () => { btn.disabled = !sel.value; };
-    btn.onclick = () => {
+    const applyName = () => {
         if (!sel.value) return;
+        const chosen = eligible.find(m => m.ID === sel.value);
         setSavedVoteMemberId(sel.value);
+        toast(`「${chosen ? chosen.Name : '名前'}」を設定しました`, 'success', 2500);
         renderIdentityBanners(latestEvents, allMembersData, latestVotes);
     };
+    btn.onclick = applyName;
+    // 名前を選んだ状態で Enter を押しても設定できるようにする（キーボード操作の自然さ）
+    sel.onkeydown = (e) => { if (e.key === 'Enter' && sel.value) { e.preventDefault(); applyName(); } };
     banner.classList.remove('hidden');
 }
 
