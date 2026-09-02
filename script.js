@@ -536,8 +536,8 @@ function renderEvents() {
         }
         return `
             <tr class="clickable-row" data-id="${escapeAttr(ev.ID)}" title="タップで詳細ページへ">
-                <td class="cell-name" style="white-space:nowrap;">
-                    ${escapeHtml(ev.Date || '')} <span class="text-muted">(${dayOfWeekJP(ev.Date)})</span>
+                <td class="cell-name ev-date-cell" style="white-space:nowrap;">
+                    ${dateCellHtml(ev.Date)} <span class="text-muted">(${dayOfWeekJP(ev.Date)})</span>
                     ${ev.Date_End && ev.Date_End !== ev.Date ? '<br><span class="text-muted" style="font-size:0.8rem;">〜 ' + escapeHtml(ev.Date_End) + '</span>' : ''}
                 </td>
                 <td style="white-space:nowrap;">

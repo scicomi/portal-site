@@ -38,7 +38,7 @@
 
         <div id="name-select-banner" class="vote-reminder-banner hidden">
             <span class="unanswered-flag">未設定</span>
-            <span>出欠の回答などに使う「あなたの名前」が未設定です。</span>
+            <span>出欠の回答に使う「名前」が未設定です。</span>
             <div class="vote-reminder-action">
                 <select id="name-select-banner-select" class="e1-input" aria-label="あなたの名前を選択">
                     <option value="">-- 名前を選択 --</option>
@@ -58,19 +58,38 @@
             <div class="stat-card"><div class="stat-num" id="stat-experiments">&mdash;</div><div class="stat-label">実験ネタ</div></div>
         </div>
 
+        <!-- 開閉はカード単位。片付いた項目だけを畳めるよう、見出しごとにトグルを置く -->
         <section class="dash-section" id="action-needed" style="display:none;">
-            <h3 class="page-header">対応が必要</h3>
-            <div class="dashboard-grid">
-                <div class="dash-card dash-card--alert">
-                    <h3 class="dash-card-title">許可願の期限（イベント前）</h3>
-                    <ul class="dash-list" id="upcoming-kyoka"></ul>
+            <h2 class="page-header">対応が必要</h2>
+            <div class="dashboard-grid" id="action-needed-body">
+                <div class="dash-card dash-card--alert dash-card--collapsed">
+                    <h3 class="dash-card-title">
+                        <button type="button" class="dash-card-toggle" aria-expanded="false" aria-controls="upcoming-kyoka" onclick="toggleActionCard(this)">
+                            <span class="dash-card-toggle-label">許可願の期限（イベント前）</span>
+                            <span class="dash-card-count" id="count-upcoming-kyoka"></span>
+                            <span class="dash-card-toggle-icon" aria-hidden="true">&#9662;</span>
+                        </button>
+                    </h3>
+                    <ul class="dash-list hidden" id="upcoming-kyoka"></ul>
                 </div>
-                <div class="dash-card dash-card--alert">
-                    <h3 class="dash-card-title">報告書の期限（イベント後）</h3>
-                    <ul class="dash-list" id="upcoming-deadlines"></ul>
+                <div class="dash-card dash-card--alert dash-card--collapsed">
+                    <h3 class="dash-card-title">
+                        <button type="button" class="dash-card-toggle" aria-expanded="false" aria-controls="upcoming-deadlines" onclick="toggleActionCard(this)">
+                            <span class="dash-card-toggle-label">報告書の期限（イベント後）</span>
+                            <span class="dash-card-count" id="count-upcoming-deadlines"></span>
+                            <span class="dash-card-toggle-icon" aria-hidden="true">&#9662;</span>
+                        </button>
+                    </h3>
+                    <ul class="dash-list hidden" id="upcoming-deadlines"></ul>
                 </div>
-                <div class="dash-card dash-card--alert">
-                    <h3 class="dash-card-title">振り返り未記入</h3>
+                <div class="dash-card dash-card--alert dash-card--collapsed">
+                    <h3 class="dash-card-title">
+                        <button type="button" class="dash-card-toggle" aria-expanded="false" aria-controls="feedback-pending" onclick="toggleActionCard(this)">
+                            <span class="dash-card-toggle-label">振り返り未記入</span>
+                            <span class="dash-card-count" id="count-feedback-pending"></span>
+                            <span class="dash-card-toggle-icon" aria-hidden="true">&#9662;</span>
+                        </button>
+                    </h3>
                     <ul class="dash-list" id="feedback-pending"></ul>
                 </div>
             </div>
@@ -82,7 +101,17 @@
                 <a href="events.html" class="dash-section-link">すべての予定 →</a>
             </div>
             <div class="dash-card home-calendar-card">
+                <!-- カレンダーの「年月へ移動」ボタンから開くネイティブ年月ピッカー（home.js: initHomeCalendar） -->
+                <input type="month" id="home-calendar-jump" class="home-calendar-jump-input" aria-hidden="true" tabindex="-1">
                 <div id="home-calendar" class="home-calendar"></div>
+            </div>
+        </section>
+
+        <!-- リンク集（設定画面「リンク集」で登録したURLを並べる。未登録なら非表示） -->
+        <section class="dash-section" id="site-links-section" style="display:none;">
+            <h2 class="page-header">リンク集</h2>
+            <div class="dash-card">
+                <div id="site-links-list" class="site-link-grid"></div>
             </div>
         </section>
     </main>

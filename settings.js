@@ -86,6 +86,9 @@ async function loadSettings() {
         document.getElementById('cfg-line-url').value = cfg.line_add_friend_url || '';
         document.getElementById('cfg-line-token').value = cfg.line_channel_access_token || '';
 
+        // リンク集
+        renderSiteLinkRows(parseSiteLinks(cfg.site_links));
+
         // 設定キャッシュを更新（他ページで applySiteSettings が即座に反映できるように）
         localStorage.setItem('scicomi_site_settings', JSON.stringify({ data: cfg, ts: Date.now() }));
 
@@ -258,6 +261,80 @@ async function saveDeadlineRules(btn) {
             CONFIG.DEADLINE_RULES.kyoka = -kyoka;
             CONFIG.DEADLINE_RULES.houkoku = houkoku;
             toast('期限ルールを保存しました', 'success');
+        } catch (e) {
+            toast('保存失敗: ' + e.message, 'error');
+        }
+    });
+}
+
+// --- リンク集（ホーム最下部に並ぶ外部リンク） ---
+
+function renderSiteLinkRows(links) {
+    const wrap = document.getElementById('cfg-links-rows');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    // 未登録でも入力欄が1行は見えているほうが操作の起点になる
+    const rows = links.length ? links : [{ label: '', url: '' }];
+    rows.forEach(l => appendSiteLinkRow(l.label, l.url));
+}
+
+function appendSiteLinkRow(label, url) {
+    const wrap = document.getElementById('cfg-links-rows');
+    if (!wrap) return null;
+    const row = document.createElement('div');
+    row.className = 'cfg-link-row';
+    row.innerHTML = `
+        <input type="text" class="e1-input cfg-link-label" maxlength="40" placeholder="表示名（例: Instagram）" aria-label="リンクの表示名">
+        <input type="text" class="e1-input cfg-link-url" placeholder="https://..." aria-label="リンクのURL">
+        <button type="button" class="btn btn-secondary cfg-link-remove" aria-label="この行を削除">削除</button>
+    `;
+    row.querySelector('.cfg-link-label').value = label || '';
+    row.querySelector('.cfg-link-url').value = url || '';
+    row.querySelector('.cfg-link-remove').onclick = () => {
+        row.remove();
+        // 全部消すと追加の手がかりが無くなるため、最後の1行は空にして残す
+        if (!wrap.querySelector('.cfg-link-row')) appendSiteLinkRow('', '');
+    };
+    wrap.appendChild(row);
+    return row;
+}
+
+function addSiteLinkRow() {
+    const row = appendSiteLinkRow('', '');
+    if (row) row.querySelector('.cfg-link-label').focus();
+}
+
+async function saveSiteLinks(btn) {
+    const rows = [...document.querySelectorAll('#cfg-links-rows .cfg-link-row')];
+    const links = [];
+    for (const row of rows) {
+        const labelEl = row.querySelector('.cfg-link-label');
+        const urlEl = row.querySelector('.cfg-link-url');
+        const label = labelEl.value.trim();
+        const raw = urlEl.value.trim();
+        if (!label && !raw) continue;   // 空行は捨てる
+        if (!label || !raw) {
+            toast('表示名とURLの両方を入力してください', 'error');
+            (label ? urlEl : labelEl).focus();
+            return;
+        }
+        // javascript: など http(s) 以外のスキームは safeHttpUrl が空文字を返す
+        const url = safeHttpUrl(raw);
+        if (!url) {
+            toast(`URLの形式が正しくありません: ${label}`, 'error');
+            urlEl.focus();
+            return;
+        }
+        links.push({ label, url });
+    }
+    await _withBusyBtn(btn, async () => {
+        try {
+            await api.adminSetConfig('site_links', JSON.stringify(links));
+            invalidateSettingsCache();
+            const cached = _readCachedSiteSettings() || {};
+            cached.site_links = JSON.stringify(links);
+            localStorage.setItem('scicomi_site_settings', JSON.stringify({ data: cached, ts: Date.now() }));
+            toast('リンク集を保存しました', 'success');
         } catch (e) {
             toast('保存失敗: ' + e.message, 'error');
         }

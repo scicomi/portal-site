@@ -9,6 +9,7 @@ let allExperiments = [];
 let allEvents = [];
 let feedbackFilter = 'all';
 let editingFbId = null;
+let expEventsData = [];
 
 document.addEventListener('DOMContentLoaded', () => {
     bootPage('experiments', init);
@@ -23,6 +24,7 @@ function showLoadMessage(html) {
 
 async function init() {
     bindOverlayClose(document.getElementById('feedback-modal'), closeFeedbackModal);
+    bindOverlayClose(document.getElementById('video-modal'), closeVideoModal);
 
     // 振り返り検索（デバウンスは search.js。候補リストが無いのでサジェストは出ない）
     attachSearchBox(document.getElementById('feedback-search'), {
@@ -113,6 +115,7 @@ function renderPage() {
     renderEventsSection();
     renderFeedback();
     renderPhotos();
+    renderVideos();
     populateEventDropdown();
 }
 
@@ -128,7 +131,53 @@ function renderEventsSection() {
     if (related.length === 0) { sec.classList.add('hidden'); return; }
     sec.classList.remove('hidden');
 
-    document.getElementById('expd-events-list').innerHTML = related.map(ev => {
+    expEventsData = related;
+    renderEventsFyFilterOptions();
+    renderEventsList();
+}
+
+// 年度の選択肢を作り直す。積み重なった実施回が何年分あっても、年度ごとに絞り込めるようにする。
+function renderEventsFyFilterOptions() {
+    const sel = document.getElementById('expd-events-fy-select');
+    if (!sel) return;
+
+    const counts = {};
+    expEventsData.forEach(ev => {
+        const fy = getFiscalYear(ev.Date);
+        const key = fy === null ? '__none__' : String(fy);
+        counts[key] = (counts[key] || 0) + 1;
+    });
+    const fyKeys = Object.keys(counts).filter(k => k !== '__none__').sort((a, b) => Number(b) - Number(a));
+
+    let html = `<option value="all">すべての年度（${expEventsData.length}件）</option>`;
+    html += fyKeys.map(fy => `<option value="${fy}">${fy}年度（${counts[fy]}件）</option>`).join('');
+    if (counts['__none__']) html += `<option value="__none__">日付なし（${counts['__none__']}件）</option>`;
+
+    const prev = sel.value;
+    sel.innerHTML = html;
+    // 実施回が増減しても、選んでいた年度がまだ存在するなら選択状態を保つ
+    sel.value = [...sel.options].some(o => o.value === prev) ? prev : 'all';
+}
+
+function onEventsFyFilterChange() {
+    renderEventsList();
+}
+
+function renderEventsList() {
+    const sel = document.getElementById('expd-events-fy-select');
+    const filter = sel ? sel.value : 'all';
+    const list = expEventsData.filter(ev => {
+        if (filter === 'all') return true;
+        const fy = getFiscalYear(ev.Date);
+        return filter === '__none__' ? fy === null : String(fy) === filter;
+    });
+
+    const listEl = document.getElementById('expd-events-list');
+    if (list.length === 0) {
+        listEl.innerHTML = '<p class="empty-state" style="padding:10px 0;">該当する年度の実施イベントはありません</p>';
+        return;
+    }
+    listEl.innerHTML = list.map(ev => {
         const cat = getEventCategory(ev.Category || 'normal');
         return `<a href="event-series.html?event=${encodeURIComponent(ev.ID)}" class="expd-event-chip" title="${escapeAttr(ev.Title)}">
             <span class="expd-event-date">${escapeHtml(ev.Date || '')}</span>
@@ -318,6 +367,10 @@ async function saveFeedback() {
 
 function deleteFeedbackEntry(fbId, type) {
     if (!fbId || !currentExp) return;
+    if (!api.isAdmin()) {
+        showAdminAuthModal(() => deleteFeedbackEntry(fbId, type));
+        return;
+    }
     // 他ページと同じ確認ダイアログ（ネイティブ confirm は使わない）
     const overlay = document.createElement('div');
     overlay.className = 'confirm-dialog-overlay';
@@ -387,6 +440,8 @@ function switchExpTab(btn) {
 
 // ---- Photo Gallery ----
 
+const PHOTO_LIMIT = 15;
+
 function renderPhotos() {
     const gallery = document.getElementById('expd-photo-gallery');
     if (!gallery || !currentExp) return;
@@ -395,9 +450,9 @@ function renderPhotos() {
     try { photos = JSON.parse(currentExp.Photos || '[]'); } catch (_) {}
     if (!Array.isArray(photos)) photos = [];
 
-    const adminBtn = document.querySelector('.admin-only-btn');
+    const adminBtn = document.getElementById('photo-add-btn');
     if (adminBtn) {
-        adminBtn.classList.toggle('hidden', !api.isAdmin() || photos.length >= 5);
+        adminBtn.classList.toggle('hidden', !api.isAdmin() || photos.length >= PHOTO_LIMIT);
     }
 
     if (photos.length === 0) {
@@ -438,7 +493,7 @@ function openPhotoUpload() {
     }
     let photos = [];
     try { photos = JSON.parse(currentExp.Photos || '[]'); } catch (_) {}
-    if (photos.length >= 5) { toast('写真は最大5枚までです', 'error'); return; }
+    if (photos.length >= PHOTO_LIMIT) { toast(`写真は最大${PHOTO_LIMIT}枚までです`, 'error'); return; }
     document.getElementById('photo-file-input').click();
 }
 
@@ -449,7 +504,7 @@ async function handlePhotoSelect(input) {
 
     let photos = [];
     try { photos = JSON.parse(currentExp.Photos || '[]'); } catch (_) {}
-    const remaining = 5 - photos.length;
+    const remaining = PHOTO_LIMIT - photos.length;
     const toUpload = files.slice(0, remaining);
 
     for (const file of toUpload) {
@@ -478,8 +533,23 @@ async function handlePhotoSelect(input) {
     }
 }
 
-async function deletePhoto(index) {
+function deletePhoto(index) {
     if (!api.isAdmin()) { showAdminAuthModal(() => deletePhoto(index)); return; }
+    let photos = [];
+    try { photos = JSON.parse(currentExp.Photos || '[]'); } catch (_) {}
+    if (index < 0 || index >= photos.length) return;
+
+    const name = photos[index].name || '';
+    showConfirmDialog({
+        title: '写真を削除',
+        message: name ? `「${name}」を削除します。この操作は元に戻せません。` : 'この写真を削除します。この操作は元に戻せません。',
+        okLabel: '削除する',
+        danger: true,
+        onOk: () => executeDeletePhoto(index)
+    });
+}
+
+async function executeDeletePhoto(index) {
     let photos = [];
     try { photos = JSON.parse(currentExp.Photos || '[]'); } catch (_) {}
     if (index < 0 || index >= photos.length) return;
@@ -495,6 +565,178 @@ async function deletePhoto(index) {
         api.saveCache('experiments', allExperiments);
         renderPhotos();
         toast('写真を削除しました', 'success');
+    } catch (e) {
+        // showConfirmDialog は onOk が例外を投げると別トーストで再通知するため、ここでは投げずに独自通知のみ行う
+        toast('削除失敗: ' + e.message, 'error');
+    }
+}
+
+// ---- Video Gallery（YouTubeリンクを登録し、実験ショーの様子を見返す） ----
+
+// 何十件登録されても一度に全部のサムネイル・iframeを読み込まないよう、表示件数をページングする
+const VIDEO_PAGE_SIZE = 12;
+let videoVisibleCount = VIDEO_PAGE_SIZE;
+
+// youtube.com/watch?v=, youtu.be/, /embed/, /shorts/ のいずれの形式からも動画IDを取り出す。取れなければ空文字。
+function extractYoutubeId(url) {
+    if (!url) return '';
+    const s = String(url).trim();
+    let m = s.match(/[?&]v=([\w-]{11})/);
+    if (m) return m[1];
+    m = s.match(/youtu\.be\/([\w-]{11})/);
+    if (m) return m[1];
+    m = s.match(/\/(?:embed|shorts)\/([\w-]{11})/);
+    if (m) return m[1];
+    return '';
+}
+
+function getVideos() {
+    let videos = [];
+    try { videos = JSON.parse(currentExp.Videos || '[]'); } catch (_) {}
+    return Array.isArray(videos) ? videos : [];
+}
+
+function renderVideos() {
+    const gallery = document.getElementById('expd-video-gallery');
+    if (!gallery || !currentExp) return;
+
+    const videos = getVideos();
+
+    const adminBtn = document.getElementById('video-add-btn');
+    if (adminBtn) adminBtn.classList.toggle('hidden', !api.isAdmin());
+
+    const loadMore = document.getElementById('video-load-more');
+
+    if (videos.length === 0) {
+        gallery.innerHTML = '<p class="empty-state" style="padding:30px 20px;">動画はまだありません</p>';
+        if (loadMore) loadMore.classList.add('hidden');
+        return;
+    }
+
+    // ページング量を超えて残っていれば維持し、削除等で件数が減った分は丸める
+    videoVisibleCount = Math.min(videoVisibleCount || VIDEO_PAGE_SIZE, videos.length);
+    const visible = videos.slice(0, videoVisibleCount);
+
+    gallery.innerHTML = visible.map((v, i) => {
+        const thumb = `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`;
+        const fallback = `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`;
+        return `
+        <div class="video-item">
+            <button type="button" class="video-thumb-btn" onclick="playVideo(this, '${v.id}')" aria-label="${escapeAttr(v.title || '動画を再生')}">
+                <img src="${thumb}" alt="" loading="lazy" onerror="this.onerror=null; this.src='${fallback}';">
+                <span class="video-play-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+                </span>
+            </button>
+            ${v.title ? `<p class="video-title" title="${escapeAttr(v.title)}">${escapeHtml(v.title)}</p>` : ''}
+            ${api.isAdmin() ? `<button class="video-delete" onclick="deleteVideo(${i})" title="削除">✕</button>` : ''}
+        </div>`;
+    }).join('');
+
+    if (loadMore) loadMore.classList.toggle('hidden', videoVisibleCount >= videos.length);
+}
+
+function showMoreVideos() {
+    videoVisibleCount += VIDEO_PAGE_SIZE;
+    renderVideos();
+}
+
+// サムネイルをクリックした時だけ埋め込み再生に切り替える（多数登録時に全件同時ロードしないため）
+function playVideo(btn, id) {
+    const wrap = btn.closest('.video-item');
+    if (!wrap) return;
+    const embed = document.createElement('div');
+    embed.className = 'video-embed';
+    embed.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1" title="YouTube video player" frameborder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+    btn.replaceWith(embed);
+}
+
+function openAddVideoModal() {
+    if (!api.isAdmin()) { showAdminAuthModal(() => openAddVideoModal()); return; }
+    document.getElementById('video-url').value = '';
+    document.getElementById('video-title').value = '';
+    const modal = document.getElementById('video-modal');
+    modal.classList.remove('hidden');
+    bindModalEscape(modal, closeVideoModal);
+    if (!modal._trapBound) { trapFocus(modal.querySelector('.modal-content')); modal._trapBound = true; }
+    setTimeout(() => document.getElementById('video-url').focus(), 50);
+}
+
+function closeVideoModal() {
+    document.getElementById('video-modal').classList.add('hidden');
+}
+
+async function saveVideo() {
+    const url = document.getElementById('video-url').value.trim();
+    const title = document.getElementById('video-title').value.trim();
+    const id = extractYoutubeId(url);
+    if (!id) {
+        toast('YouTubeのURLを正しく入力してください', 'error');
+        document.getElementById('video-url').focus();
+        return;
+    }
+
+    const videos = getVideos();
+    if (videos.some(v => v.id === id)) {
+        toast('この動画はすでに登録されています', 'error');
+        return;
+    }
+
+    const saveBtn = document.getElementById('video-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
+
+    // 新しい動画ほど上に来るよう先頭へ追加する
+    videos.unshift({ id, url: safeHttpUrl(url) || `https://www.youtube.com/watch?v=${id}`, title });
+    currentExp.Videos = JSON.stringify(videos);
+
+    try {
+        const saved = await api.save('experiments', { ...currentExp, _baseUpdatedAt: currentExp.UpdatedAt || '' });
+        Object.assign(currentExp, saved);
+        const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
+        if (idx >= 0) allExperiments[idx] = currentExp;
+        api.saveCache('experiments', allExperiments);
+        videoVisibleCount = VIDEO_PAGE_SIZE;
+        renderVideos();
+        toast('動画を追加しました', 'success');
+        closeVideoModal();
+    } catch (e) {
+        toast('保存失敗: ' + e.message, 'error');
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; }
+    }
+}
+
+function deleteVideo(index) {
+    if (!api.isAdmin()) { showAdminAuthModal(() => deleteVideo(index)); return; }
+    const videos = getVideos();
+    if (index < 0 || index >= videos.length) return;
+
+    const title = videos[index].title || '';
+    showConfirmDialog({
+        title: '動画を削除',
+        message: title ? `「${title}」を削除します。この操作は元に戻せません。` : 'この動画を削除します。この操作は元に戻せません。',
+        okLabel: '削除する',
+        danger: true,
+        onOk: () => executeDeleteVideo(index)
+    });
+}
+
+async function executeDeleteVideo(index) {
+    const videos = getVideos();
+    if (index < 0 || index >= videos.length) return;
+
+    videos.splice(index, 1);
+    currentExp.Videos = JSON.stringify(videos);
+
+    try {
+        const saved = await api.save('experiments', { ...currentExp, _baseUpdatedAt: currentExp.UpdatedAt || '' });
+        Object.assign(currentExp, saved);
+        const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
+        if (idx >= 0) allExperiments[idx] = currentExp;
+        api.saveCache('experiments', allExperiments);
+        renderVideos();
+        toast('動画を削除しました', 'success');
     } catch (e) {
         toast('削除失敗: ' + e.message, 'error');
     }
@@ -633,6 +875,10 @@ async function saveSection(sectionEl, type, keyOrIndex) {
 }
 
 async function deleteSection(index) {
+    if (!api.isAdmin()) {
+        showAdminAuthModal(() => deleteSection(index));
+        return;
+    }
     const customs = getCustomSections();
     if (index < 0 || index >= customs.length) return;
 

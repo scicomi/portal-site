@@ -36,6 +36,7 @@
                 <button class="expd-tab active" role="tab" aria-selected="true" data-tab="info" onclick="switchExpTab(this)">実験情報</button>
                 <button class="expd-tab" role="tab" aria-selected="false" data-tab="feedback" onclick="switchExpTab(this)">振り返り</button>
                 <button class="expd-tab" role="tab" aria-selected="false" data-tab="photos" onclick="switchExpTab(this)">写真</button>
+                <button class="expd-tab" role="tab" aria-selected="false" data-tab="videos" onclick="switchExpTab(this)">動画</button>
             </div>
 
             <!-- Tab: Info（使用物品・事前準備・発表の流れ・注意事項をここで表示） -->
@@ -44,7 +45,10 @@
                     <div id="expd-info-body"></div>
                 </div>
                 <div id="expd-events-section" class="expd-section hidden">
-                    <h2 class="expd-section-title">実施イベント</h2>
+                    <div class="expd-section-header">
+                        <h2 class="expd-section-title">実施イベント</h2>
+                        <select id="expd-events-fy-select" class="expd-fy-select" aria-label="表示する年度で絞り込む" onchange="onEventsFyFilterChange()"></select>
+                    </div>
                     <div id="expd-events-list"></div>
                 </div>
             </div>
@@ -71,12 +75,49 @@
                 <div class="expd-section">
                     <div class="expd-section-header">
                         <h2 class="expd-section-title">写真</h2>
-                        <button class="btn-primary-solid admin-only-btn hidden" style="width:auto; padding:6px 16px; font-size:0.85rem;" onclick="openPhotoUpload()">＋ 写真を追加</button>
+                        <button id="photo-add-btn" class="btn-primary-solid admin-only-btn hidden" style="width:auto; padding:6px 16px; font-size:0.85rem;" onclick="openPhotoUpload()">＋ 写真を追加</button>
                     </div>
+                    <p class="expd-note">活動写真はTeamsに保存してください。ここに掲載できるのは、実験の様子が分かる代表的な15枚までです。</p>
                     <div id="expd-photo-gallery" class="photo-gallery">
                         <p class="empty-state" style="padding:30px 20px;">写真はまだありません</p>
                     </div>
                     <input type="file" id="photo-file-input" accept="image/*" multiple style="display:none;" onchange="handlePhotoSelect(this)">
+                </div>
+            </div>
+
+            <!-- Tab: Videos（YouTubeリンクを登録し、実験ショーの様子を見返せるようにする） -->
+            <div class="expd-tab-pane hidden" role="tabpanel" tabindex="0" data-tab-pane="videos">
+                <div class="expd-section">
+                    <div class="expd-section-header">
+                        <h2 class="expd-section-title">動画</h2>
+                        <button id="video-add-btn" class="btn-primary-solid admin-only-btn hidden" style="width:auto; padding:6px 16px; font-size:0.85rem;" onclick="openAddVideoModal()">＋ 動画を追加</button>
+                    </div>
+                    <p class="expd-note">YouTubeのリンクを登録すると、実験ショーの様子をここで見返せます。サムネイルをクリックすると再生されます。</p>
+                    <div id="expd-video-gallery" class="video-gallery"></div>
+                    <button type="button" id="video-load-more" class="btn btn-secondary hidden" style="width:auto; padding:8px 24px; margin:16px auto 0;" onclick="showMoreVideos()">もっと見る</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Video Modal -->
+        <div id="video-modal" class="modal-overlay hidden">
+            <div class="modal-content" style="max-width:480px;" role="dialog" aria-modal="true" aria-labelledby="video-modal-title">
+                <div class="modal-header">
+                    <h2 id="video-modal-title">動画を追加</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="e1-group">
+                        <label class="e1-label">YouTube URL *</label>
+                        <input type="text" id="video-url" class="e1-input" placeholder="https://www.youtube.com/watch?v=...">
+                    </div>
+                    <div class="e1-group">
+                        <label class="e1-label">タイトル（任意）</label>
+                        <input type="text" id="video-title" class="e1-input" maxlength="80" placeholder="例: 2025年度 秋季イベント本番">
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn btn-text" onclick="closeVideoModal()">キャンセル</button>
+                        <button id="video-save-btn" class="btn btn-primary-solid" style="width:auto;" onclick="saveVideo()">保存</button>
+                    </div>
                 </div>
             </div>
         </div>

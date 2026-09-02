@@ -73,6 +73,8 @@ const DEFAULT_CONFIG = {
   experiment_recruit_url: '',
   experiment_recruit_note: '',
   pr_channels: 'Twitter,Instagram,HP',
+  // ホーム最下部のリンク集。JSON配列 [{label,url}] を文字列で保持し、全員に表示する。
+  site_links: '[]',
   // LINE公式アカウントによる新規イベント通知（notifyNewEvent_ / sendLineBroadcast_ が使用）
   line_channel_access_token: '',
   line_add_friend_url: '',
@@ -86,7 +88,8 @@ const PUBLIC_CONFIG_KEYS = [
   'brand_icon', 'brand_name',
   'experiment_recruit_url', 'experiment_recruit_note',
   'pr_channels',
-  'line_add_friend_url'
+  'line_add_friend_url',
+  'site_links'
 ];
 
 // 既定値を返す。password 系だけは毎回ランダム生成する。
@@ -853,7 +856,8 @@ function deleteResource(resource, id) {
 const EVENTS_HEADERS = [
   'ID', 'Date', 'DateEnd', 'Title', 'Category', 'Location', 'Audience',
   // 会場情報（住所・連絡先・緊急連絡先）。シリーズページ（event-series.html）の「会場情報」タブで表示する。
-  'Address', 'LocationTel', 'EmergencyHospital', 'EmergencyPolice',
+  // PostalCode は2026-08に追加。既存シートには setupSpreadsheet() の再実行で追加される。
+  'Address', 'PostalCode', 'LocationTel', 'EmergencyHospital', 'EmergencyPolice',
   'TimeStart', 'TimeEnd', 'GatherTime', 'DismissTime', 'MeetingNumber', 'PartsList',
   'AdminKyoka', 'AdminHoukoku', 'KyokaDeadline', 'HoukokuDeadline',
   // 書類が不要なイベント（許可願・報告書のどちらか、または両方）用のフラグ（'true'/''）。
@@ -880,9 +884,10 @@ const MEMBERS_HEADERS = [
   'Email', 'Extension', 'EmergencyContact', 'Note', 'FiscalYear', 'Active',
   'CreatedAt', 'UpdatedAt'
 ];
+// Videos（YouTubeリンクのJSON配列）は2026-09に追加。既存シートには setupSpreadsheet() の再実行で列が足される。
 const EXPERIMENTS_HEADERS = [
   'ID', 'Name', 'Category', 'Materials', 'Preparation', 'Flow', 'Notes',
-  'SlidesURL', 'Sections', 'Photos', 'Reflections', 'Positives', 'Active', 'CreatedAt', 'UpdatedAt'
+  'SlidesURL', 'Sections', 'Photos', 'Videos', 'Reflections', 'Positives', 'Active', 'CreatedAt', 'UpdatedAt'
 ];
 // パスワード一覧（外部サービスの認証情報）。管理者専用。
 const PASSWORDS_HEADERS = [

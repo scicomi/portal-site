@@ -210,6 +210,28 @@
                 </div>
             </div>
 
+            <!-- リンク集 -->
+            <div class="settings-section collapsed">
+                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h2>リンク集</h2>
+                        <p class="settings-section-desc">ホーム画面の最下部に並べる外部リンク（SNS・公式サイトなど）を登録します。</p>
+                    </div>
+                    <span class="settings-section-chevron">&#9662;</span>
+                </div>
+                <div class="settings-card">
+                    <div class="e1-group">
+                        <label class="e1-label">リンク一覧</label>
+                        <p class="settings-hint">表示名とURLの組を登録します。並べた順にホーム画面へ表示されます。空欄の行は保存時に無視されます。</p>
+                        <div id="cfg-links-rows" class="cfg-link-rows"></div>
+                        <div style="display:flex;gap:8px;margin-top:12px;">
+                            <button class="btn btn-secondary" onclick="addSiteLinkRow()" style="width:auto;padding:8px 20px;">行を追加</button>
+                            <button class="btn btn-primary-solid" onclick="saveSiteLinks(this)" style="width:auto;padding:8px 20px;">リンク集を保存</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- セッション管理 -->
             <div class="settings-section collapsed">
                 <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
