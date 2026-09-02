@@ -389,7 +389,8 @@ function openMemberWizard(editId) {
         `<option value="__custom__">その他（自由入力）</option>`
     ].join('');
 
-    const showContactFields = currentRole !== '';
+    // 役職が未設定、または自由入力（プリセット外）の場合は所属・連絡先の入力は不要
+    const showContactFields = currentRole !== '' && !isCustomRole;
 
     const overlay = document.createElement('div');
     overlay.id = 'mb-wizard-overlay';
@@ -501,7 +502,8 @@ function onWzRoleChange() {
     if (customG) customG.style.display = isCustom ? '' : 'none';
     if (isCustom) setTimeout(() => document.getElementById('wz-mb-role-custom')?.focus(), 50);
 
-    const hide = sel.value === '';
+    // 役職が未設定、または自由入力の場合は所属・連絡先の入力を不要にする
+    const hide = sel.value === '' || sel.value === '__custom__';
     const emailG = document.getElementById('wz-mb-email-group');
     const affG = document.getElementById('wz-mb-affiliation-group');
     const extG = document.getElementById('wz-mb-extension-group');

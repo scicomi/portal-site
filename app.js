@@ -93,6 +93,16 @@ function shortDate(str) {
   return dow ? `${md}(${dow})` : md;
 }
 
+// 予定一覧などの日付列で「年」だけ小さく2段組にして横幅を抑えるための表示用HTML（YYYY-MM-DD前提）
+function dateCellHtml(str) {
+  const s = String(str || '');
+  const dash = s.indexOf('-');
+  if (dash < 0) return escapeHtml(s);
+  const year = s.slice(0, dash);
+  const md = s.slice(dash + 1);
+  return `<span class="ev-date-year">${escapeHtml(year)}</span><br><span class="ev-date-md">${escapeHtml(md)}</span>`;
+}
+
 function genId(prefix) {
   return prefix + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
 }
@@ -153,6 +163,25 @@ function safeHttpUrl(u) {
   if (/^[a-z][a-z0-9+.\-]*:/i.test(u)) return '';  // 他スキーム(javascript:/data: 等)は拒否
   if (u.charAt(0) === '/') return '';              // 相対パスは資料URLとして不正
   return 'https://' + u;                            // スキーム無し → https を補う
+}
+
+// 設定 site_links（JSON配列 [{label,url}]）を安全な配列へ正規化する。
+// 壊れた値・旧形式でもホームが落ちないよう、必ず配列を返し不正な行は落とす。
+function parseSiteLinks(raw) {
+  let arr;
+  try { arr = JSON.parse(raw || '[]'); } catch (_) { return []; }
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map(item => ({
+      label: String(item && item.label || '').trim(),
+      url: safeHttpUrl(item && item.url || '')
+    }))
+    .filter(l => l.label && l.url);
+}
+
+// リンクカードの補足表示に使うホスト名（www. は省く）。解析できなければ空文字。
+function siteLinkHost(url) {
+  try { return new URL(url).hostname.replace(/^www\./i, ''); } catch (_) { return ''; }
 }
 
 // PartsList を新旧どちらの形式でも {name, presenters:[]} の配列に正規化する（読み取り専用用途）。
@@ -559,8 +588,8 @@ function showAdminAuthModal(onSuccess) {
     <div class="pw-overlay">
       <div class="pw-box" role="dialog" aria-modal="true" aria-labelledby="admin-auth-title">
         <h2 id="admin-auth-title">管理者認証</h2>
-        <p>幹部パスワードを入力してください。</p>
-        <input id="admin-pw-input" type="password" placeholder="幹部パスワード" autofocus>
+        <p>管理者モードのパスワードを入力してください。</p>
+        <input id="admin-pw-input" type="password" placeholder="管理者モードのパスワード" autofocus>
         <div id="admin-pw-error" class="pw-error" role="alert"></div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
           <button id="admin-pw-cancel" class="btn btn-secondary">キャンセル</button>
@@ -637,7 +666,7 @@ function showPasswordModal(onSuccess) {
       <div class="pw-box" role="dialog" aria-modal="true" aria-labelledby="pw-modal-title">
         <h2 id="pw-modal-title">ログイン</h2>
         <p>パスワードを入力してください。<br>
-          <span class="text-muted" style="font-size:0.8rem;">幹部パスワードを入力すると、自動的に管理者モードになります。</span>
+          <span class="text-muted" style="font-size:0.8rem;">管理者モードのパスワードを入力すると、自動的に管理者モードでログインします。</span>
         </p>
         <input id="pw-input" type="password" placeholder="パスワード" autofocus>
         <div id="pw-error" class="pw-error" role="alert"></div>

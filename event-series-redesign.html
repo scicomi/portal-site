@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<title>イベント別ページ 改善案プレビュー</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   event-series.html UI/UX 改善案プレビュー（本番非依存・単体で完結）
+   style.css は読み込まず、配色トークンだけ本番から引き写している。
+   ============================================================ */
+:root{
+  --primary:#464775; --primary-light:#6264a7; --primary-subtle:#f0eff7;
+  --bg:#f5f4f3; --card:#fff;
+  --text:#1a1a1a; --text-2:#605e5c; --text-3:#8a8886;
+  --border:#e1dfdd; --border-subtle:#f0f0f0; --bg-subtle:#f8f9fa;
+  --warn:#f59e0b; --warn-bg:#fffbeb; --warn-border:#fde68a; --warn-text:#92400e;
+  --ok:#107c10; --ok-bg:#ecfdf5; --ok-text:#065f46;
+  --danger:#d13438; --danger-bg:#fff5f5;
+  --r-sm:6px; --r-md:10px; --r-lg:14px; --r-full:9999px;
+  --sh-sm:0 1px 2px rgba(0,0,0,.06); --sh-md:0 2px 8px rgba(0,0,0,.08); --sh-lg:0 12px 32px rgba(0,0,0,.14);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font-family:'Noto Sans JP','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:14px;line-height:1.7;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4,p{margin:0}
+button{font-family:inherit;font-size:inherit;color:inherit;cursor:pointer}
+
+/* ---------- プレビューの外枠 ---------- */
+.rd-top{background:var(--primary);color:#fff;padding:26px 32px 22px}
+.rd-top .eyebrow{font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;opacity:.62;font-weight:600}
+.rd-top h1{font-size:1.32rem;font-weight:700;margin-top:6px;letter-spacing:.01em}
+.rd-top p{font-size:.85rem;opacity:.78;margin-top:6px;max-width:76ch}
+
+.rd-nav{position:sticky;top:0;z-index:60;background:rgba(255,255,255,.94);
+  backdrop-filter:blur(10px);border-bottom:1px solid var(--border);
+  display:flex;gap:6px;padding:10px 32px;overflow-x:auto}
+.rd-nav button{border:1px solid var(--border);background:#fff;border-radius:var(--r-full);
+  padding:7px 16px;font-size:.82rem;font-weight:600;color:var(--text-2);white-space:nowrap;
+  transition:all .15s}
+.rd-nav button:hover{border-color:var(--primary-light);background:var(--primary-subtle)}
+.rd-nav button.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.rd-nav .num{opacity:.5;margin-right:7px;font-variant-numeric:tabular-nums}
+.rd-nav button.on .num{opacity:.66}
+
+.rd-wrap{padding:28px 32px 72px;max-width:1180px;margin:0 auto}
+.rd-plan{display:none}
+.rd-plan.on{display:block;animation:fade .28s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+.rd-brief{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:22px;
+  background:#fff;border:1px solid var(--border);border-left:3px solid var(--primary);
+  border-radius:var(--r-md);padding:20px 24px;margin-bottom:22px;box-shadow:var(--sh-sm)}
+.rd-brief h2{font-size:1.06rem;font-weight:700;color:var(--primary);letter-spacing:.01em}
+.rd-brief .lede{font-size:.85rem;color:var(--text-2);margin-top:7px}
+.rd-brief dt{font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--text-3);font-weight:700;margin-bottom:5px}
+.rd-brief dd{margin:0;font-size:.82rem;color:var(--text-2)}
+.rd-brief dd + dt{margin-top:13px}
+@media(max-width:900px){.rd-brief{grid-template-columns:1fr}}
+
+.rd-stage{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:22px;box-shadow:var(--sh-md);position:relative}
+.rd-stage::before{content:'プレビュー';position:absolute;top:-9px;left:22px;background:var(--bg);
+  padding:0 9px;font-size:.66rem;letter-spacing:.16em;color:var(--text-3);font-weight:700}
+
+/* ---------- モック内で共有する部品 ---------- */
+.m-crumb{font-size:.8rem;color:var(--primary-light);margin-bottom:14px;font-weight:500}
+.m-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);box-shadow:var(--sh-sm)}
+.m-hero{background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);
+  padding:20px 24px;box-shadow:var(--sh-sm)}
+.m-hero-row{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.m-hero h2{font-size:1.42rem;font-weight:700;letter-spacing:.01em}
+.m-hero .sub{font-size:.82rem;color:var(--text-3);margin-top:3px}
+.m-hero-actions{margin-left:auto;display:flex;gap:8px}
+
+.btn{border:1px solid var(--border);background:#fff;border-radius:var(--r-sm);
+  padding:6px 15px;font-size:.8rem;font-weight:600;color:var(--text-2);transition:all .15s}
+.btn:hover{border-color:var(--primary-light);color:var(--primary);background:var(--primary-subtle)}
+.btn-fill{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn-fill:hover{background:var(--primary-light);border-color:var(--primary-light);color:#fff}
+
+.chip{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r-full);
+  padding:2px 11px;font-size:.72rem;font-weight:700;letter-spacing:.02em}
+.chip-up{background:var(--primary-subtle);color:var(--primary)}
+.chip-warn{background:var(--warn-bg);color:var(--warn-text);border:1px solid var(--warn-border)}
+.chip-ok{background:var(--ok-bg);color:var(--ok-text)}
+.chip-mut{background:var(--bg-subtle);color:var(--text-3);border:1px solid var(--border)}
+
+.sec-title{font-size:.95rem;font-weight:700;color:var(--primary);
+  padding-bottom:9px;border-bottom:1px solid var(--border-subtle);margin-bottom:14px;
+  display:flex;align-items:center;gap:10px}
+.sec-title .count{margin-left:auto;font-size:.72rem;font-weight:600;color:var(--text-3);
+  background:var(--bg-subtle);border-radius:var(--r-full);padding:1px 9px}
+
+.kv{width:100%;border-collapse:collapse;font-size:.85rem}
+.kv th{text-align:left;font-weight:600;color:var(--text-3);width:104px;
+  padding:7px 12px 7px 0;vertical-align:top;font-size:.8rem;white-space:nowrap}
+.kv td{padding:7px 0;border-bottom:1px solid var(--border-subtle)}
+.kv tr:last-child td,.kv tr:last-child th{border-bottom:none}
+
+.tag{display:inline-flex;align-items:center;gap:6px;background:var(--bg-subtle);
+  border:1px solid var(--border);border-radius:var(--r-sm);padding:4px 10px;
+  font-size:.8rem;margin:2px 5px 2px 0}
+.tag .who{color:var(--text-3);font-size:.75rem}
+
+.doc-row{display:flex;align-items:center;gap:11px;flex-wrap:wrap;padding:9px 0;
+  border-bottom:1px solid var(--border-subtle);font-size:.83rem}
+.doc-row:last-child{border-bottom:none}
+.doc-row .nm{font-weight:700;min-width:56px}
+.doc-row .meta{color:var(--text-2)}
+.doc-row select{margin-left:auto;border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:4px 9px;font-size:.78rem;font-family:inherit;background:#fff}
+
+.att-bar{display:flex;height:9px;border-radius:var(--r-full);overflow:hidden;background:var(--border-subtle)}
+.att-bar i{display:block}
+.att-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:11px;font-size:.79rem;color:var(--text-2)}
+.att-legend span{display:inline-flex;align-items:center;gap:6px}
+.att-legend b{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat-box{background:var(--bg-subtle);border:1px solid var(--border);border-radius:var(--r-md);
+  padding:14px 16px}
+.stat-box .lbl{font-size:.74rem;color:var(--text-3);font-weight:600}
+.stat-box .num{font-size:1.62rem;font-weight:700;color:var(--primary);line-height:1.3;
+  font-variant-numeric:tabular-nums}
+.stat-box .num small{font-size:.78rem;font-weight:600;margin-left:3px;color:var(--text-2)}
+
+.bar-row{display:flex;align-items:center;gap:11px;font-size:.8rem;margin-bottom:7px}
+.bar-row .lb{width:132px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-row .tr{flex:1;height:7px;background:var(--border-subtle);border-radius:var(--r-full);overflow:hidden}
+.bar-row .fl{height:100%;background:var(--primary-light);border-radius:var(--r-full)}
+.bar-row .vl{width:34px;text-align:right;color:var(--text-3);font-size:.76rem;font-variant-numeric:tabular-nums}
+
+.fb{border-left:2px solid var(--border);padding:8px 0 8px 13px;margin-bottom:9px;font-size:.83rem}
+.fb.pos{border-left-color:var(--ok)}
+.fb.ref{border-left-color:var(--warn)}
+.fb .hd{font-size:.72rem;font-weight:700;color:var(--text-3);margin-bottom:2px;
+  display:flex;gap:9px;align-items:center}
+.fb .hd .src{font-weight:600;color:var(--primary-light)}
+
+.empty{text-align:center;color:var(--text-3);font-size:.83rem;padding:26px 0}
+
+/* ---------- ハイブリッド案（案1の軸分離 × 案3のフラットタブ） ---------- */
+.hy-tabs{display:flex;align-items:stretch;background:var(--card);border:1px solid var(--border);
+  border-bottom:none;border-radius:var(--r-md) var(--r-md) 0 0;padding:0 8px;margin-top:16px;
+  box-shadow:var(--sh-sm);overflow-x:auto}
+.hy-zone{display:flex;align-items:stretch}
+.hy-zlabel{align-self:center;font-size:.66rem;letter-spacing:.13em;font-weight:700;
+  color:var(--text-3);padding:0 12px 0 6px;white-space:nowrap;transition:color .15s}
+.hy-zone.act .hy-zlabel{color:var(--primary-light)}
+.hy-sep{width:1px;background:var(--border);margin:12px 10px;flex-shrink:0}
+.hy-tab{border:none;background:none;padding:14px 19px;font-size:.88rem;font-weight:600;
+  color:var(--text-2);border-bottom:3px solid transparent;margin-bottom:-1px;
+  display:flex;align-items:center;gap:8px;white-space:nowrap;transition:all .15s}
+.hy-tab:hover{color:var(--text)}
+.hy-tab.on{color:var(--primary);border-bottom-color:var(--primary);font-weight:700}
+.hy-tab .bdg{font-size:.67rem;font-weight:700;border-radius:var(--r-full);padding:0 7px;
+  line-height:1.65;background:var(--warn-bg);color:var(--warn-text);border:1px solid var(--warn-border)}
+
+/* 対象範囲バー: 「この回」か「全期間」かを常に言葉で示す */
+.hy-ctx{display:flex;align-items:center;gap:12px;background:var(--card);
+  border:1px solid var(--border);border-radius:0 0 var(--r-md) var(--r-md);
+  padding:11px 16px;margin-bottom:16px;box-shadow:var(--sh-sm)}
+.hy-ctx .nav{border:1px solid var(--border);background:#fff;border-radius:var(--r-sm);
+  width:30px;height:30px;display:grid;place-items:center;color:var(--text-2);font-size:.8rem;flex-shrink:0}
+.hy-ctx .nav:hover{border-color:var(--primary-light);color:var(--primary)}
+.hy-ctx .cur{font-weight:700;font-size:.92rem;line-height:1.35}
+.hy-ctx .cur small{display:block;font-weight:500;font-size:.75rem;color:var(--text-3)}
+.hy-ctx select{margin-left:auto;border:1px solid var(--border);border-radius:var(--r-full);
+  padding:5px 13px;font-size:.79rem;font-family:inherit;font-weight:600;
+  background:var(--bg-subtle);color:var(--text-2)}
+.hy-scope{display:flex;align-items:center;gap:9px;font-size:.86rem;font-weight:700;color:var(--primary)}
+.hy-scope .mk{width:7px;height:7px;border-radius:50%;background:var(--primary-light)}
+.hy-scope-sub{font-size:.78rem;color:var(--text-3)}
+.hy-pane{display:none;flex-direction:column;gap:14px}
+.hy-pane.on{display:flex}
+.hy-pane > .m-card{padding:18px 22px}
+.rd-nav-sep{width:1px;background:var(--border);margin:2px 8px;flex-shrink:0}
+
+/* ---------- 案1: 2軸セグメント ---------- */
+.p1-seg{display:inline-flex;background:var(--bg-subtle);border:1px solid var(--border);
+  border-radius:var(--r-full);padding:4px;gap:3px;margin:18px 0 16px}
+.p1-seg button{border:none;background:none;border-radius:var(--r-full);padding:8px 26px;
+  font-size:.87rem;font-weight:700;color:var(--text-2);transition:all .18s}
+.p1-seg button.on{background:var(--primary);color:#fff;box-shadow:var(--sh-sm)}
+.p1-occ{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r-md);padding:11px 16px;margin-bottom:16px;box-shadow:var(--sh-sm)}
+.p1-occ .nav{border:1px solid var(--border);background:#fff;border-radius:var(--r-sm);
+  width:30px;height:30px;display:grid;place-items:center;color:var(--text-2);font-size:.8rem}
+.p1-occ .nav:hover{border-color:var(--primary-light);color:var(--primary)}
+.p1-occ .cur{font-weight:700;font-size:.92rem}
+.p1-occ .cur small{display:block;font-weight:500;font-size:.75rem;color:var(--text-3)}
+.p1-occ select{margin-left:auto;border:1px solid var(--border);border-radius:var(--r-full);
+  padding:5px 13px;font-size:.79rem;font-family:inherit;font-weight:600;background:var(--bg-subtle);color:var(--text-2)}
+.p1-anchors{display:flex;gap:7px;position:sticky;top:52px;z-index:20;
+  background:rgba(245,244,243,.93);backdrop-filter:blur(8px);padding:9px 0;margin-bottom:4px}
+.p1-anchors a{text-decoration:none;border:1px solid var(--border);background:#fff;
+  border-radius:var(--r-full);padding:5px 15px;font-size:.79rem;font-weight:600;color:var(--text-2)}
+.p1-anchors a.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.p1-body{display:flex;flex-direction:column;gap:14px}
+.p1-body > .m-card{padding:18px 22px}
+
+/* ---------- 案2: 単一ページ + 目次 ---------- */
+.p2-grid{display:grid;grid-template-columns:1fr 218px;gap:24px;align-items:start}
+.p2-scroll{max-height:600px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;
+  padding-right:6px;scroll-behavior:smooth}
+.p2-scroll::-webkit-scrollbar{width:7px}
+.p2-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:var(--r-full)}
+.p2-scroll > .m-card{padding:18px 22px;scroll-margin-top:8px}
+.p2-toc{position:sticky;top:60px;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r-md);padding:15px 8px 15px 0;box-shadow:var(--sh-sm)}
+.p2-toc .hd{font-size:.67rem;letter-spacing:.15em;color:var(--text-3);font-weight:700;
+  padding:0 16px 10px}
+.p2-toc a{display:block;text-decoration:none;font-size:.81rem;color:var(--text-2);
+  padding:6px 16px;border-left:2px solid transparent;transition:all .15s}
+.p2-toc a:hover{color:var(--primary);background:var(--primary-subtle)}
+.p2-toc a.on{color:var(--primary);font-weight:700;border-left-color:var(--primary);
+  background:var(--primary-subtle)}
+.p2-toc .grp{font-size:.67rem;letter-spacing:.13em;color:var(--text-3);font-weight:700;
+  padding:12px 16px 4px;border-top:1px solid var(--border-subtle);margin-top:8px}
+@media(max-width:860px){.p2-grid{grid-template-columns:1fr}.p2-toc{display:none}}
+
+/* ---------- 案3: フラット5タブ ---------- */
+.p3-tabs{display:flex;gap:2px;border-bottom:2px solid var(--border);margin:16px 0 0;
+  background:var(--card);border-radius:var(--r-md) var(--r-md) 0 0;padding:0 8px}
+.p3-tabs button{border:none;background:none;padding:13px 21px;font-size:.89rem;font-weight:600;
+  color:var(--text-2);border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .15s;
+  display:flex;align-items:center;gap:8px}
+.p3-tabs button:hover{color:var(--text)}
+.p3-tabs button.on{color:var(--primary);border-bottom-color:var(--primary);font-weight:700}
+.p3-tabs .bdg{font-size:.68rem;font-weight:700;background:var(--warn-bg);color:var(--warn-text);
+  border:1px solid var(--warn-border);border-radius:var(--r-full);padding:0 7px;line-height:1.6}
+.p3-pane{display:none;padding-top:16px;flex-direction:column;gap:14px}
+.p3-pane.on{display:flex}
+.p3-pane > .m-card{padding:18px 22px}
+
+/* ---------- 案4: ダッシュボード + ドロワー ---------- */
+.p4-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:14px;margin-top:16px}
+.p4-tile{background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);
+  padding:17px 19px;text-align:left;box-shadow:var(--sh-sm);transition:all .18s;
+  display:flex;flex-direction:column;gap:9px;min-height:132px}
+.p4-tile:hover{border-color:var(--primary-light);box-shadow:var(--sh-md);transform:translateY(-2px)}
+.p4-tile .hd{font-size:.8rem;font-weight:700;color:var(--primary);display:flex;align-items:center;gap:8px}
+.p4-tile .hd .arw{margin-left:auto;color:var(--text-3);font-size:.75rem}
+.p4-tile .big{font-size:1.5rem;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums}
+.p4-tile .note{font-size:.78rem;color:var(--text-2);margin-top:auto}
+.p4-tile.alert{border-left:3px solid var(--warn)}
+.p4-drawer{position:fixed;inset:0;z-index:100;display:none}
+.p4-drawer.on{display:block}
+.p4-drawer .scrim{position:absolute;inset:0;background:rgba(26,24,38,.42);animation:fade .2s}
+.p4-drawer .panel{position:absolute;top:0;right:0;bottom:0;width:min(520px,92vw);background:var(--card);
+  box-shadow:var(--sh-lg);display:flex;flex-direction:column;animation:slide .26s cubic-bezier(.22,.8,.3,1)}
+@keyframes slide{from{transform:translateX(100%)}to{transform:none}}
+.p4-drawer .ph{display:flex;align-items:center;gap:12px;padding:19px 24px;border-bottom:1px solid var(--border)}
+.p4-drawer .ph h3{font-size:1.02rem;font-weight:700;color:var(--primary)}
+.p4-drawer .ph button{margin-left:auto;border:none;background:none;color:var(--text-3);font-size:1.1rem;
+  width:30px;height:30px;border-radius:var(--r-sm)}
+.p4-drawer .ph button:hover{background:var(--bg-subtle);color:var(--text)}
+.p4-drawer .pb{padding:22px 24px;overflow-y:auto}
+
+/* ---------- 案5: タイムライン主導 ---------- */
+.p5-grid{display:grid;grid-template-columns:262px 1fr;gap:22px;align-items:start;margin-top:16px}
+.p5-rail{background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);
+  padding:15px 0;box-shadow:var(--sh-sm);max-height:580px;overflow-y:auto}
+.p5-rail .hd{font-size:.67rem;letter-spacing:.15em;color:var(--text-3);font-weight:700;padding:0 18px 11px}
+.p5-item{display:flex;gap:13px;padding:11px 18px;width:100%;border:none;background:none;
+  text-align:left;position:relative;transition:background .15s}
+.p5-item:hover{background:var(--bg-subtle)}
+.p5-item.on{background:var(--primary-subtle)}
+.p5-item .dot{width:9px;height:9px;border-radius:50%;background:var(--border);margin-top:6px;flex-shrink:0;
+  box-shadow:0 0 0 3px var(--card)}
+.p5-item.on .dot{background:var(--primary)}
+.p5-item.up .dot{background:var(--warn)}
+.p5-item::before{content:'';position:absolute;left:22.5px;top:0;bottom:0;width:1px;background:var(--border-subtle)}
+.p5-item:first-of-type::before{top:14px}
+.p5-item:last-child::before{bottom:calc(100% - 14px)}
+.p5-item .txt{min-width:0}
+.p5-item .d{font-size:.84rem;font-weight:700;font-variant-numeric:tabular-nums}
+.p5-item.on .d{color:var(--primary)}
+.p5-item .s{font-size:.74rem;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.p5-main{display:flex;flex-direction:column;gap:14px}
+.p5-main > .m-card{padding:18px 22px}
+.p5-switch{display:flex;gap:6px;margin-bottom:2px}
+.p5-switch button{border:1px solid var(--border);background:#fff;border-radius:var(--r-full);
+  padding:5px 15px;font-size:.79rem;font-weight:600;color:var(--text-2)}
+.p5-switch button.on{background:var(--primary);border-color:var(--primary);color:#fff}
+@media(max-width:860px){.p5-grid{grid-template-columns:1fr}.p5-rail{max-height:220px}}
+
+/* ---------- 案6: ワークフロー ---------- */
+.p6-steps{display:flex;gap:0;margin:18px 0 16px;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r-md);overflow:hidden;box-shadow:var(--sh-sm)}
+.p6-steps button{flex:1;border:none;background:none;padding:15px 18px;text-align:left;
+  position:relative;transition:background .15s;border-right:1px solid var(--border-subtle)}
+.p6-steps button:last-child{border-right:none}
+.p6-steps button:hover{background:var(--bg-subtle)}
+.p6-steps button.on{background:var(--primary-subtle)}
+.p6-steps button.on::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--primary)}
+.p6-steps .n{font-size:.68rem;letter-spacing:.14em;color:var(--text-3);font-weight:700}
+.p6-steps button.on .n{color:var(--primary-light)}
+.p6-steps .t{font-size:.94rem;font-weight:700;margin-top:2px}
+.p6-steps button.on .t{color:var(--primary)}
+.p6-steps .st{font-size:.74rem;color:var(--text-3);margin-top:3px}
+.p6-steps .st.warn{color:var(--warn-text);font-weight:600}
+.p6-steps .st.done{color:var(--ok-text);font-weight:600}
+.p6-pane{display:none;flex-direction:column;gap:14px}
+.p6-pane.on{display:flex}
+.p6-pane > .m-card{padding:18px 22px}
+.p6-task{display:flex;align-items:flex-start;gap:12px;padding:11px 0;border-bottom:1px solid var(--border-subtle)}
+.p6-task:last-child{border-bottom:none}
+.p6-task .mk{width:17px;height:17px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;margin-top:3px;
+  display:grid;place-items:center;font-size:.62rem;color:#fff}
+.p6-task.done .mk{background:var(--ok);border-color:var(--ok)}
+.p6-task.todo .mk{border-color:var(--warn);background:var(--warn-bg)}
+.p6-task .ti{font-size:.85rem;font-weight:600}
+.p6-task .tm{font-size:.77rem;color:var(--text-3)}
+.p6-task .go{margin-left:auto;font-size:.77rem;font-weight:600;color:var(--primary-light);
+  border:none;background:none;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<div class="rd-top">
+  <div class="eyebrow">event-series.html — redesign study</div>
+  <h1>イベント別ページ 改善案</h1>
+  <p>現状は「大タブ3 → 子タブ2〜4 → 孫タブ可変」の3階層で、さらに<b>この回の情報</b>と<b>シリーズ全体の情報</b>が同じ階層に混在しています。6案とも本番ファイルには触れず、この1ファイルだけで完結しています。</p>
+</div>
+
+<nav class="rd-nav" id="rdNav">
+  <button class="on" data-p="h"><span class="num">統合</span>ハイブリッド（案1×案3）</button>
+  <span class="rd-nav-sep"></span>
+  <button data-p="1"><span class="num">案1</span>2軸セグメント</button>
+  <button data-p="2"><span class="num">案2</span>単一ページ + 目次</button>
+  <button data-p="3"><span class="num">案3</span>フラット5タブ</button>
+  <button data-p="4"><span class="num">案4</span>ダッシュボード</button>
+  <button data-p="5"><span class="num">案5</span>タイムライン主導</button>
+  <button data-p="6"><span class="num">案6</span>ワークフロー</button>
+</nav>
+
+<div class="rd-wrap">
+
+<!-- ======================= ハイブリッド案 ======================= -->
+<section class="rd-plan on" data-plan="h">
+  <div class="rd-brief">
+    <div>
+      <h2>ハイブリッド案　案1 × 案3</h2>
+      <p class="lede">案1の「この回 / シリーズ全体」という<b>軸の分離</b>を、案3の<b>1段フラットタブ</b>の中で表現する。タブは1列のまま、区切り線とゾーン名で2つの意味に分かれている。入れ子はゼロ、行き先は常に5つとも見えている。</p>
+    </div>
+    <div>
+      <dl>
+        <dt>案1から</dt><dd>この回 / シリーズ全体の軸分離。開催回セレクタの常設。</dd>
+        <dt>案3から</dt><dd>入れ子なしの1段タブ。未処理件数のバッジ。</dd>
+      </dl>
+    </div>
+    <div>
+      <dl>
+        <dt>両案を超える点</dt><dd>タブ直下の<b>対象範囲バー</b>が「この回を見ているのか、全7回を見ているのか」を常に明示する。案1の2クリックが1クリックになる。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="rd-stage">
+    <div class="m-crumb">← イベント別一覧　/　予定一覧へ</div>
+    <div class="m-hero">
+      <div class="m-hero-row">
+        <div><h2>南公民館</h2><p class="sub">通算7回開催（2023年〜）</p></div>
+        <div class="m-hero-actions"><button class="btn">編集</button><button class="btn">複製</button></div>
+      </div>
+    </div>
+
+    <div class="hy-tabs" id="hyTabs">
+      <div class="hy-zone act" data-zone="occ">
+        <span class="hy-zlabel">この回</span>
+        <button class="hy-tab on" data-t="sum" data-z="occ">概要<span class="bdg">2</span></button>
+        <button class="hy-tab" data-t="att" data-z="occ">出欠<span class="bdg">6</span></button>
+        <button class="hy-tab" data-t="fb" data-z="occ">振り返り</button>
+      </div>
+      <span class="hy-sep"></span>
+      <div class="hy-zone" data-zone="all">
+        <span class="hy-zlabel">シリーズ全体</span>
+        <button class="hy-tab" data-t="venue" data-z="all">会場</button>
+        <button class="hy-tab" data-t="hist" data-z="all">履歴・統計</button>
+      </div>
+    </div>
+
+    <div class="hy-ctx" id="hyCtx"></div>
+
+    <!-- この回: 概要 -->
+    <div class="hy-pane on" data-hy="sum">
+      <div class="m-card">
+        <div class="sec-title">内容<span id="hySumChip" class="chip chip-up" style="margin-left:auto">開催予定</span></div>
+        <table class="kv">
+          <tr><th>日にち</th><td id="hySumDate">2026-09-19（土）</td></tr>
+          <tr><th>時間</th><td>10:00 〜 15:00　<span style="color:var(--text-3)">集合 9:15 / 解散 15:45</span></td></tr>
+          <tr><th>場所</th><td>南公民館　<span style="color:var(--primary-light);font-size:.78rem;cursor:pointer" data-goto="venue">会場タブへ →</span></td></tr>
+          <tr><th>対象・人数</th><td>小学生とその保護者　約60名</td></tr>
+          <tr><th>実験・発表者</th><td>
+            <span class="tag">くるくるステンドグラス <span class="who">佐藤 天翔</span></span>
+            <span class="tag">バンジーチャイム <span class="who">根岸 悠杜</span></span></td></tr>
+          <tr><th>備考</th><td>体育館の後方half面を使用。長机は会場側で用意あり。</td></tr>
+        </table>
+      </div>
+      <div class="m-card">
+        <div class="sec-title">書類<span id="hyDocChip" class="chip chip-warn" style="margin-left:auto">未提出 2件</span></div>
+        <div class="doc-row"><span class="nm">許可願</span>
+          <span class="meta" id="hyDocKyoka">期限 <b>2026-09-09</b>（あと8日）　担当 根岸 悠杜</span>
+          <select><option>未提出</option><option>コーディネーター提出済</option><option>提出済</option></select></div>
+        <div class="doc-row"><span class="nm">報告書</span>
+          <span class="meta" id="hyDocRep">期限 <b>2026-09-26</b>　担当 佐藤 天翔</span>
+          <select><option>未提出</option><option>提出済</option></select></div>
+      </div>
+      <div class="m-card">
+        <div class="sec-title">イベント後に記入</div>
+        <table class="kv">
+          <tr><th>来場者数</th><td id="hyVisitors"><span style="color:var(--text-3)">未記入</span></td></tr>
+          <tr><th>参加メンバー数</th><td id="hyParticipants"><span style="color:var(--text-3)">未記入</span></td></tr>
+          <tr><th>広報担当</th><td><span class="tag">Twitter <span class="who">未定</span></span><span class="tag">Instagram <span class="who">未定</span></span></td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- この回: 出欠 -->
+    <div class="hy-pane" data-hy="att">
+      <div class="m-card">
+        <div class="sec-title">出欠<span class="count" id="hyAttCount">23名中 17名回答</span></div>
+        <div class="att-bar" id="hyAttBar"></div>
+        <div class="att-legend" id="hyAttLegend"></div>
+      </div>
+      <div class="m-card">
+        <div class="sec-title">回答一覧<span class="count" id="hyAttDue">締切 2026-09-12</span></div>
+        <table class="kv" id="hyAttTable"></table>
+      </div>
+    </div>
+
+    <!-- この回: 振り返り -->
+    <div class="hy-pane" data-hy="fb">
+      <div class="m-card">
+        <div class="sec-title">この回の振り返り<button class="btn btn-fill" style="margin-left:auto">記入する</button></div>
+        <p style="font-size:.83rem;color:var(--text-2);margin-bottom:13px">
+          「記入」と「表示」を1か所に統合。実験ごと・会場運営ごとの内容がそのまま並ぶ。</p>
+        <div class="fb pos"><div class="hd">良かった点<span class="src">くるくるステンドグラス</span></div>
+          偏光板の見本を先に配ったことで、説明が短く済んだ。</div>
+        <div class="fb pos"><div class="hd">良かった点<span class="src">バンジーチャイム</span></div>
+          音の大きさが会場に合っていた。</div>
+        <div class="fb ref"><div class="hd">改善点<span class="src">会場・運営</span></div>
+          受付の動線が入口と重なり滞留した。次回は机の位置を変える。</div>
+      </div>
+    </div>
+
+    <!-- シリーズ全体: 会場 -->
+    <div class="hy-pane" data-hy="venue">
+      <div class="m-card">
+        <div class="sec-title">会場情報・緊急連絡先<button class="btn" style="margin-left:auto">編集</button></div>
+        <table class="kv">
+          <tr><th>施設名</th><td>南公民館</td></tr>
+          <tr><th>郵便番号</th><td>〒017-0897</td></tr>
+          <tr><th>住所</th><td>秋田県大館市桜町1-1</td></tr>
+          <tr><th>連絡先</th><td>0186-00-0000</td></tr>
+          <tr><th>警察署</th><td>0186-00-1111</td></tr>
+          <tr><th>病院・診療所</th><td>0186-00-2222</td></tr>
+        </table>
+      </div>
+      <div class="m-card">
+        <div class="sec-title">会場運営の振り返り<span class="count">全7回から</span></div>
+        <div class="fb ref"><div class="hd">改善点<span class="src">2026/9/19　7回目</span></div>受付の動線が入口と重なり滞留した。</div>
+        <div class="fb pos"><div class="hd">良かった点<span class="src">2024/9/14　6回目</span></div>控室が近く、荷物の出し入れが楽だった。</div>
+      </div>
+    </div>
+
+    <!-- シリーズ全体: 履歴・統計 -->
+    <div class="hy-pane" data-hy="hist">
+      <div class="m-card">
+        <div class="sec-title">統計</div>
+        <div class="stat-grid">
+          <div class="stat-box"><div class="lbl">開催回数</div><div class="num">7<small>回</small></div></div>
+          <div class="stat-box"><div class="lbl">振り返り記入率</div><div class="num">71<small>%</small></div></div>
+          <div class="stat-box"><div class="lbl">累計来場者</div><div class="num">412<small>名</small></div></div>
+        </div>
+      </div>
+      <div class="m-card">
+        <div class="sec-title">よく使われた実験</div>
+        <div class="bar-row"><span class="lb">くるくるステンドグラス</span><span class="tr"><span class="fl" style="width:86%"></span></span><span class="vl">6回</span></div>
+        <div class="bar-row"><span class="lb">バンジーチャイム</span><span class="tr"><span class="fl" style="width:57%"></span></span><span class="vl">4回</span></div>
+        <div class="bar-row"><span class="lb">人工いくら</span><span class="tr"><span class="fl" style="width:29%"></span></span><span class="vl">2回</span></div>
+      </div>
+      <div class="m-card">
+        <div class="sec-title">開催履歴<span class="count">7件</span></div>
+        <table class="kv">
+          <tr><th>2026-09-19</th><td>7回目・予定　くるくるステンドグラス / バンジーチャイム　<span style="color:var(--primary-light);font-size:.78rem;cursor:pointer" data-occ="7">この回を開く →</span></td></tr>
+          <tr><th>2024-09-14</th><td>6回目　来場 68名　振り返り 2件　<span style="color:var(--primary-light);font-size:.78rem;cursor:pointer" data-occ="6">この回を開く →</span></td></tr>
+          <tr><th>2023-09-16</th><td>5回目　来場 54名　振り返り 1件　<span style="color:var(--primary-light);font-size:.78rem;cursor:pointer" data-occ="5">この回を開く →</span></td></tr>
+          <tr><th>2023-05-27</th><td>4回目　来場 61名　<span style="color:var(--primary-light);font-size:.78rem;cursor:pointer" data-occ="4">この回を開く →</span></td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 案1 ============================ -->
+<section class="rd-plan" data-plan="1">
+  <div class="rd-brief">
+    <div>
+      <h2>案1　2軸セグメント</h2>
+      <p class="lede">情報を「この回」と「シリーズ全体」の2つに割り切り、タブを最上位の2択だけに減らす。各セグメントの中は1枚のページで、タブは一切使わない。</p>
+    </div>
+    <div>
+      <dl>
+        <dt>階層</dt><dd>3階層 → <b>1階層（2択）</b></dd>
+        <dt>導線</dt><dd>開催回セレクタを最上部に固定。「今どの回を見ているか」が常に視界に入る。</dd>
+      </dl>
+    </div>
+    <div>
+      <dl>
+        <dt>向く場面</dt><dd>迷わせないことを最優先する場合。現状の構造からの移行コストも小さい。</dd>
+        <dt>留意点</dt><dd>「この回」が縦に長くなるため、追従するアンカーが前提。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="rd-stage">
+    <div class="m-crumb">← イベント別一覧　/　予定一覧へ</div>
+    <div class="m-hero">
+      <div class="m-hero-row">
+        <div>
+          <h2>南公民館</h2>
+          <p class="sub">通算7回開催（2023年〜）</p>
+        </div>
+        <div class="m-hero-actions">
+          <button class="btn">編集</button><button class="btn">複製</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="p1-seg" id="p1seg">
+      <button class="on" data-s="occ">この回</button>
+      <button data-s="all">シリーズ全体</button>
+    </div>
+
+    <div data-p1pane="occ">
+      <div class="p1-occ">
+        <button class="nav">‹</button>
+        <div class="cur">2026/9/19（土）<small>7回目・開催予定</small></div>
+        <button class="nav">›</button>
+        <select>
+          <option>7回目 2026/9/19（土）・予定</option>
+          <option>6回目 2024/9/14（土）</option>
+          <option>5回目 2023/9/16（土）</option>
+        </select>
+      </div>
+
+      <div class="p1-anchors" id="p1anch">
+        <a href="#" class="on">内容</a><a href="#">書類</a><a href="#">出欠</a><a href="#">振り返り</a>
+      </div>
+
+      <div class="p1-body">
+        <div class="m-card">
+          <div class="sec-title">内容<span class="chip chip-up" style="margin-left:auto">開催予定</span></div>
+          <table class="kv">
+            <tr><th>日にち</th><td>2026-09-19（土）</td></tr>
+            <tr><th>時間</th><td>10:00 〜 15:00　<span style="color:var(--text-3)">集合 9:15 / 解散 15:45</span></td></tr>
+            <tr><th>場所</th><td>南公民館　<span style="color:var(--primary-light);font-size:.78rem">会場情報を見る →</span></td></tr>
+            <tr><th>対象・人数</th><td>小学生とその保護者　約60名</td></tr>
+            <tr><th>実験・発表者</th><td>
+              <span class="tag">くるくるステンドグラス <span class="who">佐藤 天翔</span></span>
+              <span class="tag">バンジーチャイム <span class="who">根岸 悠杜</span></span>
+            </td></tr>
+          </table>
+        </div>
+
+        <div class="m-card">
+          <div class="sec-title">書類<span class="chip chip-warn" style="margin-left:auto">未提出 2件</span></div>
+          <div class="doc-row"><span class="nm">許可願</span>
+            <span class="meta">期限 <b>2026-09-09</b>　担当 根岸 悠杜</span>
+            <select><option>未提出</option><option>提出済</option></select></div>
+          <div class="doc-row"><span class="nm">報告書</span>
+            <span class="meta">期限 <b>2026-09-26</b>　担当 佐藤 天翔</span>
+            <select><option>未提出</option><option>提出済</option></select></div>
+        </div>
+
+        <div class="m-card">
+          <div class="sec-title">出欠<span class="count">23名中 17名回答</span></div>
+          <div class="att-bar">
+            <i style="width:52%;background:var(--primary)"></i><i style="width:13%;background:var(--danger)"></i>
+            <i style="width:9%;background:var(--warn)"></i><i style="width:26%;background:var(--border)"></i>
+          </div>
+          <div class="att-legend">
+            <span><b style="background:var(--primary)"></b>出席 12</span>
+            <span><b style="background:var(--danger)"></b>欠席 3</span>
+            <span><b style="background:var(--warn)"></b>未定 2</span>
+            <span><b style="background:var(--border)"></b>未回答 6</span>
+            <span style="margin-left:auto"><button class="btn">自分の出欠を回答</button></span>
+          </div>
+        </div>
+
+        <div class="m-card">
+          <div class="sec-title">振り返り</div>
+          <p style="font-size:.83rem;color:var(--text-2);margin-bottom:12px">
+            記入と閲覧を1か所に統合。開催前は入力欄、開催後は記入済みの内容が同じ場所に並ぶ。</p>
+          <div class="fb pos"><div class="hd">良かった点<span class="src">くるくるステンドグラス</span></div>
+            偏光板の見本を先に配ったことで、説明が短く済んだ。</div>
+          <div class="fb ref"><div class="hd">改善点<span class="src">会場・運営</span></div>
+            受付の動線が入口と重なり滞留した。次回は机の位置を変える。</div>
+          <div style="text-align:right;margin-top:10px"><button class="btn btn-fill">この回の振り返りを記入</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div data-p1pane="all" style="display:none">
+      <div class="p1-body">
+        <div class="m-card">
+          <div class="sec-title">シリーズの実績</div>
+          <div class="stat-grid">
+            <div class="stat-box"><div class="lbl">開催回数</div><div class="num">7<small>回</small></div></div>
+            <div class="stat-box"><div class="lbl">振り返り記入率</div><div class="num">71<small>%</small></div></div>
+            <div class="stat-box"><div class="lbl">累計来場者</div><div class="num">412<small>名</small></div></div>
+          </div>
+        </div>
+        <div class="m-card">
+          <div class="sec-title">よく使われた実験</div>
+          <div class="bar-row"><span class="lb">くるくるステンドグラス</span><span class="tr"><span class="fl" style="width:86%"></span></span><span class="vl">6回</span></div>
+          <div class="bar-row"><span class="lb">バンジーチャイム</span><span class="tr"><span class="fl" style="width:57%"></span></span><span class="vl">4回</span></div>
+          <div class="bar-row"><span class="lb">人工いくら</span><span class="tr"><span class="fl" style="width:29%"></span></span><span class="vl">2回</span></div>
+        </div>
+        <div class="m-card">
+          <div class="sec-title">会場情報<button class="btn" style="margin-left:auto">編集</button></div>
+          <table class="kv">
+            <tr><th>住所</th><td>〒017-0897　秋田県大館市桜町1-1</td></tr>
+            <tr><th>連絡先</th><td>0186-00-0000</td></tr>
+            <tr><th>警察署</th><td>0186-00-1111</td></tr>
+            <tr><th>病院</th><td>0186-00-2222</td></tr>
+          </table>
+        </div>
+        <div class="m-card">
+          <div class="sec-title">開催履歴<span class="count">7件</span></div>
+          <table class="kv">
+            <tr><th>2026-09-19</th><td>7回目・予定　くるくるステンドグラス / バンジーチャイム</td></tr>
+            <tr><th>2024-09-14</th><td>6回目　来場 68名　振り返り 2件</td></tr>
+            <tr><th>2023-09-16</th><td>5回目　来場 54名　振り返り 1件</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 案2 ============================ -->
+<section class="rd-plan" data-plan="2">
+  <div class="rd-brief">
+    <div>
+      <h2>案2　単一ページ + 追従目次</h2>
+      <p class="lede">タブを全廃し、すべてを1本のページに縦積みする。右側の目次がスクロールに追従し、現在地を示しながらどこへでも1クリックで飛べる。</p>
+    </div>
+    <div>
+      <dl>
+        <dt>階層</dt><dd>3階層 → <b>0階層</b></dd>
+        <dt>導線</dt><dd>「隠れている情報」が無くなる。目次が全体像の地図として常に見えている。</dd>
+      </dl>
+    </div>
+    <div>
+      <dl>
+        <dt>向く場面</dt><dd>資料として通読・印刷したい場合。落ち着いた見え方になる。</dd>
+        <dt>留意点</dt><dd>縦に長い。スマートフォンでは目次が畳まれる前提。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="rd-stage">
+    <div class="m-hero" style="margin-bottom:16px">
+      <div class="m-hero-row">
+        <div><h2>南公民館</h2><p class="sub">通算7回開催（2023年〜）</p></div>
+        <div class="m-hero-actions">
+          <select style="border:1px solid var(--border);border-radius:var(--r-full);padding:6px 14px;font-family:inherit;font-size:.8rem;font-weight:600;background:var(--bg-subtle)">
+            <option>7回目 2026/9/19（土）・予定</option><option>6回目 2024/9/14（土）</option>
+          </select>
+          <button class="btn">編集</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="p2-grid">
+      <div class="p2-scroll" id="p2scroll">
+        <div class="m-card" id="s-info"><div class="sec-title">内容</div>
+          <table class="kv">
+            <tr><th>日にち</th><td>2026-09-19（土）<span class="chip chip-up" style="margin-left:8px">開催予定</span></td></tr>
+            <tr><th>時間</th><td>10:00 〜 15:00　集合 9:15 / 解散 15:45</td></tr>
+            <tr><th>場所</th><td>南公民館</td></tr>
+            <tr><th>実験・発表者</th><td><span class="tag">くるくるステンドグラス <span class="who">佐藤 天翔</span></span><span class="tag">バンジーチャイム <span class="who">根岸 悠杜</span></span></td></tr>
+          </table></div>
+        <div class="m-card" id="s-doc"><div class="sec-title">書類<span class="chip chip-warn" style="margin-left:auto">未提出 2件</span></div>
+          <div class="doc-row"><span class="nm">許可願</span><span class="meta">期限 2026-09-09　担当 根岸 悠杜</span><select><option>未提出</option></select></div>
+          <div class="doc-row"><span class="nm">報告書</span><span class="meta">期限 2026-09-26　担当 佐藤 天翔</span><select><option>未提出</option></select></div></div>
+        <div class="m-card" id="s-att"><div class="sec-title">出欠<span class="count">23名中 17名回答</span></div>
+          <div class="att-bar"><i style="width:52%;background:var(--primary)"></i><i style="width:13%;background:var(--danger)"></i><i style="width:9%;background:var(--warn)"></i><i style="width:26%;background:var(--border)"></i></div>
+          <div class="att-legend"><span><b style="background:var(--primary)"></b>出席 12</span><span><b style="background:var(--danger)"></b>欠席 3</span><span><b style="background:var(--warn)"></b>未定 2</span><span><b style="background:var(--border)"></b>未回答 6</span></div></div>
+        <div class="m-card" id="s-fb"><div class="sec-title">振り返り</div>
+          <div class="fb pos"><div class="hd">良かった点<span class="src">くるくるステンドグラス</span></div>偏光板の見本を先に配ったことで、説明が短く済んだ。</div>
+          <div class="fb ref"><div class="hd">改善点<span class="src">会場・運営</span></div>受付の動線が入口と重なり滞留した。</div></div>
+        <div class="m-card" id="s-venue"><div class="sec-title">会場情報<button class="btn" style="margin-left:auto">編集</button></div>
+          <table class="kv"><tr><th>住所</th><td>〒017-0897　秋田県大館市桜町1-1</td></tr>
+            <tr><th>連絡先</th><td>0186-00-0000</td></tr><tr><th>警察署</th><td>0186-00-1111</td></tr>
+            <tr><th>病院</th><td>0186-00-2222</td></tr></table></div>
+        <div class="m-card" id="s-stats"><div class="sec-title">統計</div>
+          <div class="stat-grid"><div class="stat-box"><div class="lbl">開催回数</div><div class="num">7<small>回</small></div></div>
+            <div class="stat-box"><div class="lbl">振り返り記入率</div><div class="num">71<small>%</small></div></div>
+            <div class="stat-box"><div class="lbl">累計来場者</div><div class="num">412<small>名</small></div></div></div></div>
+        <div class="m-card" id="s-hist"><div class="sec-title">開催履歴<span class="count">7件</span></div>
+          <table class="kv"><tr><th>2026-09-19</th><td>7回目・予定</td></tr><tr><th>2024-09-14</th><td>6回目　来場 68名</td></tr>
+            <tr><th>2023-09-16</th><td>5回目　来場 54名</td></tr><tr><th>2023-05-27</th><td>4回目　来場 61名</td></tr></table></div>
+      </div>
+
+      <nav class="p2-toc" id="p2toc">
+        <div class="hd">目次</div>
+        <div class="grp" style="border:none;margin:0;padding-top:0">この回</div>
+        <a href="#s-info" class="on">内容</a><a href="#s-doc">書類</a><a href="#s-att">出欠</a><a href="#s-fb">振り返り</a>
+        <div class="grp">シリーズ全体</div>
+        <a href="#s-venue">会場情報</a><a href="#s-stats">統計</a><a href="#s-hist">開催履歴</a>
+      </nav>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 案3 ============================ -->
+<section class="rd-plan" data-plan="3">
+  <div class="rd-brief">
+    <div>
+      <h2>案3　フラット5タブ</h2>
+      <p class="lede">タブという形は残したまま、入れ子をやめて1列に潰す。子タブ・孫タブは各ページ内の見出しやカードに格下げする。</p>
+    </div>
+    <div>
+      <dl>
+        <dt>階層</dt><dd>3階層 → <b>1階層（5択）</b></dd>
+        <dt>導線</dt><dd>タブに未処理件数のバッジを出し、次にやることをタブ自体が示す。</dd>
+      </dl>
+    </div>
+    <div>
+      <dl>
+        <dt>向く場面</dt><dd>現状の操作感を保ちたい場合。改修量が最も小さい。</dd>
+        <dt>留意点</dt><dd>「この回」と「全体」の境目はタブ名で示すだけなので、案1ほど明確ではない。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="rd-stage">
+    <div class="m-hero">
+      <div class="m-hero-row">
+        <div><h2>南公民館</h2><p class="sub">通算7回開催（2023年〜）</p></div>
+        <div class="m-hero-actions">
+          <select style="border:1px solid var(--border);border-radius:var(--r-full);padding:6px 14px;font-family:inherit;font-size:.8rem;font-weight:600;background:var(--bg-subtle)">
+            <option>7回目 2026/9/19（土）・予定</option><option>6回目 2024/9/14（土）</option>
+          </select>
+          <button class="btn">編集</button><button class="btn">複製</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="p3-tabs" id="p3tabs">
+      <button class="on" data-t="a">概要</button>
+      <button data-t="b">出欠<span class="bdg">6</span></button>
+      <button data-t="c">振り返り</button>
+      <button data-t="d">会場</button>
+      <button data-t="e">履歴・統計</button>
+    </div>
+
+    <div class="p3-pane on" data-p3="a">
+      <div class="m-card"><div class="sec-title">内容</div>
+        <table class="kv">
+          <tr><th>日にち</th><td>2026-09-19（土）<span class="chip chip-up" style="margin-left:8px">開催予定</span></td></tr>
+          <tr><th>時間</th><td>10:00 〜 15:00　集合 9:15 / 解散 15:45</td></tr>
+          <tr><th>場所</th><td>南公民館</td></tr>
+          <tr><th>対象・人数</th><td>小学生とその保護者　約60名</td></tr>
+          <tr><th>実験・発表者</th><td><span class="tag">くるくるステンドグラス <span class="who">佐藤 天翔</span></span><span class="tag">バンジーチャイム <span class="who">根岸 悠杜</span></span></td></tr>
+        </table></div>
+      <div class="m-card"><div class="sec-title">書類<span class="chip chip-warn" style="margin-left:auto">未提出 2件</span></div>
+        <div class="doc-row"><span class="nm">許可願</span><span class="meta">期限 2026-09-09　担当 根岸 悠杜</span><select><option>未提出</option></select></div>
+        <div class="doc-row"><span class="nm">報告書</span><span class="meta">期限 2026-09-26　担当 佐藤 天翔</span><select><option>未提出</option></select></div></div>
+      <div class="m-card"><div class="sec-title">イベント後に記入</div>
+        <table class="kv"><tr><th>来場者数</th><td>未記入</td></tr><tr><th>参加メンバー数</th><td>未記入</td></tr></table></div>
+    </div>
+    <div class="p3-pane" data-p3="b">
+      <div class="m-card"><div class="sec-title">出欠<span class="count">23名中 17名回答</span></div>
+        <div class="att-bar"><i style="width:52%;background:var(--primary)"></i><i style="width:13%;background:var(--danger)"></i><i style="width:9%;background:var(--warn)"></i><i style="width:26%;background:var(--border)"></i></div>
+        <div class="att-legend"><span><b style="background:var(--primary)"></b>出席 12</span><span><b style="background:var(--danger)"></b>欠席 3</span><span><b style="background:var(--warn)"></b>未定 2</span><span><b style="background:var(--border)"></b>未回答 6</span><span style="margin-left:auto"><button class="btn btn-fill">自分の出欠を回答</button></span></div></div>
+      <div class="m-card"><div class="sec-title">回答一覧</div>
+        <table class="kv"><tr><th>出席</th><td>佐藤 天翔、根岸 悠杜 ほか10名</td></tr>
+          <tr><th>欠席</th><td>3名</td></tr><tr><th>未回答</th><td>6名</td></tr></table></div>
+    </div>
+    <div class="p3-pane" data-p3="c">
+      <div class="m-card"><div class="sec-title">この回の振り返り</div>
+        <div class="fb pos"><div class="hd">良かった点<span class="src">くるくるステンドグラス</span></div>偏光板の見本を先に配ったことで、説明が短く済んだ。</div>
+        <div class="fb ref"><div class="hd">改善点<span class="src">会場・運営</span></div>受付の動線が入口と重なり滞留した。</div>
+        <div style="text-align:right;margin-top:10px"><button class="btn btn-fill">記入する</button></div></div>
+    </div>
+    <div class="p3-pane" data-p3="d">
+      <div class="m-card"><div class="sec-title">会場情報<button class="btn" style="margin-left:auto">編集</button></div>
+        <table class="kv"><tr><th>住所</th><td>〒017-0897　秋田県大館市桜町1-1</td></tr>
+          <tr><th>連絡先</th><td>0186-00-0000</td></tr><tr><th>警察署</th><td>0186-00-1111</td></tr>
+          <tr><th>病院</th><td>0186-00-2222</td></tr></table></div>
+    </div>
+    <div class="p3-pane" data-p3="e">
+      <div class="m-card"><div class="sec-title">統計</div>
+        <div class="stat-grid"><div class="stat-box"><div class="lbl">開催回数</div><div class="num">7<small>回</small></div></div>
+          <div class="stat-box"><div class="lbl">振り返り記入率</div><div class="num">71<small>%</small></div></div>
+          <div class="stat-box"><div class="lbl">累計来場者</div><div class="num">412<small>名</small></div></div></div></div>
+      <div class="m-card"><div class="sec-title">開催履歴<span class="count">7件</span></div>
+        <table class="kv"><tr><th>2026-09-19</th><td>7回目・予定</td></tr><tr><th>2024-09-14</th><td>6回目　来場 68名</td></tr>
+          <tr><th>2023-09-16</th><td>5回目　来場 54名</td></tr></table></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 案4 ============================ -->
+<section class="rd-plan" data-plan="4">
+  <div class="rd-brief">
+    <div>
+      <h2>案4　ダッシュボード + ドロワー</h2>
+      <p class="lede">最初の画面は要約タイルだけ。タイルを押すと右から詳細パネルが開く。ページ遷移も画面の切り替わりも起こらない。</p>
+    </div>
+    <div>
+      <dl>
+        <dt>階層</dt><dd>3階層 → <b>要約1面 + 詳細ドロワー</b></dd>
+        <dt>導線</dt><dd>開いた瞬間に状況が全部わかる。深掘りは任意。</dd>
+      </dl>
+    </div>
+    <div>
+      <dl>
+        <dt>向く場面</dt><dd>幹部が状況確認に何度も開く用途。</dd>
+        <dt>留意点</dt><dd>ドロワーの中で長文編集をすると窮屈。編集は別画面に逃がす前提。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="rd-stage">
+    <div class="m-hero">
+      <div class="m-hero-row">
+        <div><h2>南公民館</h2><p class="sub">通算7回開催（2023年〜）　次回 2026/9/19（土）</p></div>
+        <div class="m-hero-actions">
+          <select style="border:1px solid var(--border);border-radius:var(--r-full);padding:6px 14px;font-family:inherit;font-size:.8rem;font-weight:600;background:var(--bg-subtle)">
+            <option>7回目 2026/9/19（土）・予定</option><option>6回目 2024/9/14（土）</option>
+          </select>
+          <button class="btn">編集</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="p4-grid" id="p4grid">
+      <button class="p4-tile" data-d="info"><div class="hd">開催概要<span class="arw">›</span></div>
+        <div class="big">9/19<span style="font-size:.8rem;font-weight:600;color:var(--text-2)">（土）</span></div>
+        <div class="note">10:00〜15:00　南公民館<br>実験2件・発表者2名</div></button>
+      <button class="p4-tile alert" data-d="doc"><div class="hd">書類<span class="arw">›</span></div>
+        <div class="big" style="color:var(--warn-text)">未提出 2</div>
+        <div class="note">許可願 期限まで<b>あと8日</b><br>報告書 2026-09-26</div></button>
+      <button class="p4-tile" data-d="att"><div class="hd">出欠<span class="arw">›</span></div>
+        <div class="big">12<span style="font-size:.85rem;font-weight:600;color:var(--text-2)"> / 23名</span></div>
+        <div class="note">未回答 6名　締切 9/12</div></button>
+      <button class="p4-tile" data-d="fb"><div class="hd">振り返り<span class="arw">›</span></div>
+        <div class="big">3<span style="font-size:.85rem;font-weight:600;color:var(--text-2)">件</span></div>
+        <div class="note">良かった点 2 / 改善点 1</div></button>
+      <button class="p4-tile" data-d="venue"><div class="hd">会場・緊急連絡先<span class="arw">›</span></div>
+        <div class="note" style="margin-top:4px">秋田県大館市桜町1-1<br>0186-00-0000<br><span style="color:var(--text-3)">警察・病院の連絡先を登録済み</span></div></button>
+      <button class="p4-tile" data-d="stats"><div class="hd">シリーズ実績<span class="arw">›</span></div>
+        <div class="big">7<span style="font-size:.85rem;font-weight:600;color:var(--text-2)">回</span></div>
+        <div class="note">累計来場 412名　記入率 71%</div></button>
+    </div>
+  </div>
+
+  <div class="p4-drawer" id="p4drawer">
+    <div class="scrim" data-close></div>
+    <div class="panel">
+      <div class="ph"><h3 id="p4title">書類</h3><button data-close>✕</button></div>
+      <div class="pb" id="p4body"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 案5 ============================ -->
+<section class="rd-plan" data-plan="5">
+  <div class="rd-brief">
+    <div>
+      <h2>案5　タイムライン主導</h2>
+      <p class="lede">左に開催回のタイムラインを常設し、右にその回の全情報を1枚で表示する。「開催回の切り替え」が最も強い操作になる。</p>
+    </div>
+    <div>
+      <dl>
+        <dt>階層</dt><dd>3階層 → <b>回の選択 + 1枚</b></dd>
+        <dt>導線</dt><dd>過去回との比較が速い。今のセレクタが埋もれる問題を根本から解消する。</dd>
+      </dl>
+    </div>
+    <div>
+      <dl>
+        <dt>向く場面</dt><dd>「去年はどうだった？」を頻繁に確認する運用。</dd>
+        <dt>留意点</dt><dd>横幅を使う。狭い画面ではタイムラインが上部に畳まれる。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="rd-stage">
+    <div class="m-hero">
+      <div class="m-hero-row">
+        <div><h2>南公民館</h2><p class="sub">通算7回開催（2023年〜）</p></div>
+        <div class="m-hero-actions"><button class="btn">編集</button><button class="btn">複製</button></div>
+      </div>
+    </div>
+
+    <div class="p5-grid">
+      <div class="p5-rail" id="p5rail">
+        <div class="hd">開催回</div>
+        <button class="p5-item on up" data-o="7"><span class="dot"></span><span class="txt"><span class="d">2026/9/19</span><span class="s">7回目・開催予定</span></span></button>
+        <button class="p5-item" data-o="6"><span class="dot"></span><span class="txt"><span class="d">2024/9/14</span><span class="s">6回目・来場 68名</span></span></button>
+        <button class="p5-item" data-o="5"><span class="dot"></span><span class="txt"><span class="d">2023/9/16</span><span class="s">5回目・来場 54名</span></span></button>
+        <button class="p5-item" data-o="4"><span class="dot"></span><span class="txt"><span class="d">2023/5/27</span><span class="s">4回目・来場 61名</span></span></button>
+        <button class="p5-item" data-o="3"><span class="dot"></span><span class="txt"><span class="d">2022/9/17</span><span class="s">3回目・来場 47名</span></span></button>
+      </div>
+
+      <div class="p5-main">
+        <div class="p5-switch" id="p5sw">
+          <button class="on" data-v="one">この回</button>
+          <button data-v="series">シリーズ全体</button>
+        </div>
+
+        <div data-p5pane="one" style="display:flex;flex-direction:column;gap:14px">
+          <div class="m-card"><div class="sec-title" id="p5head">2026/9/19（土）　7回目<span class="chip chip-up" style="margin-left:auto">開催予定</span></div>
+            <table class="kv">
+              <tr><th>時間</th><td>10:00 〜 15:00　集合 9:15 / 解散 15:45</td></tr>
+              <tr><th>場所</th><td>南公民館</td></tr>
+              <tr><th>実験・発表者</th><td><span class="tag">くるくるステンドグラス <span class="who">佐藤 天翔</span></span><span class="tag">バンジーチャイム <span class="who">根岸 悠杜</span></span></td></tr>
+            </table></div>
+          <div class="m-card"><div class="sec-title">書類<span class="chip chip-warn" style="margin-left:auto">未提出 2件</span></div>
+            <div class="doc-row"><span class="nm">許可願</span><span class="meta">期限 2026-09-09　担当 根岸 悠杜</span><select><option>未提出</option></select></div>
+            <div class="doc-row"><span class="nm">報告書</span><span class="meta">期限 2026-09-26　担当 佐藤 天翔</span><select><option>未提出</option></select></div></div>
+          <div class="m-card"><div class="sec-title">出欠<span class="count">23名中 17名回答</span></div>
+            <div class="att-bar"><i style="width:52%;background:var(--primary)"></i><i style="width:13%;background:var(--danger)"></i><i style="width:9%;background:var(--warn)"></i><i style="width:26%;background:var(--border)"></i></div>
+            <div class="att-legend"><span><b style="background:var(--primary)"></b>出席 12</span><span><b style="background:var(--danger)"></b>欠席 3</span><span><b style="background:var(--warn)"></b>未定 2</span><span><b style="background:var(--border)"></b>未回答 6</span></div></div>
+          <div class="m-card"><div class="sec-title">振り返り</div>
+            <div class="fb pos"><div class="hd">良かった点<span class="src">くるくるステンドグラス</span></div>偏光板の見本を先に配ったことで、説明が短く済んだ。</div>
+            <div class="fb ref"><div class="hd">改善点<span class="src">会場・運営</span></div>受付の動線が入口と重なり滞留した。</div></div>
+        </div>
+
+        <div data-p5pane="series" style="display:none;flex-direction:column;gap:14px">
+          <div class="m-card"><div class="sec-title">統計</div>
+            <div class="stat-grid"><div class="stat-box"><div class="lbl">開催回数</div><div class="num">7<small>回</small></div></div>
+              <div class="stat-box"><div class="lbl">振り返り記入率</div><div class="num">71<small>%</small></div></div>
+              <div class="stat-box"><div class="lbl">累計来場者</div><div class="num">412<small>名</small></div></div></div></div>
+          <div class="m-card"><div class="sec-title">よく使われた実験</div>
+            <div class="bar-row"><span class="lb">くるくるステンドグラス</span><span class="tr"><span class="fl" style="width:86%"></span></span><span class="vl">6回</span></div>
+            <div class="bar-row"><span class="lb">バンジーチャイム</span><span class="tr"><span class="fl" style="width:57%"></span></span><span class="vl">4回</span></div></div>
+          <div class="m-card"><div class="sec-title">会場情報<button class="btn" style="margin-left:auto">編集</button></div>
+            <table class="kv"><tr><th>住所</th><td>〒017-0897　秋田県大館市桜町1-1</td></tr>
+              <tr><th>連絡先</th><td>0186-00-0000</td></tr><tr><th>警察署</th><td>0186-00-1111</td></tr></table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 案6 ============================ -->
+<section class="rd-plan" data-plan="6">
+  <div class="rd-brief">
+    <div>
+      <h2>案6　ワークフロー型</h2>
+      <p class="lede">情報の種類ではなく、活動の時系列「準備 → 当日 → 記録」で分ける。各段階に、その時期にやるべきことだけを並べる。</p>
+    </div>
+    <div>
+      <dl>
+        <dt>階層</dt><dd>3階層 → <b>1階層（3段階）</b></dd>
+        <dt>導線</dt><dd>段階ごとに残タスクを表示。次に何をすべきかが画面から直接わかる。</dd>
+      </dl>
+    </div>
+    <div>
+      <dl>
+        <dt>向く場面</dt><dd>担当者が抜け漏れなく運営を回すことを重視する場合。</dd>
+        <dt>留意点</dt><dd>過去回を資料として参照する用途とは相性が弱く、「記録」に寄せる工夫が要る。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="rd-stage">
+    <div class="m-hero">
+      <div class="m-hero-row">
+        <div><h2>南公民館</h2><p class="sub">7回目　2026/9/19（土）まで あと8日</p></div>
+        <div class="m-hero-actions">
+          <select style="border:1px solid var(--border);border-radius:var(--r-full);padding:6px 14px;font-family:inherit;font-size:.8rem;font-weight:600;background:var(--bg-subtle)">
+            <option>7回目 2026/9/19（土）・予定</option><option>6回目 2024/9/14（土）</option>
+          </select>
+          <button class="btn">編集</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="p6-steps" id="p6steps">
+      <button class="on" data-k="prep"><div class="n">STEP 1</div><div class="t">準備</div><div class="st warn">残 3件</div></button>
+      <button data-k="day"><div class="n">STEP 2</div><div class="t">当日</div><div class="st">9/19（土）</div></button>
+      <button data-k="rec"><div class="n">STEP 3</div><div class="t">記録</div><div class="st">開催後に入力</div></button>
+    </div>
+
+    <div class="p6-pane on" data-p6="prep">
+      <div class="m-card"><div class="sec-title">やること<span class="chip chip-warn" style="margin-left:auto">残 3件</span></div>
+        <div class="p6-task todo"><span class="mk"></span><span><span class="ti">許可願を提出する</span><span class="tm">期限 2026-09-09（あと8日）　担当 根岸 悠杜</span></span><button class="go">提出済にする →</button></div>
+        <div class="p6-task todo"><span class="mk"></span><span><span class="ti">出欠の未回答を回収する</span><span class="tm">6名が未回答　締切 2026-09-12</span></span><button class="go">対象者を見る →</button></div>
+        <div class="p6-task todo"><span class="mk"></span><span><span class="ti">持ち物・運搬の分担を決める</span><span class="tm">スケジュール・運搬が未入力</span></span><button class="go">編集する →</button></div>
+        <div class="p6-task done"><span class="mk">✓</span><span><span class="ti">実験と発表者を確定する</span><span class="tm">くるくるステンドグラス / バンジーチャイム</span></span></div>
+        <div class="p6-task done"><span class="mk">✓</span><span><span class="ti">会場情報・緊急連絡先を確認する</span><span class="tm">秋田県大館市桜町1-1　0186-00-0000</span></span></div>
+      </div>
+      <div class="m-card"><div class="sec-title">出欠<span class="count">23名中 17名回答</span></div>
+        <div class="att-bar"><i style="width:52%;background:var(--primary)"></i><i style="width:13%;background:var(--danger)"></i><i style="width:9%;background:var(--warn)"></i><i style="width:26%;background:var(--border)"></i></div>
+        <div class="att-legend"><span><b style="background:var(--primary)"></b>出席 12</span><span><b style="background:var(--danger)"></b>欠席 3</span><span><b style="background:var(--warn)"></b>未定 2</span><span><b style="background:var(--border)"></b>未回答 6</span></div></div>
+    </div>
+
+    <div class="p6-pane" data-p6="day">
+      <div class="m-card"><div class="sec-title">当日の流れ</div>
+        <table class="kv">
+          <tr><th>集合</th><td>9:15　南公民館 正面入口</td></tr>
+          <tr><th>開始 / 終了</th><td>10:00 〜 15:00</td></tr>
+          <tr><th>解散</th><td>15:45</td></tr>
+          <tr><th>実験・発表者</th><td><span class="tag">くるくるステンドグラス <span class="who">佐藤 天翔</span></span><span class="tag">バンジーチャイム <span class="who">根岸 悠杜</span></span></td></tr>
+          <tr><th>対象・人数</th><td>小学生とその保護者　約60名</td></tr>
+        </table></div>
+      <div class="m-card"><div class="sec-title">会場・緊急連絡先<button class="btn" style="margin-left:auto">編集</button></div>
+        <table class="kv"><tr><th>住所</th><td>〒017-0897　秋田県大館市桜町1-1</td></tr>
+          <tr><th>会場連絡先</th><td>0186-00-0000</td></tr><tr><th>警察署</th><td>0186-00-1111</td></tr>
+          <tr><th>病院</th><td>0186-00-2222</td></tr></table></div>
+    </div>
+
+    <div class="p6-pane" data-p6="rec">
+      <div class="m-card"><div class="sec-title">実績を記録する</div>
+        <table class="kv"><tr><th>来場者数</th><td>未記入</td></tr><tr><th>参加メンバー数</th><td>未記入</td></tr>
+          <tr><th>報告書</th><td>期限 2026-09-26　担当 佐藤 天翔　<span class="chip chip-warn">未提出</span></td></tr></table></div>
+      <div class="m-card"><div class="sec-title">振り返りを記入する</div>
+        <div class="fb pos"><div class="hd">良かった点<span class="src">くるくるステンドグラス</span></div>偏光板の見本を先に配ったことで、説明が短く済んだ。</div>
+        <div class="fb ref"><div class="hd">改善点<span class="src">会場・運営</span></div>受付の動線が入口と重なり滞留した。</div>
+        <div style="text-align:right;margin-top:10px"><button class="btn btn-fill">記入する</button></div></div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<script>
+/* ---- 案の切り替え ---- */
+document.getElementById('rdNav').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#rdNav button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.rd-plan').forEach(p => p.classList.toggle('on', p.dataset.plan === b.dataset.p));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+/* ---- ハイブリッド案: 1段タブ + 対象範囲バー ---- */
+(function () {
+  const tabs = document.getElementById('hyTabs');
+  const ctx = document.getElementById('hyCtx');
+  // 開催回ごとの中身。「この回」タブだけがこれに追従し、「シリーズ全体」タブは変わらない。
+  const occs = {
+    7: { d: '2026/9/19（土）', s: '7回目・開催予定', iso: '2026-09-19（土）', upcoming: true,
+         kyoka: '期限 <b>2026-09-09</b>（あと8日）　担当 根岸 悠杜', rep: '期限 <b>2026-09-26</b>　担当 佐藤 天翔',
+         docs: 2, visitors: null, members: null, due: '2026-09-12', att: [12, 3, 2, 6] },
+    6: { d: '2024/9/14（土）', s: '6回目・来場 68名', iso: '2024-09-14（土）', upcoming: false,
+         kyoka: '期限 2024-09-04　担当 根岸 悠杜', rep: '期限 2024-09-21　担当 佐藤 天翔',
+         docs: 0, visitors: '68名', members: '15名', due: '2024-09-07', att: [15, 4, 0, 4] },
+    5: { d: '2023/9/16（土）', s: '5回目・来場 54名', iso: '2023-09-16（土）', upcoming: false,
+         kyoka: '期限 2023-09-06　担当 佐藤 天翔', rep: '期限 2023-09-23　担当 根岸 悠杜',
+         docs: 0, visitors: '54名', members: '13名', due: '2023-09-09', att: [13, 5, 0, 5] },
+    4: { d: '2023/5/27（土）', s: '4回目・来場 61名', iso: '2023-05-27（土）', upcoming: false,
+         kyoka: '期限 2023-05-17　担当 根岸 悠杜', rep: '期限 2023-06-03　担当 佐藤 天翔',
+         docs: 0, visitors: '61名', members: '11名', due: '2023-05-20', att: [11, 6, 0, 6] }
+  };
+  let occ = '7';
+
+  const muted = t => `<span style="color:var(--text-3)">${t}</span>`;
+
+  // 選択中の開催回に合わせて「この回」側のカードを塗り直す
+  function paintOcc() {
+    const o = occs[occ];
+    document.getElementById('hySumDate').textContent = o.iso;
+    const chip = document.getElementById('hySumChip');
+    chip.textContent = o.upcoming ? '開催予定' : '終了';
+    chip.className = 'chip ' + (o.upcoming ? 'chip-up' : 'chip-mut');
+
+    document.getElementById('hyDocKyoka').innerHTML = o.kyoka;
+    document.getElementById('hyDocRep').innerHTML = o.rep;
+    const dc = document.getElementById('hyDocChip');
+    dc.textContent = o.docs ? `未提出 ${o.docs}件` : '提出済';
+    dc.className = 'chip ' + (o.docs ? 'chip-warn' : 'chip-ok');
+
+    document.getElementById('hyVisitors').innerHTML = o.visitors || muted('未記入');
+    document.getElementById('hyParticipants').innerHTML = o.members || muted('未記入');
+
+    const [a, b, c, d] = o.att;
+    const total = a + b + c + d;
+    const pct = n => (n / total * 100).toFixed(1) + '%';
+    document.getElementById('hyAttCount').textContent = `${total}名中 ${total - d}名回答`;
+    document.getElementById('hyAttBar').innerHTML =
+      `<i style="width:${pct(a)};background:var(--primary)"></i><i style="width:${pct(b)};background:var(--danger)"></i>
+       <i style="width:${pct(c)};background:var(--warn)"></i><i style="width:${pct(d)};background:var(--border)"></i>`;
+    document.getElementById('hyAttLegend').innerHTML =
+      `<span><b style="background:var(--primary)"></b>出席 ${a}</span>
+       <span><b style="background:var(--danger)"></b>欠席 ${b}</span>
+       <span><b style="background:var(--warn)"></b>未定 ${c}</span>
+       <span><b style="background:var(--border)"></b>未回答 ${d}</span>
+       <span style="margin-left:auto"><button class="btn btn-fill">自分の出欠を回答</button></span>`;
+    document.getElementById('hyAttDue').textContent = '締切 ' + o.due;
+    document.getElementById('hyAttTable').innerHTML =
+      `<tr><th>出席 ${a}</th><td>佐藤 天翔、根岸 悠杜、ほか${Math.max(a - 2, 0)}名</td></tr>
+       <tr><th>欠席 ${b}</th><td>${b}名</td></tr>
+       <tr><th>未定 ${c}</th><td>${c ? c + '名' : muted('なし')}</td></tr>
+       <tr><th>未回答 ${d}</th><td>${d
+          ? `<span style="color:var(--warn-text);font-weight:600">${d}名が未回答</span>　<span style="color:var(--primary-light);font-size:.78rem">催促する →</span>`
+          : muted('なし')}</td></tr>`;
+    // タブのバッジも連動させる（未処理が無い回ではバッジを消す）
+    const badge = (sel, n) => {
+      const t = tabs.querySelector(sel), b2 = t.querySelector('.bdg');
+      if (n) { if (b2) b2.textContent = n; else t.insertAdjacentHTML('beforeend', `<span class="bdg">${n}</span>`); }
+      else if (b2) b2.remove();
+    };
+    badge('.hy-tab[data-t="sum"]', o.docs);
+    badge('.hy-tab[data-t="att"]', d);
+  }
+
+  // 「この回」タブでは開催回セレクタを、「シリーズ全体」タブでは対象期間を出す
+  function paintCtx(zone) {
+    if (zone === 'all') {
+      ctx.innerHTML = `<span class="hy-scope"><span class="mk"></span>全 7 回を対象に表示中</span>
+        <span class="hy-scope-sub">2023年 〜 2026年</span>`;
+      return;
+    }
+    const o = occs[occ];
+    ctx.innerHTML = `<button class="nav" data-step="-1">‹</button>
+      <div class="cur">${o.d}<small>${o.s}</small></div>
+      <button class="nav" data-step="1">›</button>
+      <select>${Object.keys(occs).sort((a, b) => b - a).map(k =>
+        `<option value="${k}" ${k === occ ? 'selected' : ''}>${occs[k].s.split('・')[0]} ${occs[k].d}</option>`).join('')}</select>`;
+  }
+
+  function activate(btn) {
+    tabs.querySelectorAll('.hy-tab').forEach(b => b.classList.toggle('on', b === btn));
+    tabs.querySelectorAll('.hy-zone').forEach(z => z.classList.toggle('act', z.dataset.zone === btn.dataset.z));
+    document.querySelectorAll('[data-hy]').forEach(p => p.classList.toggle('on', p.dataset.hy === btn.dataset.t));
+    paintCtx(btn.dataset.z);
+  }
+
+  tabs.addEventListener('click', e => {
+    const b = e.target.closest('.hy-tab');
+    if (b) activate(b);
+  });
+
+  ctx.addEventListener('click', e => {
+    const n = e.target.closest('[data-step]');
+    if (!n) return;
+    // 開催回を1つずつ送る（新しい回ほど番号が大きい）
+    const keys = Object.keys(occs).sort((a, b) => b - a);
+    const i = keys.indexOf(occ) + Number(n.dataset.step);
+    if (i < 0 || i >= keys.length) return;
+    occ = keys[i];
+    paintCtx('occ'); paintOcc();
+  });
+  ctx.addEventListener('change', e => {
+    if (e.target.tagName === 'SELECT') { occ = e.target.value; paintCtx('occ'); paintOcc(); }
+  });
+
+  // 本文中のリンクからタブを移動する（会場タブへ / 履歴からこの回を開く）
+  document.querySelectorAll('[data-hy] [data-goto]').forEach(el => el.addEventListener('click', () => {
+    activate(tabs.querySelector(`.hy-tab[data-t="${el.dataset.goto}"]`));
+  }));
+  document.querySelectorAll('[data-hy] [data-occ]').forEach(el => el.addEventListener('click', () => {
+    occ = el.dataset.occ;
+    paintOcc();
+    activate(tabs.querySelector('.hy-tab[data-t="sum"]'));
+  }));
+
+  paintCtx('occ');
+  paintOcc();
+})();
+
+/* ---- 案1: セグメント + アンカー ---- */
+document.getElementById('p1seg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#p1seg button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('[data-p1pane]').forEach(p => {
+    p.style.display = p.dataset.p1pane === b.dataset.s ? '' : 'none';
+  });
+});
+document.getElementById('p1anch').addEventListener('click', e => {
+  const a = e.target.closest('a'); if (!a) return;
+  e.preventDefault();
+  document.querySelectorAll('#p1anch a').forEach(x => x.classList.toggle('on', x === a));
+});
+
+/* ---- 案2: 目次のスクロール追従 ---- */
+(function () {
+  const scroller = document.getElementById('p2scroll');
+  const links = [...document.querySelectorAll('#p2toc a')];
+  const targets = links.map(a => document.querySelector(a.getAttribute('href')));
+  const setActive = i => links.forEach((a, n) => a.classList.toggle('on', n === i));
+  // 見出しのスクロール内位置。offsetParent の取り方に左右されない rect 基準で求める。
+  const topOf = t => t.getBoundingClientRect().top
+    - scroller.getBoundingClientRect().top + scroller.scrollTop;
+
+  let pinned = -1;   // 目次クリック直後は、その項目を優先してハイライトする
+  links.forEach((a, i) => a.addEventListener('click', e => {
+    e.preventDefault();
+    pinned = i;
+    setActive(i);
+    scroller.scrollTo({ top: topOf(targets[i]) - 8, behavior: 'smooth' });
+    setTimeout(() => { pinned = -1; }, 700);
+  }));
+
+  const sync = () => {
+    if (pinned >= 0) return;
+    // 末尾付近は、下の見出しほど上端に到達できないため最後の項目を現在地とみなす
+    if (scroller.scrollTop >= scroller.scrollHeight - scroller.clientHeight - 2) {
+      setActive(links.length - 1);
+      return;
+    }
+    // それ以外は、スクロール位置より上にある最後の見出しを現在地とみなす
+    let idx = 0;
+    targets.forEach((t, i) => { if (topOf(t) - 24 <= scroller.scrollTop) idx = i; });
+    setActive(idx);
+  };
+  scroller.addEventListener('scroll', sync);
+  // 案の切り替えで戻ってきた時に、ハイライトと実際のスクロール位置をそろえる
+  document.getElementById('rdNav').addEventListener('click', () => setTimeout(sync, 0));
+})();
+
+/* ---- 案3: フラットタブ ---- */
+document.getElementById('p3tabs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#p3tabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('[data-p3]').forEach(p => p.classList.toggle('on', p.dataset.p3 === b.dataset.t));
+});
+
+/* ---- 案4: ドロワー ---- */
+(function () {
+  const drawer = document.getElementById('p4drawer');
+  const title = document.getElementById('p4title');
+  const body = document.getElementById('p4body');
+  const content = {
+    info: ['開催概要', `<table class="kv">
+        <tr><th>日にち</th><td>2026-09-19（土）</td></tr>
+        <tr><th>時間</th><td>10:00 〜 15:00</td></tr>
+        <tr><th>集合・解散</th><td>集合 9:15 / 解散 15:45</td></tr>
+        <tr><th>場所</th><td>南公民館</td></tr>
+        <tr><th>対象・人数</th><td>小学生とその保護者　約60名</td></tr>
+        <tr><th>実験・発表者</th><td><span class="tag">くるくるステンドグラス <span class="who">佐藤 天翔</span></span><span class="tag">バンジーチャイム <span class="who">根岸 悠杜</span></span></td></tr>
+      </table>`],
+    doc: ['書類', `<div class="doc-row"><span class="nm">許可願</span><span class="meta">期限 2026-09-09　担当 根岸 悠杜</span><select><option>未提出</option><option>提出済</option></select></div>
+      <div class="doc-row"><span class="nm">報告書</span><span class="meta">期限 2026-09-26　担当 佐藤 天翔</span><select><option>未提出</option><option>提出済</option></select></div>
+      <p style="font-size:.8rem;color:var(--text-3);margin-top:14px">期限はイベント日から自動計算されます（許可願 10日前 / 報告書 7日後）。</p>`],
+    att: ['出欠', `<div class="att-bar"><i style="width:52%;background:var(--primary)"></i><i style="width:13%;background:var(--danger)"></i><i style="width:9%;background:var(--warn)"></i><i style="width:26%;background:var(--border)"></i></div>
+      <div class="att-legend"><span><b style="background:var(--primary)"></b>出席 12</span><span><b style="background:var(--danger)"></b>欠席 3</span><span><b style="background:var(--warn)"></b>未定 2</span><span><b style="background:var(--border)"></b>未回答 6</span></div>
+      <div style="margin-top:18px"><button class="btn btn-fill">自分の出欠を回答</button></div>
+      <table class="kv" style="margin-top:18px"><tr><th>出席</th><td>佐藤 天翔、根岸 悠杜 ほか10名</td></tr>
+      <tr><th>未回答</th><td>6名</td></tr></table>`],
+    fb: ['振り返り', `<div class="fb pos"><div class="hd">良かった点<span class="src">くるくるステンドグラス</span></div>偏光板の見本を先に配ったことで、説明が短く済んだ。</div>
+      <div class="fb pos"><div class="hd">良かった点<span class="src">バンジーチャイム</span></div>音の大きさが会場に合っていた。</div>
+      <div class="fb ref"><div class="hd">改善点<span class="src">会場・運営</span></div>受付の動線が入口と重なり滞留した。</div>
+      <div style="text-align:right;margin-top:14px"><button class="btn btn-fill">記入する</button></div>`],
+    venue: ['会場・緊急連絡先', `<table class="kv"><tr><th>施設名</th><td>南公民館</td></tr>
+      <tr><th>郵便番号</th><td>〒017-0897</td></tr><tr><th>住所</th><td>秋田県大館市桜町1-1</td></tr>
+      <tr><th>連絡先</th><td>0186-00-0000</td></tr><tr><th>警察署</th><td>0186-00-1111</td></tr>
+      <tr><th>病院・診療所</th><td>0186-00-2222</td></tr></table>
+      <div style="margin-top:16px"><button class="btn">編集</button></div>`],
+    stats: ['シリーズ実績', `<div class="stat-grid"><div class="stat-box"><div class="lbl">開催回数</div><div class="num">7<small>回</small></div></div>
+      <div class="stat-box"><div class="lbl">記入率</div><div class="num">71<small>%</small></div></div>
+      <div class="stat-box"><div class="lbl">累計来場</div><div class="num">412<small>名</small></div></div></div>
+      <div style="margin-top:20px"><div class="sec-title">よく使われた実験</div>
+      <div class="bar-row"><span class="lb">くるくるステンドグラス</span><span class="tr"><span class="fl" style="width:86%"></span></span><span class="vl">6回</span></div>
+      <div class="bar-row"><span class="lb">バンジーチャイム</span><span class="tr"><span class="fl" style="width:57%"></span></span><span class="vl">4回</span></div>
+      <div class="bar-row"><span class="lb">人工いくら</span><span class="tr"><span class="fl" style="width:29%"></span></span><span class="vl">2回</span></div></div>`]
+  };
+  document.getElementById('p4grid').addEventListener('click', e => {
+    const t = e.target.closest('.p4-tile'); if (!t) return;
+    const [ttl, html] = content[t.dataset.d];
+    title.textContent = ttl; body.innerHTML = html;
+    drawer.classList.add('on');
+  });
+  drawer.addEventListener('click', e => { if (e.target.hasAttribute('data-close')) drawer.classList.remove('on'); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') drawer.classList.remove('on'); });
+})();
+
+/* ---- 案5: タイムライン + 表示切替 ---- */
+(function () {
+  const labels = {
+    7: ['2026/9/19（土）　7回目', '開催予定', 'chip-up'],
+    6: ['2024/9/14（土）　6回目', '来場 68名', 'chip-mut'],
+    5: ['2023/9/16（土）　5回目', '来場 54名', 'chip-mut'],
+    4: ['2023/5/27（土）　4回目', '来場 61名', 'chip-mut'],
+    3: ['2022/9/17（土）　3回目', '来場 47名', 'chip-mut']
+  };
+  document.getElementById('p5rail').addEventListener('click', e => {
+    const b = e.target.closest('.p5-item'); if (!b) return;
+    document.querySelectorAll('#p5rail .p5-item').forEach(x => x.classList.toggle('on', x === b));
+    const [txt, badge, cls] = labels[b.dataset.o];
+    document.getElementById('p5head').innerHTML =
+      txt + `<span class="chip ${cls}" style="margin-left:auto">${badge}</span>`;
+  });
+  document.getElementById('p5sw').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    document.querySelectorAll('#p5sw button').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('[data-p5pane]').forEach(p => {
+      p.style.display = p.dataset.p5pane === b.dataset.v ? 'flex' : 'none';
+    });
+  });
+})();
+
+/* ---- 案6: ステップ切り替え ---- */
+document.getElementById('p6steps').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#p6steps button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('[data-p6]').forEach(p => p.classList.toggle('on', p.dataset.p6 === b.dataset.k));
+});
+</script>
+</body>
+</html>

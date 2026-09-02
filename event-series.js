@@ -428,21 +428,25 @@ function renderAll() {
     document.getElementById('series-subtitle').textContent =
         seriesEvents.length > 1 ? `通算${seriesEvents.length}回開催（${earliest}年〜）` : '';
 
-    // ミーティングでは不要なタブを隠す
+    // ミーティングでは不要なタブを隠す（振り返り・会場・履歴統計はイベント向けの機能）
     const ev0 = currentEvent();
     const isMtg = ev0 && (ev0.Category === 'general' || ev0.Category === 'admin');
-    document.querySelectorAll('.expd-tab[data-tab="local-info"], .expd-tab[data-tab="stats"]').forEach(t => {
+    document.querySelectorAll('.scope-tab[data-tab="reflection"], .scope-tab[data-tab="venue"], .scope-tab[data-tab="history"]').forEach(t => {
         t.style.display = isMtg ? 'none' : '';
     });
-    const reflTab = document.querySelector('.detail-sub-tab[data-subtab="reflection"]');
-    if (reflTab) reflTab.style.display = isMtg ? 'none' : '';
-    const resultsTab = document.querySelector('.detail-sub-tab[data-subtab="results"]');
-    if (resultsTab) resultsTab.style.display = isMtg ? 'none' : '';
+    // ゾーン全体が空になるなら見出しと区切りも隠す
+    document.querySelector('.scope-zone--series')?.style.setProperty('display', isMtg ? 'none' : '');
+    document.querySelector('.scope-sep')?.style.setProperty('display', isMtg ? 'none' : '');
+    // 隠したタブが選択されたままにならないよう、概要へ戻す
+    if (isMtg && document.querySelector('.scope-tab.active')?.dataset.zone !== 'occ') {
+        activateSeriesTab('summary');
+    }
 
     renderHeaderActions();
     renderSafetyInfo();
-    renderOccurrenceSelector();
+    renderScopeContext();
     renderDetail();
+    updateScopeBadges();
     if (!isMtg) {
         renderFeedbackTimeline();
         renderStats();
@@ -451,16 +455,12 @@ function renderAll() {
 
     if (scrollToFeedback && !isMtg) {
         scrollToFeedback = false;
-        setTimeout(() => {
-            const refBtn = document.querySelector('.detail-sub-tab[data-subtab="reflection"]');
-            if (refBtn) switchDetailSubTab(refBtn);
-        }, 150);
+        setTimeout(() => activateSeriesTab('reflection'), 150);
     }
     if (scrollToVotes) {
         scrollToVotes = false;
         setTimeout(() => {
-            const attendBtn = document.querySelector('.detail-sub-tab[data-subtab="attendance"]');
-            if (attendBtn) switchDetailSubTab(attendBtn);
+            activateSeriesTab('attendance');
             // 「出欠を回答」リンクから来た場合は折りたたみを開いた状態にする
             setTimeout(() => {
                 const toggleBtn = document.querySelector('#series-detail-votes .detail-toggle-header');
@@ -486,31 +486,59 @@ function currentEvent() {
     return seriesEvents.find(e => e.ID === currentEventId) || seriesEvents[0];
 }
 
-// 開催回セレクタ（複数回開催のシリーズだけ表示）
-function renderOccurrenceSelector() {
-    const box = document.getElementById('series-occ-selector');
-    if (!box) return;
-    if (seriesEvents.length < 2) { box.innerHTML = ''; return; }
+// 年をまたぐシリーズがあるため年は残しつつ、コンパクトな表記にする
+function compactOccDate(s) {
+    const p = String(s || '').split('-');
+    return p.length < 3 ? (s || '') : `${p[0]}/${parseInt(p[1])}/${parseInt(p[2])}`;
+}
 
+// タブ直下の対象範囲バー。いま「この回」を見ているのか「シリーズ全体」を見ているのかを常に示す。
+function renderScopeContext() {
+    const box = document.getElementById('series-scope-ctx');
+    if (!box) return;
+    const zone = document.querySelector('.scope-tab.active')?.dataset.zone || 'occ';
+    box.classList.toggle('scope-ctx--series', zone === 'series');
+
+    if (zone === 'series') {
+        const years = seriesEvents.map(e => (e.Date || '').slice(0, 4)).filter(Boolean).sort();
+        const span = years.length === 0 ? ''
+            : years[0] === years[years.length - 1] ? `${years[0]}年`
+            : `${years[0]}年 〜 ${years[years.length - 1]}年`;
+        box.innerHTML = `
+            <span class="scope-ctx-label"><span class="scope-ctx-dot" aria-hidden="true"></span>全 ${seriesEvents.length} 回を対象に表示中</span>
+            ${span ? `<span class="scope-ctx-sub">${escapeHtml(span)}</span>` : ''}`;
+        return;
+    }
+
+    const ev = currentEvent();
+    if (!ev) { box.innerHTML = ''; return; }
     const today = todayISO();
     const asc = seriesEvents.slice().sort((a, b) => (a.Date || '').localeCompare(b.Date || ''));
-    // 年をまたぐシリーズがあるため年は残しつつ、コンパクトな表記にする
-    const compactDate = (s) => {
-        const p = String(s || '').split('-');
-        return p.length < 3 ? (s || '') : `${p[0]}/${parseInt(p[1])}/${parseInt(p[2])}`;
-    };
-    const options = seriesEvents.map(ev => {
-        const n = asc.findIndex(x => x.ID === ev.ID) + 1;
-        const isUpcoming = (ev.DateEnd || ev.Date) >= today;
-        const label = `${compactDate(ev.Date)}(${dayOfWeekJP(ev.Date)}) ${n}回目${isUpcoming ? '・予定' : ''}`;
-        return `<option value="${escapeAttr(ev.ID)}" ${ev.ID === currentEventId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    const idx = asc.findIndex(x => x.ID === ev.ID);
+    const isUpcoming = (ev.DateEnd || ev.Date) >= today;
+
+    const options = asc.slice().reverse().map(e => {
+        const n = asc.findIndex(x => x.ID === e.ID) + 1;
+        const up = (e.DateEnd || e.Date) >= today;
+        const label = `${n}回目　${compactOccDate(e.Date)}(${dayOfWeekJP(e.Date)})${up ? '・予定' : ''}`;
+        return `<option value="${escapeAttr(e.ID)}" ${e.ID === currentEventId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
     }).join('');
 
+    // ‹ は1つ古い回、› は1つ新しい回。端では無効化する。
+    const navBtn = (step, glyph, title) => {
+        const t = asc[idx + step];
+        return `<button type="button" class="scope-ctx-nav" title="${title}" aria-label="${title}"
+            ${t ? `onclick="selectOccurrence('${escapeAttr(t.ID)}')"` : 'disabled'}>${glyph}</button>`;
+    };
+
     box.innerHTML = `
-        <div class="occ-selector-row">
-            <label class="occ-selector-label">開催回</label>
-            <select class="e1-input occ-selector-select" onchange="selectOccurrence(this.value)">${options}</select>
-        </div>`;
+        ${seriesEvents.length > 1 ? navBtn(-1, '&lsaquo;', '前の回') : ''}
+        <span class="scope-ctx-cur">
+            ${escapeHtml(compactOccDate(ev.Date))}（${dayOfWeekJP(ev.Date)}）
+            <small>${idx + 1}回目${isUpcoming ? '・開催予定' : ''}</small>
+        </span>
+        ${seriesEvents.length > 1 ? navBtn(1, '&rsaquo;', '次の回') : ''}
+        ${seriesEvents.length > 1 ? `<select class="scope-ctx-select" aria-label="開催回を選ぶ" onchange="selectOccurrence(this.value)">${options}</select>` : ''}`;
 }
 
 function selectOccurrence(id) {
@@ -519,23 +547,49 @@ function selectOccurrence(id) {
     history.replaceState(null, '', `event-series.html?key=${encodeURIComponent(seriesKey)}&event=${encodeURIComponent(id)}`);
     renderHeaderActions();
     renderSafetyInfo();
-    renderOccurrenceSelector();
+    renderScopeContext();
     renderDetail();
-    const activeSubTab = document.querySelector('.detail-sub-tab.active');
-    if (activeSubTab) {
-        if (activeSubTab.dataset.subtab === 'attendance') renderAttendanceTab();
-        if (activeSubTab.dataset.subtab === 'reflection') renderReflectionTab();
-        if (activeSubTab.dataset.subtab === 'results') renderResultsTab();
-    }
+    updateScopeBadges();
+    // 開いているタブだけ描き直す（「シリーズ全体」側は開催回に依存しないので触らない）
+    const active = document.querySelector('.scope-tab.active')?.dataset.tab;
+    if (active === 'attendance') renderAttendanceTab();
+    if (active === 'reflection') { renderReflectionTab(); renderResultsTab(); }
 }
 
 // 統計・振り返りタブから特定の開催回の詳細へ飛ぶ
 function openOccurrence(id) {
     selectOccurrence(id);
-    const detailTab = document.querySelector('.expd-tab[data-tab="detail"]');
-    if (detailTab) switchSeriesTab(detailTab);
+    activateSeriesTab('summary');
     const detail = document.getElementById('series-detail');
     if (detail) detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// タブ上の未処理バッジ（概要=未提出の書類数 / 出欠=未回答者数）。
+// 投票は listAll で先読み済みの時だけ数える（バッジのために通信を増やさない）。
+function updateScopeBadges() {
+    const ev = currentEvent();
+    const set = (id, n) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = n || '';
+        el.classList.toggle('hidden', !n);
+    };
+    if (!ev) { set('scope-badge-summary', 0); set('scope-badge-attendance', 0); return; }
+
+    const isMeeting = ev.Category === 'general' || ev.Category === 'admin';
+    let docs = 0;
+    if (!isMeeting) {
+        if (!ev.KyokaNotRequired && (ev.KyokaStatus || '') !== 'submitted') docs++;
+        if (!ev.HoukokuNotRequired && (ev.ReportStatus || '') !== 'clc') docs++;
+    }
+    set('scope-badge-summary', docs);
+
+    const votes = votesCache[ev.ID] || (votesPrimed ? [] : null);
+    if (!votes || membersCache.length === 0) { set('scope-badge-attendance', 0); return; }
+    const staffIds = voteStaffIds(membersCache);
+    const answered = new Set(votes.filter(v => !staffIds.has(v.memberId)).map(v => v.memberId));
+    const pending = voteEligibleMembers(membersCache, ev).filter(m => !answered.has(m.ID)).length;
+    set('scope-badge-attendance', pending);
 }
 
 // ---- 会場情報・緊急連絡先 ----
@@ -543,9 +597,9 @@ function openOccurrence(id) {
 // 選択中の開催回を優先し、無ければ同シリーズの他の回から補完する
 function findSafetyInfo() {
     const cur = currentEvent();
-    if (cur && (cur.Address || cur.LocationTel || cur.EmergencyHospital || cur.EmergencyPolice)) return cur;
+    if (cur && (cur.Address || cur.PostalCode || cur.LocationTel || cur.EmergencyHospital || cur.EmergencyPolice)) return cur;
     for (const ev of seriesEvents) {
-        if (ev.Address || ev.LocationTel || ev.EmergencyHospital || ev.EmergencyPolice) return ev;
+        if (ev.Address || ev.PostalCode || ev.LocationTel || ev.EmergencyHospital || ev.EmergencyPolice) return ev;
     }
     return null;
 }
@@ -565,6 +619,7 @@ function renderSafetyInfo() {
             <div class="series-safety-group-title series-safety-group-title--plain">活動場所</div>
             <table class="d1-table series-safety-table">
                 <tr><th>施設名</th><td>${escapeHtml(venueName)}</td></tr>
+                <tr><th>郵便番号</th><td>${info && info.PostalCode ? escapeHtml(info.PostalCode) : '---'}</td></tr>
                 <tr><th>住所</th><td>${info && info.Address ? escapeHtml(info.Address) : '---'}</td></tr>
                 <tr><th>連絡先</th><td>${info ? formatTelLink(info.LocationTel) : '---'}</td></tr>
             </table>
@@ -596,6 +651,10 @@ function editSafetyInfo() {
         <div class="series-safety-edit-group">
             <div class="series-safety-group-title series-safety-group-title--plain">活動場所</div>
             <div class="e1-group">
+                <label class="e1-label">郵便番号</label>
+                <input id="series-safety-postal-input" class="e1-input" type="text" value="${escapeAttr(info.PostalCode || '')}" placeholder="例: 017-0897" inputmode="numeric">
+            </div>
+            <div class="e1-group">
                 <label class="e1-label">住所</label>
                 <input id="series-safety-address-input" class="e1-input" type="text" value="${escapeAttr(info.Address || '')}" placeholder="住所（例: 秋田県大館市桜町1-1）">
             </div>
@@ -625,6 +684,7 @@ function editSafetyInfo() {
 async function saveSafetyInfo() {
     const ev = currentEvent();
     if (!ev) return;
+    const postalCode = document.getElementById('series-safety-postal-input')?.value.trim() || '';
     const address = document.getElementById('series-safety-address-input')?.value.trim() || '';
     const tel = document.getElementById('series-safety-tel-input')?.value.trim() || '';
     const hospital = document.getElementById('series-safety-hospital-input')?.value.trim() || '';
@@ -632,7 +692,7 @@ async function saveSafetyInfo() {
 
     try {
         const saved = await api.save('events', {
-            ...ev, Address: address, LocationTel: tel, EmergencyHospital: hospital, EmergencyPolice: police,
+            ...ev, PostalCode: postalCode, Address: address, LocationTel: tel, EmergencyHospital: hospital, EmergencyPolice: police,
             _baseUpdatedAt: ev.UpdatedAt || ''
         });
         const idx = allEventsData.findIndex(e => e.ID === ev.ID);
@@ -787,7 +847,7 @@ function renderDetail() {
             ${!isMeeting && ev.Accompany ? `<tr><th>帯同</th><td>${renderAccompanyHtml(ev.Accompany)}</td></tr>` : ''}
             ${(ev.Remarks || '').trim() ? `<tr><th>${isMeeting ? '議題 / 備考' : '備考'}</th><td style="white-space:pre-wrap;">${escapeHtml(ev.Remarks)}</td></tr>` : ''}
             ${files.length > 0 ? `<tr><th>関連ファイル</th><td class="file-list">${filesHtml}</td></tr>` : ''}
-            ${!isMeeting ? `<tr><th>書類</th><td>${docsHtml}</td></tr>` : ''}
+            ${!isMeeting ? `<tr class="series-detail-docs-row"><th>書類</th><td>${docsHtml}</td></tr>` : ''}
         </table>
         ${!isMeeting ? `
         <div class="post-event-card">
@@ -829,7 +889,7 @@ function renderPrAssignments(ev) {
         <div class="post-event-pr-title">広報担当</div>
         ${channels.map(ch => `<div class="pr-row">
             <span class="pr-label">${escapeHtml(ch)}</span>
-            <input type="text" class="e1-input pr-input" data-pr-channel="${escapeAttr(ch)}"
+            <input type="text" class="e1-input pr-input" data-pr-channel="${escapeAttr(ch)}" list="member-datalist"
                 value="${escapeAttr(assignments[ch] || '')}" placeholder="なし">
         </div>`).join('')}
     `;
@@ -924,7 +984,15 @@ async function openVoteListModal() {
 // ---- 参加状況サブタブ（回答一覧をタブ表示のテーブルで） ----
 
 let attendanceData = null;   // { attend, absent, undecided, noAnswer }（現在の開催回の集計。タブ切替の再取得を避けるため保持）
-let attendanceFilter = 'attend';
+let attendanceFilter = 'all';
+
+// 参加状況の表示メタ。一覧の状態バッジとフィルタチップの両方で使う。
+const ATTENDANCE_STATUS = {
+    attend:    { label: '参加',   cls: 'att-st-attend' },
+    absent:    { label: '不参加', cls: 'att-st-absent' },
+    undecided: { label: '未定',   cls: 'att-st-undecided' },
+    noAnswer:  { label: '未回答', cls: 'att-st-noanswer' }
+};
 
 async function renderAttendanceTab() {
     const box = document.getElementById('series-attendance-detail');
@@ -933,7 +1001,7 @@ async function renderAttendanceTab() {
     if (!ev) { box.innerHTML = ''; return; }
 
     attendanceData = null;
-    attendanceFilter = 'attend';
+    attendanceFilter = 'all';
     // 参加投票はスッキリさせるため折りたたみ（デフォルト非表示）。開いた時に初めて描画する。
     box.innerHTML = `
         <div class="detail-section-card" id="series-detail-votes">
@@ -1019,6 +1087,8 @@ async function renderAttendanceList(ev) {
         noAnswer: eligible.filter(m => !answeredIds.has(m.ID)).map(m => ({ memberId: m.ID }))
     };
     renderAttendanceListBody();
+    // 投票を取り終えたので、タブの未回答バッジもここで確定させる
+    updateScopeBadges();
 }
 
 function switchAttendanceFilter(status) {
@@ -1030,37 +1100,41 @@ function renderAttendanceListBody() {
     const body = document.getElementById('attendance-list-body');
     if (!body || !attendanceData) return;
 
-    const groups = [
-        { key: 'attend', label: '参加' },
-        { key: 'absent', label: '不参加' },
-        { key: 'undecided', label: '未定' },
-        { key: 'noAnswer', label: '未回答' }
-    ];
+    const keys = ['attend', 'absent', 'undecided', 'noAnswer'];
+    const total = keys.reduce((n, k) => n + attendanceData[k].length, 0);
+
+    // 既定は「全員」。誰がどの状態かを1つの表でまとめて見渡せるようにする。
+    const chip = (key, label, count) =>
+        `<button type="button" class="filter-chip ${attendanceFilter === key ? 'active' : ''}" aria-pressed="${attendanceFilter === key}" onclick="switchAttendanceFilter('${key}')">${label} (${count})</button>`;
     const tabsHtml = `<div class="expd-feedback-filters">
-        ${groups.map(g => `<button type="button" class="filter-chip ${attendanceFilter === g.key ? 'active' : ''}" aria-pressed="${attendanceFilter === g.key}" onclick="switchAttendanceFilter('${g.key}')">${g.label} (${attendanceData[g.key].length})</button>`).join('')}
+        ${chip('all', '全員', total)}
+        ${keys.map(k => chip(k, ATTENDANCE_STATUS[k].label, attendanceData[k].length)).join('')}
     </div>`;
 
     const memberOf = (id) => membersCache.find(x => x.ID === id);
     const nameOf = (id) => { const m = memberOf(id); return m ? m.Name : id; };
-    const items = (attendanceData[attendanceFilter] || [])
-        .slice()
+
+    // 全員表示では4区分をまとめ、行ごとに状態を持たせる
+    const items = (attendanceFilter === 'all'
+        ? keys.flatMap(k => attendanceData[k].map(v => ({ ...v, _status: k })))
+        : attendanceData[attendanceFilter].map(v => ({ ...v, _status: attendanceFilter })))
         .sort((a, b) => nameOf(a.memberId).localeCompare(nameOf(b.memberId), 'ja'));
-    const showDetails = attendanceFilter !== 'noAnswer';
-    const colCount = showDetails ? 4 : 3;
 
     const rowsHtml = items.length === 0
-        ? `<tr><td colspan="${colCount}" class="empty-state">該当者はいません</td></tr>`
+        ? '<tr><td colspan="5" class="empty-state">該当者はいません</td></tr>'
         : items.map(v => {
             const m = memberOf(v.memberId);
             const role = m ? memberRoleOf(m) : '';
             const roleInfo = role ? getRoleDisplay(role) : null;
             const roleBadge = roleInfo ? `<span class="cat-badge" style="background:${roleInfo.color};">${escapeHtml(role)}</span>` : '';
+            const st = ATTENDANCE_STATUS[v._status];
             return `
             <tr data-id="${escapeAttr(v.memberId)}" class="clickable-row" title="タップで詳細を表示">
                 <td>${escapeHtml(m && m.StudentID ? m.StudentID : '')}</td>
                 <td class="cell-name">${escapeHtml(nameOf(v.memberId))}</td>
                 <td class="cell-role">${roleBadge}</td>
-                ${showDetails ? `<td>${v.note ? escapeHtml(v.note) : ''}</td>` : ''}
+                <td><span class="att-status ${st.cls}">${st.label}</span></td>
+                <td>${v.note ? escapeHtml(v.note) : ''}</td>
             </tr>`;
         }).join('');
 
@@ -1068,7 +1142,7 @@ function renderAttendanceListBody() {
         ${tabsHtml}
         <div class="table-wrapper">
             <table class="data-table">
-                <thead><tr><th>学籍番号</th><th>名前</th><th>役職</th>${showDetails ? '<th>メモ</th>' : ''}</tr></thead>
+                <thead><tr><th>学籍番号</th><th>名前</th><th>役職</th><th>状態</th><th>メモ</th></tr></thead>
                 <tbody>${rowsHtml}</tbody>
             </table>
         </div>
@@ -1090,14 +1164,6 @@ function renderReflectionTab() {
     const parts = normalizeParts(ev.PartsList).filter(p => p.name || (p.presenters && p.presenters.length));
 
     box.innerHTML = `
-        <div class="detail-section-card">
-            <h3 class="detail-section-title">成果</h3>
-            <p class="text-muted" style="font-size:0.82rem; margin:0 0 12px;">参加者数や成果など、この回の実績を記録できます。</p>
-            <div class="exp-fb-row" style="margin-bottom:12px;">
-                <textarea class="e1-input" id="series-results-memo" rows="4" placeholder=本イベントを通して、何を達成できたか。&#10;例）">${escapeHtml(ev.ResultsMemo || '')}</textarea>
-            </div>
-        </div>
-
         <div class="detail-section-card" id="series-detail-feedback">
             <h3 class="detail-section-title">この回の振り返りを記入</h3>
             ${!isMeeting && parts.filter(p => p.name).length > 0 ? `
@@ -1121,14 +1187,19 @@ function renderReflectionTab() {
                     </div>`).join('')}
             </div>` : ''}
             <div class="exp-fb-card">
-                <div class="exp-fb-card-title">会場・運営の振り返り</div>
-                <div class="exp-fb-row">
-                    <label>良かった点</label>
-                    <textarea class="e1-input" id="series-fb-positives" rows="3" placeholder="会場・運営で良かったこと">${escapeHtml(ev.Positives || '')}</textarea>
-                </div>
-                <div class="exp-fb-row">
-                    <label>改善点</label>
-                    <textarea class="e1-input" id="series-fb-reflections" rows="3" placeholder="会場・運営の改善点">${escapeHtml(ev.Reflections || '')}</textarea>
+                <button type="button" class="detail-toggle-header" aria-expanded="false" onclick="toggleExpFbCard(this)">
+                    <span class="exp-fb-card-title">会場・運営の振り返り</span>
+                    <span class="detail-toggle-icon" aria-hidden="true">&#9654;</span>
+                </button>
+                <div class="exp-fb-card-body hidden">
+                    <div class="exp-fb-row">
+                        <label>良かった点</label>
+                        <textarea class="e1-input" id="series-fb-positives" rows="3" placeholder="会場・運営で良かったこと">${escapeHtml(ev.Positives || '')}</textarea>
+                    </div>
+                    <div class="exp-fb-row">
+                        <label>改善点</label>
+                        <textarea class="e1-input" id="series-fb-reflections" rows="3" placeholder="会場・運営の改善点">${escapeHtml(ev.Reflections || '')}</textarea>
+                    </div>
                 </div>
             </div>
             <div style="margin-top:12px; text-align:right;">
@@ -1289,14 +1360,13 @@ async function saveDetailFeedback() {
 
     const positives = document.getElementById('series-fb-positives')?.value || '';
     const reflections = document.getElementById('series-fb-reflections')?.value || '';
-    const resultsMemo = document.getElementById('series-results-memo')?.value || '';
 
     const saveBtn = document.getElementById('series-fb-save-btn');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
 
     try {
         const saved = await api.save('events', {
-            ...ev, Positives: positives, Reflections: reflections, ResultsMemo: resultsMemo,
+            ...ev, Positives: positives, Reflections: reflections,
             _baseUpdatedAt: ev.UpdatedAt || ''
         });
         const idx = allEventsData.findIndex(e => e.ID === ev.ID);
@@ -1312,9 +1382,8 @@ async function saveDetailFeedback() {
         renderFeedbackTimeline();
         renderStats();
         renderOverview();
-        // 保存した内容がすぐ確認できるよう「成果・振り返り」タブへ移動
-        const resBtn = document.querySelector('.detail-sub-tab[data-subtab="results"]');
-        if (resBtn) switchDetailSubTab(resBtn);
+        // 記入欄と表示は同じ「振り返り」タブに並んでいるので、その場で表示側を描き直す
+        renderResultsTab();
     } catch (e) {
         if (String(e.message).includes('conflict')) {
             toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', 5000);
@@ -1632,59 +1701,36 @@ function toggleSeriesCard(btn) {
 
 // ---- タブ切り替え ----
 
+// 1段フラットタブの切り替え。旧・大タブ/子タブ/孫タブの3階層をここに統合している。
+// 「この回」ゾーン（概要・出欠・振り返り）は選択中の開催回、
+// 「シリーズ全体」ゾーン（会場・履歴統計）は全開催回が対象。対象範囲バーで明示する。
 function switchSeriesTab(btn) {
-    document.querySelectorAll('.expd-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
+    document.querySelectorAll('.scope-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
     btn.classList.add('active');
     btn.setAttribute('aria-selected', 'true');
+
+    const zone = btn.dataset.zone;
+    document.querySelectorAll('.scope-zone').forEach(z => z.classList.toggle('active', z.dataset.zone === zone));
+
     const target = btn.dataset.tab;
-    document.querySelectorAll('.expd-tab-pane').forEach(p => {
-        p.classList.toggle('hidden', p.dataset.tabPane !== target);
+    document.querySelectorAll('.scope-pane').forEach(p => {
+        p.classList.toggle('hidden', p.dataset.pane !== target);
     });
+
+    renderScopeContext();
+    // 重い描画はタブを開いた時に行う（出欠は通信を伴うため）
+    if (target === 'attendance') renderAttendanceTab();
+    if (target === 'reflection') { renderReflectionTab(); renderResultsTab(); }
 }
 
-// 「場所」の値タップで会場情報タブへ（住所・連絡先・緊急連絡先はそちらにまとまっている）
-function goToVenueInfoTab() {
-    const btn = document.querySelector('.expd-tab[data-tab="local-info"]');
+function activateSeriesTab(name) {
+    const btn = document.querySelector(`.scope-tab[data-tab="${name}"]`);
     if (btn) switchSeriesTab(btn);
 }
 
-function switchDetailSubTab(btn) {
-    const container = document.querySelector('[data-tab-pane="detail"]');
-    if (!container) return;
-    container.querySelectorAll('.detail-sub-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
-    btn.classList.add('active');
-    btn.setAttribute('aria-selected', 'true');
-    const target = btn.dataset.subtab;
-    container.querySelectorAll('.detail-sub-pane').forEach(p => {
-        p.classList.toggle('hidden', p.dataset.subPane !== target);
-    });
-    if (target === 'attendance') renderAttendanceTab();
-    if (target === 'reflection') renderReflectionTab();
-    if (target === 'results') renderResultsTab();
-}
-
-function switchLocalInfoSubTab(btn) {
-    const container = document.querySelector('[data-tab-pane="local-info"]');
-    if (!container) return;
-    container.querySelectorAll('.detail-sub-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
-    btn.classList.add('active');
-    btn.setAttribute('aria-selected', 'true');
-    const target = btn.dataset.subtab;
-    container.querySelectorAll('[data-li-pane]').forEach(p => {
-        p.classList.toggle('hidden', p.getAttribute('data-li-pane') !== target);
-    });
-}
-
-function switchStatsSubTab(btn) {
-    const container = document.querySelector('[data-tab-pane="stats"]');
-    if (!container) return;
-    container.querySelectorAll('.detail-sub-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
-    btn.classList.add('active');
-    btn.setAttribute('aria-selected', 'true');
-    const target = btn.dataset.subtab;
-    container.querySelectorAll('[data-st-pane]').forEach(p => {
-        p.classList.toggle('hidden', p.getAttribute('data-st-pane') !== target);
-    });
+// 「場所」の値タップで会場タブへ（住所・連絡先・緊急連絡先はそちらにまとまっている）
+function goToVenueInfoTab() {
+    activateSeriesTab('venue');
 }
 
 // ====== 新規イベント作成（イベント一覧モードから。カードを選んでその場で複製） ======

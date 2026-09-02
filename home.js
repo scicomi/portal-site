@@ -40,6 +40,7 @@ async function init() {
     });
     renderWelcome();
     renderLineInvite();
+    renderSiteLinks();
 
     updateSyncStatus(cachedEv ? 'cached' : 'initial-loading', cachedEv ? cachedEv.timestamp : null);
 
@@ -205,8 +206,14 @@ function initHomeCalendar(attempt = 0) {
         height: 'auto',
         dayMaxEvents: 2,
         selectable: false,
-        headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
+        headerToolbar: { left: 'prev,next today jumpToDate', center: 'title', right: '' },
         buttonText: { today: '今日' },
+        customButtons: {
+            jumpToDate: {
+                text: '年月を選択',
+                click: openHomeCalendarJumpPicker
+            }
+        },
         dayCellClassNames: function (arg) {
             const dateStr = toISODate(arg.date);
             return holidaysData[dateStr] ? ['holiday'] : [];
@@ -244,6 +251,28 @@ function initHomeCalendar(attempt = 0) {
         }
     });
     homeCalendar.render();
+
+    const jumpInput = document.getElementById('home-calendar-jump');
+    if (jumpInput && !jumpInput.dataset.bound) {
+        jumpInput.dataset.bound = '1';
+        jumpInput.addEventListener('change', () => {
+            if (!jumpInput.value || !homeCalendar) return;
+            const [y, m] = jumpInput.value.split('-').map(Number);
+            homeCalendar.gotoDate(new Date(y, m - 1, 1));
+        });
+    }
+}
+
+// カレンダー右上の「年月を選択」ボタン。ネイティブの月ピッカーをその場で開く（独自UIは作らない）。
+function openHomeCalendarJumpPicker() {
+    const jumpInput = document.getElementById('home-calendar-jump');
+    if (!jumpInput) return;
+    if (homeCalendar) {
+        const d = homeCalendar.getDate();
+        jumpInput.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
+    if (typeof jumpInput.showPicker === 'function') jumpInput.showPicker();
+    else jumpInput.focus();
 }
 
 function refreshHomeCalendar() {
@@ -485,6 +514,17 @@ function renderVoteReminder(events, members, votes, memberId) {
     banner.classList.remove('hidden');
 }
 
+// 「対応が必要」の各カード（許可願・報告書・振り返り）を個別に開閉する。
+// 済んだ区分だけを畳めるよう、セクション全体ではなく見出し単位のトグルにしている。
+function toggleActionCard(btn) {
+    const list = document.getElementById(btn.getAttribute('aria-controls'));
+    if (!list) return;
+    const open = list.classList.toggle('hidden') === false;
+    btn.setAttribute('aria-expanded', String(open));
+    const card = btn.closest('.dash-card');
+    if (card) card.classList.toggle('dash-card--collapsed', !open);
+}
+
 function updateActionNeeded() {
     const section = document.getElementById('action-needed');
     if (!section) return;
@@ -493,9 +533,37 @@ function updateActionNeeded() {
         const list = document.getElementById(id);
         if (!list) return;
         const card = list.closest('.dash-card');
-        const has = list.children.length > 0;
+        const count = list.children.length;
+        const has = count > 0;
+        // 畳んでいても残件数が分かるよう、見出し右の件数バッジを更新する
+        const countEl = document.getElementById('count-' + id);
+        if (countEl) countEl.textContent = has ? String(count) : '';
         if (card) card.style.display = has ? '' : 'none';
         if (has) hasContent = true;
     });
     section.style.display = hasContent ? '' : 'none';
+}
+
+// ---- リンク集（設定画面で登録した外部リンクをホーム最下部に並べる） ----
+
+function renderSiteLinks() {
+    const section = document.getElementById('site-links-section');
+    const list = document.getElementById('site-links-list');
+    if (!section || !list) return;
+    const cfg = _readCachedSiteSettings() || {};
+    const links = parseSiteLinks(cfg.site_links);
+    if (links.length === 0) {
+        list.innerHTML = '';
+        section.style.display = 'none';
+        return;
+    }
+    list.innerHTML = links.map(l => {
+        const host = siteLinkHost(l.url);
+        return `
+        <a class="site-link" href="${escapeAttr(l.url)}" target="_blank" rel="noopener noreferrer">
+            <span class="site-link-label">${escapeHtml(l.label)}</span>
+            ${host ? `<span class="site-link-host">${escapeHtml(host)}</span>` : ''}
+        </a>`;
+    }).join('');
+    section.style.display = '';
 }

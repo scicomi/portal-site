@@ -31,6 +31,12 @@
     --bg-muted: #f5f5f5;
     --bg-interactive: #e8e6f0;
     --danger-bg: #fff0f0;
+    /* イベント別ページの対象範囲。「この回」は既存のプライマリ、
+       「シリーズ全体」は落ち着いたティールで、見ている範囲を色で区別する。 */
+    --scope-occ: #464775;
+    --scope-occ-bg: #f4f3fa;
+    --scope-series: #2f6f6b;
+    --scope-series-bg: #eef4f3;
     /* Status palettes: バッジ・期限行・出欠/振り返りの状態表示で繰り返し使う配色 */
     --warning-bg: #fffbeb;
     --warning-bg-strong: #fef3c7;
@@ -1348,6 +1354,17 @@ textarea:focus {
 /* --- Home mini calendar (概要): 読み取り専用・コンパクト表示 --- */
 .home-calendar-card {
     padding: var(--space-md);
+    position: relative;
+}
+/* 「年月を選択」ボタンから showPicker() で開くだけの隠し入力。独自のUIは持たない。 */
+.home-calendar-jump-input {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
 }
 .home-calendar .fc {
     font-size: 0.8rem;
@@ -1429,6 +1446,83 @@ textarea:focus {
     transition: background 0.15s;
 }
 .dash-card-title a:hover { background: var(--primary-subtle); }
+
+/* 「対応が必要」カード: 見出しそのものを開閉ボタンにする（カード単位で畳める） */
+.dash-card-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    width: 100%;
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+}
+.dash-card-toggle-label { flex: 1; min-width: 0; }
+.dash-card-toggle:hover .dash-card-toggle-label { text-decoration: underline; }
+/* 畳んだ状態でも残件数が読めるよう、見出し右に控えめなバッジを置く */
+.dash-card-count {
+    flex-shrink: 0;
+    min-width: 24px;
+    padding: 1px 8px;
+    border-radius: var(--radius-full);
+    background: var(--warning-bg-strong);
+    color: var(--warning-text);
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-align: center;
+}
+.dash-card-count:empty { display: none; }
+.dash-card-toggle-icon {
+    flex-shrink: 0;
+    color: var(--text-tertiary);
+    font-size: 0.8rem;
+    line-height: 1;
+    transition: transform 0.18s ease;
+}
+.dash-card-toggle[aria-expanded="false"] .dash-card-toggle-icon { transform: rotate(-90deg); }
+/* 閉じたら見出し下の余白を詰め、罫線がカード下端に寄り添うようにする */
+.dash-card--collapsed .dash-card-title { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+
+/* ホーム最下部のリンク集（設定画面「リンク集」で登録した外部リンク） */
+.site-link-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: var(--space-sm);
+}
+.site-link {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 12px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    background: var(--card-bg);
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.site-link:hover {
+    border-color: var(--primary-light);
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
+}
+.site-link-label {
+    color: var(--primary-color);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+.site-link-host {
+    color: var(--text-tertiary);
+    font-size: var(--font-size-xs);
+    letter-spacing: 0.02em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 .dash-list { list-style: none; padding: 0; margin: 0; }
 .dash-list li {
@@ -2350,10 +2444,23 @@ textarea:focus {
     grid-template-columns: 1fr 1fr;
     gap: 20px;
 }
+/* リンク集の編集行（表示名 / URL / 削除） */
+.cfg-link-rows { display: flex; flex-direction: column; gap: 8px; }
+.cfg-link-row { display: flex; gap: 8px; align-items: center; }
+.cfg-link-row .cfg-link-label { flex: 0 0 200px; }
+.cfg-link-row .cfg-link-url { flex: 1; min-width: 0; }
+.cfg-link-row .cfg-link-remove {
+    width: auto;
+    flex-shrink: 0;
+    padding: 8px 14px;
+    font-size: var(--font-size-sm);
+}
 @media (max-width: 600px) {
     .settings-row-grid {
         grid-template-columns: 1fr;
     }
+    .cfg-link-row { flex-wrap: wrap; }
+    .cfg-link-row .cfg-link-label { flex: 1 1 100%; }
     .settings-card {
         padding: 16px;
     }
@@ -2708,6 +2815,18 @@ textarea:focus {
 }
 .expd-section-header .expd-section-title { margin-bottom: 0; }
 
+/* セクション冒頭の運用上の注意書き（写真タブの保管ルールなど） */
+.expd-note {
+    margin: 0 0 var(--space-md);
+    padding: 10px 14px;
+    border-left: 2px solid var(--primary-light);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    background: var(--primary-subtle);
+    color: var(--text-body);
+    font-size: var(--font-size-sm);
+    line-height: 1.7;
+}
+
 /* 実験ネタ: 新規実験募集の案内カード */
 .exp-recruit-card {
     background: var(--primary-subtle);
@@ -2761,6 +2880,25 @@ textarea:focus {
 .expd-event-chip:hover { background: var(--primary-subtle); }
 .expd-event-date { color: var(--text-muted); font-size: 0.8rem; font-weight: 600; }
 .expd-event-title { font-weight: 500; }
+
+/* 実施イベントの年度フィルタ（積み重なった開催回を年度単位で絞り込む） */
+.expd-fy-select {
+    flex-shrink: 0;
+    width: auto;
+    max-width: 220px;
+    padding: 5px 28px 5px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    background: var(--bg-subtle);
+    color: var(--text-body);
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.expd-fy-select:hover { background: var(--primary-subtle); border-color: var(--primary-light); }
+.expd-fy-select:focus { outline: none; border-color: var(--primary-light); box-shadow: 0 0 0 2px var(--primary-subtle); }
 
 /* Fiscal Year Groups */
 .fy-group { margin-bottom: 8px; }
@@ -3197,45 +3335,11 @@ textarea:focus {
 
 /* ========== Furigana Display ========== */
 
-.detail-sub-tab-bar {
-    display: flex;
-    gap: 0;
-    background: var(--bg-subtle, #f7f8fa);
-    border-radius: 0;
-    padding: 3px 8px;
-    margin-bottom: 16px;
-    border-bottom: 1px solid var(--border-color);
-}
-.detail-sub-tab {
-    padding: 7px 16px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 0.82rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-    border-radius: 6px 6px 0 0;
-    font-family: inherit;
-    transition: background 0.15s, color 0.15s;
-    text-align: center;
-}
-.detail-sub-tab.active {
-    background: white;
-    color: var(--primary-color);
-    font-weight: 600;
-    border: 1px solid var(--border-color);
-    border-bottom-color: white;
-    margin-bottom: -1px;
-}
-.detail-sub-tab:hover:not(.active) {
-    background: rgba(255,255,255,0.5);
-    color: var(--text-color);
-}
-.detail-sub-pane.hidden {
+.scope-pane.hidden {
     display: none !important;
 }
 
-/* --- 孫タブ（成果・振り返り内: 会場・運営 / 実験名ごと） --- */
+/* --- 振り返りタブ内の対象切り替え（会場・運営 / 実験名ごと） --- */
 .grandchild-tab-bar {
     display: flex;
     gap: 6px;
@@ -3264,16 +3368,6 @@ textarea:focus {
     font-weight: 600;
 }
 .grandchild-tab:hover:not(.active) { background: var(--hover-bg); }
-
-/* --- タブ階層のグループ感 ---
-   親（イベント詳細/会場情報/統計）→子（内容/参加状況/…）→孫（会場・運営/実験別）の
-   3段構造が常に分かるよう、子/孫タブが無い画面にも同じ高さの空白バーを確保する。 */
-.detail-sub-tab-bar.sub-tab-placeholder { min-height: 42px; }
-.grandchild-tab-placeholder {
-    min-height: 40px;
-    margin-bottom: 14px;
-    border-bottom: 1px dashed var(--border-subtle);
-}
 
 /* --- 成果・振り返り表示（開催回ごとのカード） --- */
 .results-occ-card { margin-top: 0; margin-bottom: 14px; }
@@ -3346,9 +3440,91 @@ textarea:focus {
     display: flex;
 }
 
+/* --- 動画ギャラリー（YouTube）: 何十件でも軽く保つため、埋め込みはクリックした分だけ生成する --- */
+.video-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+}
+.video-item { position: relative; }
+.video-thumb-btn {
+    position: relative;
+    display: block;
+    width: 100%;
+    aspect-ratio: 16/9;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--border-subtle);
+    cursor: pointer;
+}
+.video-thumb-btn img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.2s;
+}
+.video-thumb-btn:hover img { transform: scale(1.03); }
+.video-play-icon {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: rgba(20,18,32,0.72);
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    padding-left: 3px; /* 再生アイコンの視覚的重心を中央に合わせる */
+    transition: background 0.15s;
+}
+.video-thumb-btn:hover .video-play-icon { background: var(--primary-color); }
+.video-title {
+    margin: 8px 0 0;
+    font-size: 0.85rem;
+    color: var(--text-body);
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+.video-embed {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16/9;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+}
+.video-embed iframe {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    border: none;
+}
+.video-delete {
+    position: absolute;
+    top: 6px; right: 6px;
+    background: rgba(0,0,0,0.6);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 28px; height: 28px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    display: none;
+    align-items: center; justify-content: center;
+}
+.video-item:hover .video-delete { display: flex; }
+
 @media (max-width: 600px) {
     .photo-gallery {
         grid-template-columns: repeat(2, 1fr);
+    }
+    .video-gallery {
+        grid-template-columns: 1fr;
     }
     .expd-tab-bar { padding: 0; }
     .expd-tab { padding: 10px 14px; font-size: 0.85rem; }
@@ -3533,6 +3709,168 @@ textarea:focus {
 }
 .sfb-event-link:hover { text-decoration: underline; color: var(--primary-color); }
 
+/* ======== Event Series: 2ゾーン・フラットタブ ========
+   旧「大タブ→子タブ→孫タブ」の3階層を1段に統合したもの。
+   タブ自体は1列だが、「この回（選択中の開催回が対象）」と
+   「シリーズ全体（全開催回が対象）」で色を変え、どちらの範囲を見ているかを示す。 */
+.scope-tab-bar {
+    display: flex;
+    align-items: stretch;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-bottom: none;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    padding: 0 8px;
+    margin-top: var(--space-md);
+    overflow-x: auto;
+}
+.scope-zone { display: flex; align-items: stretch; flex-shrink: 0; }
+.scope-zone-label {
+    align-self: center;
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    padding: 0 10px 0 6px;
+    white-space: nowrap;
+    transition: color 0.15s;
+}
+.scope-zone--occ.active .scope-zone-label { color: var(--scope-occ); }
+.scope-zone--series.active .scope-zone-label { color: var(--scope-series); }
+.scope-sep {
+    width: 1px;
+    background: var(--border-color);
+    margin: 12px 10px;
+    flex-shrink: 0;
+}
+.scope-tab {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 13px 18px;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -1px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-label);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 0.15s;
+}
+.scope-tab:hover:not(.active) { color: var(--text-color); }
+.scope-zone--occ .scope-tab.active {
+    color: var(--scope-occ);
+    border-bottom-color: var(--scope-occ);
+    font-weight: 700;
+}
+.scope-zone--series .scope-tab.active {
+    color: var(--scope-series);
+    border-bottom-color: var(--scope-series);
+    font-weight: 700;
+}
+/* 未処理件数（概要=未提出の書類 / 出欠=未回答者） */
+.scope-badge {
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.6;
+    padding: 0 7px;
+    border-radius: var(--radius-full);
+    background: var(--warning-bg-strong);
+    color: var(--warning-text);
+    border: 1px solid var(--warning-border);
+}
+
+/* 対象範囲バー: タブ直下に貼り付き、いま何を対象に見ているかを言葉で示す */
+.scope-ctx {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    background: var(--scope-occ-bg);
+    border: 1px solid var(--border-color);
+    border-top: none;
+    border-left: 3px solid var(--scope-occ);
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    padding: 10px 16px;
+    margin-bottom: var(--space-md);
+}
+.scope-ctx--series {
+    background: var(--scope-series-bg);
+    border-left-color: var(--scope-series);
+}
+.scope-ctx-nav {
+    width: 30px; height: 30px;
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+}
+.scope-ctx-nav:hover:not(:disabled) { border-color: var(--scope-occ); color: var(--scope-occ); }
+.scope-ctx-nav:disabled { opacity: 0.35; cursor: default; }
+.scope-ctx-cur { font-weight: 700; font-size: 0.92rem; line-height: 1.35; }
+.scope-ctx-cur small {
+    display: block;
+    font-weight: 500;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+}
+.scope-ctx-select {
+    margin-left: auto;
+    max-width: 260px;
+    padding: 5px 13px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    font-family: inherit;
+    font-size: 0.79rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.scope-ctx-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--scope-series);
+}
+.scope-ctx-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--scope-series);
+}
+.scope-ctx-sub { font-size: 0.78rem; color: var(--text-tertiary); }
+
+@media (max-width: 600px) {
+    .scope-tab { padding: 11px 13px; font-size: 0.85rem; }
+    .scope-zone-label { font-size: 0.62rem; padding: 0 6px 0 4px; }
+    .scope-sep { margin: 12px 5px; }
+    .scope-ctx-select { margin-left: 0; flex-basis: 100%; max-width: none; }
+}
+
+/* 参加状況一覧の状態バッジ（全員表示で誰がどの状態かを一目で分かるように） */
+.att-status {
+    display: inline-block;
+    padding: 1px 10px;
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.att-st-attend { background: var(--success-bg); color: var(--success-text); }
+.att-st-absent { background: var(--danger-bg-strong); color: var(--danger-text-strong); }
+.att-st-undecided { background: var(--warning-bg-strong); color: var(--warning-text); }
+.att-st-noanswer { background: var(--bg-muted); color: var(--text-tertiary); }
+
 /* ======== Event Series Page ======== */
 
 .series-header-card {
@@ -3568,11 +3906,6 @@ textarea:focus {
     flex-shrink: 0;
 }
 .series-header-actions .btn { text-decoration: none; }
-.series-header-card .occ-selector-row {
-    margin-top: 16px;
-    padding-top: 16px;
-    border-top: 1px solid var(--border-light);
-}
 
 /* Series overview cards */
 .series-card {
@@ -4004,21 +4337,6 @@ a.vote-count-badge:hover { color: var(--primary-color); text-decoration: underli
     gap: 8px;
 }
 
-/* --- 詳細タブ: 開催回セレクタ --- */
-.occ-selector-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-.occ-selector-label {
-    font-size: 0.85rem;
-    color: var(--text-label);
-    white-space: nowrap;
-}
-.occ-selector-select {
-    max-width: 240px;
-}
-
 /* --- 詳細タブ: ヘッダー行（バッジ＋編集/複製ボタン） --- */
 .detail-head {
     display: flex;
@@ -4108,14 +4426,21 @@ a.vote-count-badge:hover { color: var(--primary-color); text-decoration: underli
 }
 .series-detail-table th,
 .series-detail-table td {
-    padding: 10px 14px;
+    padding: 12px 14px;
     border-bottom: 1px solid var(--border-subtle);
     text-align: left;
     vertical-align: top;
+    line-height: 1.5;
 }
 .series-detail-table tr:last-child th,
 .series-detail-table tr:last-child td {
     border-bottom: none;
+}
+/* 基本情報と書類情報のブロック感を分ける区切り */
+.series-detail-table tr.series-detail-docs-row th,
+.series-detail-table tr.series-detail-docs-row td {
+    border-top: 1px solid var(--border-color);
+    padding-top: 16px;
 }
 .series-detail-table th {
     width: 108px;
@@ -4130,7 +4455,7 @@ a.vote-count-badge:hover { color: var(--primary-color); text-decoration: underli
 .post-event-card {
     margin-top: 14px;
     background: var(--card-bg);
-    border: 1px dashed var(--border-color);
+    border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     padding: 12px 14px;
 }
@@ -4149,7 +4474,6 @@ a.vote-count-badge:hover { color: var(--primary-color); text-decoration: underli
     font-weight: 600;
     font-size: 0.82rem;
     border-bottom: 1px solid var(--border-subtle);
-    border-right: 1px solid var(--border-subtle);
     text-align: left;
     vertical-align: middle;
 }
@@ -4537,6 +4861,12 @@ mark.search-hit {
     font-size: 1.1em;
 }
 
+/* ========== Events Page Date Column ========== */
+/* 年を小さく2段組にして表示することで日付列の横幅を抑える（色は付けない） */
+.ev-date-cell { width: 1%; }
+.ev-date-year { font-size: 0.7rem; font-weight: 500; line-height: 1.3; }
+.ev-date-md { line-height: 1.3; }
+
 /* ========== Events Page Vote Column ========== */
 .ev-vote-member-bar {
     display: flex; align-items: center; gap: 10px;
@@ -4547,7 +4877,7 @@ mark.search-hit {
 .ev-vote-member-bar label { font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
 .ev-vote-member-bar select { flex: 1; max-width: 200px; padding: 4px 8px; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px; }
 .ev-vote-cell {
-    min-width: 80px; text-align: center;
+    min-width: 64px; text-align: center;
 }
 .ev-vote-select {
     font-size: 0.78rem;
@@ -4556,7 +4886,11 @@ mark.search-hit {
     border-radius: 4px;
     background: white;
     cursor: pointer;
-    width: 100%;
+    width: auto;
+    max-width: 68px;
+    margin: 0 auto;
+    text-align: center;
+    text-align-last: center;
     appearance: none; -webkit-appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23999'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
