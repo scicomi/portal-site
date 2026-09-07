@@ -3723,7 +3723,13 @@ textarea:focus {
     padding: 0 8px;
     margin-top: var(--space-md);
     overflow-x: auto;
+    /* 画面が狭くタブが収まらない時だけ横スクロール可能にする。スワイプ操作は
+       残しつつ、常設スクロールバー環境（Windows既定など）で下に太い帯が
+       常時表示されて邪魔にならないよう、スクロールバー自体は非表示にする。 */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
+.scope-tab-bar::-webkit-scrollbar { display: none; }
 .scope-zone { display: flex; align-items: stretch; flex-shrink: 0; }
 .scope-zone-label {
     align-self: center;
