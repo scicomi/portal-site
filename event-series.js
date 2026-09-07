@@ -885,16 +885,34 @@ function renderPrAssignments(ev) {
     const channels = CONFIG.PR_CHANNELS || [];
     if (!channels.length) { container.innerHTML = ''; return; }
     const assignments = ev.PrAssignments || {};
+
+    // 教職員は広報担当の対象外。メンバーのみを学年（◯C）ごとにグループ化して選ばせる。
+    const eligible = voteEligibleMembers(membersCache, ev);
+    const memberGroups = groupMembersByGrade(eligible);
+
+    const optionsHtml = (current) => {
+        // 過去のデータで退会済み・年度外のメンバーが設定されている場合も選択肢として残す
+        const currentMissing = current && !eligible.some(m => m.Name === current);
+        return `
+            <option value="">なし</option>
+            ${currentMissing ? `<option value="${escapeAttr(current)}" selected>${escapeAttr(current)}</option>` : ''}
+            ${memberGroups.map(g => `<optgroup label="${escapeAttr(g.label)}">${g.members.map(m =>
+                `<option value="${escapeAttr(m.Name)}" ${m.Name === current ? 'selected' : ''}>${escapeAttr(m.Name)}</option>`
+            ).join('')}</optgroup>`).join('')}
+        `;
+    };
+
     container.innerHTML = `
         <div class="post-event-pr-title">広報担当</div>
         ${channels.map(ch => `<div class="pr-row">
             <span class="pr-label">${escapeHtml(ch)}</span>
-            <input type="text" class="e1-input pr-input" data-pr-channel="${escapeAttr(ch)}" list="member-datalist"
-                value="${escapeAttr(assignments[ch] || '')}" placeholder="なし">
+            <select class="e1-input pr-input" data-pr-channel="${escapeAttr(ch)}">
+                ${optionsHtml(assignments[ch] || '')}
+            </select>
         </div>`).join('')}
     `;
-    container.querySelectorAll('.pr-input[data-pr-channel]').forEach(input => {
-        input.addEventListener('change', () => savePrField(ev.ID, input.dataset.prChannel, input.value.trim()));
+    container.querySelectorAll('.pr-input[data-pr-channel]').forEach(select => {
+        select.addEventListener('change', () => savePrField(ev.ID, select.dataset.prChannel, select.value.trim()));
     });
 }
 
