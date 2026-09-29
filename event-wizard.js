@@ -27,17 +27,22 @@ function _wzHost() {
     return window.EVENT_WIZARD_HOST || _eventsPageWizardHost;
 }
 
+// ホストとの受け渡しはサーバー形（DB の列名）。eventsData（script.js）はまだ UI形なので境界で変換する。
 const _eventsPageWizardHost = {
-    getEvent(id) { return eventsData.find(x => x.ID === id) || null; },
+    getEvent(id) {
+        const u = eventsData.find(x => x.ID === id);
+        return u ? uiToGas(u) : null;
+    },
     snapshot() { return JSON.parse(JSON.stringify(eventsData)); },
-    applyOptimistic(itemUi) {
+    applyOptimistic(item) {
+        const itemUi = gasToUi(item);
         const idx = eventsData.findIndex(x => x.ID === itemUi.ID);
         if (idx > -1) eventsData[idx] = itemUi; else eventsData.unshift(itemUi);
         api.saveCache('events', eventsData);
         renderEvents();
     },
-    commitSaved(savedGas) {
-        const savedEvent = gasToUi(savedGas);
+    commitSaved(saved) {
+        const savedEvent = gasToUi(saved);
         const idx = eventsData.findIndex(x => x.ID === savedEvent.ID);
         if (idx >= 0) {
             eventsData[idx] = savedEvent;
@@ -208,13 +213,13 @@ async function populateDatalists() {
 // ---- 日付レンジピッカー（クリックでカレンダーを開く） ----
 // events.html の .date-range-picker-wrapper を駆動する。
 // 表示用の readonly input をクリックするとポップアップ暦が開き、
-// 開始日→終了日の順にクリックすると hidden の Date / Date_End に反映される。
+// 開始日→終了日の順にクリックすると hidden の Date / DateEnd に反映される。
 function initDateRangePicker(card) {
     const wrapper = card.querySelector('.date-range-picker-wrapper');
     if (!wrapper) return;
     const display = wrapper.querySelector('.date-range-display');
     const startInput = wrapper.querySelector('[data-field="Date"]');
-    const endInput = wrapper.querySelector('[data-field="Date_End"]');
+    const endInput = wrapper.querySelector('[data-field="DateEnd"]');
     const popup = wrapper.querySelector('.date-range-popup');
     if (!display || !startInput || !endInput || !popup) return;
 
@@ -496,6 +501,12 @@ function initTagInput(container, selectedValues, placeholder, filterFn) {
     return container._tagInput;
 }
 
+// ---- Files の正規化 ----
+// 古いデータには URL 文字列だけの要素があるため、ウィザードで扱う { name, url, ... } にそろえる（コピーを返す）。
+function normalizeEventFiles(files) {
+    return (Array.isArray(files) ? files : []).map(f => typeof f === 'string' ? { name: '', url: f } : f);
+}
+
 // ---- PartsList 新旧フォーマット変換 ----
 // 旧: [{partName:"一部", items:[{name:"スライム", presenter:"太田"}]}]
 // 新: [{name:"スライム", presenters:["太田","鈴木"]}]
@@ -619,17 +630,17 @@ function openEventWizard(editId, template) {
         const existing = _wzHost().getEvent(editingEventId);
         if (!existing) return;
         isEdit = true;
-        e = { ...existing, Files: Array.isArray(existing.Files) ? [...existing.Files] : [] };
+        e = { ...existing, Files: normalizeEventFiles(existing.Files) };
     } else if (template) {
         isEdit = false;
         e = {
             ...template,
             ID: genId('ev_'),
-            Date: todayISO(), Date_End: '',
-            Meeting_Number: '',
+            Date: todayISO(), DateEnd: '',
+            MeetingNumber: '',
             Files: [],
-            Kyoka_Deadline: '', Houkoku_Deadline: '',
-            Vote_Deadline: '', VoteDeadline: '',   // 出欠締切は元イベントの日付なので引き継がない
+            KyokaDeadline: '', HoukokuDeadline: '',
+            VoteDeadline: '',   // 出欠締切は元イベントの日付なので引き継がない
             ReportStatus: '', KyokaStatus: '',
             Positives: '', Reflections: '', ResultsMemo: '',
             // 実施後の記録(来場者数・参加人数・広報担当)は回ごとの値なので引き継がない。郵便番号は会場情報として引き継ぐ
@@ -655,8 +666,8 @@ function openEventWizard(editId, template) {
     overlay.className = 'wizard-overlay';
 
     // 時間未定のイベントに架空の時間を入れない（空欄 = 未定のまま保存できる）
-    const timeStart = (e.Event_Time || '').split(' - ')[0]?.trim() || '';
-    const timeEnd = (e.Event_Time || '').split(' - ')[1]?.trim() || '';
+    const timeStart = e.TimeStart || '';
+    const timeEnd = e.TimeEnd || '';
 
     let stepsHtml = '';
 
@@ -669,7 +680,7 @@ function openEventWizard(editId, template) {
                 <div class="flex-row">
                     <div class="e1-group" style="flex:0 0 100px;">
                         <label class="e1-label">回数</label>
-                        <input id="wz-ev-meeting-num" class="e1-input" type="number" placeholder="3" value="${escapeAttr(e.Meeting_Number || '')}">
+                        <input id="wz-ev-meeting-num" class="e1-input" type="number" placeholder="3" value="${escapeAttr(e.MeetingNumber || '')}">
                     </div>
                     <div class="e1-group" style="flex:1;">
                         <label class="e1-label">ミーティング名</label>
@@ -690,7 +701,7 @@ function openEventWizard(editId, template) {
                     <div class="date-range-picker-wrapper">
                         <input type="text" class="e1-input date-range-display" id="wz-ev-date-display" readonly placeholder="クリックして日にちを選択">
                         <input type="hidden" id="wz-ev-date" data-field="Date" value="${escapeAttr(e.Date || '')}">
-                        <input type="hidden" id="wz-ev-date-end" data-field="Date_End" value="${escapeAttr(e.Date_End || '')}">
+                        <input type="hidden" id="wz-ev-date-end" data-field="DateEnd" value="${escapeAttr(e.DateEnd || '')}">
                         <div class="date-range-popup hidden"></div>
                     </div>
                 </div>
@@ -704,7 +715,7 @@ function openEventWizard(editId, template) {
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">出欠回答の締切（任意）</label>
-                    <input type="date" id="wz-ev-vote-deadline" class="e1-input" value="${escapeAttr(e.Vote_Deadline || '')}">
+                    <input type="date" id="wz-ev-vote-deadline" class="e1-input" value="${escapeAttr(e.VoteDeadline || '')}">
                     <span class="text-muted" style="font-size:0.8rem;">未設定なら最終日まで回答できます。締切後の変更は管理者のみ。</span>
                 </div>
             </div>`;
@@ -749,7 +760,7 @@ function openEventWizard(editId, template) {
                     <div class="date-range-picker-wrapper">
                         <input type="text" class="e1-input date-range-display" id="wz-ev-date-display" readonly placeholder="クリックして日にちを選択">
                         <input type="hidden" id="wz-ev-date" data-field="Date" value="${escapeAttr(e.Date || '')}">
-                        <input type="hidden" id="wz-ev-date-end" data-field="Date_End" value="${escapeAttr(e.Date_End || '')}">
+                        <input type="hidden" id="wz-ev-date-end" data-field="DateEnd" value="${escapeAttr(e.DateEnd || '')}">
                         <div class="date-range-popup hidden"></div>
                     </div>
                 </div>
@@ -773,7 +784,7 @@ function openEventWizard(editId, template) {
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">出欠回答の締切（任意）</label>
-                    <input type="date" id="wz-ev-vote-deadline" class="e1-input" value="${escapeAttr(e.Vote_Deadline || '')}">
+                    <input type="date" id="wz-ev-vote-deadline" class="e1-input" value="${escapeAttr(e.VoteDeadline || '')}">
                     <span class="text-muted" style="font-size:0.8rem;">未設定なら最終日まで回答できます。締切後の変更は管理者のみ。</span>
                 </div>
             </div>`;
@@ -797,7 +808,7 @@ function openEventWizard(editId, template) {
                 <div class="wizard-step-label">Step 4 / ${steps.length} &mdash; ${steps[3].label}</div>
                 <div class="e1-group">
                     <label class="e1-label">スケジュール・運搬</label>
-                    <textarea id="wz-ev-logistics" class="e1-input" rows="4" placeholder="タイムテーブルや運搬の段取り">${escapeHtml(e.Meeting_Logistics || '')}</textarea>
+                    <textarea id="wz-ev-logistics" class="e1-input" rows="4" placeholder="タイムテーブルや運搬の段取り">${escapeHtml(e.Logistics || '')}</textarea>
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">備考</label>
@@ -825,7 +836,7 @@ function openEventWizard(editId, template) {
                             <div id="wz-ev-kyoka-fields" class="${e.KyokaNotRequired ? 'hidden' : ''}">
                                 <label class="text-label" style="font-size:0.85rem; display:block; margin-bottom:4px;">許可願 (担当)</label>
                                 <div id="wz-ev-admin-kyoka"></div>
-                                <span class="text-muted" style="font-size:0.8rem;">期限: <span id="wz-ev-kyoka-dl">${escapeHtml(e.Kyoka_Deadline || '---')}</span></span>
+                                <span class="text-muted" style="font-size:0.8rem;">期限: <span id="wz-ev-kyoka-dl">${escapeHtml(e.KyokaDeadline || '---')}</span></span>
                             </div>
                         </div>
                         <div>
@@ -836,7 +847,7 @@ function openEventWizard(editId, template) {
                             <div id="wz-ev-houkoku-fields" class="${e.HoukokuNotRequired ? 'hidden' : ''}">
                                 <label class="text-label" style="font-size:0.85rem; display:block; margin-bottom:4px;">報告書 (担当)</label>
                                 <div id="wz-ev-admin-houkoku"></div>
-                                <span class="text-muted" style="font-size:0.8rem;">期限: <span id="wz-ev-houkoku-dl">${escapeHtml(e.Houkoku_Deadline || '---')}</span></span>
+                                <span class="text-muted" style="font-size:0.8rem;">期限: <span id="wz-ev-houkoku-dl">${escapeHtml(e.HoukokuDeadline || '---')}</span></span>
                             </div>
                         </div>
                     </div>
@@ -878,8 +889,8 @@ function openEventWizard(editId, template) {
     if (!isMeeting) {
         const gEl = document.getElementById('wz-ev-gather');
         const dEl = document.getElementById('wz-ev-dismiss');
-        if (gEl) gEl.value = e.Gather_Time || '';
-        if (dEl) dEl.value = e.Dismiss_Time || '';
+        if (gEl) gEl.value = e.GatherTime || '';
+        if (dEl) dEl.value = e.DismissTime || '';
     }
 
     // Initialize date range picker
@@ -901,8 +912,8 @@ function openEventWizard(editId, template) {
         // Initialize admin tag inputs for deadlines
         const kyokaEl = document.getElementById('wz-ev-admin-kyoka');
         const houkokuEl = document.getElementById('wz-ev-admin-houkoku');
-        const kyokaVals = (e.Admin_Kyoka || '').split(',').map(s => s.trim()).filter(Boolean);
-        const houkokuVals = (e.Admin_Houkoku || '').split(',').map(s => s.trim()).filter(Boolean);
+        const kyokaVals = (e.AdminKyoka || '').split(',').map(s => s.trim()).filter(Boolean);
+        const houkokuVals = (e.AdminHoukoku || '').split(',').map(s => s.trim()).filter(Boolean);
         initTagInput(kyokaEl, kyokaVals, '担当者を検索...', isRegularMember);
         initTagInput(houkokuEl, houkokuVals, '担当者を検索...', isRegularMember);
 
@@ -1156,11 +1167,11 @@ function saveEventFromWizard() {
     if (planNameEl) tempNewEvent.PlanName = planNameEl.value.trim();
     tempNewEvent.Category = evWizardCategory;
     tempNewEvent.Date = document.getElementById('wz-ev-date')?.value || '';
-    tempNewEvent.Date_End = document.getElementById('wz-ev-date-end')?.value || '';
+    tempNewEvent.DateEnd = document.getElementById('wz-ev-date-end')?.value || '';
     tempNewEvent.Remarks = (document.getElementById('wz-ev-remarks')?.value || '');
     // 出欠回答の締切（任意）。欄が無い画面（クイック作成）では既存値を保持する。
     const voteDlEl = document.getElementById('wz-ev-vote-deadline');
-    if (voteDlEl) tempNewEvent.Vote_Deadline = voteDlEl.value || '';
+    if (voteDlEl) tempNewEvent.VoteDeadline = voteDlEl.value || '';
 
     const ts = document.getElementById('wz-ev-time-start')?.value || '';
     const te = document.getElementById('wz-ev-time-end')?.value || '';
@@ -1174,10 +1185,11 @@ function saveEventFromWizard() {
         evWizardGoto(1);
         return;
     }
-    tempNewEvent.Event_Time = ts && te ? `${ts} - ${te}` : '';
+    tempNewEvent.TimeStart = ts && te ? ts : '';
+    tempNewEvent.TimeEnd = ts && te ? te : '';
 
     if (isMeeting) {
-        tempNewEvent.Meeting_Number = document.getElementById('wz-ev-meeting-num')?.value || '';
+        tempNewEvent.MeetingNumber = document.getElementById('wz-ev-meeting-num')?.value || '';
     } else {
         // ドットで直接最終ステップへ来られるため、保存時にも実験名の実在チェックをする
         const badExps = invalidExperimentNames();
@@ -1187,9 +1199,9 @@ function saveEventFromWizard() {
             return;
         }
         tempNewEvent.Audience = (document.getElementById('wz-ev-audience')?.value || '').trim();
-        tempNewEvent.Gather_Time = document.getElementById('wz-ev-gather')?.value || '';
-        tempNewEvent.Dismiss_Time = document.getElementById('wz-ev-dismiss')?.value || '';
-        tempNewEvent.Meeting_Logistics = (document.getElementById('wz-ev-logistics')?.value || '');
+        tempNewEvent.GatherTime = document.getElementById('wz-ev-gather')?.value || '';
+        tempNewEvent.DismissTime = document.getElementById('wz-ev-dismiss')?.value || '';
+        tempNewEvent.Logistics = (document.getElementById('wz-ev-logistics')?.value || '');
 
         // Collect experiments
         const expContainer = document.getElementById('wz-ev-exp-container');
@@ -1202,7 +1214,7 @@ function saveEventFromWizard() {
                 const presenters = tagContainer?._tagInput ? tagContainer._tagInput.getValues() : [];
                 if (name || presenters.length > 0) collected.push({ name, presenters });
             });
-            tempNewEvent.PartsList = JSON.stringify(collected);
+            tempNewEvent.PartsList = collected;
         }
 
         // 書類が不要な場合は担当者・期限を持たせない（チェックを外せばまた計算に戻る）
@@ -1213,27 +1225,27 @@ function saveEventFromWizard() {
         const accompanyEl = document.getElementById('wz-ev-accompany');
         if (accompanyEl?._tagInput) tempNewEvent.Accompany = accompanyEl._tagInput.getValues().join(', ');
         if (tempNewEvent.KyokaNotRequired) {
-            tempNewEvent.Admin_Kyoka = '';
+            tempNewEvent.AdminKyoka = '';
         } else {
             const kyokaEl = document.getElementById('wz-ev-admin-kyoka');
-            if (kyokaEl?._tagInput) tempNewEvent.Admin_Kyoka = kyokaEl._tagInput.getValues().join(', ');
+            if (kyokaEl?._tagInput) tempNewEvent.AdminKyoka = kyokaEl._tagInput.getValues().join(', ');
         }
         if (tempNewEvent.HoukokuNotRequired) {
-            tempNewEvent.Admin_Houkoku = '';
+            tempNewEvent.AdminHoukoku = '';
         } else {
             const houkokuEl = document.getElementById('wz-ev-admin-houkoku');
-            if (houkokuEl?._tagInput) tempNewEvent.Admin_Houkoku = houkokuEl._tagInput.getValues().join(', ');
+            if (houkokuEl?._tagInput) tempNewEvent.AdminHoukoku = houkokuEl._tagInput.getValues().join(', ');
         }
     }
 
     // Recalculate deadlines（不要フラグが立っている方は期限を持たせない）
     if (isMeeting) {
-        tempNewEvent.Kyoka_Deadline = '';
-        tempNewEvent.Houkoku_Deadline = '';
+        tempNewEvent.KyokaDeadline = '';
+        tempNewEvent.HoukokuDeadline = '';
     } else {
         const dl = calculateDeadlines(tempNewEvent.Date);
-        tempNewEvent.Kyoka_Deadline = tempNewEvent.KyokaNotRequired ? '' : dl.kyoka;
-        tempNewEvent.Houkoku_Deadline = tempNewEvent.HoukokuNotRequired ? '' : dl.houkoku;
+        tempNewEvent.KyokaDeadline = tempNewEvent.KyokaNotRequired ? '' : dl.kyoka;
+        tempNewEvent.HoukokuDeadline = tempNewEvent.HoukokuNotRequired ? '' : dl.houkoku;
     }
 
     // Uploading check
@@ -1248,7 +1260,9 @@ function saveEventFromWizard() {
     const host = _wzHost();
     const eventId = tempNewEvent.ID;
     const isExisting = !!host.getEvent(eventId);
-    const gasItem = uiToGas(tempNewEvent);
+    const saveItem = { ...tempNewEvent };
+    delete saveItem._filesToDelete;
+    delete saveItem._sessionUploads;
     const openedUpdatedAt = tempNewEvent.UpdatedAt || '';
 
     const filesToDelete = Array.isArray(tempNewEvent._filesToDelete) ? tempNewEvent._filesToDelete.slice() : [];
@@ -1267,9 +1281,9 @@ function saveEventFromWizard() {
     toast('保存しました', 'success');
 
     // 許可願の期限が過去なのにイベントがまだ先の場合は注意を促す（保存は妨げない）
-    if (!isMeeting && optimisticItem.Kyoka_Deadline && optimisticItem.Kyoka_Deadline < todayISO()
-        && (optimisticItem.Date_End || optimisticItem.Date) >= todayISO()) {
-        toast(`許可願の期限（${optimisticItem.Kyoka_Deadline}）を過ぎています。至急対応してください`, 'error', 6000);
+    if (!isMeeting && optimisticItem.KyokaDeadline && optimisticItem.KyokaDeadline < todayISO()
+        && (optimisticItem.DateEnd || optimisticItem.Date) >= todayISO()) {
+        toast(`許可願の期限（${optimisticItem.KyokaDeadline}）を過ぎています。至急対応してください`, 'error', 6000);
     }
 
     // 同じイベントへの保存（詳細ページの個別保存など）が送信中なら、その完了を待ってから送る。
@@ -1278,13 +1292,13 @@ function saveEventFromWizard() {
         if (isExisting) {
             const live = host.getEvent(eventId);
             const liveStamp = live && live.UpdatedAt;
-            gasItem._baseUpdatedAt = (liveStamp && liveStamp !== openedUpdatedAt && isOwnSavedStamp(eventId, liveStamp))
+            saveItem._baseUpdatedAt = (liveStamp && liveStamp !== openedUpdatedAt && isOwnSavedStamp(eventId, liveStamp))
                 ? liveStamp : openedUpdatedAt;
         }
-        return api.save('events', gasItem);
-    }).then(savedGas => {
-        host.commitSaved(savedGas);
-        if (savedGas && savedGas.UpdatedAt) _ownSavedStamps.add(eventId + ':' + savedGas.UpdatedAt);
+        return api.save('events', saveItem);
+    }).then(saved => {
+        host.commitSaved(saved);
+        if (saved && saved.UpdatedAt) _ownSavedStamps.add(eventId + ':' + saved.UpdatedAt);
         filesToDelete.forEach(driveId => {
             api.deleteFile(driveId).catch(err => {
                 // 削除は管理者のみ可能。イベントからは外れているが、R2 には残る

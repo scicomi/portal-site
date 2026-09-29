@@ -34,23 +34,19 @@ const REPORT_STATUS = CONFIG.REPORT_STATUS;
 
 // ---- イベント編集ウィザードのホスト実装 ----
 // event-wizard.js の共通ウィザードをこのページ内で使う。
-// このページのデータ（allEventsData）はサーバー形なので UI形と相互変換する。
+// このページのデータ（allEventsData）もウィザードもサーバー形なので、そのまま受け渡す。
 window.EVENT_WIZARD_HOST = {
-    getEvent(id) {
-        const g = allEventsData.find(e => e.ID === id);
-        return g ? gasToUi(g) : null;
-    },
+    getEvent(id) { return allEventsData.find(e => e.ID === id) || null; },
     snapshot() { return JSON.parse(JSON.stringify(allEventsData)); },
-    applyOptimistic(itemUi) {
-        const g = uiToGas(itemUi);
-        const idx = allEventsData.findIndex(e => e.ID === g.ID);
-        if (idx >= 0) allEventsData[idx] = g; else allEventsData.unshift(g);
+    applyOptimistic(item) {
+        const idx = allEventsData.findIndex(e => e.ID === item.ID);
+        if (idx >= 0) allEventsData[idx] = item; else allEventsData.unshift(item);
         api.saveCache('events', allEventsData);
         this._rerender();
     },
-    commitSaved(savedGas) {
-        const idx = allEventsData.findIndex(e => e.ID === savedGas.ID);
-        if (idx >= 0) allEventsData[idx] = savedGas;
+    commitSaved(saved) {
+        const idx = allEventsData.findIndex(e => e.ID === saved.ID);
+        if (idx >= 0) allEventsData[idx] = saved;
         api.saveCache('events', allEventsData);
         this._rerender();
     },
