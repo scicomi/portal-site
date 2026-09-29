@@ -1254,6 +1254,15 @@ async function deleteEventWithUndo(id) {
 // Temporary storage for the event currently being created or edited in the modal
 let tempNewEvent = null;
 
+// ウィザード表示中は Ctrl+S（Mac は Cmd+S）で保存する（どのステップからでも。検証は保存時に全ステップ分行う）
+document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's') return;
+    if (!document.getElementById('ev-wizard-overlay') || !tempNewEvent) return;
+    if (document.querySelector('.confirm-dialog-overlay')) return; // 破棄確認などが上に出ているときは何もしない
+    e.preventDefault();
+    saveEventFromWizard();
+});
+
 // 日付変更時に期限表示を即時更新する（期限は自動計算のみ・表示専用スパン）。
 // 実際の保存値は saveEventFromWizard / saveQuickCreate で確定する。
 // 許可願の期限が既に過ぎている場合は赤字で警告する。

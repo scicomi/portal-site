@@ -15,7 +15,8 @@ configureEventWizard({
 document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
         // フォーム編集中は Ctrl+S だけ拾う
-        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        // （編集ウィザードの Ctrl+S は event-wizard.js が扱う）
+        if ((e.ctrlKey || e.metaKey) && e.key === 's' && !document.getElementById('ev-wizard-overlay')) {
             const saveBtn = document.querySelector('#qc-save, .modal-content .btn-primary:not(.hidden)');
             if (saveBtn) { e.preventDefault(); saveBtn.click(); }
         }
@@ -199,6 +200,8 @@ async function init() {
     }
 
     populateDatalists();
+    // 日付ピッカー（クイック作成・ウィザード）で祝日を色分けする。取得できなくても入力は妨げない
+    api.loadHolidaysCached().then(h => { holidaysData = h || {}; }).catch(() => {});
     // キャッシュがある時だけ即描画。無い時は HTML の「読み込み中...」行を残し、
     // refreshData 完了後に renderEvents で置き換える（空表示と読込中を取り違えない）。
     if (cached && cached.items && cached.items.length > 0) {
