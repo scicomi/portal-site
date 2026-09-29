@@ -92,11 +92,103 @@ const PUBLIC_CONFIG_KEYS = [
   'site_links'
 ];
 
-// 既定値を返す。password 系だけは毎回ランダム生成する。
+// 既定値を返す。機密キーはシートに値を置かないため常に空（初期パスワードは migrateSecrets が生成）。
 function defaultConfigValue_(key) {
-  if (key === 'password') return 'CHANGE_ME_' + Math.random().toString(36).slice(2, 8);
-  if (key === 'admin_password') return 'ADMIN_' + Math.random().toString(36).slice(2, 10);
+  if (isSecretKey_(key)) return '';
   return DEFAULT_CONFIG[key];
+}
+
+// ====== 機密設定（Script Properties で管理） ======
+// パスワード・APIキー類は Config シートに置かない（シートの共有設定ミスやバックアップ複製で
+// 平文が漏れるのを防ぐ）。パスワードは照合用のソルト付きハッシュのみ保持し、平文はどこにも残さない。
+// 幹部がシートの Value 欄へ直接書き込んだ場合も、次のリクエスト時に取り込んでシートから消去する。
+const SECRET_CONFIG_KEYS = ['password', 'admin_password', 'gemini_api_key', 'line_channel_access_token'];
+const PASSWORD_CONFIG_KEYS = ['password', 'admin_password'];
+const PASSWORD_MIN_LENGTH = 4;
+const PASSWORD_HASH_ROUNDS = 200; // GAS の実行時間を圧迫しない範囲でハッシュを反復する
+const SECRET_PLACEHOLDER = '(Script Properties で管理)';
+
+function isSecretKey_(key) { return SECRET_CONFIG_KEYS.indexOf(key) >= 0; }
+function isPasswordKey_(key) { return PASSWORD_CONFIG_KEYS.indexOf(key) >= 0; }
+function secretPropKey_(key) { return (isPasswordKey_(key) ? 'pwhash_' : 'secret_') + key; }
+
+function bytesToHex_(bytes) {
+  return bytes.map(function (b) { return ('0' + ((b + 256) % 256).toString(16)).slice(-2); }).join('');
+}
+
+function hashPassword_(pw, salt) {
+  var saltBytes = Utilities.newBlob(salt).getBytes();
+  var h = Utilities.computeHmacSha256Signature(Utilities.newBlob(pw).getBytes(), saltBytes);
+  for (var i = 1; i < PASSWORD_HASH_ROUNDS; i++) {
+    h = Utilities.computeHmacSha256Signature(h, saltBytes);
+  }
+  return bytesToHex_(h);
+}
+
+// 長さに依らず全文字を比較する（一致位置による応答時間差を作らない）
+function safeEqual_(a, b) {
+  if (a.length !== b.length) return false;
+  var diff = 0;
+  for (var i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// 機密値を保存し、シート側は目印だけにする。空文字は削除扱い。
+function storeSecret_(key, value) {
+  var props = PropertiesService.getScriptProperties();
+  var v = String(value === null || value === undefined ? '' : value).trim();
+  if (v === '') {
+    props.deleteProperty(secretPropKey_(key));
+  } else if (isPasswordKey_(key)) {
+    var salt = Utilities.getUuid();
+    props.setProperty(secretPropKey_(key), salt + '$' + hashPassword_(v, salt));
+  } else {
+    props.setProperty(secretPropKey_(key), v);
+  }
+  writeConfigSheet_(key, v === '' ? '' : SECRET_PLACEHOLDER);
+}
+
+// シートの Value 欄に平文が書かれていれば取り込んで消去する（旧データの移行・直接編集の両対応）
+function absorbSecretFromSheet_(key) {
+  var v = String(loadConfigMap_()[key] || '').trim();
+  if (v === '' || v === SECRET_PLACEHOLDER) return;
+  storeSecret_(key, v);
+}
+
+function getSecret_(key) {
+  absorbSecretFromSheet_(key);
+  if (isPasswordKey_(key)) return ''; // パスワードは平文を持たない
+  return PropertiesService.getScriptProperties().getProperty(secretPropKey_(key)) || '';
+}
+
+function hasSecret_(key) {
+  absorbSecretFromSheet_(key);
+  return !!PropertiesService.getScriptProperties().getProperty(secretPropKey_(key));
+}
+
+function verifyPassword_(key, input) {
+  var pw = String(input || '').trim();
+  if (pw === '') return false;
+  absorbSecretFromSheet_(key);
+  var stored = PropertiesService.getScriptProperties().getProperty(secretPropKey_(key)) || '';
+  var sep = stored.indexOf('$');
+  if (sep < 0) return false;
+  return safeEqual_(hashPassword_(pw, stored.slice(0, sep)), stored.slice(sep + 1));
+}
+
+/**
+ * 機密値を Config シートから Script Properties へ移行する。setupSpreadsheet からも呼ばれる。
+ * パスワードが未設定なら初期値を乱数生成し、その回だけ実行ログに表示する（オーナーのみ閲覧可）。
+ */
+function migrateSecrets() {
+  SECRET_CONFIG_KEYS.forEach(absorbSecretFromSheet_);
+  PASSWORD_CONFIG_KEYS.forEach(function (key) {
+    if (hasSecret_(key)) return;
+    var initial = Utilities.getUuid().replace(/-/g, '').slice(0, 16);
+    storeSecret_(key, initial);
+    Logger.log('初期 ' + key + '（この表示は今回限り。設定画面から変更してください）: ' + initial);
+  });
+  Logger.log('機密設定の移行が完了しました。');
 }
 
 // 整数設定値を取得。parseInt(...) || fallback だと 0 が有効値でもフォールバックに戻る副作用があるため
@@ -146,7 +238,7 @@ function validateConfigValue_(key, value) {
       return ['true', 'false'].indexOf(v) >= 0 ? '' : 'true か false を指定してください';
     case 'password':
     case 'admin_password':
-      return v.length >= 4 ? '' : 'パスワードは4文字以上にしてください';
+      return v.trim().length >= PASSWORD_MIN_LENGTH ? '' : 'パスワードは' + PASSWORD_MIN_LENGTH + '文字以上にしてください';
     case 'brand_icon':
       return v.trim().length >= 1 && v.trim().length <= 4 ? '' : 'アイコンは1〜4文字で指定してください';
     case 'brand_name':
@@ -213,9 +305,7 @@ function doPost(e) {
 
     // --- 認証（パスワード不要） ---
     if (action === 'auth') {
-      const inputPw = (body.password || '').trim();
-      const realPw = getConfig('password').trim();
-      const ok = inputPw === realPw && inputPw !== '';
+      const ok = verifyPassword_('password', body.password);
       if (!ok) {
         appendAuditLog('auth_fail', '', token);
         throttleFailedAuth_('member');
@@ -229,9 +319,7 @@ function doPost(e) {
 
     // --- 管理者認証 ---
     if (action === 'adminAuth') {
-      const inputPw = (body.admin_password || '').trim();
-      const realPw = getConfig('admin_password').trim();
-      const ok = inputPw === realPw && inputPw !== '';
+      const ok = verifyPassword_('admin_password', body.admin_password);
       appendAuditLog(ok ? 'adminAuth_success' : 'adminAuth_fail', '', token);
       if (!ok) {
         throttleFailedAuth_('admin');
@@ -248,8 +336,6 @@ function doPost(e) {
     // ※ 幹部 → メンバーを兼ねる（管理者は全機能を使えるため、メンバートークンも発行）。
     if (action === 'login') {
       const inputPw = (body.password || '').trim();
-      const memberPw = getConfig('password').trim();
-      const adminPw = getConfig('admin_password').trim();
 
       if (inputPw === '') {
         appendAuditLog('login_fail', '', '');
@@ -258,7 +344,7 @@ function doPost(e) {
       }
 
       // 幹部パスワードを先に判定（一般と同一に設定された場合でも挙動を確定させる）
-      if (adminPw !== '' && inputPw === adminPw) {
+      if (verifyPassword_('admin_password', inputPw)) {
         resetFailedAuth_('member');
         resetFailedAuth_('admin');
         const adminMemberToken = generateToken('member');
@@ -273,7 +359,7 @@ function doPost(e) {
         });
       }
 
-      if (memberPw !== '' && inputPw === memberPw) {
+      if (verifyPassword_('password', inputPw)) {
         resetFailedAuth_('member');
         const memberToken = generateToken('member');
         appendAuditLog('login_member', '', memberToken, 'member');
@@ -388,8 +474,10 @@ function doPost(e) {
       }
       // DEFAULT_CONFIG の全キーを返す（未設定キーは既定値にフォールバック）。
       // settings.js が読む welcome_message / deadline_* / reminder_days 等もここで揃う。
+      // 機密キーは値を返さず、設定済みかどうか（<key>_set）だけを返す。
       var fullCfg = {};
       Object.keys(DEFAULT_CONFIG).forEach(function (k) {
+        if (isSecretKey_(k)) { fullCfg[k + '_set'] = hasSecret_(k); return; }
         var v = getConfig(k);
         fullCfg[k] = (v === '' || v === null || v === undefined) ? String(DEFAULT_CONFIG[k]) : v;
       });
@@ -411,6 +499,10 @@ function doPost(e) {
       const vErr = validateConfigValue_(key, body.value);
       if (vErr) {
         return jsonResponse({ success: false, error: 'invalid_value', detail: vErr });
+      }
+      // 一般と幹部が同じだとログインした全員が管理者になるため拒否する
+      if (isPasswordKey_(key) && verifyPassword_(key === 'password' ? 'admin_password' : 'password', body.value)) {
+        return jsonResponse({ success: false, error: 'invalid_value', detail: '一般パスワードと幹部パスワードは別の値にしてください' });
       }
       setConfig(key, body.value || '');
       appendAuditLog('adminSetConfig', key, body.adminToken, 'admin');
@@ -580,11 +672,17 @@ function loadConfigMap_() {
 }
 
 function getConfig(key) {
+  if (isSecretKey_(key)) return ''; // 機密値は getSecret_ / verifyPassword_ 経由でのみ扱う
   var map = loadConfigMap_();
   return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : '';
 }
 
 function setConfig(key, value) {
+  if (isSecretKey_(key)) { storeSecret_(key, value); return; }
+  writeConfigSheet_(key, value);
+}
+
+function writeConfigSheet_(key, value) {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(CONFIG_SHEET);
   var values = sheet.getDataRange().getValues();
   _configCache = null; // 次回読み直し
@@ -906,9 +1004,8 @@ function setupSpreadsheet() {
     ensureConfigSheet(ss);
     ensureAuditLogSheet(ss);
     SpreadsheetApp.flush();
+    migrateSecrets();
     Logger.log('Setup complete.');
-    Logger.log('Password: ' + getConfig('password'));
-    Logger.log('Admin Password: ' + getConfig('admin_password'));
     Logger.log('シート作成・ヘッダー確認が完了しました。');
   } catch (err) {
     Logger.log('SETUP ERROR: ' + err + '\n' + err.stack);
@@ -956,7 +1053,7 @@ function ensureConfigSheet(ss) {
     config.getRange(1, 1, rows.length, 2).setValues(rows);
     config.getRange(1, 1, 1, 2).setFontWeight('bold').setBackground('#464775').setFontColor('#ffffff');
     config.setFrozenRows(1);
-    Logger.log('Created Config sheet with default passwords');
+    Logger.log('Created Config sheet');
   } else {
     // 既存のConfigシートに不足キーを追加（マイグレーション）。
     // DEFAULT_CONFIG にキーを足すだけで、ここも adminGet/SetConfig も自動で揃う。
@@ -1435,7 +1532,7 @@ function resolveGeminiModel_(apiKey) {
 // opts: { token, systemPrompt, userText, wantJson }
 // ====================================================================
 function geminiInvoke_(opts) {
-  var apiKey = (getConfig('gemini_api_key') || '').trim();
+  var apiKey = (getSecret_('gemini_api_key') || '').trim();
   if (!apiKey) return { success: false, error: 'gemini_key_not_configured' };
 
   var cache = CacheService.getScriptCache();
@@ -1535,7 +1632,7 @@ function handleGeminiProxy(body) {
 
 // 文章生成（要約など）。クライアントが個人情報を除いた context（実験/イベント本文）を渡す。
 function handleGeminiGenerate(body) {
-  var apiKey = (getConfig('gemini_api_key') || '').trim();
+  var apiKey = (getSecret_('gemini_api_key') || '').trim();
   if (!apiKey) return jsonResponse({ success: false, error: 'gemini_key_not_configured' });
 
   var instruction = String(body.instruction || '').slice(0, 1000);
@@ -1794,7 +1891,7 @@ function notifyNewEvent_(event) {
 // LINE Messaging API のブロードキャスト配信（公式アカウントを友だち追加した全員に送信）。
 // Channel Access Token は Config シートに手動追加する（line_channel_access_token）。
 function sendLineBroadcast_(text) {
-  const token = (getConfig('line_channel_access_token') || '').trim();
+  const token = (getSecret_('line_channel_access_token') || '').trim();
   if (!token) {
     Logger.log('LINE notify skipped: line_channel_access_token not configured');
     return;
