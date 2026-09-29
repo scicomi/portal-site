@@ -136,6 +136,11 @@ const CONFIG = {
 function getEventCategory(key) {
   return CONFIG.EVENT_CATEGORIES[key] || CONFIG.EVENT_CATEGORIES.normal;
 }
+// 全体会・幹部会などミーティング扱いのカテゴリか（書類期限・実験・担当の入力が要らない）
+function isMeetingCategory(key) {
+  const c = CONFIG.EVENT_CATEGORIES[key];
+  return !!(c && c.isMeeting);
+}
 function getExperimentCategory(key) {
   return CONFIG.EXPERIMENT_CATEGORIES[key] || CONFIG.EXPERIMENT_CATEGORIES.other;
 }
