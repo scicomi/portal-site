@@ -111,7 +111,9 @@ npx wrangler whoami     # ログインできているか確認（AI が実行し
    - ローカルの API に画面をつなぐ: `index.html?api=http://127.0.0.1:8787`（解除は `?api=reset`）
 3. 変更内容を人に説明し、了承を得る
 4. 本番反映（§3 の表）
-5. 反映後の確認: `curl -X POST https://scicomi-portal.scicomi.workers.dev -d '{"action":"version"}'` で応答があるか。画面でログイン・保存ができるか
+5. 反映後の確認: API が応答するか。画面でログイン・保存ができるか
+   - Git Bash: `curl -X POST https://scicomi-portal.scicomi.workers.dev -d '{"action":"version"}'`
+   - PowerShell: `Invoke-RestMethod -Method Post -Uri https://scicomi-portal.scicomi.workers.dev -Body '{"action":"version"}'`(PowerShell 5.1 の `curl` は別コマンドの別名なので上の書き方は使えない)
 6. 変更したことが README や docs の記述とズレるなら、ドキュメントも更新する
 
 ---
@@ -164,7 +166,7 @@ npx wrangler whoami     # ログインできているか確認（AI が実行し
 
 ### F. トラブルの調べ方
 
-`README.md` の「トラブルシューティング」に、症状別の手順がある。最初に `curl -X POST https://scicomi-portal.scicomi.workers.dev -d '{"action":"version"}'` で API が生きているかを見る。Cloudflare 側の障害は https://www.cloudflarestatus.com/ 。Worker のログは Cloudflare ダッシュボード → Workers & Pages → scicomi-portal で人に見てもらう。
+`README.md` の「トラブルシューティング」に、症状別の手順がある。最初に API が生きているかを見る(§4 の 5 のコマンド。Git Bash は `curl`、PowerShell は `Invoke-RestMethod`)。Cloudflare 側の障害は https://www.cloudflarestatus.com/ 。Worker のログは Cloudflare ダッシュボード → Workers & Pages → scicomi-portal で人に見てもらう。
 
 ### G. バックアップと復元
 
@@ -209,3 +211,4 @@ AI にはできない、または任せてはいけない作業。指示する�
 - 「パスワード一覧」ページは第三者サービスのパスワードを**平文**で D1 に保存し、毎日のバックアップにも含まれる。新しい機能を作るときも、この事実を前提に慎重に扱う
 - アップロードされたファイル（R2）は URL を知っていれば**ログインなしで**見られる。個人情報を含むファイルは扱わない設計
 - 同時編集は「後から保存した人が再読込される」楽観的競合検知。`UpdatedAt` を壊さない
+- メンバー（`members`）と実験ネタ（`experiments`）の追加・編集は、サーバー側では一般のトークンでも通る（共通パスワード方式の仕様。`tables.js` の `adminOnly` は `false`）。画面の「幹部の認証」は誤操作防止であって権限の強制ではない。幹部限定にしたいと頼まれたら、まず人に相談する

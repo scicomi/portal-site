@@ -24,11 +24,29 @@ export async function geminiUsageGet(env, today) {
   return row ? (parseInt(row.Count, 10) || 0) : 0;
 }
 
-async function geminiUsageInc(env, today) {
+// 呼び出し前に 1 回分を予約する。「上限未満なら加算」を 1 文で行うので、並列リクエストでも上限を超えない。
+// 上限に達していれば null(行は変更されず RETURNING が空になる)。
+async function geminiUsageReserve(env, today, limit) {
   const row = await env.DB.prepare(
-    'INSERT INTO gemini_usage (Date, Count) VALUES (?, 1) ON CONFLICT(Date) DO UPDATE SET Count = Count + 1 RETURNING Count'
-  ).bind(today).first();
-  return row ? row.Count : 1;
+    'INSERT INTO gemini_usage (Date, Count) VALUES (?, 1) ON CONFLICT(Date) DO UPDATE SET Count = Count + 1 WHERE Count < ? RETURNING Count'
+  ).bind(today, limit).first();
+  return row ? (parseInt(row.Count, 10) || 0) : null;
+}
+
+// 失敗した呼び出しの予約を返す(使用量は「成功した回数」を数える)。
+async function geminiUsageRelease(env, today) {
+  try {
+    await env.DB.prepare('UPDATE gemini_usage SET Count = Count - 1 WHERE Date = ? AND Count > 0').bind(today).run();
+  } catch (e) {
+    console.error('gemini usage release failed: ' + (e && e.message || e));
+  }
+}
+
+// Google の応答本文などはクライアントへ返さず、サーバーログにだけ残す(API キーは伏せる)。
+function logGeminiError(apiKey, code, text) {
+  let s = String(text || '').slice(0, 500);
+  if (apiKey) s = s.split(apiKey).join('***');
+  console.error('gemini ' + code + ': ' + s);
 }
 
 // ---- kv_cache(セッション単位の毎分制限・モデル一覧のキャッシュ) ----
@@ -146,13 +164,22 @@ export async function geminiInvoke(env, opts) {
       detail: '短時間に送信が集中したため、このセッションを一時的に制限しました。' };
   }
 
-  // 日次使用量チェック
+  // 日次使用量: 先に 1 回分を予約し、成功以外で抜けるときは返却する
   const today = jstDate();
-  const usage = await geminiUsageGet(env, today);
-  if (usage >= GEMINI_DAILY_LIMIT) {
-    return { success: false, error: 'RATE_LIMIT_DAILY', scope: 'day', usage, limit: GEMINI_DAILY_LIMIT };
+  const reserved = await geminiUsageReserve(env, today, GEMINI_DAILY_LIMIT);
+  if (reserved === null) {
+    return { success: false, error: 'RATE_LIMIT_DAILY', scope: 'day', usage: GEMINI_DAILY_LIMIT, limit: GEMINI_DAILY_LIMIT };
   }
+  const r = await geminiCall(env, apiKey, opts);
+  if (!r.success) {
+    await geminiUsageRelease(env, today);
+    return r;
+  }
+  return Object.assign(r, { usage: reserved, limit: GEMINI_DAILY_LIMIT });
+}
 
+// Gemini API の呼び出し本体(再試行・モデル再検出を含む)。使用量の管理は呼び出し元(geminiInvoke)が行う。
+async function geminiCall(env, apiKey, opts) {
   let model = await resolveGeminiModel(env, apiKey);
   const payload = { contents: [{ role: 'user', parts: [{ text: opts.userText }] }] };
   if (opts.wantJson) payload.generationConfig = { responseMimeType: 'application/json' };
@@ -168,10 +195,11 @@ export async function geminiInvoke(env, opts) {
       const code = res.status;
       if (code === 200) {
         const data = await res.json();
-        const newUsage = await geminiUsageInc(env, today);
-        return { success: true, data, model, usage: newUsage, limit: GEMINI_DAILY_LIMIT };
+        return { success: true, data, model };
       }
       const errText = (await res.text()) || '';
+      // Google の応答本文はサーバーログのみ。クライアントにはエラーコードと再試行秒数だけ返す
+      logGeminiError(apiKey, code, errText);
 
       if (code === 429) {
         last429 = parseGemini429(errText);
@@ -180,14 +208,13 @@ export async function geminiInvoke(env, opts) {
           continue;
         }
         if (last429.scope === 'day') {
-          return { success: false, error: 'RATE_LIMIT_DAILY', scope: 'day', retrySec: last429.retrySec, detail: last429.detail.slice(0, 300) };
+          return { success: false, error: 'RATE_LIMIT_DAILY', scope: 'day', retrySec: last429.retrySec };
         }
-        return { success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute', retrySec: last429.retrySec || 30, detail: last429.detail.slice(0, 300) };
+        return { success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute', retrySec: last429.retrySec || 30 };
       }
 
-      const shortErr = errText.slice(0, 500);
-      if (code === 400 && shortErr.indexOf('API_KEY_INVALID') >= 0) return { success: false, error: 'API_KEY_INVALID' };
-      if (code === 403) return { success: false, error: 'API_FORBIDDEN', detail: shortErr };
+      if (code === 400 && errText.indexOf('API_KEY_INVALID') >= 0) return { success: false, error: 'API_KEY_INVALID' };
+      if (code === 403) return { success: false, error: 'API_FORBIDDEN' };
       if (code === 404) {
         // モデル廃止/未対応 → 動的に別モデルを検出して 1 度だけ自動リトライ(自己修復)
         if (!rediscovered) {
@@ -203,19 +230,20 @@ export async function geminiInvoke(env, opts) {
       }
       if (code === 500 || code === 502 || code === 503 || code === 504) {
         if (attempt < maxAttempts - 1) { await sleep(1500); continue; }
-        return { success: false, error: 'MODEL_OVERLOADED', scope: 'minute', retrySec: 20, detail: shortErr.slice(0, 300) };
+        return { success: false, error: 'MODEL_OVERLOADED', scope: 'minute', retrySec: 20 };
       }
-      return { success: false, error: 'API_ERROR_' + code, detail: shortErr };
+      return { success: false, error: 'API_ERROR_' + code };
     } catch (e) {
       if (attempt < maxAttempts - 1) { await sleep(1500); continue; }
-      return { success: false, error: 'NETWORK_ERROR', detail: String(e).slice(0, 200) };
+      logGeminiError(apiKey, 'fetch', String(e && e.stack || e));
+      return { success: false, error: 'NETWORK_ERROR' };
     }
   }
-  if (last429) return { success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute', retrySec: last429.retrySec || 30, detail: last429.detail.slice(0, 300) };
+  if (last429) return { success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute', retrySec: last429.retrySec || 30 };
   return { success: false, error: 'NETWORK_ERROR' };
 }
 
-// 意図解析プロキシ(質問文 → 検索クエリ JSON)。本文の個人情報は送らない。
+// 意図解析プロキシ(質問文 → 検索クエリ JSON)。送るのは質問文だけで、データ本文は送らない。
 export async function handleGeminiProxy(env, body) {
   let message = body.message || '';
   if (!message) return { success: false, error: 'empty_message' };
@@ -224,7 +252,8 @@ export async function handleGeminiProxy(env, body) {
   return geminiInvoke(env, { token: body.token, systemPrompt: buildBotSystemPrompt(), userText: message, wantJson: true });
 }
 
-// 文章生成(要約など)。クライアントが個人情報を除いた context(実験/イベント本文)を渡す。
+// 文章生成(要約など)。クライアントが実験/イベントの本文を context として渡す。
+// 担当者名・名簿は含めないが、備考・振り返りなどの自由記述はそのまま含まれる(書かれた名前も届く)。
 export async function handleGeminiGenerate(env, body) {
   const apiKey = ((await getSecret(env, 'gemini_api_key')) || '').trim();
   if (!apiKey) return { success: false, error: 'gemini_key_not_configured' };

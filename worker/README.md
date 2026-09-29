@@ -11,16 +11,36 @@ GAS の Web アプリ(`gas/Code.gs`)の置き換え。設計は [../docs/08_clou
 
 Node 20 で動くよう Wrangler 3 系に固定している(`package.json`)。
 
+Git Bash(mac / Linux のターミナルも同じ):
+
 ```bash
 cd worker
 npm install
-printf 'TOKEN_SECRET=ローカル用の16文字以上の文字列\n' > .dev.vars      # 本番の鍵とは別にすること
+# ローカル専用の TOKEN_SECRET をランダムに作る(値は画面に出ない。本番の鍵とは別)
+node -e "require('fs').writeFileSync('.dev.vars','TOKEN_SECRET='+require('crypto').randomBytes(32).toString('hex')+'\n')"
 npm run db:migrate:local
-NEW_PASSWORD=test-member-pw node scripts/set-password.mjs member --local   # テスト用の値
+NEW_PASSWORD=test-member-pw node scripts/set-password.mjs member --local   # テスト用の値(10 文字以上)
 NEW_PASSWORD=test-admin-pw  node scripts/set-password.mjs admin  --local
 npm run dev            # http://127.0.0.1:8787
-npm test               # 別ターミナルで。API の契約を 15 項目検証する
+npm test               # 別ターミナルで。API の契約を検証する
 ```
+
+Windows の PowerShell(`VAR=値 コマンド` の書き方が使えないので、環境変数を先に入れる):
+
+```powershell
+cd worker
+npm install
+node -e "require('fs').writeFileSync('.dev.vars','TOKEN_SECRET='+require('crypto').randomBytes(32).toString('hex')+'\n')"
+npm run db:migrate:local
+$env:NEW_PASSWORD='test-member-pw'; node scripts/set-password.mjs member --local
+$env:NEW_PASSWORD='test-admin-pw';  node scripts/set-password.mjs admin  --local
+Remove-Item Env:NEW_PASSWORD
+npm run dev            # http://127.0.0.1:8787
+npm test               # 別の PowerShell で
+```
+
+- `npm test` は起動中のローカル Worker(`npm run dev`)に接続する結合テスト。起動していないと全件 `fetch failed` になる
+- テストはローカル DB の設定(ブランド名など)を既定値に戻してから始める。ログイン試行制限のテストはテスト専用の IP だけをロックするので、続けて再実行できる
 
 画面から試すときは、`index.html?api=http://127.0.0.1:8787` で開く(そのブラウザだけ接続先が切り替わる。`?api=reset` で解除)。
 `workers.dev` と `localhost` 以外の接続先は受け付けない。
@@ -49,18 +69,20 @@ node scripts/set-password.mjs admin  --remote        # 幹部パスワード(一
    node scripts/import.mjs scicomi_export_XXXX.json --remote             # 取り込み+件数の照合
    node scripts/verify.mjs scicomi_export_XXXX.json https://scicomi-portal.<アカウント名>.workers.dev   # 全件の内容を突き合わせ
    ```
-   二重取り込みは自動で止まる(上書きするなら `--replace`)。
+   二重取り込みは自動で止まる。上書きするなら `--replace --yes`(全テーブルを消してから取り込む。`--yes` が無ければ内容の表示だけで止まる。先にバックアップを取る)。
 
 ## 差分マージ・復元
 
 ```bash
 # 切り替え後に D1 へ書き込みが始まっていて --replace できないとき: GAS のエクスポートのうち、D1 に無い/古い分だけを足す(何も削除しない)
-node scripts/merge.mjs <export.json> --remote            # 予行(変更しない)
-node scripts/merge.mjs <export.json> --remote --apply    # 反映
+# --since(前回取り込んだエクスポートの時刻)は必須。これより前に作られて D1 に無い行は「削除済み」とみなして足さない
+node scripts/merge.mjs <export.json> --remote --since 2026-09-29T07:34:06.666Z            # 予行(変更しない)
+node scripts/merge.mjs <export.json> --remote --since 2026-09-29T07:34:06.666Z --apply    # 反映
 
 # バックアップ(R2 の backups/YYYY-MM-DD.json をダッシュボードからダウンロード)から復元(現在のデータは置き換わる)
+# 予行・実行のどちらでも「復元前に現在のデータを退避したか」の確認と、退避のコマンドが表示される
 node scripts/restore.mjs <backup.json> --remote          # 予行
-node scripts/restore.mjs <backup.json> --remote --yes    # 実行
+node scripts/restore.mjs <backup.json> --remote --yes    # 実行(先に現在のデータをバックアップすること)
 ```
 
 ## 運用メモ

@@ -80,7 +80,9 @@ const api = {
     const res = await this._post({ action: 'login', password });
     if (res.success && res.token) {
       this.setToken(res.token);
+      // 一般パスワードでのログインなら、前回の幹部ログインの管理者トークンを残さない
       if (res.adminToken) this.setAdminToken(res.adminToken);
+      else this.clearAdminToken();
       return { ok: true, role: res.role || 'member' };
     }
     return { ok: false, role: null };
@@ -470,6 +472,7 @@ const api = {
       if (!parsed.success && parsed.error === 'unauthorized') {
         this._logErr(payload, 'unauthorized', { ms: Date.now() - started });
         this.clearToken();
+        this.clearAdminToken();   // メンバーとして失効したなら管理者モードも引き継がない
         this.clearAllCache();
         if (typeof showPasswordModal === 'function') {
           showPasswordModal(() => location.reload());

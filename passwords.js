@@ -377,7 +377,7 @@ async function handlePwPhotoSelect(input) {
     const file = input.files[0];
     input.value = '';
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { toast(file.name + ' は10MBを超えています', 'error'); return; }
+    if (file.size > getFileMaxMB() * 1024 * 1024) { toast(file.name + ' は' + getFileMaxMB() + 'MBを超えています', 'error'); return; }
     toast('アップロード中: ' + file.name, 'info', 2000);
     const session = pwModalSession;
     try {

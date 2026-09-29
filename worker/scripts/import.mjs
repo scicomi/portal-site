@@ -4,6 +4,7 @@
 //   node scripts/import.mjs <export.json> --local              ローカル DB に取り込む
 //   node scripts/import.mjs <export.json> --remote             本番 DB に取り込む
 //   オプション: --dry-run(SQL を作るだけで実行しない)、--replace(取り込み先の既存データを消してから取り込む)
+//   --replace は全テーブルを消すため、--yes を一緒に付けたときだけ実行する(付けなければ予行と同じく表示のみ)。
 //
 // 取り込み先のテーブルにデータがある場合は、--replace が無い限り中止する(二重取り込みの防止)。
 // 取り込み後、テーブルごとの件数を照合して結果を表示する。内容まで突き合わせるには verify.mjs を使う。
@@ -22,8 +23,9 @@ const file = args.find(a => !a.startsWith('--'));
 const target = args.includes('--remote') ? '--remote' : args.includes('--local') ? '--local' : null;
 const dryRun = args.includes('--dry-run');
 const replace = args.includes('--replace');
+const yes = args.includes('--yes');
 if (!file || !target) {
-  console.error('使い方: node scripts/import.mjs <export.json> <--local|--remote> [--dry-run] [--replace]');
+  console.error('使い方: node scripts/import.mjs <export.json> <--local|--remote> [--dry-run] [--replace --yes]');
   process.exit(1);
 }
 
@@ -88,6 +90,11 @@ tables.forEach(t => all.push(...t.sql));
 
 console.log('取り込み予定: ' + tables.map(t => `${t.name}=${t.rows}`).join(' '));
 if (dryRun) { console.log('--dry-run のため実行しません。'); process.exit(0); }
+if (replace && !yes) {
+  console.log(`\n--replace は ${tables.map(t => t.name).join(' / ')} の既存データをすべて削除してから取り込みます(${target === '--remote' ? '本番' : 'ローカル'})。`);
+  console.log('先にバックアップを取ってください(AI向けREADME.md §5-G)。実行するには --yes を付けて再実行してください。');
+  process.exit(0);
+}
 
 const wrangler = join(ROOT, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
 function d1(extra) {

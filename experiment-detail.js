@@ -487,7 +487,7 @@ async function handlePhotoSelect(input) {
 
     const uploaded = [];
     for (const file of toUpload) {
-        if (file.size > 10 * 1024 * 1024) { toast(file.name + ' は10MBを超えています', 'error'); continue; }
+        if (file.size > getFileMaxMB() * 1024 * 1024) { toast(file.name + ' は' + getFileMaxMB() + 'MBを超えています', 'error'); continue; }
         toast('アップロード中: ' + file.name, 'info', 2000);
         try {
             const result = await api.uploadFile(file);  // api.uploadFile は引数1つ（第2引数は無効だったため削除）

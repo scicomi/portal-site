@@ -1,5 +1,7 @@
 # Phase 3 提案書：UI / UX 改善
 
+> **旧 GAS / Google Sheets 時代の資料（履歴）です。** 2026-09 にバックエンドを Cloudflare（Workers + D1 + R2）へ移行したため、ここに書かれた構成・手順・列定義は現在のシステムと一致しません。現行の構成は [README.md](../README.md)、DB の列は [worker/migrations/0001_init.sql](../worker/migrations/0001_init.sql) と [worker/src/tables.js](../worker/src/tables.js)、設計は [08_cloudflare_migration_design.md](08_cloudflare_migration_design.md) を参照してください。
+
 **作成日**: 2026-06-19
 **対象期間**: Phase 1 安定後 〜 約2週間
 **ゴール**: 「使いやすくて遅くないポータル」にする

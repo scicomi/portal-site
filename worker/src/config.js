@@ -10,6 +10,9 @@ export const GEMINI_DAILY_LIMIT = 1500;
 // 新しく設定するときだけ検証する(既存のパスワードはそのまま使える)。
 // settings.js の PASSWORD_MIN_LENGTH と scripts/set-password.mjs の MIN_LENGTH も同じ値にすること
 const PASSWORD_MIN_LENGTH = 10;
+// 書類期限の日数の範囲(settings.js の DEADLINE_DAYS_MIN/MAX と settings.html の min/max も同じ値にすること)
+const DEADLINE_DAYS_MIN = 1;
+const DEADLINE_DAYS_MAX = 90;
 
 export const DEFAULT_CONFIG = {
   password: '',            // 機密(ハッシュのみ保存)
@@ -43,7 +46,8 @@ export const PUBLIC_CONFIG_KEYS = [
   'deadline_alert_danger', 'deadline_alert_warning',
   'brand_icon', 'brand_name',
   'experiment_recruit_url', 'experiment_recruit_note',
-  'pr_channels', 'line_add_friend_url', 'site_links'
+  'pr_channels', 'line_add_friend_url', 'site_links',
+  'file_max_mb'   // フロントのアップロード前チェックをサーバーの上限に合わせるため
 ];
 
 export const SECRET_CONFIG_KEYS = ['password', 'admin_password', 'gemini_api_key', 'line_channel_access_token'];
@@ -135,12 +139,16 @@ export async function adminConfig(env) {
 export function validateConfigValue(key, value) {
   const v = (value === null || value === undefined) ? '' : String(value);
   switch (key) {
-    case 'deadline_kyoka':
-    case 'deadline_houkoku':
-      return /^-?\d+$/.test(v.trim()) ? '' : '数値を指定してください';
+    case 'deadline_kyoka':      // イベント日からの日数。許可願は「前」なので負の値で保存する(settings.js が符号を付ける)
+    case 'deadline_houkoku': {
+      if (!/^-?\d+$/.test(v.trim())) return '整数を指定してください';
+      const days = Math.abs(parseInt(v.trim(), 10));
+      return days >= DEADLINE_DAYS_MIN && days <= DEADLINE_DAYS_MAX ? '' : '日数は' + DEADLINE_DAYS_MIN + '〜' + DEADLINE_DAYS_MAX + 'で指定してください';
+    }
+    case 'file_max_mb':         // 0 にすると全アップロードが拒否されるため 1 以上
+      return /^\d+$/.test(v.trim()) && parseInt(v.trim(), 10) >= 1 ? '' : '1以上の整数を指定してください';
     case 'deadline_alert_danger':
     case 'deadline_alert_warning':
-    case 'file_max_mb':
     case 'backup_keep_count':
     case 'audit_keep_days':
       return /^\d+$/.test(v.trim()) ? '' : '0以上の整数を指定してください';

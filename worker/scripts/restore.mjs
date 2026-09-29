@@ -54,8 +54,16 @@ for (const [table, cols] of Object.entries(columnsOf)) {
   }
 }
 
+// 復元は現在のデータを消して置き換えるため、予行・本実行のどちらでも、先に現状を退避したかを確認させる
+const backupHint = target === '--remote'
+  ? '  npx wrangler d1 export scicomi-portal --remote --output=../backup-YYYYMMDD.sql'
+  : '  (ローカルなら .wrangler/state をフォルダごとコピー)';
+console.log('\n★ 復元前に、現在のデータのバックアップを取りましたか? 復元すると上のテーブルは今の内容が消えます。');
+console.log('  まだなら先に次を実行してください(出力は個人情報を含むので Git に入れない):');
+console.log(backupHint);
+
 if (!yes) {
-  console.log('\n予行のため、変更していません。現在のデータを上の内容で置き換えるには --yes を付けて再実行してください。');
+  console.log('\n予行のため、変更していません。バックアップを取った後、現在のデータを上の内容で置き換えるには --yes を付けて再実行してください。');
   process.exit(0);
 }
 

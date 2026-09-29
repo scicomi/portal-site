@@ -324,6 +324,13 @@ function formatFileSize(bytes) {
 // リンク href に使える URL だけを返す（javascript: 等の危険スキームは空にして無害化）。
 // escapeAttr は引用符しかエスケープせずスキームを検証しないため、URL は必ずこれを通す。
 // 後方互換: スキーム省略の既存データ（例 "docs.google.com/.."）は https:// を補ってリンク可能に保つ。
+// アップロード 1 ファイルの上限(MB)。サーバー設定 file_max_mb を applySiteSettings が反映する。
+// 取得できていなければ config.js の既定値。
+function getFileMaxMB() {
+  const n = CONFIG.FILE_UPLOAD && parseInt(CONFIG.FILE_UPLOAD.maxSizeMB, 10);
+  return n >= 1 ? n : 10;
+}
+
 function safeHttpUrl(u) {
   u = String(u === null || u === undefined ? '' : u).trim();
   if (!u) return '';
@@ -556,31 +563,45 @@ function trapFocus(modal) {
   });
 }
 
-function bindModalEscape(modal, closeFn) {
-  // .hidden 切替だけで再利用される静的モーダルは開くたびにここを通るため、
-  // 1要素につき1回だけ登録し、2回目以降は closeFn の差し替えのみ行う
-  // （毎回 addEventListener + MutationObserver を作るとリスナーが際限なく増える）。
-  if (modal._escBinding) {
-    modal._escBinding.closeFn = closeFn;
-    return modal._escBinding.cleanup;
+// Esc で閉じるモーダルのスタック。document の keydown は 1 つだけ登録し、
+// 表示中のモーダルのうち最後に開いた(=最前面の)1 つだけを閉じる。
+// 静的モーダル(.hidden の切替で再利用)は開くたびにここを通るので、そのたびに先頭へ移す。
+// DOM から外れたモーダルは、次の Esc のときにスタックから取り除く(常時監視はしない)。
+const _modalEscStack = [];
+
+function _isModalShown(modal) {
+  return modal.isConnected && !modal.classList.contains('hidden') && modal.getClientRects().length > 0;
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || _modalEscStack.length === 0) return;
+  for (let i = _modalEscStack.length - 1; i >= 0; i--) {
+    const b = _modalEscStack[i];
+    if (!b.modal.isConnected) { _modalEscStack.splice(i, 1); continue; }
+    if (!_isModalShown(b.modal)) continue;
+    e.preventDefault();
+    b.closeFn();
+    return;
   }
-  const binding = { closeFn };
-  const handler = (e) => {
-    if (e.key === 'Escape') binding.closeFn();
-  };
-  const observer = new MutationObserver(() => {
-    if (!document.contains(modal)) cleanup();
-  });
-  const cleanup = () => {
-    document.removeEventListener('keydown', handler);
-    observer.disconnect();
-    delete modal._escBinding;
-  };
-  binding.cleanup = cleanup;
-  modal._escBinding = binding;
-  document.addEventListener('keydown', handler);
-  observer.observe(document.body, { childList: true, subtree: true });
-  return cleanup;
+});
+
+function bindModalEscape(modal, closeFn) {
+  let binding = modal._escBinding;
+  if (binding) {
+    binding.closeFn = closeFn;
+    const idx = _modalEscStack.indexOf(binding);
+    if (idx >= 0) _modalEscStack.splice(idx, 1);
+  } else {
+    binding = { modal, closeFn };
+    binding.cleanup = () => {
+      const i = _modalEscStack.indexOf(binding);
+      if (i >= 0) _modalEscStack.splice(i, 1);
+      delete modal._escBinding;
+    };
+    modal._escBinding = binding;
+  }
+  _modalEscStack.push(binding);
+  return binding.cleanup;
 }
 
 function bindOverlayClose(overlayEl, closeFn) {
@@ -979,6 +1000,9 @@ function _applyCfg(cfg) {
         else localStorage.removeItem('scicomi_welcome_message');
     }
     if (cfg.pr_channels) CONFIG.PR_CHANNELS = cfg.pr_channels.split(',').map(s => s.trim()).filter(Boolean);
+    // アップロード上限はサーバー(worker の file_max_mb)が正。取得できたらフロントの事前チェックも合わせる
+    const maxMb = safeInt(cfg.file_max_mb, 0);
+    if (maxMb >= 1) CONFIG.FILE_UPLOAD.maxSizeMB = maxMb;
     // ヘッダーはキャッシュ値で先出し済みのことがあるため、取得できた最新値で上書きする
     if (cfg.brand_icon) {
         const el = document.getElementById('header-brand-icon');
@@ -1009,7 +1033,8 @@ function createRichEditor(container, initialHtml, options = {}) {
   const content = document.createElement('div');
   content.className = 'rich-editor-content';
   content.contentEditable = 'true';
-  content.innerHTML = initialHtml || '';
+  // 編集中の DOM も生きた DOM なので、流し込む HTML は必ず無害化してから入れる
+  content.innerHTML = sanitizeRichHtml(initialHtml || '');
   if (options.placeholder) content.dataset.placeholder = options.placeholder;
 
   toolbar.addEventListener('click', (e) => {
@@ -1018,38 +1043,88 @@ function createRichEditor(container, initialHtml, options = {}) {
     e.preventDefault();
     const cmd = btn.dataset.cmd;
     if (cmd === 'createLink') {
-      const url = prompt('URLを入力してください', 'https://');
-      if (url) document.execCommand('createLink', false, url);
+      const input = prompt('URLを入力してください', 'https://');
+      if (input) {
+        const url = safeHttpUrl(input);
+        if (url) document.execCommand('createLink', false, url);
+        else toast('http:// または https:// で始まるURLを入力してください', 'error');
+      }
     } else {
       document.execCommand(cmd, false, null);
     }
     content.focus();
   });
 
+  // 貼り付けは既定だと任意の HTML(img onerror 等)がそのまま入るため、無害化してから挿入する
+  content.addEventListener('paste', (e) => {
+    const cd = e.clipboardData;
+    if (!cd) return;
+    e.preventDefault();
+    const html = cd.getData('text/html');
+    if (html) document.execCommand('insertHTML', false, sanitizeRichHtml(html));
+    else document.execCommand('insertText', false, cd.getData('text/plain') || '');
+  });
+
   wrapper.appendChild(toolbar);
   wrapper.appendChild(content);
   container.appendChild(wrapper);
 
-  const api = {
-    getHtml: () => content.innerHTML,
-    setHtml: (html) => { content.innerHTML = html; },
+  const editorApi = {
+    getHtml: () => sanitizeRichHtml(content.innerHTML),
+    setHtml: (html) => { content.innerHTML = sanitizeRichHtml(html); },
     focus: () => content.focus()
   };
-  container._richEditor = api;
-  return api;
+  container._richEditor = editorApi;
+  return editorApi;
 }
+
+// リッチテキスト(ホームの挨拶文・実験ネタ募集の案内文)の無害化。許可リスト方式。
+// DOMParser で作る文書は画面に属さず、スクリプトも画像も読み込まれない(img onerror が発火しない)。
+const RICH_ALLOWED_TAGS = new Set(['B', 'I', 'U', 'A', 'BR', 'DIV', 'P', 'SPAN', 'UL', 'OL', 'LI']);
+// 中身ごと捨てるタグ(許可外でも中の文字は残す「その他のタグ」と区別する)
+const RICH_DROP_TAGS = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'FORM', 'TEMPLATE', 'NOSCRIPT',
+  'SVG', 'MATH', 'IMG', 'VIDEO', 'AUDIO', 'SOURCE', 'PICTURE', 'CANVAS', 'INPUT', 'TEXTAREA', 'SELECT',
+  'BUTTON', 'LINK', 'META', 'BASE', 'TITLE', 'HEAD', 'FRAME', 'FRAMESET']);
+// 許可する style のプロパティ(execCommand の太字・斜体・下線が span の style で出る場合がある)
+const RICH_ALLOWED_STYLES = ['font-weight', 'font-style', 'text-decoration', 'text-decoration-line'];
 
 function sanitizeRichHtml(html) {
   if (!html) return '';
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  div.querySelectorAll('script,style,iframe,object,embed,form').forEach(el => el.remove());
-  div.querySelectorAll('*').forEach(el => {
-    for (const attr of [...el.attributes]) {
-      if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+  const doc = new DOMParser().parseFromString('<body>' + String(html) + '</body>', 'text/html');
+  const clean = (parent) => {
+    for (const node of [...parent.childNodes]) {
+      if (node.nodeType === Node.TEXT_NODE) continue;
+      if (node.nodeType !== Node.ELEMENT_NODE) { node.remove(); continue; }   // コメント等
+      const tag = node.tagName.toUpperCase();
+      if (RICH_DROP_TAGS.has(tag)) { node.remove(); continue; }
+      clean(node);
+      if (!RICH_ALLOWED_TAGS.has(tag)) {
+        // 許可外のタグ(h1, strong 等)はタグだけ外して中身の文字は残す
+        node.replaceWith(...node.childNodes);
+        continue;
+      }
+      const href = tag === 'A' ? safeHttpUrl(node.getAttribute('href')) : '';
+      const style = node.style;
+      const kept = [];
+      if (style) {
+        RICH_ALLOWED_STYLES.forEach(p => {
+          const v = style.getPropertyValue(p);
+          // 値に url( や expression を含むものは入れない(許可したプロパティでも念のため)
+          if (v && !/url\s*\(|expression|javascript:/i.test(v)) kept.push(p + ':' + v);
+        });
+      }
+      for (const attr of [...node.attributes]) node.removeAttribute(attr.name);
+      if (kept.length) node.setAttribute('style', kept.join(';'));
+      if (tag === 'A') {
+        if (!href) { node.replaceWith(...node.childNodes); continue; }   // 危険・不正な URL はリンクを外す
+        node.setAttribute('href', href);
+        node.setAttribute('target', '_blank');
+        node.setAttribute('rel', 'noopener noreferrer');
+      }
     }
-  });
-  return div.innerHTML;
+  };
+  clean(doc.body);
+  return doc.body.innerHTML;
 }
 
 // ====== 起動共通 ======
