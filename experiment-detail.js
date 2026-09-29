@@ -8,7 +8,6 @@ let currentExp = null;
 let allExperiments = [];
 let allEvents = [];
 let feedbackFilter = 'all';
-let editingFbId = null;
 let expEventsData = [];
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -293,7 +292,6 @@ function populateEventDropdown() {
 }
 
 function openAddFeedback() {
-    editingFbId = null;
     document.getElementById('fb-modal-title').textContent = '振り返りを追加';
     document.getElementById('fb-type').value = 'positive';
     document.getElementById('fb-event').value = '';
@@ -309,7 +307,6 @@ function openAddFeedback() {
 
 function closeFeedbackModal() {
     document.getElementById('feedback-modal').classList.add('hidden');
-    editingFbId = null;
 }
 
 async function saveFeedback() {
@@ -417,12 +414,6 @@ async function executeDeleteFeedbackEntry(fbId, type) {
         entries.splice(idx, 0, removed);
         currentExp[field] = stringifyFeedbackEntries(entries);
         toast('削除失敗: ' + e.message, 'error');
-    }
-}
-
-function goEdit() {
-    if (currentExp) {
-        location.href = 'experiments.html?edit=' + currentExp.ID;
     }
 }
 

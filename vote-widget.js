@@ -6,9 +6,9 @@
  *   読み込み順: config.js → api.js → app.js → vote-widget.js → 各ページJS
  *   利用ページ: index.html（出欠一括回答）
  *               events.html（プレビューモーダル内のインライン回答・参加バッジ）
- *               event-series.html（「参加状況」タブのトグル式インライン回答・回答一覧モーダル）
+ *               event-series.html（「参加状況」タブのトグル式インライン回答）
  *
- * データは GAS の EventVotes シート（EventID, MemberID, Status, UpdatedAt, Note）。
+ * データはサーバーの event_votes テーブル（EventID, MemberID, Status, UpdatedAt, Note）。
  * 名前選択は localStorage（VOTE_MEMBER_KEY）で端末に記憶し、全ページで共有する。
  * 操作は全ページ共通で「タップ即送信（楽観的更新）＋失敗時ロールバック」。確認ダイアログは挟まない。
  */
@@ -54,7 +54,7 @@ function voteEligibleMembers(members, ev) {
 // ====== 締切 ======
 
 // 出欠の締切日時。VoteDeadline（任意設定）が優先、無ければイベント最終日。いずれも当日23:59まで。
-// イベントは GAS形（VoteDeadline/DateEnd）・UI形（Vote_Deadline/Date_End）のどちらでも受ける。
+// イベントはサーバー形（VoteDeadline/DateEnd）・UI形（Vote_Deadline/Date_End）のどちらでも受ける。
 function voteDeadlineDate(ev) {
   const d = ev.VoteDeadline || ev.Vote_Deadline || ev.DateEnd || ev.Date_End || ev.Date;
   if (!d) return null;
@@ -71,21 +71,6 @@ function voteDeadlinePassed(ev) {
 
 // ====== 集計 ======
 
-// 1イベント分の votes を集計する。noanswer は「対象メンバー − 回答済み」。
-function voteCounts(votes, members, ev) {
-  const staff = voteStaffIds(members);
-  const counts = { attend: 0, absent: 0, undecided: 0 };
-  const voted = new Set();
-  (votes || []).forEach(v => {
-    if (staff.has(v.memberId)) return;
-    if (counts[v.status] !== undefined) counts[v.status]++;
-    voted.add(v.memberId);
-  });
-  const eligible = voteEligibleMembers(members, ev);
-  const noanswer = Math.max(0, eligible.length - voted.size);
-  return { ...counts, noanswer, eligibleCount: eligible.length };
-}
-
 // 送信エラーを人向けの文言に変換する（vote_closed はサーバー側の締切ガード）
 function voteErrorMessage(e) {
   if (String(e && e.message) === 'vote_closed') {
@@ -99,7 +84,7 @@ function voteErrorMessage(e) {
 /**
  * container に「名前選択＋参加/不参加/未定＋一言メモ」を描画する。
  * opts:
- *   event    : 対象イベント（GAS形・UI形どちらでも可）
+ *   event    : 対象イベント（サーバー形・UI形どちらでも可）
  *   members  : メンバー配列
  *   votes    : このイベントの投票配列（ライブ参照。送信成功時に中身を書き換える）
  *   onChange : (votes) => void  送信成功・ロールバック後に呼ぶ（ホスト側の再集計用）
@@ -109,9 +94,8 @@ function renderVoteWidget(container, opts) {
   const { event: ev, members, votes } = opts;
   const memberId = getSavedVoteMemberId();
   const eligible = voteEligibleMembers(members, ev);
-  const selectable = eligible;
-  const memberValid = selectable.some(m => m.ID === memberId);
-  const memberGroups = groupMembersByGrade(selectable);
+  const memberValid = eligible.some(m => m.ID === memberId);
+  const memberGroups = groupMembersByGrade(eligible);
   const closed = voteDeadlinePassed(ev);
   const canEdit = !closed || api.isAdmin();
   const mine = memberValid ? (votes || []).find(v => v.memberId === memberId) : null;
@@ -223,83 +207,11 @@ async function submitVoteOptimistic({ event: ev, votes, memberId, status, note, 
   }
 }
 
-// ====== 回答一覧モーダル（旧 vote.html の回答一覧＋日時表示を統合） ======
+// ====== 日時表示 ======
 
 function voteTimeShort(iso) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   return (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
     String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-}
-
-function showVoteListModal(ev, votes, members) {
-  const staff = voteStaffIds(members);
-  const nameOf = {};
-  (members || []).forEach(m => { nameOf[m.ID] = m.Name || m.ID; });
-
-  const grouped = { attend: [], absent: [], undecided: [] };
-  const voted = new Set();
-  (votes || []).forEach(v => {
-    if (staff.has(v.memberId)) return;
-    if (grouped[v.status]) {
-      grouped[v.status].push({ name: nameOf[v.memberId] || v.memberId, updatedAt: v.updatedAt, note: v.note || '' });
-    }
-    voted.add(v.memberId);
-  });
-  const noanswerNames = voteEligibleMembers(members, ev)
-    .filter(m => !voted.has(m.ID))
-    .map(m => m.Name || m.ID)
-    .sort((a, b) => a.localeCompare(b, 'ja'));
-
-  const sections = [
-    { label: '参加',   type: 'attend',    items: grouped.attend },
-    { label: '不参加', type: 'absent',    items: grouped.absent },
-    { label: '未定',   type: 'undecided', items: grouped.undecided },
-    { label: '未回答', type: 'noanswer',  items: noanswerNames.map(n => ({ name: n })) }
-  ];
-  const sectionsHtml = sections.map(s => {
-    if (s.items.length === 0) return '';
-    const items = s.items.slice().sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-    return `<div class="vote-detail-group">
-      <h4 class="vote-detail-label vote-detail-label-${s.type}">${s.label} (${s.items.length})</h4>
-      <ul class="vote-detail-names">${items.map(it =>
-        `<li>${escapeHtml(it.name)}` +
-        (it.note ? `<span class="vote-detail-note">${escapeHtml(it.note)}</span>` : '') +
-        (it.updatedAt ? `<span class="vote-detail-time">${voteTimeShort(it.updatedAt)}</span>` : '') +
-        '</li>').join('')}</ul>
-    </div>`;
-  }).join('');
-
-  const title = ev.Title || '(無題)';
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <div class="modal-content" style="max-width:520px;" role="dialog" aria-modal="true" aria-labelledby="vote-list-modal-title">
-      <h2 id="vote-list-modal-title" style="margin-top:0;">参加回答一覧</h2>
-      <p class="text-muted" style="font-size:0.85rem; margin:0 0 12px;">
-        ${escapeHtml(title)} — ${escapeHtml(ev.Date || '')} (${dayOfWeekJP(ev.Date)})
-      </p>
-      ${sectionsHtml || '<p class="text-hint">まだ回答はありません</p>'}
-      <div class="action-buttons" style="margin-top:16px;">
-        ${noanswerNames.length > 0 ? '<button type="button" class="btn btn-secondary" data-copy-noanswer>未回答者をコピー</button>' : ''}
-        <button type="button" class="btn btn-primary-solid" style="width:auto;" data-close>閉じる</button>
-      </div>
-    </div>`;
-
-  // 未回答者リストをリマインド文つきでコピー（LINE等に貼る用）
-  const copyBtn = overlay.querySelector('[data-copy-noanswer]');
-  if (copyBtn) {
-    copyBtn.addEventListener('click', () => {
-      const url = new URL(`event-series.html?event=${encodeURIComponent(ev.ID)}&vote=1`, location.href).href;
-      const text = `【${title} ${shortDate(ev.Date)}】出欠が未回答の方: ${noanswerNames.join('、')}\n回答はこちら → ${url}`;
-      copyTextToClipboard(text, '未回答者リスト');
-    });
-  }
-
-  const close = () => overlay.remove();
-  overlay.querySelector('[data-close]').addEventListener('click', close);
-  bindOverlayClose(overlay, close);
-  bindModalEscape(overlay, close);
-  document.body.appendChild(overlay);
-  trapFocus(overlay.querySelector('.modal-content'));
 }

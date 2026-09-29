@@ -17,11 +17,6 @@ let allMembersData = [];
 let latestEvents = [];
 let latestVotes = [];
 let holidaysData = {};
-function looksGasForm(items) {
-    if (!items || items.length === 0) return true;
-    const e = items[0];
-    return ('HoukokuDeadline' in e) && !('Houkoku_Deadline' in e);
-}
 
 async function init() {
     const cachedEv = api.loadCache('events');
@@ -29,7 +24,7 @@ async function init() {
     const cachedEx = api.loadCache('experiments');
     const cachedVo = api.loadCache('votes');
 
-    if (cachedEv && looksGasForm(cachedEv.items)) latestEvents = cachedEv.items || [];
+    if (cachedEv) latestEvents = cachedEv.items || [];
     if (cachedVo) latestVotes = cachedVo.items || [];
     if (cachedEv) { renderEventsCard(cachedEv.items || []); renderFeedbackPending(cachedEv.items || []); updateActionNeeded(); }
     if (cachedMb) {
@@ -66,12 +61,8 @@ async function refreshData(isManual = false) {
 
         latestEvents = all.events;
         allMembersData = all.members || [];
-        if (Array.isArray(all.votes)) {
-            latestVotes = all.votes;
-            api.saveCache('votes', latestVotes);
-        } else {
-            try { latestVotes = await api.listVotes(); api.saveCache('votes', latestVotes); } catch (_) {}
-        }
+        latestVotes = all.votes;
+        api.saveCache('votes', latestVotes);
         renderEventsCard(all.events);
         renderFeedbackPending(all.events);
         updateActionNeeded();

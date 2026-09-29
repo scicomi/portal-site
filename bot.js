@@ -838,8 +838,6 @@ async function handleBotError(e, text, isRetry) {
 
     // モデルの一時的な過負荷（503/500）。少し待てば回復するので一度だけ自動再試行。
     case 'MODEL_OVERLOADED':
-    case 'API_ERROR_503': // 後方互換
-    case 'API_ERROR_500':
       if (!isRetry) {
         const wsec = Math.min(Math.max(parseInt(e.retrySec, 10) || 15, 5), 30);
         addMessage('bot', `AIモデルが一時的に混雑しています。${wsec}秒後に自動で再試行します…`);
@@ -851,9 +849,9 @@ async function handleBotError(e, text, isRetry) {
       fallbackToKeyword(text);
       break;
 
-    // GASに接続できない（デプロイのアクセス権／URL設定など）。キャッシュでキーワード検索は可能。
-    case 'GAS_NOT_PUBLIC':
-      addMessage('bot', 'サーバー(GAS)に接続できません。管理者は GAS のデプロイ設定（アクセスできるユーザー＝「全員」）と config.js の API_URL を確認してください。\nキャッシュ済みデータでキーワード検索に切り替えます。');
+    // サーバーが HTML を返した（API_URL の誤り／サーバー障害など）。キャッシュでキーワード検索は可能。
+    case 'HTML_RESPONSE':
+      addMessage('bot', 'サーバーに接続できません。管理者は config.js の API_URL とサーバー（Cloudflare Workers）の状態を確認してください。\nキャッシュ済みデータでキーワード検索に切り替えます。');
       fallbackToKeyword(text);
       break;
 
@@ -864,14 +862,12 @@ async function handleBotError(e, text, isRetry) {
 
     // 1日あたりの無料枠を使い切った（再試行しても当日は回復しない）
     case 'RATE_LIMIT_DAILY':
-    case 'DAILY_LIMIT': // 後方互換
       addMessage('bot', '本日の無料枠（1日あたりの上限）を使い切りました。日本時間17時ごろ（太平洋時間0時）にリセットされます。\nそれまではキーワード検索をご利用ください。' + detailNote);
       fallbackToKeyword(text);
       break;
 
     // 1分あたりの上限。少し待てば回復するので、一度だけ自動再試行する
     case 'RATE_LIMIT_MINUTE':
-    case 'RATE_LIMIT': // 後方互換
       if (!isRetry) {
         const sec = Math.min(Math.max(parseInt(e.retrySec, 10) || 20, 5), 40);
         addMessage('bot', `アクセスが集中しています（無料枠は「1分あたりの回数」に上限があります）。${sec}秒後に自動で再試行します…`);

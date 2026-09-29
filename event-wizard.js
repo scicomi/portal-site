@@ -3,7 +3,7 @@
  *
  * events.html と event-series.html の両方から読み込む（config.js / api.js / app.js の後、
  * 各ページスクリプトの前）。含まれるもの:
- *   - GAS形 ⇔ UI形 のスキーマ変換（gasToUi / uiToGas / cacheItemsToUi）
+ *   - サーバー形 ⇔ UI形 のスキーマ変換（gasToUi / uiToGas / cacheItemsToUi）
  *   - 日付レンジピッカー・タグ入力・実験行などの入力部品
  *   - 既存イベントの編集ウィザード（openEventWizard 一式）
  *   - 書類期限の自動計算（calculateDeadlines / updateDeadlines）
@@ -20,7 +20,7 @@ let experimentsList = [];
 
 // ---- ホスト連携 ----
 // ウィザードが触るページ側データ（取得・楽観更新・確定・巻き戻し・削除）はホスト経由にする。
-// event-series.html は GAS正準形で持つため window.EVENT_WIZARD_HOST で差し替える。
+// event-series.html はサーバー形で持つため window.EVENT_WIZARD_HOST で差し替える。
 // 未定義時はイベント一覧ページ（script.js の eventsData / renderEvents）を既定とする。
 function _wzHost() {
     return window.EVENT_WIZARD_HOST || _eventsPageWizardHost;
@@ -34,7 +34,6 @@ const _eventsPageWizardHost = {
         if (idx > -1) eventsData[idx] = itemUi; else eventsData.unshift(itemUi);
         api.saveCache('events', eventsData);
         renderEvents();
-        if (typeof calendarVisible !== 'undefined' && calendarVisible) refreshCalendar();
     },
     commitSaved(savedGas) {
         const savedEvent = gasToUi(savedGas);
@@ -48,7 +47,6 @@ const _eventsPageWizardHost = {
         eventsData.splice(0, eventsData.length, ...snap);
         api.saveCache('events', eventsData);
         renderEvents();
-        if (typeof calendarVisible !== 'undefined' && calendarVisible) refreshCalendar();
     },
     onConflict() { refreshData(); },
     confirmDelete(id) { confirmDeleteEvent(id); }
@@ -71,9 +69,9 @@ const EV_STEPS_MEETING = [
     { label: 'その他' }
 ];
 
-// ---- スキーマ変換: GAS(新スキーマ) ⇔ UI(旧スキーマ) ----
-// GAS側: Date, DateEnd, TimeStart, TimeEnd, PartsList(配列), Files(配列), Logistics, AdminKyoka 等
-// UI側:  Date, Date_End, Event_Time, PartsList(JSON文字列), Files(カンマ区切り), Meeting_Logistics, Admin_Kyoka 等
+// ---- スキーマ変換: サーバー形(DB の列名) ⇔ UI形(旧スキーマ) ----
+// サーバー側: Date, DateEnd, TimeStart, TimeEnd, PartsList(配列), Files(配列), Logistics, AdminKyoka 等
+// UI側:     Date, Date_End, Event_Time, PartsList(JSON文字列), Files(カンマ区切り), Meeting_Logistics, Admin_Kyoka 等
 function gasToUi(g) {
     const u = { ...g };
     u.Date_End = g.DateEnd || '';
@@ -158,14 +156,14 @@ function uiToGas(u) {
         KyokaStatus: u.KyokaStatus || '',    // 許可願ステータスも同様に保持する
         UpdatedBy: u.UpdatedBy || '',
         CreatedAt: u.CreatedAt || '',  // 既存の作成日時を保持（更新・UNDO再作成で消さない）
-        UpdatedAt: u.UpdatedAt || ''   // GAS形キャッシュ統一を将来行うための準備。サーバーは送信値を上書きする。
+        UpdatedAt: u.UpdatedAt || ''   // サーバー形キャッシュ統一を将来行うための準備。サーバーは送信値を上書きする。
     };
 }
 
 // ---- キャッシュ読込の正規化 ----
 // 'events' キャッシュは、イベントページが UI形（Event_Time 等）、home/bot/詳細ページが
-// GAS形（DateEnd/TimeStart 等）を書き込むため、同じキーに2スキーマが混在しうる。
-// 直前に別ページが GAS形で書いていても破綻しないよう、UI形でなければ gasToUi で変換する。
+// サーバー形（DateEnd/TimeStart 等）を書き込むため、同じキーに2スキーマが混在しうる。
+// 直前に別ページがサーバー形で書いていても破綻しないよう、UI形でなければ gasToUi で変換する。
 function cacheItemsToUi(items) {
     return (items || []).map(e => (e && 'Event_Time' in e) ? e : gasToUi(e));
 }

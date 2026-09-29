@@ -1,4 +1,4 @@
-// イベントデータ（GASから取得してここに保持）
+// イベントデータ（サーバーから取得してここに保持）
 let eventsData = [];
 // 参加バッジ・プレビューモーダルの投票UIに使う（listAll で一括取得）
 let membersData = [];
@@ -8,24 +8,19 @@ let allVotesData = null;   // null = 未取得
 // ---- グローバルキーボードショートカット ----
 document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
-        // フォーム編集中は Esc / Ctrl+S だけ拾う
-        if (e.key === 'Escape') closeAnyOpenModal();
+        // フォーム編集中は Ctrl+S だけ拾う
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             const saveBtn = document.querySelector('#qc-save, .modal-content .btn-primary:not(.hidden)');
             if (saveBtn) { e.preventDefault(); saveBtn.click(); }
         }
         return;
     }
-    if (e.key === 'Escape') { closeAnyOpenModal(); return; }
     // ウィザード・確認ダイアログ・認証モーダル表示中や修飾キー付きでは
     // ページ用ショートカット（n）を発動しない。/ と ? は search.js が全ページ共通で扱う。
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (document.querySelector('.wizard-overlay, .confirm-dialog-overlay, #admin-auth-modal, #pw-modal')) return;
     if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openNewEventModal(); }
 });
-
-function closeAnyOpenModal() {
-}
 
 // ---- フィルタ状態 ----
 let filterState = {
@@ -35,7 +30,7 @@ let filterState = {
 };
 
 // ---- 検索・絞り込み状態の URL 同期（?q= / ?cat= / ?period=） ----
-// 検索結果をリロード・共有できるようにする。?edit= 等の既存パラメータとは共存させる。
+// 検索結果をリロード・共有できるようにする。?duplicate= 等の既存パラメータとは共存させる。
 
 // 指定パラメータだけを URL から取り除く（?q= 等の他のパラメータは保持する）
 function stripUrlParams(names) {
@@ -184,7 +179,7 @@ async function init() {
         openNewEventModal();
     }
 
-    // キャッシュ即表示（GAS形で書かれていても UI形へ正規化してから使う）
+    // キャッシュ即表示（サーバー形で書かれていても UI形へ正規化してから使う）
     const cached = api.loadCache('events');
     if (cached && cached.items && cached.items.length > 0) {
         eventsData = cacheItemsToUi(cached.items);
@@ -219,22 +214,20 @@ function redirectLegacyEventParam() {
     return true;
 }
 
-// ?edit=<ID> は編集ウィザード、?duplicate=<ID> は複製して新規作成を開く
+// ?duplicate=<ID> は複製して新規作成を開く
 // （シリーズ詳細ページの「編集」「複製」ボタンの遷移先）。
 // データ未取得のうちは何もせず、refreshData 後に再度試みる（一度だけ実行）。
 let urlActionHandled = false;
 function handleUrlActionParams() {
     if (urlActionHandled) return;
     const params = new URLSearchParams(location.search);
-    const editId = params.get('edit');
     const dupId = params.get('duplicate');
-    if (!editId && !dupId) return;
-    const target = eventsData.find(e => e.ID === (editId || dupId));
+    if (!dupId) return;
+    const target = eventsData.find(e => e.ID === dupId);
     if (!target) return; // まだ読み込まれていない → リフレッシュ後に再試行
     urlActionHandled = true;
-    stripUrlParams(['edit', 'duplicate']);
-    if (editId) openEventWizard(editId);
-    else startNewEvent(target.Category || 'normal', target);
+    stripUrlParams(['duplicate']);
+    startNewEvent(target.Category || 'normal', target);
 }
 
 async function refreshData(isManual = false) {
@@ -248,13 +241,9 @@ async function refreshData(isManual = false) {
         membersData = all.members || [];
         api.saveCache('members', membersData);
         if (all.experiments) api.saveCache('experiments', all.experiments);
-        if (Array.isArray(all.votes)) {
-            allVotesData = all.votes;
-            api.saveCache('votes', allVotesData);
-            rebuildVotesByEvent();
-        } else {
-            refreshVotes(); // 旧バックエンド: votes 未同梱なら従来どおり別途取得
-        }
+        allVotesData = all.votes;
+        api.saveCache('votes', allVotesData);
+        rebuildVotesByEvent();
         buildPeriodFilterOptions();
         renderEvents();
         handleUrlActionParams();
@@ -287,16 +276,6 @@ function rebuildVotesByEvent() {
         const b = votesByEvent[v.eventId] || (votesByEvent[v.eventId] = { attend: 0, absent: 0, undecided: 0 });
         if (b[v.status] !== undefined) b[v.status]++;
     });
-}
-
-// 旧バックエンド（listAll に votes 未同梱）向けフォールバック
-async function refreshVotes() {
-    try {
-        allVotesData = await api.listVotes();
-        api.saveCache('votes', allVotesData);
-        rebuildVotesByEvent();
-        renderEvents();
-    } catch (_) { /* 集計は補助情報。失敗しても一覧表示は継続する */ }
 }
 
 // ---- 出欠投票（テーブル行内ドロップダウン） ----
@@ -609,11 +588,8 @@ function openQuickCreate(category) {
     if (cat === 'meeting') cat = 'general';
     const catInfo = isMeeting ? { bg: '#93c5fd', text: '#1e3a5f', short: 'ミーティング' } : getEventCategory(cat);
 
-    // カレンダーのドラッグ選択で渡された日付があれば初期値に使う
-    const startDate = window.tempStart || todayISO();
-    const endDate = window.tempEnd || '';
-    window.tempStart = null;
-    window.tempEnd = null;
+    const startDate = todayISO();
+    const endDate = '';
 
     const draft = {
         ID: genId('ev_'),

@@ -8,10 +8,10 @@
  *
  * イベント詳細タブがこのサイトの「イベント1件の正規ページ」。
  * 旧・詳細モーダル（events.html）と投票サマリー・書類ステータスをここに統合した。
- * データは GAS 正準形（DateEnd / TimeStart / AdminKyoka 等）で扱う。
+ * データはサーバー形（DateEnd / TimeStart / AdminKyoka 等）で扱う。
  */
 
-let allEventsData = [];      // GAS正準形
+let allEventsData = [];      // サーバー形（DB の列名そのまま）
 let seriesEvents = [];       // 表示中シリーズ（日付降順）
 let seriesKey = '';
 let seriesFbFilter = 'all';
@@ -34,7 +34,7 @@ const REPORT_STATUS = CONFIG.REPORT_STATUS;
 
 // ---- イベント編集ウィザードのホスト実装 ----
 // event-wizard.js の共通ウィザードをこのページ内で使う。
-// このページのデータ（allEventsData）は GAS 正準形なので UI形と相互変換する。
+// このページのデータ（allEventsData）はサーバー形なので UI形と相互変換する。
 window.EVENT_WIZARD_HOST = {
     getEvent(id) {
         const g = allEventsData.find(e => e.ID === id);
@@ -138,7 +138,7 @@ function seriesKeyNormalize(e) {
 }
 
 // events キャッシュはイベントページが UI形（Event_Time 等）で書くことがあるため、
-// GAS正準形へ正規化してから使う（script.js の cacheItemsToUi の逆向き）。
+// サーバー形へ正規化してから使う（script.js の cacheItemsToUi の逆向き）。
 function toGasForm(e) {
     if (!e || !('Event_Time' in e)) return e;
     const g = { ...e };
@@ -983,20 +983,6 @@ async function loadEventVotes(ev) {
         }
     }
     return votes;
-}
-
-// 参加回答一覧ポップアップ（日時・メモつき。実装は vote-widget.js の showVoteListModal）
-async function openVoteListModal() {
-    const ev = currentEvent();
-    if (!ev) return;
-    let votes;
-    try {
-        votes = await loadEventVotes(ev);
-    } catch (e) {
-        toast('参加状況を取得できませんでした: ' + humanizeApiError(e), 'error');
-        return;
-    }
-    showVoteListModal(ev, votes, membersCache);
 }
 
 // ---- 参加状況サブタブ（回答一覧をタブ表示のテーブルで） ----

@@ -557,48 +557,6 @@ async function copyTextToClipboard(text, label) {
   toast(ok ? `${label || 'テキスト'}をコピーしました` : 'コピーできませんでした', ok ? 'success' : 'error', 2000);
 }
 
-// ====== テーブルセルのポップオーバー（狭い列で潰れる値をタップで全文表示） ======
-
-function closeCellPopover() {
-  const existing = document.getElementById('cell-popover');
-  if (existing) existing.remove();
-  document.removeEventListener('click', _cellPopoverOutsideHandler, true);
-  document.removeEventListener('keydown', _cellPopoverEscHandler);
-}
-
-function _cellPopoverOutsideHandler(e) {
-  const pop = document.getElementById('cell-popover');
-  if (pop && !pop.contains(e.target)) closeCellPopover();
-}
-
-function _cellPopoverEscHandler(e) {
-  if (e.key === 'Escape') closeCellPopover();
-}
-
-function showCellPopover(anchorEl, label, valueHtml) {
-  closeCellPopover();
-
-  const pop = document.createElement('div');
-  pop.id = 'cell-popover';
-  pop.className = 'cell-popover';
-  pop.innerHTML = `<div class="cell-popover-label">${escapeHtml(label)}</div><div class="cell-popover-value">${valueHtml}</div>`;
-  document.body.appendChild(pop);
-
-  const rect = anchorEl.getBoundingClientRect();
-  const popRect = pop.getBoundingClientRect();
-  let left = Math.min(rect.left, window.innerWidth - popRect.width - 12);
-  left = Math.max(8, left);
-  let top = rect.bottom + 6;
-  if (top + popRect.height > window.innerHeight - 8) top = rect.top - popRect.height - 6;
-  pop.style.left = left + 'px';
-  pop.style.top = top + 'px';
-
-  setTimeout(() => {
-    document.addEventListener('click', _cellPopoverOutsideHandler, true);
-    document.addEventListener('keydown', _cellPopoverEscHandler);
-  }, 0);
-}
-
 // ====== 管理者認証モーダル ======
 
 function showAdminAuthModal(onSuccess) {

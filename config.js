@@ -9,13 +9,13 @@
  *   - APIのURLを変えた          → API_URL(Cloudflare Workers。worker/ を参照)
  *   - イベントカテゴリを増やす    → EVENT_CATEGORIES に1行足す
  *   - 実験のタブを増やす          → EXPERIMENT_CATEGORIES に1行足す
- *   - メンバー区分を増やす        → MEMBER_CATEGORIES に1行足す
+ *   - メンバーの役職を増やす      → MEMBER_ROLES に1行足す
  *   - 書類期限の日数を変える      → DEADLINE_RULES
  */
 
 const CONFIG = {
   // ===== バックエンド =====
-  API_URL: 'https://scicomi-portal.scicomi.workers.dev',   // Cloudflare Workers(旧 GAS の /exec から 2026-09 に移行)
+  API_URL: 'https://scicomi-portal.scicomi.workers.dev',   // Cloudflare Workers
 
   // ===== キャッシュ =====
   CACHE_PREFIX: 'scicomi_cache_',
@@ -39,20 +39,19 @@ const CONFIG = {
   // home / event-series で共用（以前は両ページに重複定義があり、片方だけ直すとズレていた）。
   // cssClass は style.css の .report-status-select.status-* に対応する色分けクラス。
   KYOKA_STATUS: {
-    '':            { label: '未提出',                 color: '#9ca3af', cssClass: 'none' },
-    'coordinator': { label: 'コーディネーター提出済', color: '#f59e0b', cssClass: 'coordinator' },
-    'submitted':   { label: '提出済',                 color: '#10b981', cssClass: 'clc' }
+    '':            { label: '未提出',                 cssClass: 'none' },
+    'coordinator': { label: 'コーディネーター提出済', cssClass: 'coordinator' },
+    'submitted':   { label: '提出済',                 cssClass: 'clc' }
   },
   REPORT_STATUS: {
-    '':            { label: '未提出',                 color: '#9ca3af', cssClass: 'none' },
-    'coordinator': { label: 'コーディネーター提出済', color: '#f59e0b', cssClass: 'coordinator' },
-    'clc':         { label: 'CLC提出済',              color: '#10b981', cssClass: 'clc' }
+    '':            { label: '未提出',                 cssClass: 'none' },
+    'coordinator': { label: 'コーディネーター提出済', cssClass: 'coordinator' },
+    'clc':         { label: 'CLC提出済',              cssClass: 'clc' }
   },
 
   // ===== Phase 2: ファイルアップロード =====
   FILE_UPLOAD: {
-    maxSizeMB: 10,
-    retentionYears: 5
+    maxSizeMB: 10
   },
 
   // ===== リソース名一覧（api.js が参照） =====
@@ -61,13 +60,11 @@ const CONFIG = {
   // ===== 管理者 =====
   ADMIN_TOKEN_KEY: 'scicomi_admin_token',
   ADMIN_TOKEN_TS_KEY: 'scicomi_admin_token_ts',
-  ADMIN_TOKEN_TTL_MS: 180 * 24 * 60 * 60 * 1000, // 180日（サーバー側 ADMIN_SESSION_TTL と一致させること）
+  ADMIN_TOKEN_TTL_MS: 180 * 24 * 60 * 60 * 1000, // 180日（サーバー側 worker/src/auth.js の ADMIN_SESSION_TTL_MS と一致させること）
 
   // ===== Gemini API (Bot用 — APIキー・モデルはサーバー側 Config で管理) =====
-  // ※ 実際に使うモデルは GAS の Config シート（gemini_model）が正。ここは表示用の参考値。
-  //   gemini-2.0 系は 2026-06 に廃止されたため、現行の安定モデルを使うこと。
+  // ※ 使用モデルはサーバーの設定（gemini_model。設定ページで変更）が正で、フロントでは持たない。
   GEMINI: {
-    MODEL: 'gemini-2.5-flash-lite',
     DAILY_LIMIT: 1500,  // API初回呼出前の表示用フォールバック。実際の上限はサーバー(GEMINI_DAILY_LIMIT)が正で、bot.js 起動時に上書きされる。
     USAGE_KEY: 'scicomi_bot_usage'
   },
@@ -121,13 +118,6 @@ const CONFIG = {
     workshop: { label: '工作',       color: '#10b981' },
     show:     { label: '実験ショー', color: '#f59e0b' },
     other:    { label: 'その他',     color: '#8b5cf6' }
-  },
-
-  // ===== メンバーカテゴリ（後方互換用） =====
-  MEMBER_CATEGORIES: {
-    adviser:     { label: 'アドバイザー',     color: '#f59e0b', hasEmail: true },
-    coordinator: { label: 'コーディネーター', color: '#10b981', hasEmail: true },
-    member:      { label: 'メンバー',         color: '#6264a7', hasEmail: true }
   },
 
   // ===== メンバー役職（統合表示） =====

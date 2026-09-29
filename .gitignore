@@ -2,14 +2,19 @@
 node_modules/
 .wrangler/
 .dev.vars
+.dev.vars.*
+!.dev.vars.example
 .env
 .env.*
 *.log
 
 # 旧 GAS からの移行データ(パスワード一覧を含む)・DB のバックアップ
 scicomi_export_*.json
-backup-*.sql
-backup-*.json
+backup*.json
+*.sql
+!worker/migrations/*.sql
+worker/backups/
+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].json
 
 # 個人の AI ツール設定(端末ごとのパスや許可設定が入る)
 .claude/settings.local.json
