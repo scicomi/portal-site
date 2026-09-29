@@ -372,7 +372,23 @@ const api = {
     return res.vote;
   },
 
+  // 読み取り系のみ、一時的な障害（通信断・GAS の HTML エラーページ・不正応答）を自動リトライする。
+  // 書き込み系は二重実行や conflict 誤判定を避けるためリトライしない。
   async _post(payload) {
+    const retryable = ['list', 'listAll', 'listVotes', 'getEventVotes', 'getPublicConfig'].indexOf(payload && payload.action) >= 0;
+    const maxAttempts = retryable ? 3 : 1;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this._postOnce(payload);
+      } catch (e) {
+        const transient = e && (e.code === 'NETWORK_UNREACHABLE' || e.code === 'GAS_NOT_PUBLIC' || e.code === 'BAD_RESPONSE');
+        if (!transient || attempt >= maxAttempts) throw e;
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+      }
+    }
+  },
+
+  async _postOnce(payload) {
     let res, text;
     try {
       res = await fetch(API_URL, {
@@ -426,7 +442,7 @@ function humanizeApiError(e) {
   const code = (e && (e.code || e.message)) || '';
   switch (code) {
     case 'GAS_NOT_PUBLIC':
-      return 'サーバー(GAS)がログイン画面を返しました。多くの場合 API_URL の問題です。'
+      return 'サーバー(GAS)が HTML を返しました。一時的な混雑の場合は、少し待って再読み込みしてください。続く場合は API_URL の問題です。'
         + '①config.js の API_URL が「/exec」で終わっているか（「/dev」はログイン必須のため不可）'
         + '②「デプロイを管理→アクセスできるユーザー＝全員」か'
         + '③ブラウザの強制再読込（Ctrl+Shift+R）で古い設定が残っていないか、を確認してください。';
