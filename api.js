@@ -1,8 +1,8 @@
 /**
- * SciComi Portal - GAS Backend API Client (v3)
+ * SciComi Portal - API Client (Cloudflare Workers)
  *
  * スキーマ駆動: CONFIG.RESOURCE_NAMES に登録されたリソース名を自動認識。
- * Optimistic UI: save はローカルキャッシュを即更新し、GAS呼び出しは裏で実行。
+ * Optimistic UI: save はローカルキャッシュを即更新し、サーバー呼び出しは裏で実行。
  *
  * 使い方:
  *   await api.auth(password)              → 認証
@@ -78,12 +78,6 @@ const api = {
       this.setToken(res.token);
       if (res.adminToken) this.setAdminToken(res.adminToken);
       return { ok: true, role: res.role || 'member' };
-    }
-    // 旧バックエンド（login 未対応）では従来の auth にフォールバックして、
-    // GAS 再デプロイ前でもメンバーログインが止まらないようにする。
-    if (res.error && String(res.error).indexOf('unknown action') >= 0) {
-      const ok = await this.auth(password);
-      return { ok, role: ok ? 'member' : null };
     }
     return { ok: false, role: null };
   },
@@ -213,8 +207,7 @@ const api = {
     const result = {};
     RESOURCE_NAMES.forEach(r => { result[r] = res[r] || []; });
     // 出欠投票も同じレスポンスで受け取る（追加往復の削減）。
-    // 旧バックエンド（votes 未同梱）では null にして、呼び出し側が listVotes へフォールバックする。
-    result.votes = Array.isArray(res.votes) ? res.votes : null;
+    result.votes = Array.isArray(res.votes) ? res.votes : [];
     return result;
   },
 
@@ -228,7 +221,7 @@ const api = {
       throw new Error(res.error || 'save failed');
     }
     if (!res.item) {
-      console.warn('GAS did not return item; falling back to local item.');
+      console.warn('server did not return item; falling back to local item.');
       return { ...item };
     }
     return res.item;
@@ -373,16 +366,12 @@ const api = {
   },
 
   // 全イベントの投票を一括取得（ホームの出欠一括回答・イベント一覧の参加人数バッジ用）。
-  // 旧バックエンド（listVotes 未対応）では空配列を返し、表示だけが省略される。
   async listVotes() {
     const res = await this._post({
       action: 'listVotes',
       token: this.getToken()
     });
-    if (!res.success) {
-      if (String(res.error || '').indexOf('unknown action') >= 0) return [];
-      throw new Error(res.error || 'listVotes failed');
-    }
+    if (!res.success) throw new Error(res.error || 'listVotes failed');
     return res.votes || [];
   },
 
@@ -400,7 +389,7 @@ const api = {
     return res.vote;
   },
 
-  // 読み取り系のみ、一時的な障害（通信断・GAS の HTML エラーページ・不正応答）を自動リトライする。
+  // 読み取り系のみ、一時的な障害（通信断・サーバーの HTML エラーページ・不正応答）を自動リトライする。
   // 書き込み系は二重実行や conflict 誤判定を避けるためリトライしない。
   async _post(payload) {
     const retryable = ['list', 'listAll', 'listVotes', 'getEventVotes', 'getPublicConfig'].indexOf(payload && payload.action) >= 0;
@@ -409,7 +398,7 @@ const api = {
       try {
         return await this._postOnce(payload);
       } catch (e) {
-        const transient = e && (e.code === 'NETWORK_UNREACHABLE' || e.code === 'GAS_NOT_PUBLIC' || e.code === 'BAD_RESPONSE');
+        const transient = e && (e.code === 'NETWORK_UNREACHABLE' || e.code === 'HTML_RESPONSE' || e.code === 'BAD_RESPONSE');
         if (!transient || attempt >= maxAttempts) throw e;
         await new Promise(r => setTimeout(r, 1000 * attempt));
       }
@@ -472,15 +461,13 @@ const api = {
     } catch (e) {
       if (e.code === 'unauthorized') throw e;
       const looksHtml = /^\s*<(!doctype|html)/i.test(text || '');
-      const looksLogin = /accounts\.google\.com|ServiceLogin|ウェブ ワープロ|docs\.google\.com/i.test(text || '')
-        || (res && res.url && /accounts\.google\.com|ServiceLogin/i.test(res.url));
-      this._logErr(payload, looksHtml || looksLogin ? 'GAS_NOT_PUBLIC' : 'BAD_RESPONSE', {
+      this._logErr(payload, looksHtml ? 'HTML_RESPONSE' : 'BAD_RESPONSE', {
         ms: Date.now() - started, status: res && res.status, finalUrl: res && res.url && res.url.slice(0, 80),
         body: (text || '').replace(/\s+/g, ' ').slice(0, 150)
       });
-      if (looksHtml || looksLogin) {
-        const err = new Error('GAS_NOT_PUBLIC');
-        err.code = 'GAS_NOT_PUBLIC';
+      if (looksHtml) {
+        const err = new Error('HTML_RESPONSE');
+        err.code = 'HTML_RESPONSE';
         throw err;
       }
       const err = new Error('BAD_RESPONSE');
@@ -495,10 +482,10 @@ const api = {
 function humanizeApiError(e) {
   const code = (e && (e.code || e.message)) || '';
   switch (code) {
-    case 'GAS_NOT_PUBLIC':
-      return 'サーバー(GAS)が HTML を返しました。一時的な混雑の場合は、少し待って再読み込みしてください。続く場合は API_URL の問題です。'
-        + '①config.js の API_URL が「/exec」で終わっているか（「/dev」はログイン必須のため不可）'
-        + '②「デプロイを管理→アクセスできるユーザー＝全員」か'
+    case 'HTML_RESPONSE':
+      return 'サーバーが HTML を返しました。一時的な混雑の場合は、少し待って再読み込みしてください。続く場合は、'
+        + '①config.js の API_URL が正しいか'
+        + '②サーバー（Cloudflare Workers）が動いているか（https://www.cloudflarestatus.com/ も参照）'
         + '③ブラウザの強制再読込（Ctrl+Shift+R）で古い設定が残っていないか、を確認してください。';
     case 'NETWORK_UNREACHABLE':
       return 'ネットワークに接続できません。通信環境を確認してください。';

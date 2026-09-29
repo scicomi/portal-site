@@ -45,7 +45,6 @@ if (adminPw) {
 
 // API の値を D1 保存時と同じ規則に揃える(空配列 = 空セル)
 const norm = v => (Array.isArray(v) && v.length === 0) ? '' : (v !== null && typeof v === 'object') ? JSON.stringify(v) : String(v ?? '');
-const rowKey = (res, row) => res.columns.map(c => norm(row[c])).join('\u0001');
 
 let ok = true;
 const report = (label, exp, got, diffs) => {

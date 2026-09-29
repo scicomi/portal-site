@@ -12,9 +12,9 @@ let editingExpId = null;
 let wizardStep = 0;
 
 const EXP_WIZARD_STEPS = [
-    { label: '基本情報', fields: ['name', 'category'] },
-    { label: '準備', fields: ['materials', 'preparation'] },
-    { label: '実施・その他', fields: ['flow', 'notes', 'slides'] }
+    { label: '基本情報' },
+    { label: '準備' },
+    { label: '実施・その他' }
 ];
 
 // 検索フィールド定義（search.js の createSearcher 用）。重要度順に並べる。
@@ -317,45 +317,6 @@ function countFeedback(e) {
     const pos = parseFeedbackEntries(e.Positives);
     const ref = parseFeedbackEntries(e.Reflections);
     return pos.length + ref.length;
-}
-
-// ---- 実験プレビュー（行タップで概要をポップアップ表示） ----
-// メンバー・日程ページと同じ「一覧 → ポップアップ →（必要なら）詳細ページ」の2段構え。
-function openExpPreviewModal(id) {
-    const e = expData.find(x => x.ID === id);
-    if (!e) return;
-    const cat = getExperimentCategory(e.Category);
-    const mats = (e.Materials || '').split('\n').map(s => s.trim()).filter(Boolean);
-    const safeSlides = safeHttpUrl(e.SlidesURL);
-    const fbCount = countFeedback(e);
-
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-        <div class="modal-content" style="max-width:480px;" role="dialog" aria-modal="true" aria-labelledby="exp-preview-title">
-            <h2 id="exp-preview-title" style="margin-top:0;">
-                ${escapeHtml(e.Name || '(無題)')}
-                <span class="cat-badge" style="background:${cat.color};margin-left:8px;font-size:0.75rem;vertical-align:middle;">${escapeHtml(cat.label)}</span>
-            </h2>
-            ${mats.length > 0
-                ? `<div class="e1-group"><span class="e1-label">使用物品</span>
-                    <ul style="margin:4px 0 0; padding-left:20px; max-height:180px; overflow-y:auto;">
-                        ${mats.map(m => `<li>${escapeHtml(m)}</li>`).join('')}
-                    </ul></div>`
-                : ''}
-            ${fbCount > 0 ? `<p class="text-muted" style="font-size:0.85rem;">振り返り ${fbCount}件（詳細ページで見られます）</p>` : ''}
-            <div class="action-buttons" style="margin-top:16px;">
-                ${safeSlides ? `<a class="btn btn-secondary" href="${escapeAttr(safeSlides)}" target="_blank" rel="noopener">資料を開く</a>` : ''}
-                <button type="button" class="btn btn-text" data-close>閉じる</button>
-                <a class="btn btn-primary-solid" style="width:auto;" href="experiment-detail.html?id=${encodeURIComponent(e.ID)}">詳細ページへ</a>
-            </div>
-        </div>`;
-    const close = () => overlay.remove();
-    overlay.querySelector('[data-close]').addEventListener('click', close);
-    bindOverlayClose(overlay, close);
-    bindModalEscape(overlay, close);
-    document.body.appendChild(overlay);
-    trapFocus(overlay.querySelector('.modal-content'));
 }
 
 // ---- ウィザード形式の新規作成・編集 ----
