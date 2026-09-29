@@ -110,6 +110,12 @@ async function refreshData(isManual = false) {
 
 // ---- 新規実験の募集案内（管理者が編集。Config のキーバリューに保存する） ----
 
+// 募集案内の保存直後は設定キャッシュを破棄するため、画面の即時反映用にメモリ上の値を持つ(次回ロードでサーバーから再取得される)
+let expRecruitLocal = null;
+function _expRecruitCfg() {
+    return Object.assign({}, _readCachedSiteSettings() || {}, expRecruitLocal || {});
+}
+
 function renderExpRecruit() {
     const card = document.getElementById('exp-recruit-card');
     const editBtn = document.getElementById('exp-recruit-edit-btn');
@@ -118,7 +124,7 @@ function renderExpRecruit() {
     const isAdmin = api.isAdmin();
     if (editBtn) editBtn.classList.toggle('hidden', !isAdmin);
 
-    const cfg = _readCachedSiteSettings() || {};
+    const cfg = _expRecruitCfg();
     const url = (cfg.experiment_recruit_url || '').trim();
     const note = (cfg.experiment_recruit_note || '').trim();
 
@@ -138,7 +144,7 @@ function renderExpRecruit() {
 function editExpRecruit() {
     const body = document.getElementById('exp-recruit-body');
     if (!body) return;
-    const cfg = _readCachedSiteSettings() || {};
+    const cfg = _expRecruitCfg();
     body.innerHTML = `
         <div class="e1-group">
             <label class="e1-label">案内文</label>
@@ -168,10 +174,7 @@ async function saveExpRecruit() {
         await api.adminSetConfig('experiment_recruit_note', note);
         await api.adminSetConfig('experiment_recruit_url', url);
         invalidateSettingsCache();
-        const cached = _readCachedSiteSettings() || {};
-        cached.experiment_recruit_note = note;
-        cached.experiment_recruit_url = url;
-        localStorage.setItem('scicomi_site_settings', JSON.stringify({ data: cached, ts: Date.now() }));
+        expRecruitLocal = { experiment_recruit_note: note, experiment_recruit_url: url };
         toast('募集案内を保存しました', 'success');
         renderExpRecruit();
     } catch (e) {
@@ -372,7 +375,7 @@ function openExpWizard(editId) {
         <div class="wizard-panel" role="dialog" aria-modal="true">
             <div class="wizard-header">
                 <h2 class="wizard-title">${isEdit ? '実験を編集' : '実験を追加'}</h2>
-                <p class="wizard-subtitle">${isEdit ? e.Name : 'ステップに沿って入力してください'}</p>
+                <p class="wizard-subtitle">${isEdit ? escapeHtml(e.Name || '') : 'ステップに沿って入力してください'}</p>
             </div>
             <div class="wizard-progress">
                 ${EXP_WIZARD_STEPS.map((s, i) => `
@@ -531,6 +534,8 @@ async function saveExp() {
         Notes: document.getElementById('wz-ex-notes').value,
         SlidesURL: document.getElementById('wz-ex-slides').value.trim(),
         Sections: existing ? (existing.Sections || '') : '',
+        Photos: existing ? (existing.Photos || '') : '',
+        Videos: existing ? (existing.Videos || '') : '',
         Positives: existing ? existing.Positives : '',
         Reflections: existing ? existing.Reflections : '',
         Active: existing ? (existing.Active || 'true') : 'true'

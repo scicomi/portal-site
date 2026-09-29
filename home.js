@@ -145,9 +145,6 @@ async function saveWelcomeMessage() {
         if (value) localStorage.setItem('scicomi_welcome_message', value);
         else localStorage.removeItem('scicomi_welcome_message');
         invalidateSettingsCache();
-        const cached = _readCachedSiteSettings() || {};
-        cached.welcome_message = value;
-        localStorage.setItem('scicomi_site_settings', JSON.stringify({ data: cached, ts: Date.now() }));
         toast('メッセージを保存しました', 'success');
         cancelWelcomeEdit();
         renderWelcome();

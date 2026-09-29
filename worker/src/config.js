@@ -1,0 +1,174 @@
+// 設定(config テーブル)と機密値(secrets テーブル)
+//
+// キーの定義はここに一元化する。1 キー足すだけで、取得(adminGetConfig)・書き込み許可(adminSetConfig)・
+// 公開設定(getPublicConfig)が揃う。機密キーの値は API では絶対に返さない(設定済みかどうかだけ返す)。
+
+import { bumpEpoch, verifyPassword, hasPassword, storePassword } from './auth.js';
+
+export const GEMINI_MODEL = 'gemini-2.5-flash-lite';
+export const GEMINI_DAILY_LIMIT = 1500;
+// 新しく設定するときだけ検証する(既存のパスワードはそのまま使える)。
+// settings.js の PASSWORD_MIN_LENGTH と scripts/set-password.mjs の MIN_LENGTH も同じ値にすること
+const PASSWORD_MIN_LENGTH = 10;
+
+export const DEFAULT_CONFIG = {
+  password: '',            // 機密(ハッシュのみ保存)
+  admin_password: '',      // 機密(ハッシュのみ保存)
+  gemini_api_key: '',      // 機密
+  gemini_model: GEMINI_MODEL,
+  file_max_mb: 10,
+  backup_keep_count: 14,
+  audit_keep_days: 365,
+  // --- 表示・運用カスタム(settings.js が読み書き。一部はメンバーにも公開) ---
+  welcome_message: '',
+  deadline_kyoka: -10,        // イベント日の10日前
+  deadline_houkoku: 7,        // イベント日の7日後
+  deadline_alert_danger: 3,
+  deadline_alert_warning: 7,
+  brand_icon: 'SC',
+  brand_name: 'SciComi Portal',
+  experiment_recruit_url: '',
+  experiment_recruit_note: '',
+  pr_channels: 'Twitter,Instagram,HP',
+  site_links: '[]',
+  // LINE公式アカウントによる新規イベント通知
+  line_channel_access_token: '',  // 機密
+  line_add_friend_url: '',
+  event_notify_enabled: 'true'
+};
+
+// メンバー(非管理者)にも公開してよい表示系設定(getPublicConfig)。機密値は含めない。
+export const PUBLIC_CONFIG_KEYS = [
+  'welcome_message', 'deadline_kyoka', 'deadline_houkoku',
+  'deadline_alert_danger', 'deadline_alert_warning',
+  'brand_icon', 'brand_name',
+  'experiment_recruit_url', 'experiment_recruit_note',
+  'pr_channels', 'line_add_friend_url', 'site_links'
+];
+
+export const SECRET_CONFIG_KEYS = ['password', 'admin_password', 'gemini_api_key', 'line_channel_access_token'];
+export const PASSWORD_CONFIG_KEYS = ['password', 'admin_password'];
+
+export const isSecretKey = k => SECRET_CONFIG_KEYS.indexOf(k) >= 0;
+export const isPasswordKey = k => PASSWORD_CONFIG_KEYS.indexOf(k) >= 0;
+
+// ---- 読み書き ----
+
+export async function loadConfigMap(env) {
+  const { results } = await env.DB.prepare('SELECT Key, Value FROM config').all();
+  const map = {};
+  (results || []).forEach(r => { map[r.Key] = String(r.Value); });
+  return map;
+}
+
+export async function getConfig(env, key) {
+  const row = await env.DB.prepare('SELECT Value FROM config WHERE Key = ?').bind(key).first();
+  return row ? String(row.Value) : '';
+}
+
+async function upsert(env, table, key, value) {
+  await env.DB.prepare('INSERT INTO ' + table + ' (Key, Value) VALUES (?, ?) ON CONFLICT(Key) DO UPDATE SET Value = excluded.Value')
+    .bind(key, value).run();
+}
+
+export async function getConfigInt(env, key, fallback) {
+  const v = parseInt(await getConfig(env, key), 10);
+  return isFinite(v) ? v : fallback;
+}
+
+// 機密値(API キーなど)。パスワードはハッシュのみで、ここでは扱わない。
+export async function getSecret(env, key) {
+  const row = await env.DB.prepare('SELECT Value FROM secrets WHERE Key = ?').bind('secret_' + key).first();
+  return row ? String(row.Value) : '';
+}
+
+export async function hasSecret(env, key) {
+  if (isPasswordKey(key)) return hasPassword(env, key);
+  return !!(await getSecret(env, key));
+}
+
+export async function setConfig(env, key, value) {
+  const v = String(value === null || value === undefined ? '' : value);
+  if (isPasswordKey(key)) {
+    const t = v.trim();
+    if (t === '') await env.DB.prepare('DELETE FROM secrets WHERE Key = ?').bind('pwhash_' + key).run();
+    else await storePassword(env, key, t);
+    return;
+  }
+  if (isSecretKey(key)) {
+    const t = v.trim();
+    if (t === '') await env.DB.prepare('DELETE FROM secrets WHERE Key = ?').bind('secret_' + key).run();
+    else await upsert(env, 'secrets', 'secret_' + key, t);
+    return;
+  }
+  await upsert(env, 'config', key, v);
+}
+
+// ---- 公開設定・管理者設定 ----
+
+function withDefault(map, k) {
+  const v = map[k];
+  return (v === '' || v === null || v === undefined) ? String(DEFAULT_CONFIG[k]) : v;
+}
+
+export async function publicConfig(env) {
+  const map = await loadConfigMap(env);
+  const cfg = {};
+  PUBLIC_CONFIG_KEYS.forEach(k => { cfg[k] = withDefault(map, k); });
+  cfg.gemini_daily_limit = String(GEMINI_DAILY_LIMIT);
+  return cfg;
+}
+
+export async function adminConfig(env) {
+  const map = await loadConfigMap(env);
+  const out = {};
+  for (const k of Object.keys(DEFAULT_CONFIG)) {
+    if (isSecretKey(k)) { out[k + '_set'] = await hasSecret(env, k); continue; }
+    out[k] = withDefault(map, k);
+  }
+  return out;
+}
+
+// ---- バリデーション(不正値の永続化を防ぐ) ----
+// 問題なければ '' を、エラーなら日本語メッセージを返す。
+
+export function validateConfigValue(key, value) {
+  const v = (value === null || value === undefined) ? '' : String(value);
+  switch (key) {
+    case 'deadline_kyoka':
+    case 'deadline_houkoku':
+      return /^-?\d+$/.test(v.trim()) ? '' : '数値を指定してください';
+    case 'deadline_alert_danger':
+    case 'deadline_alert_warning':
+    case 'file_max_mb':
+    case 'backup_keep_count':
+    case 'audit_keep_days':
+      return /^\d+$/.test(v.trim()) ? '' : '0以上の整数を指定してください';
+    case 'event_notify_enabled':
+      return ['true', 'false'].indexOf(v) >= 0 ? '' : 'true か false を指定してください';
+    case 'password':
+    case 'admin_password':
+      return v.trim().length >= PASSWORD_MIN_LENGTH ? '' : 'パスワードは' + PASSWORD_MIN_LENGTH + '文字以上にしてください';
+    case 'brand_icon':
+      return v.trim().length >= 1 && v.trim().length <= 4 ? '' : 'アイコンは1〜4文字で指定してください';
+    case 'brand_name':
+      return v.trim().length >= 1 && v.trim().length <= 40 ? '' : 'タイトルは1〜40文字で指定してください';
+    default:
+      return '';
+  }
+}
+
+// adminSetConfig の本体。{ success, error?, detail? } を返す。
+export async function adminSetConfig(env, key, value) {
+  if (Object.keys(DEFAULT_CONFIG).indexOf(key) < 0) return { success: false, error: 'forbidden_key' };
+  const vErr = validateConfigValue(key, value);
+  if (vErr) return { success: false, error: 'invalid_value', detail: vErr };
+  // 一般と幹部が同じだと、ログインした全員が管理者になるため拒否する
+  if (isPasswordKey(key) && await verifyPassword(env, key === 'password' ? 'admin_password' : 'password', value)) {
+    return { success: false, error: 'invalid_value', detail: '一般パスワードと幹部パスワードは別の値にしてください' };
+  }
+  await setConfig(env, key, value || '');
+  if (key === 'password') await bumpEpoch(env, 'member');
+  if (key === 'admin_password') await bumpEpoch(env, 'admin');
+  return { success: true };
+}

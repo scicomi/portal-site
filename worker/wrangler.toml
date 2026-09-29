@@ -1,0 +1,27 @@
+name = "scicomi-portal"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+# workers.dev の URL(https://scicomi-portal.<アカウント名>.workers.dev)で公開する
+workers_dev = true
+
+[vars]
+# ブラウザからの API 呼び出しを許可するサイトのオリジン(カンマ区切り)。localhost は開発用に常に許可。
+ALLOWED_ORIGINS = "https://scicomi.github.io"
+# パスワードのハッシュ反復回数(PBKDF2-SHA256)。無料枠の CPU 時間に収まらない場合は下げる。
+PBKDF2_ITERATIONS = "100000"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "scicomi-portal"
+# `wrangler d1 create scicomi-portal` の出力で得た ID に置き換える(ローカル開発中は仮の値でよい)
+database_id = "d59086b7-de18-435c-bf5a-077718381af1"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "scicomi-portal-files"
+
+# 毎日 03:00 JST(=18:00 UTC): D1 のバックアップを R2 に保存し、古い監査ログを整理する
+[triggers]
+crons = ["0 18 * * *"]

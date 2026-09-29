@@ -148,6 +148,12 @@ function uiToGas(u) {
         SeriesKey: u.SeriesKey || '',
         Positives: u.Positives || '',
         Reflections: u.Reflections || '',
+        // ウィザードでは編集しない列。サーバーは全列を上書きするので、UI形オブジェクトが持つ値をそのまま通す(無ければ '')
+        PostalCode: u.PostalCode || '',
+        VisitorCount: u.VisitorCount || '',
+        ParticipantCount: u.ParticipantCount || '',
+        PrAssignments: u.PrAssignments || '',
+        ResultsMemo: u.ResultsMemo || '',
         ReportStatus: u.ReportStatus || '',  // 報告書ステータスをイベント編集保存でも保持する
         KyokaStatus: u.KyokaStatus || '',    // 許可願ステータスも同様に保持する
         UpdatedBy: u.UpdatedBy || '',
@@ -830,7 +836,7 @@ function openEventWizard(editId, template) {
         <div class="wizard-panel" role="dialog" aria-modal="true" style="max-width:560px;">
             <div class="wizard-header">
                 <h2 class="wizard-title">${isEdit ? 'イベントを編集' : '予定を複製して追加'}</h2>
-                <p class="wizard-subtitle">${isEdit ? (e.Title || '') : `「${escapeHtml(template.Title || '(無題)')}」の内容を引き継いで作成します`}</p>
+                <p class="wizard-subtitle">${isEdit ? escapeHtml(e.Title || '') : `「${escapeHtml(template.Title || '(無題)')}」の内容を引き継いで作成します`}</p>
             </div>
             <div class="wizard-progress">
                 ${steps.map((s, i) => `

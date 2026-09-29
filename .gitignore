@@ -1,0 +1,15 @@
+# 秘密・個人情報・巨大ファイルは絶対に GitHub に上げない
+node_modules/
+.wrangler/
+.dev.vars
+.env
+.env.*
+*.log
+
+# 旧 GAS からの移行データ(パスワード一覧を含む)・DB のバックアップ
+scicomi_export_*.json
+backup-*.sql
+backup-*.json
+
+# 個人の AI ツール設定(端末ごとのパスや許可設定が入る)
+.claude/settings.local.json
