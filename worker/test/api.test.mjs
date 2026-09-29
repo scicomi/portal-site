@@ -14,10 +14,21 @@ const BASE = process.env.API_BASE || 'http://127.0.0.1:8787';
 const MEMBER_PW = process.env.TEST_MEMBER_PW || 'test-member-pw';
 const ADMIN_PW = process.env.TEST_ADMIN_PW || 'test-admin-pw';
 
-async function post(payload) {
-  const res = await fetch(BASE, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(payload) });
+async function post(payload, extraHeaders) {
+  const res = await fetch(BASE, { method: 'POST', headers: Object.assign({ 'Content-Type': 'text/plain' }, extraHeaders || {}), body: JSON.stringify(payload) });
   return res.json();
 }
+
+// ログイン試行制限のテスト専用の送信元 IP(実行ごとに別の値)。
+// ローカルの wrangler dev では CF-Connecting-IP をクライアントが指定でき、この IP のスコープだけがロックされる
+// (本番の Cloudflare はこのヘッダーを実際の接続元で上書きするため、偽装はできない)。
+const RATE_LIMIT_TEST_IP = '198.51.100.' + (1 + Math.floor(Math.random() * 254)) + '-' + Date.now();
+
+// ローカル DB に前回の作業の設定値が残っていても結果が変わらないよう、テストが前提にするキーの既定値
+const CONFIG_DEFAULTS_FOR_TEST = {
+  brand_name: 'SciComi Portal', brand_icon: 'SC', welcome_message: '',
+  file_max_mb: '10', deadline_kyoka: '-10', deadline_houkoku: '7'
+};
 
 let member = '', admin = '', adminMember = '';
 const evId = 'ev_test_' + Date.now();
@@ -69,6 +80,13 @@ test('login: 一般パスワードでメンバー、幹部パスワードで管�
   assert.equal(a.role, 'admin');
   assert.ok(a.adminToken);
   adminMember = a.token; admin = a.adminToken;
+});
+
+test('前提: テストが参照する設定をローカル DB で既定値に戻す', async () => {
+  for (const [key, value] of Object.entries(CONFIG_DEFAULTS_FOR_TEST)) {
+    const r = await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key, value });
+    assert.equal(r.success, true, key + ': ' + JSON.stringify(r));
+  }
 });
 
 test('メンバートークンでは管理者操作(削除・管理者設定・パスワード一覧)ができない', async () => {
@@ -281,6 +299,16 @@ test('管理者: パスワード一覧の保存・取得、設定の取得(機�
   assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'password', value: ADMIN_PW })).error, 'invalid_value'); // 一般=幹部は拒否
   assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'password', value: 'short1234' })).error, 'invalid_value'); // 10 文字未満は拒否
   assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'admin_password', value: '123456789' })).error, 'invalid_value');
+  // 書類期限は 1〜90 日(許可願は負の値で保存)。file_max_mb は 1 以上
+  const setCfg = (key, value) => post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key, value });
+  for (const [key, value] of [['deadline_kyoka', '0'], ['deadline_kyoka', '-91'], ['deadline_houkoku', '91'], ['deadline_houkoku', '7.5'], ['file_max_mb', '0'], ['file_max_mb', '-1']]) {
+    assert.equal((await setCfg(key, value)).error, 'invalid_value', key + '=' + value);
+  }
+  assert.equal((await setCfg('deadline_kyoka', '-90')).success, true);
+  assert.equal((await setCfg('deadline_houkoku', '1')).success, true);
+  await setCfg('deadline_kyoka', '-10');
+  await setCfg('deadline_houkoku', '7');
+  assert.equal(String(pub.config.file_max_mb), '10');   // アップロード上限はメンバーにも公開(フロントの事前チェック用)
   assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'welcome_message', value: 'こんにちは' })).success, true);
   assert.equal((await post({ action: 'getPublicConfig', token: member })).config.welcome_message, 'こんにちは');
   await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'welcome_message', value: '' });
@@ -349,15 +377,20 @@ test('不明な action / resource', async () => {
   assert.match((await post({ action: 'list', resource: 'bogus', token: member })).error, /unknown resource/);
 });
 
-// 最後に実行する: ローカルの同じ IP の admin スコープが 10 分間ロックされる(member スコープのログインには影響しない)
+// テスト専用の IP(RATE_LIMIT_TEST_IP)だけをロックする。実際の接続元(127.0.0.1)の admin スコープはロックしないので、
+// 続けて npm test を再実行したり、画面から幹部ログインしたりできる。
 test('ログイン試行制限: 並列に大量の誤パスワードを送っても、検証まで進めるのは上限(30 回)まで', async () => {
-  const rs = await Promise.all(Array.from({ length: 45 }, () => post({ action: 'adminAuth', admin_password: 'wrong-password-x' })));
+  const asTestIp = { 'CF-Connecting-IP': RATE_LIMIT_TEST_IP };
+  const rs = await Promise.all(Array.from({ length: 45 }, () => post({ action: 'adminAuth', admin_password: 'wrong-password-x' }, asTestIp)));
   const limited = rs.filter(r => r.error === 'rate_limited').length;
   rs.forEach(r => assert.equal(r.success, false));
   assert.ok(45 - limited <= 30, 'rate_limited 以外が ' + (45 - limited) + ' 件');
   assert.ok(limited >= 15);
   // 上限中は正しいパスワードでも通らない
-  assert.equal((await post({ action: 'adminAuth', admin_password: ADMIN_PW })).error, 'rate_limited');
+  assert.equal((await post({ action: 'adminAuth', admin_password: ADMIN_PW }, asTestIp)).error, 'rate_limited');
   // 別スコープ(一般ログイン)は影響を受けない
-  assert.equal((await post({ action: 'login', password: MEMBER_PW })).success, true);
+  assert.equal((await post({ action: 'login', password: MEMBER_PW }, asTestIp)).success, true);
+  // 実際の接続元(ヘッダーなし)の admin スコープはロックされていない
+  const real = await post({ action: 'adminAuth', admin_password: ADMIN_PW });
+  assert.equal(real.success, true, 'テスト用 IP 以外がロックされた: ' + JSON.stringify(real));
 });

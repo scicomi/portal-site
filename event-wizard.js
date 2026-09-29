@@ -629,8 +629,11 @@ function openEventWizard(editId, template) {
             Meeting_Number: '',
             Files: [],
             Kyoka_Deadline: '', Houkoku_Deadline: '',
+            Vote_Deadline: '', VoteDeadline: '',   // 出欠締切は元イベントの日付なので引き継がない
             ReportStatus: '', KyokaStatus: '',
             Positives: '', Reflections: '', ResultsMemo: '',
+            // 実施後の記録(来場者数・参加人数・広報担当)は回ごとの値なので引き継がない。郵便番号は会場情報として引き継ぐ
+            VisitorCount: '', ParticipantCount: '', PrAssignments: '',
             UpdatedAt: '', CreatedAt: ''
         };
     } else {
@@ -805,7 +808,7 @@ function openEventWizard(editId, template) {
                     <div class="file-upload-area">
                         <div class="file-drop-zone" id="wz-ev-drop-zone">
                             <p style="margin:0; font-weight:bold;">ファイルをここにドラッグ＆ドロップ</p>
-                            <p style="margin:5px 0 0 0; font-size:0.85rem;">またはクリックして選択 (上限 10MB/ファイル)</p>
+                            <p style="margin:5px 0 0 0; font-size:0.85rem;">またはクリックして選択 (上限 ${getFileMaxMB()}MB/ファイル)</p>
                         </div>
                         <input type="file" id="wz-ev-file-input" multiple style="display:none;">
                         <div id="wz-ev-file-list" class="file-list-edit"></div>
@@ -1042,7 +1045,7 @@ async function wzUploadFiles(fileList) {
     // 開始時の対象を握る。完了時に tempNewEvent が別物（閉じた・別イベントに切替）なら結果を捨てる。
     const target = tempNewEvent;
     if (!target) return;
-    const maxSizeMB = (CONFIG.FILE_UPLOAD && CONFIG.FILE_UPLOAD.maxSizeMB) || 10;
+    const maxSizeMB = getFileMaxMB();
     for (const file of fileList) {
         if (tempNewEvent !== target) return;
         if (file.size > maxSizeMB * 1024 * 1024) {

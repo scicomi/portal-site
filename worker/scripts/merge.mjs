@@ -5,7 +5,7 @@
 // 使い方:
 //   node scripts/merge.mjs <export.json> --remote                 予行(変更せず、内容だけ表示)
 //   node scripts/merge.mjs <export.json> --remote --apply         実際に反映する
-//   --since <ISO 時刻>   前回取り込んだエクスポートの時刻(既定: 2026-09-29T07:34:06.666Z)
+//   --since <ISO 時刻>   前回取り込んだエクスポートの時刻(必須。例: --since 2026-09-29T07:34:06.666Z)
 //
 // 判定ルール:
 //   ・エクスポートにあって D1 に無い行: CreatedAt(投票は updatedAt)が --since 以降なら「その後に GAS で作られた行」として追加。
@@ -24,13 +24,14 @@ import { RESOURCES } from '../src/tables.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const sinceIdx = args.indexOf('--since');
-const sinceArg = sinceIdx >= 0 ? args[sinceIdx + 1] : '2026-09-29T07:34:06.666Z';
+const sinceArg = sinceIdx >= 0 ? (args[sinceIdx + 1] || '') : '';
 const file = args.find((a, i) => !a.startsWith('--') && !(sinceIdx >= 0 && i === sinceIdx + 1));
 const target = args.includes('--remote') ? '--remote' : args.includes('--local') ? '--local' : null;
 const apply = args.includes('--apply');
 const since = Date.parse(sinceArg);
-if (!file || !target || isNaN(since)) {
-  console.error('使い方: node scripts/merge.mjs <export.json> <--local|--remote> [--apply] [--since ISO時刻]');
+if (!file || !target || !sinceArg || isNaN(since)) {
+  console.error('使い方: node scripts/merge.mjs <export.json> <--local|--remote> --since <ISO時刻> [--apply]');
+  console.error('  --since は必須(前回取り込んだエクスポートの時刻。取り違えると削除済みの行を復活させるため既定値は持たない)');
   process.exit(1);
 }
 

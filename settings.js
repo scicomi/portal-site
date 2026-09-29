@@ -213,24 +213,51 @@ async function savePassword(key, btn) {
 
 // --- 書類期限ルール保存 ---
 
+// 日数の許容範囲(settings.html の min/max と worker/src/config.js の validateConfigValue と同じ)
+const DEADLINE_DAYS_MIN = 1;
+const DEADLINE_DAYS_MAX = 90;
+
+function _parseDeadlineDays(id) {
+    const raw = String(document.getElementById(id).value || '').trim();
+    if (!/^\d+$/.test(raw)) return NaN;   // 小数・負数・空は不可(parseInt の「10.5 → 10」を許さない)
+    const n = parseInt(raw, 10);
+    return (n >= DEADLINE_DAYS_MIN && n <= DEADLINE_DAYS_MAX) ? n : NaN;
+}
+
 async function saveDeadlineRules(btn) {
-    const kyoka = parseInt(document.getElementById('cfg-deadline-kyoka').value);
-    const houkoku = parseInt(document.getElementById('cfg-deadline-houkoku').value);
-    if (isNaN(kyoka) || kyoka < 1 || isNaN(houkoku) || houkoku < 1) {
-        toast('有効な日数を入力してください', 'error');
+    const kyoka = _parseDeadlineDays('cfg-deadline-kyoka');
+    const houkoku = _parseDeadlineDays('cfg-deadline-houkoku');
+    if (isNaN(kyoka) || isNaN(houkoku)) {
+        toast(`日数は${DEADLINE_DAYS_MIN}〜${DEADLINE_DAYS_MAX}の整数で入力してください`, 'error');
         return;
     }
+    const prevKyoka = CONFIG.DEADLINE_RULES.kyoka;   // 片方だけ保存されたときの巻き戻し用
     await _withBusyBtn(btn, async () => {
         try {
             await api.adminSetConfig('deadline_kyoka', String(-kyoka));
-            await api.adminSetConfig('deadline_houkoku', String(houkoku));
-            invalidateSettingsCache();
-            CONFIG.DEADLINE_RULES.kyoka = -kyoka;
-            CONFIG.DEADLINE_RULES.houkoku = houkoku;
-            toast('期限ルールを保存しました', 'success');
         } catch (e) {
-            toast('保存失敗: ' + e.message, 'error');
+            toast('保存失敗(何も変更していません): ' + e.message, 'error');
+            return;
         }
+        try {
+            await api.adminSetConfig('deadline_houkoku', String(houkoku));
+        } catch (e) {
+            // 許可願だけ保存された状態を残さないよう、許可願を元に戻す
+            let rolledBack = false;
+            try { await api.adminSetConfig('deadline_kyoka', String(prevKyoka)); rolledBack = true; } catch (_) {}
+            invalidateSettingsCache();
+            if (rolledBack) {
+                toast('報告書の期限を保存できなかったため、許可願の期限も元に戻しました: ' + e.message, 'error');
+            } else {
+                CONFIG.DEADLINE_RULES.kyoka = -kyoka;
+                toast(`許可願の期限(${kyoka}日前)だけ保存され、報告書の期限は保存できませんでした。もう一度保存してください: ` + e.message, 'error', 8000);
+            }
+            return;
+        }
+        invalidateSettingsCache();
+        CONFIG.DEADLINE_RULES.kyoka = -kyoka;
+        CONFIG.DEADLINE_RULES.houkoku = houkoku;
+        toast('期限ルールを保存しました', 'success');
     });
 }
 
