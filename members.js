@@ -400,7 +400,7 @@ function openMemberWizard(editId) {
         <div class="wizard-panel" role="dialog" aria-modal="true">
             <div class="wizard-header">
                 <h2 class="wizard-title">${isEdit ? 'メンバー編集' : 'メンバー追加'}</h2>
-                <p class="wizard-subtitle">${isEdit ? (m.Name || '') : 'ステップに沿って入力してください'}</p>
+                <p class="wizard-subtitle">${isEdit ? escapeHtml(m.Name || '') : 'ステップに沿って入力してください'}</p>
             </div>
             <div class="wizard-progress">
                 ${MB_WIZARD_STEPS.map((s, i) => `

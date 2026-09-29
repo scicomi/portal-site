@@ -245,7 +245,7 @@ const api = {
             token: this.getToken(),
             file: { name: file.name, mimeType: file.type || 'application/octet-stream', base64 }
           });
-          if (!res.success) throw new Error(res.error || 'upload failed');
+          if (!res.success) throw new Error(res.detail || res.error || 'upload failed');   // detail: サーバーの説明(サイズ超過など)
           resolve(res.file);
         } catch (e) { reject(e); }
       };

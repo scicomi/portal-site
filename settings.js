@@ -179,7 +179,7 @@ async function saveSecret(key, inputId, btn) {
 
 // --- パスワード変更 ---
 
-const PASSWORD_MIN_LENGTH = 4; // gas/Code.gs の PASSWORD_MIN_LENGTH と一致させること
+const PASSWORD_MIN_LENGTH = 10; // worker/src/config.js の PASSWORD_MIN_LENGTH と一致させること(サーバーでも検証する)
 
 async function savePassword(key, btn) {
     const inputId = key === 'password' ? 'cfg-password-new' : 'cfg-admin-password-new';
@@ -298,9 +298,6 @@ async function saveSiteLinks(btn) {
         try {
             await api.adminSetConfig('site_links', JSON.stringify(links));
             invalidateSettingsCache();
-            const cached = _readCachedSiteSettings() || {};
-            cached.site_links = JSON.stringify(links);
-            localStorage.setItem('scicomi_site_settings', JSON.stringify({ data: cached, ts: Date.now() }));
             toast('リンク集を保存しました', 'success');
         } catch (e) {
             toast('保存失敗: ' + e.message, 'error');
