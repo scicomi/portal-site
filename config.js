@@ -19,6 +19,9 @@ const CONFIG = {
 
   // ===== キャッシュ =====
   CACHE_PREFIX: 'scicomi_cache_',
+  // キャッシュの中身の形式の版。形式を変えたら上げる（古い版のキャッシュは読み込み時に捨て、サーバーから取り直す）。
+  // 2: イベントをサーバー形（DB の列名）だけで保存するようにした（旧 UI形 Date_End / Event_Time 等を廃止）
+  CACHE_SCHEMA: 2,
   TOKEN_KEY: 'scicomi_portal_token',
   HOLIDAYS_CACHE_KEY: 'scicomi_holidays_cache',
   HOLIDAYS_TTL_MS: 30 * 24 * 60 * 60 * 1000, // 30日

@@ -4,6 +4,13 @@ let eventsData = [];
 let membersData = [];
 let allVotesData = null;   // null = 未取得
 
+// 共通ウィザード（event-wizard.js）が読み書きするこのページのデータ
+configureEventWizard({
+    list: () => eventsData,
+    rerender: () => renderEvents(),
+    onConflict: () => refreshData(),
+    confirmDelete: id => confirmDeleteEvent(id)
+});
 
 // ---- グローバルキーボードショートカット ----
 document.addEventListener('keydown', (e) => {
@@ -179,10 +186,10 @@ async function init() {
         openNewEventModal();
     }
 
-    // キャッシュ即表示（サーバー形で書かれていても UI形へ正規化してから使う）
+    // キャッシュ即表示
     const cached = api.loadCache('events');
     if (cached && cached.items && cached.items.length > 0) {
-        eventsData = cacheItemsToUi(cached.items);
+        eventsData = cached.items;
     }
     // メンバー・投票もキャッシュがあれば先に使う（参加バッジの分母・モーダル投票UI用）
     membersData = ((api.loadCache('members') || {}).items) || [];
@@ -236,7 +243,7 @@ async function refreshData(isManual = false) {
         // listAll で events / members / votes を1往復で取得する
         // （参加バッジの分母表示・モーダル内の投票UIにメンバーと投票が要るため）
         const all = await api.listAll();
-        eventsData = (all.events || []).map(gasToUi);
+        eventsData = all.events || [];
         api.saveCache('events', eventsData);
         membersData = all.members || [];
         api.saveCache('members', membersData);
@@ -334,13 +341,13 @@ function onInlineVoteChange(selectEl, eventId) {
 // ---- 検索・フィルタ ----
 
 // 検索フィールド定義（search.js の createSearcher 用）。重要度順に並べる。
-// 実験名・発表者は PartsList（JSON文字列）に入っているため normalizeParts（app.js）で展開する。
+// 実験名・発表者は PartsList（配列。旧データは JSON 文字列）に入っているため normalizeParts（app.js）で展開する。
 const EVENT_SEARCH_FIELDS = [
-    { key: 'title', label: 'タイトル', weight: 100, aliases: ['title', 'タイトル'], get: e => [e.Title, e.Meeting_Number ? `第${e.Meeting_Number}回 ${e.Title || ''}` : ''] },
+    { key: 'title', label: 'タイトル', weight: 100, aliases: ['title', 'タイトル'], get: e => [e.Title, e.MeetingNumber ? `第${e.MeetingNumber}回 ${e.Title || ''}` : ''] },
     { key: 'location', label: '場所', weight: 80, aliases: ['location', '場所'], get: e => [e.Location] },
     {
         key: 'person', label: '人', weight: 70, aliases: ['person', '人', '担当'], get: e => {
-            const out = [e.Admin_Kyoka, e.Admin_Houkoku];
+            const out = [e.AdminKyoka, e.AdminHoukoku];
             normalizeParts(e.PartsList).forEach(p => out.push(...(p.presenters || [])));
             return out;
         }
@@ -356,7 +363,7 @@ function eventSuggestSources() {
     eventsData.forEach(e => {
         if (e.Title) titles.add(e.Title);
         if (e.Location) locations.add(e.Location);
-        [e.Admin_Kyoka, e.Admin_Houkoku].forEach(v => { if (v) people.add(v); });
+        [e.AdminKyoka, e.AdminHoukoku].forEach(v => { if (v) people.add(v); });
         normalizeParts(e.PartsList).forEach(p => (p.presenters || []).forEach(n => { if (n) people.add(n); }));
     });
     return [
@@ -390,7 +397,7 @@ function applyPeriodFilter(events) {
     const today = todayISO();
     return events.filter(e => {
         if (filterState.period === 'upcoming') {
-            const endDate = e.Date_End || e.Date;
+            const endDate = e.DateEnd || e.Date;
             if (endDate < today) return false;
         } else if (filterState.period.startsWith('fy_')) {
             const fy = parseInt(filterState.period.slice(3));
@@ -483,8 +490,8 @@ function renderEvents() {
     tbody.innerHTML = sorted.map(ev => {
         const cat = getEventCategory(ev.Category);
         let displayTitle = ev.Title || '(無題)';
-        if (cat.isMeeting && ev.Meeting_Number) {
-            displayTitle = `第${ev.Meeting_Number}回 ${displayTitle}`;
+        if (cat.isMeeting && ev.MeetingNumber) {
+            displayTitle = `第${ev.MeetingNumber}回 ${displayTitle}`;
         }
         const titleHtml = searchMeta ? highlightText(displayTitle, hlTerms) : escapeHtml(displayTitle);
         const meta = searchMeta ? searchMeta[ev.ID] : null;
@@ -494,7 +501,7 @@ function renderEvents() {
             matchBadge = `<span class="match-badge" title="${escapeAttr(meta.match.label + 'に一致: ' + meta.match.value)}">${escapeHtml(meta.match.label)}: ${highlightText(val, hlTerms)}</span>`;
         }
         const vc = votesByEvent[ev.ID] || { attend: 0, absent: 0, undecided: 0 };
-        const isUpcoming = (ev.Date_End || ev.Date) >= today;
+        const isUpcoming = (ev.DateEnd || ev.Date) >= today;
         let voteBadge = '';
         if (isUpcoming && allVotesData !== null && ev.Category !== 'admin') {
             const eligibleCount = membersData.length > 0 ? voteEligibleMembers(membersData, ev).length : 0;
@@ -523,7 +530,7 @@ function renderEvents() {
             <tr class="clickable-row" data-id="${escapeAttr(ev.ID)}" title="タップで詳細ページへ">
                 <td class="cell-name ev-date-cell" style="white-space:nowrap;">
                     ${dateCellHtml(ev.Date)} <span class="text-muted">(${dayOfWeekJP(ev.Date)})</span>
-                    ${ev.Date_End && ev.Date_End !== ev.Date ? '<br><span class="text-muted" style="font-size:0.8rem;">〜 ' + escapeHtml(ev.Date_End) + '</span>' : ''}
+                    ${ev.DateEnd && ev.DateEnd !== ev.Date ? '<br><span class="text-muted" style="font-size:0.8rem;">〜 ' + escapeHtml(ev.DateEnd) + '</span>' : ''}
                 </td>
                 <td style="white-space:nowrap;">
                     <span class="cat-dot" style="color:${cat.bg};" title="${cat.short}">&#9679;</span>
@@ -576,7 +583,7 @@ function startNewEventBlank() {
 // template あり（複製）の場合は、枠だけのクイック作成ではなく実験・担当などの詳細も
 // その場で全て入力できるフルウィザードを開く。template 無し（真っさらな新規）はクイック作成のまま。
 function startNewEvent(category, template) {
-    if (template) openEventWizard(null, uiToGas(template));
+    if (template) openEventWizard(null, template);
     else openQuickCreate(category);
 }
 
@@ -594,24 +601,19 @@ function openQuickCreate(category) {
     const startDate = todayISO();
     const endDate = '';
 
+    // 送らない列はサーバーが '' で作成する
     const draft = {
         ID: genId('ev_'),
-        Date: startDate, Date_End: endDate,
+        Date: startDate, DateEnd: endDate,
         Title: '', Location: '', Audience: '',
-        Meeting_Number: '', Category: cat,
-        Event_Time: '', Meeting_Logistics: '', PartsList: '', Accompany: '', PlanName: '',
-        Admin_Kyoka: '', Admin_Houkoku: '',
-        Kyoka_Deadline: '', Houkoku_Deadline: '',
-        Remarks: '', Belongings: '', Files: [],
-        Gather_Time: '', Dismiss_Time: '',
-        Address: '', EmergencyHospital: '', EmergencyPolice: '',
-        SeriesKey: ''
+        MeetingNumber: '', Category: cat,
+        TimeStart: '', TimeEnd: '',
+        PartsList: [], Files: []
     };
     tempNewEvent = draft;
 
-    const timeParts = (draft.Event_Time || '').split(' - ');
-    const timeStart = (timeParts[0] || '').trim();
-    const timeEnd = (timeParts[1] || '').trim();
+    const timeStart = draft.TimeStart;
+    const timeEnd = draft.TimeEnd;
 
     const overlay = document.createElement('div');
     overlay.id = 'qc-overlay';
@@ -635,7 +637,7 @@ function openQuickCreate(category) {
                 </div>
                 <div class="e1-group" style="max-width:140px;">
                     <label class="e1-label">回数</label>
-                    <input id="qc-meeting-num" class="e1-input" type="number" placeholder="3" value="${escapeAttr(draft.Meeting_Number || '')}">
+                    <input id="qc-meeting-num" class="e1-input" type="number" placeholder="3" value="${escapeAttr(draft.MeetingNumber || '')}">
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">参加メンバー（任意）</label>
@@ -650,7 +652,7 @@ function openQuickCreate(category) {
                     <div class="date-range-picker-wrapper">
                         <input type="text" class="e1-input date-range-display" readonly placeholder="クリックして日にちを選択">
                         <input type="hidden" data-field="Date" value="${escapeAttr(draft.Date || '')}">
-                        <input type="hidden" data-field="DateEnd" value="${escapeAttr(draft.Date_End || '')}">
+                        <input type="hidden" data-field="DateEnd" value="${escapeAttr(draft.DateEnd || '')}">
                         <div class="date-range-popup hidden"></div>
                     </div>
                     <p id="qc-deadline-note" class="text-muted" style="font-size:0.8rem; margin:6px 0 0;"></p>
@@ -730,14 +732,14 @@ async function saveQuickCreate() {
     }
     const overlay = document.getElementById('qc-overlay');
     draft.Date = overlay.querySelector('[data-field="Date"]')?.value || '';
-    draft.Date_End = overlay.querySelector('[data-field="DateEnd"]')?.value || '';
+    draft.DateEnd = overlay.querySelector('[data-field="DateEnd"]')?.value || '';
     if (!draft.Date) {
         toast('日にちを選択してください', 'error');
         return;
     }
     draft.Location = (document.getElementById('qc-location')?.value || '').trim();
     if (isMeeting) {
-        draft.Meeting_Number = document.getElementById('qc-meeting-num')?.value || '';
+        draft.MeetingNumber = document.getElementById('qc-meeting-num')?.value || '';
         const memberContainer = document.getElementById('qc-meeting-members');
         draft.Audience = memberContainer?._tagInput ? memberContainer._tagInput.getValues().join('、') : '';
     }
@@ -752,23 +754,23 @@ async function saveQuickCreate() {
         toast('終了時刻は開始時刻より後にしてください', 'error');
         return;
     }
-    draft.Event_Time = ts && te ? `${ts} - ${te}` : '';
+    draft.TimeStart = ts && te ? ts : '';
+    draft.TimeEnd = ts && te ? te : '';
 
     const dl = isMeeting ? { kyoka: '', houkoku: '' } : calculateDeadlines(draft.Date);
-    draft.Kyoka_Deadline = dl.kyoka;
-    draft.Houkoku_Deadline = dl.houkoku;
+    draft.KyokaDeadline = dl.kyoka;
+    draft.HoukokuDeadline = dl.houkoku;
 
     const btn = document.getElementById('qc-save');
     btn.disabled = true;
     btn.textContent = '保存中...';
 
     try {
-        const savedGas = await api.save('events', uiToGas(draft));
-        const saved = gasToUi(savedGas);
+        const saved = await api.save('events', draft);
         eventsData.unshift(saved);
         api.saveCache('events', eventsData);
         closeQuickCreate();
-        if (!isMeeting && dl.kyoka && dl.kyoka < todayISO() && (draft.Date_End || draft.Date) >= todayISO()) {
+        if (!isMeeting && dl.kyoka && dl.kyoka < todayISO() && (draft.DateEnd || draft.Date) >= todayISO()) {
             toast(`許可願の期限（${dl.kyoka}）を過ぎています。至急対応してください`, 'error', 6000);
         }
         // 続きの入力はイベント詳細ページで（未入力チェックリストが出る）
@@ -824,7 +826,7 @@ async function executeDeleteEvent(id) {
         `「${backup.Title}」を削除しました`,
         async () => {
             try {
-                const restored = gasToUi(await api.save('events', uiToGas(backup)));
+                const restored = await api.save('events', backup);
                 const insertAt = eventsData.findIndex(e => (e.Date || '') > (restored.Date || ''));
                 eventsData.splice(insertAt >= 0 ? insertAt : eventsData.length, 0, restored);
                 api.saveCache('events', eventsData);

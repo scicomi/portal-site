@@ -43,6 +43,7 @@ function fileImageUrl(file, size) {
 }
 const TOKEN_KEY = (typeof CONFIG !== 'undefined' && CONFIG.TOKEN_KEY) || 'scicomi_portal_token';
 const CACHE_KEY_PREFIX = (typeof CONFIG !== 'undefined' && CONFIG.CACHE_PREFIX) || 'scicomi_cache_';
+const CACHE_SCHEMA = CONFIG.CACHE_SCHEMA;
 const HOLIDAYS_CACHE_KEY = (typeof CONFIG !== 'undefined' && CONFIG.HOLIDAYS_CACHE_KEY) || 'scicomi_holidays_cache';
 const HOLIDAYS_CACHE_TTL_MS = (typeof CONFIG !== 'undefined' && CONFIG.HOLIDAYS_TTL_MS) || (30 * 24 * 60 * 60 * 1000);
 
@@ -143,7 +144,10 @@ const api = {
     try {
       const raw = localStorage.getItem(CACHE_KEY_PREFIX + resource);
       if (!raw) return null;
-      return JSON.parse(raw);
+      const cached = JSON.parse(raw);
+      // 形式の版が違う（古い JS が書いた）キャッシュは使わない。呼び出し側はキャッシュ無しとして取り直す
+      if (!cached || cached.schema !== CACHE_SCHEMA) return null;
+      return cached;
     } catch (_) { return null; }
   },
 
@@ -151,14 +155,15 @@ const api = {
     try {
       localStorage.setItem(CACHE_KEY_PREFIX + resource, JSON.stringify({
         items,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        schema: CACHE_SCHEMA
       }));
     } catch (e) {
       if (e.name === 'QuotaExceededError') {
         this._evictOldestCache();
         try {
           localStorage.setItem(CACHE_KEY_PREFIX + resource, JSON.stringify({
-            items, timestamp: Date.now()
+            items, timestamp: Date.now(), schema: CACHE_SCHEMA
           }));
         } catch (_) {}
       }
