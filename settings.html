@@ -93,11 +93,10 @@
                         <p class="settings-hint">メンバー全員が使うログインパスワード</p>
                         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
                             <span class="text-label" style="font-size:0.9rem;">現在:</span>
-                            <code id="cfg-password-current" data-revealed="false" class="code-display"></code>
-                            <button class="btn btn-secondary" onclick="toggleSettingsPwVisibility('cfg-password-current')" style="width:auto;padding:4px 10px;font-size:0.8rem;">表示</button>
+                            <span id="cfg-password-current" class="text-label" style="font-size:0.9rem;"></span>
                         </div>
                         <div style="display:flex;gap:8px;">
-                            <input type="password" id="cfg-password-new" class="e1-input" placeholder="新しいパスワード（変更する場合）" autocomplete="new-password" style="flex:1;">
+                            <input type="password" id="cfg-password-new" class="e1-input" placeholder="新しいパスワード（4文字以上）" autocomplete="new-password" style="flex:1;">
                             <button class="btn btn-secondary" onclick="toggleVisibility('cfg-password-new')" style="width:auto;padding:8px 12px;" title="表示切替">&#128065;</button>
                             <button class="btn btn-primary-solid" onclick="savePassword('password', this)" style="width:auto;padding:8px 20px;">変更</button>
                         </div>
@@ -110,11 +109,10 @@
                         <p class="settings-hint">管理者認証に使うパスワード</p>
                         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
                             <span class="text-label" style="font-size:0.9rem;">現在:</span>
-                            <code id="cfg-admin-password-current" data-revealed="false" class="code-display"></code>
-                            <button class="btn btn-secondary" onclick="toggleSettingsPwVisibility('cfg-admin-password-current')" style="width:auto;padding:4px 10px;font-size:0.8rem;">表示</button>
+                            <span id="cfg-admin-password-current" class="text-label" style="font-size:0.9rem;"></span>
                         </div>
                         <div style="display:flex;gap:8px;">
-                            <input type="password" id="cfg-admin-password-new" class="e1-input" placeholder="新しい幹部パスワード（変更する場合）" autocomplete="new-password" style="flex:1;">
+                            <input type="password" id="cfg-admin-password-new" class="e1-input" placeholder="新しい幹部パスワード（4文字以上）" autocomplete="new-password" style="flex:1;">
                             <button class="btn btn-secondary" onclick="toggleVisibility('cfg-admin-password-new')" style="width:auto;padding:8px 12px;" title="表示切替">&#128065;</button>
                             <button class="btn btn-primary-solid" onclick="savePassword('admin_password', this)" style="width:auto;padding:8px 20px;">変更</button>
                         </div>
@@ -137,7 +135,7 @@
                         <div style="display:flex;gap:8px;">
                             <input type="password" id="cfg-gemini-key" class="e1-input" placeholder="AIza..." style="flex:1;">
                             <button class="btn btn-secondary" onclick="toggleVisibility('cfg-gemini-key')" style="width:auto;padding:8px 12px;" title="表示切替">&#128065;</button>
-                            <button class="btn btn-primary-solid" onclick="saveSettingDirect('gemini_api_key','cfg-gemini-key', this)" style="width:auto;padding:8px 20px;">保存</button>
+                            <button class="btn btn-primary-solid" onclick="saveSecret('gemini_api_key','cfg-gemini-key', this)" style="width:auto;padding:8px 20px;">保存</button>
                         </div>
                     </div>
                     <div class="e1-group">
@@ -183,7 +181,7 @@
                         <div style="display:flex;gap:8px;">
                             <input type="password" id="cfg-line-token" class="e1-input" placeholder="トークンを入力" style="flex:1;">
                             <button class="btn btn-secondary" onclick="toggleVisibility('cfg-line-token')" style="width:auto;padding:8px 12px;" title="表示切替">&#128065;</button>
-                            <button class="btn btn-primary-solid" onclick="saveSettingDirect('line_channel_access_token','cfg-line-token', this)" style="width:auto;padding:8px 20px;">保存</button>
+                            <button class="btn btn-primary-solid" onclick="saveSecret('line_channel_access_token','cfg-line-token', this)" style="width:auto;padding:8px 20px;">保存</button>
                         </div>
                     </div>
                 </div>

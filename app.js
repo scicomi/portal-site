@@ -821,16 +821,20 @@ async function applySiteSettings() {
         const cached = localStorage.getItem(SETTINGS_CACHE_KEY);
         if (cached) {
             const obj = JSON.parse(cached);
-            if (Date.now() - obj.ts < SETTINGS_TTL) {
+            // 旧版は管理者設定（パスワード・APIキー）ごと保存していたため、残っていれば破棄する
+            const LEGACY_SECRET_KEYS = ['password', 'admin_password', 'gemini_api_key', 'line_channel_access_token', 'report_recipients'];
+            if (obj.data && LEGACY_SECRET_KEYS.some(k => k in obj.data)) {
+                localStorage.removeItem(SETTINGS_CACHE_KEY);
+            } else if (Date.now() - obj.ts < SETTINGS_TTL) {
                 _applyCfg(obj.data);
                 return;
             }
         }
     } catch (_) {}
     try {
-        // 管理者は全設定、一般メンバーは公開設定（表示系のみ）を取得。
-        // どちらも期限ルール・アラート閾値・挨拶メッセージをクライアントへ反映できる。
-        const cfg = api.isAdmin() ? await api.adminGetConfig() : await api.getPublicConfig();
+        // 表示に使うのは公開設定だけなので、管理者でも公開設定を取得する
+        // （管理者専用の設定を localStorage に残さないため）。
+        const cfg = await api.getPublicConfig();
         _applyCfg(cfg);
         localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify({ data: cfg, ts: Date.now() }));
     } catch (_) {}

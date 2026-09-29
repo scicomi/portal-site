@@ -2,8 +2,6 @@
  * 設定ページ（管理者専用）
  */
 
-let _settingsPwValues = {};
-
 document.addEventListener('DOMContentLoaded', () => {
     // アコーディオン見出しはマウスだけでなくキーボード（Enter / Space）でも開閉できるようにし、
     // 開閉状態を aria-expanded で支援技術へ伝える（見出しは role="button" tabindex="0"）。
@@ -52,14 +50,12 @@ async function loadSettings() {
     try {
         const cfg = await api.adminGetConfig();
 
-        // パスワード（マスク表示。実値はメモリのみに保持）
-        _settingsPwValues['cfg-password-current'] = cfg.password || '';
-        _settingsPwValues['cfg-admin-password-current'] = cfg.admin_password || '';
-        document.getElementById('cfg-password-current').textContent = maskPw(cfg.password);
-        document.getElementById('cfg-admin-password-current').textContent = maskPw(cfg.admin_password);
+        // 機密値はサーバーから返らない（設定済みかどうかだけ表示し、変更時のみ入力させる）
+        document.getElementById('cfg-password-current').textContent = secretStatus(cfg.password_set);
+        document.getElementById('cfg-admin-password-current').textContent = secretStatus(cfg.admin_password_set);
 
         // Gemini
-        document.getElementById('cfg-gemini-key').value = cfg.gemini_api_key || '';
+        document.getElementById('cfg-gemini-key').placeholder = cfg.gemini_api_key_set ? '設定済み（変更する場合のみ入力）' : 'AIza...';
         const modelSel = document.getElementById('cfg-gemini-model');
         let cur = cfg.gemini_model || 'gemini-2.5-flash-lite';
         const opt = [...modelSel.options].find(o => o.value === cur);
@@ -84,13 +80,10 @@ async function loadSettings() {
 
         // LINE通知
         document.getElementById('cfg-line-url').value = cfg.line_add_friend_url || '';
-        document.getElementById('cfg-line-token').value = cfg.line_channel_access_token || '';
+        document.getElementById('cfg-line-token').placeholder = cfg.line_channel_access_token_set ? '設定済み（変更する場合のみ入力）' : 'トークンを入力';
 
         // リンク集
         renderSiteLinkRows(parseSiteLinks(cfg.site_links));
-
-        // 設定キャッシュを更新（他ページで applySiteSettings が即座に反映できるように）
-        localStorage.setItem('scicomi_site_settings', JSON.stringify({ data: cfg, ts: Date.now() }));
 
         loading.style.display = 'none';
         content.style.display = 'block';
@@ -158,82 +151,56 @@ function toggleVisibility(inputId) {
     el.type = el.type === 'password' ? 'text' : 'password';
 }
 
-function maskPw(val) {
-    if (!val) return '';
-    return '•'.repeat(Math.min(val.length, 12));
+function secretStatus(isSet) {
+    return isSet ? '設定済み' : '未設定';
 }
 
-function toggleSettingsPwVisibility(codeId) {
-    const el = document.getElementById(codeId);
-    if (!el) return;
-    const revealed = el.getAttribute('data-revealed') === 'true';
-    const realVal = _settingsPwValues[codeId] || '';
-    if (revealed) {
-        el.textContent = maskPw(realVal);
-        el.setAttribute('data-revealed', 'false');
-        el.nextElementSibling.textContent = '表示';
-    } else {
-        el.textContent = realVal;
-        el.setAttribute('data-revealed', 'true');
-        el.nextElementSibling.textContent = '隠す';
+// APIキー・トークンの保存。入力欄は常に空で始まるため、空のまま押しても既存値を消さない。
+async function saveSecret(key, inputId, btn) {
+    const el = document.getElementById(inputId);
+    const value = el.value.trim();
+    if (!value) {
+        toast('新しい値を入力してください', 'error');
+        el.focus();
+        return;
     }
+    await _withBusyBtn(btn, async () => {
+        try {
+            await api.adminSetConfig(key, value);
+            el.value = '';
+            el.type = 'password';
+            el.placeholder = '設定済み（変更する場合のみ入力）';
+            toast('保存しました', 'success');
+        } catch (e) {
+            toast('保存失敗: ' + e.message, 'error');
+        }
+    });
 }
 
 // --- パスワード変更 ---
 
-function savePassword(key, btn) {
+const PASSWORD_MIN_LENGTH = 4; // gas/Code.gs の PASSWORD_MIN_LENGTH と一致させること
+
+async function savePassword(key, btn) {
     const inputId = key === 'password' ? 'cfg-password-new' : 'cfg-admin-password-new';
     const value = document.getElementById(inputId).value.trim();
-    if (!value) {
-        toast('新しいパスワードを入力してください', 'error');
+    if (value.length < PASSWORD_MIN_LENGTH) {
+        toast(`パスワードは${PASSWORD_MIN_LENGTH}文字以上にしてください`, 'error');
         document.getElementById(inputId).focus();
         return;
     }
-
-    const otherId = key === 'password' ? 'cfg-admin-password-current' : 'cfg-password-current';
-    const otherVal = (_settingsPwValues[otherId] || '').trim();
-    if (otherVal && value === otherVal) {
-        // 重大な設定ミスになりうるため、共通の確認ダイアログで明示的に確認する
-        const overlay = document.createElement('div');
-        overlay.className = 'confirm-dialog-overlay';
-        overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
-        overlay.innerHTML = `
-            <div class="confirm-dialog">
-                <h3>パスワードが同一になります</h3>
-                <p>一般パスワードと幹部パスワードが同じ値になります。ログインした全員が自動的に管理者権限を持ち、パスワード一覧も閲覧できてしまいます。本当にこのパスワードにしますか？</p>
-                <div class="confirm-dialog-actions">
-                    <button class="btn btn-secondary" onclick="this.closest('.confirm-dialog-overlay').remove()">キャンセル</button>
-                    <button class="btn btn-danger" id="confirm-same-pw-btn">同一にする</button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(overlay);
-        bindModalEscape(overlay, () => overlay.remove());
-        overlay.querySelector('#confirm-same-pw-btn').onclick = () => {
-            overlay.remove();
-            executeSavePassword(key, inputId, value, btn);
-        };
-        return;
-    }
-    executeSavePassword(key, inputId, value, btn);
-}
-
-async function executeSavePassword(key, inputId, value, btn) {
+    // 一般と幹部が同じ値かどうかはサーバー側で判定し、同じなら拒否される
     await _withBusyBtn(btn, async () => {
     try {
         await api.adminSetConfig(key, value);
         toast('パスワードを変更しました', 'success');
         document.getElementById(inputId).value = '';
         if (key === 'password') {
-            _settingsPwValues['cfg-password-current'] = value;
-            document.getElementById('cfg-password-current').textContent = maskPw(value);
-            document.getElementById('cfg-password-current').setAttribute('data-revealed', 'false');
+            document.getElementById('cfg-password-current').textContent = secretStatus(true);
             try { await api.auth(value); } catch (_) {}
         }
         if (key === 'admin_password') {
-            _settingsPwValues['cfg-admin-password-current'] = value;
-            document.getElementById('cfg-admin-password-current').textContent = maskPw(value);
-            document.getElementById('cfg-admin-password-current').setAttribute('data-revealed', 'false');
+            document.getElementById('cfg-admin-password-current').textContent = secretStatus(true);
             api.adminLogout();
             toast('幹部パスワードが変更されました。再認証してください。', 'info', 5000);
             setTimeout(() => location.reload(), 2000);
