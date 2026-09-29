@@ -27,6 +27,16 @@ function setSavedVoteMemberId(id) {
   else localStorage.removeItem(VOTE_MEMBER_KEY);
 }
 
+// 記憶した名前が現在のメンバー一覧に存在しなければ（年度コピーで ID が変わった等）記憶を破棄して '' を返す。
+// members が未取得（空）のときは判定できないので、そのまま返す。
+function getValidSavedVoteMemberId(members) {
+  const id = getSavedVoteMemberId();
+  if (!id || !members || members.length === 0) return id;
+  if (members.some(m => m.ID === id)) return id;
+  setSavedVoteMemberId('');
+  return '';
+}
+
 // ====== 対象者算出（旧 vote.js / home.js / event-series.js の3重実装を統合） ======
 
 // 出欠の回答・集計はコーディネーター・アドバイザーを対象外にする
@@ -71,6 +81,18 @@ function voteDeadlinePassed(ev) {
 
 // ====== 集計 ======
 
+// スタッフ（コーディネーター・アドバイザー）の投票を除き、ステータスごとに振り分ける。
+// 一覧の人数バッジ・参加状況タブ・未回答バッジで同じ基準を使うための共通関数。
+function groupVotesByStatus(votes, members) {
+  const staffIds = voteStaffIds(members);
+  const grouped = { attend: [], absent: [], undecided: [] };
+  (votes || []).forEach(v => {
+    if (staffIds.has(v.memberId)) return;
+    if (grouped[v.status]) grouped[v.status].push(v);
+  });
+  return grouped;
+}
+
 // 送信エラーを人向けの文言に変換する（vote_closed はサーバー側の締切ガード）
 function voteErrorMessage(e) {
   if (String(e && e.message) === 'vote_closed') {
@@ -92,13 +114,14 @@ function voteErrorMessage(e) {
 function renderVoteWidget(container, opts) {
   if (!container) return;
   const { event: ev, members, votes } = opts;
-  const memberId = getSavedVoteMemberId();
+  const memberId = getValidSavedVoteMemberId(members);
   const eligible = voteEligibleMembers(members, ev);
   const memberValid = eligible.some(m => m.ID === memberId);
   const memberGroups = groupMembersByGrade(eligible);
   const closed = voteDeadlinePassed(ev);
   const canEdit = !closed || api.isAdmin();
   const mine = memberValid ? (votes || []).find(v => v.memberId === memberId) : null;
+  const busy = isVoteBusy(ev.ID, memberId);   // 送信中はボタンを無効化（応答順の逆転を防ぐ）
 
   // 締切表示
   let deadlineHtml = '';
@@ -112,7 +135,7 @@ function renderVoteWidget(container, opts) {
   const btnsHtml = memberValid && canEdit ? `
     <div class="vw-btns">
       ${Object.keys(VOTE_STATUS_LABELS).map(st =>
-        `<button type="button" class="bv-btn bv-${st} ${mine && mine.status === st ? 'active' : ''}" data-status="${st}" aria-pressed="${mine && mine.status === st ? 'true' : 'false'}">${VOTE_STATUS_LABELS[st]}</button>`
+        `<button type="button" class="bv-btn bv-${st} ${mine && mine.status === st ? 'active' : ''}" data-status="${st}" aria-pressed="${mine && mine.status === st ? 'true' : 'false'}" ${busy ? 'disabled' : ''}>${VOTE_STATUS_LABELS[st]}</button>`
       ).join('')}
     </div>
     <div class="vw-note-row">
@@ -168,15 +191,30 @@ function renderVoteWidget(container, opts) {
         status: cur.status,
         note: noteInput.value.trim(),
         rerender: () => renderVoteWidget(container, opts),
-        onChange: opts.onChange
+        onChange: opts.onChange,
+        // メモの change は「次のボタンを押した瞬間の blur」で発火する。ここで同期再描画すると
+        // ボタン DOM が差し替わって直後のクリックが消えるため、再描画は保存応答後に回す。
+        deferRender: true
       });
     });
   }
 }
 
+// 送信中の「eventId|memberId」。値は送信中に追加で押された次のリクエスト（最新の1件だけ保持）。
+const _voteBusy = new Map();
+
+function isVoteBusy(eventId, memberId) {
+  return _voteBusy.has(eventId + '|' + memberId);
+}
+
 // 楽観的更新つきの投票送信（votes 配列を直接書き換える）
-async function submitVoteOptimistic({ event: ev, votes, memberId, status, note, rerender, onChange }) {
+// 同じ人・同じイベントの送信中に押された操作は、応答が返ってから順番に送る（応答順の逆転を防ぐ）。
+async function submitVoteOptimistic(args) {
+  const { event: ev, votes, memberId, status, note, rerender, onChange, deferRender } = args;
   if (!memberId) { toast('先に名前を選択してください', 'info'); return; }
+
+  const key = ev.ID + '|' + memberId;
+  if (_voteBusy.has(key)) { _voteBusy.set(key, args); return; }
 
   const idx = votes.findIndex(v => v.memberId === memberId);
   const before = idx >= 0 ? { ...votes[idx] } : null;
@@ -186,25 +224,33 @@ async function submitVoteOptimistic({ event: ev, votes, memberId, status, note, 
     updatedAt: ''
   };
   if (before && before.status === optimistic.status && (before.note || '') === (optimistic.note || '')) return;
+  _voteBusy.set(key, null);
   if (idx >= 0) votes[idx] = optimistic; else votes.push(optimistic);
-  if (rerender) rerender();
+  if (rerender && !deferRender) rerender();
   if (onChange) onChange(votes);
 
+  let saved = null, error = null;
   try {
-    const saved = await api.submitVote({ eventId: ev.ID, memberId, status, note });
-    const j = votes.findIndex(v => v.memberId === memberId);
-    if (j >= 0) votes[j] = saved;
-    if (rerender) rerender();
-    if (onChange) onChange(votes);
-    toast(`「${VOTE_STATUS_LABELS[status]}」で回答しました`, 'success', 2000);
+    saved = await api.submitVote({ eventId: ev.ID, memberId, status, note });
   } catch (e) {
-    const j = votes.findIndex(v => v.memberId === memberId);
+    error = e;
+  }
+  const next = _voteBusy.get(key);
+  _voteBusy.delete(key);   // 再描画より先に解除する（ボタンの disabled を戻すため）
+
+  const j = votes.findIndex(v => v.memberId === memberId);
+  if (error) {
     if (before) { if (j >= 0) votes[j] = before; }
     else if (j >= 0) votes.splice(j, 1);
-    if (rerender) rerender();
-    if (onChange) onChange(votes);
-    toast(voteErrorMessage(e), 'error');
+  } else if (j >= 0) {
+    votes[j] = saved;
   }
+  if (rerender) rerender();
+  if (onChange) onChange(votes);
+  if (error) toast(voteErrorMessage(error), 'error');
+  else toast(`「${VOTE_STATUS_LABELS[status]}」で回答しました`, 'success', 2000);
+
+  if (next) submitVoteOptimistic(next);
 }
 
 // ====== 日時表示 ======
@@ -212,6 +258,5 @@ async function submitVoteOptimistic({ event: ev, votes, memberId, status, note, 
 function voteTimeShort(iso) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
-  return (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
-    String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + formatTimeHM(d);
 }

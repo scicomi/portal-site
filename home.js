@@ -220,9 +220,7 @@ function initHomeCalendar(attempt = 0) {
                 let endDate = null;
                 const rawEnd = e.DateEnd || e.Date_End;
                 if (rawEnd) {
-                    const d = parseISODate(rawEnd);
-                    d.setDate(d.getDate() + 1);
-                    endDate = toISODate(d);
+                    endDate = addDaysISO(rawEnd, 1);
                 }
                 return {
                     id: e.ID,
@@ -275,7 +273,7 @@ function renderKyokaCard(events) {
     const container = document.getElementById('upcoming-kyoka');
     if (!container) return;
     const today = todayISO();
-    const in30 = toISODate((() => { const d = new Date(); d.setDate(d.getDate() + 30); return d; })());
+    const in30 = addDaysISO(todayISO(), 30);
 
     const items = [];
     (events || []).forEach(e => {
@@ -322,8 +320,8 @@ function renderReportsCard(events) {
     const container = document.getElementById('upcoming-deadlines');
     if (!container) return;
     const today = todayISO();
-    const in30 = toISODate((() => { const d = new Date(); d.setDate(d.getDate() + 30); return d; })());
-    const past90 = toISODate((() => { const d = new Date(); d.setDate(d.getDate() - 90); return d; })());
+    const in30 = addDaysISO(todayISO(), 30);
+    const past90 = addDaysISO(todayISO(), -90);
 
     const reports = [];
     (events || []).forEach(e => {
@@ -391,7 +389,7 @@ function renderFeedbackPending(events) {
     const container = document.getElementById('feedback-pending');
     if (!container) return;
     const today = todayISO();
-    const cutoff = toISODate((() => { const d = new Date(); d.setDate(d.getDate() - 14); return d; })());
+    const cutoff = addDaysISO(todayISO(), -14);
     const pending = (events || [])
         .filter(e => {
             if (e.Category === 'general' || e.Category === 'admin') return false;
@@ -420,7 +418,7 @@ function renderFeedbackPending(events) {
 // 名前（VOTE_MEMBER_KEY）が未設定なら「名前を選択」バナー、設定済みなら出欠未回答バナーを出す
 // （両方同時には出さない。名前が無ければ未回答判定もできないため）。
 function renderIdentityBanners(events, members, votes) {
-    const memberId = typeof getSavedVoteMemberId === 'function' ? getSavedVoteMemberId() : '';
+    const memberId = getValidSavedVoteMemberId(members);   // 存在しない名前（年度コピー等）は破棄して選び直してもらう
     if (!memberId) {
         renderNameSelectBanner(members);
         hideVoteReminderBanner();

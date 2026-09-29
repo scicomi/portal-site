@@ -600,8 +600,8 @@ function updateScopeBadges() {
 
     const votes = votesCache[ev.ID] || (votesPrimed ? [] : null);
     if (!votes || membersCache.length === 0) { set('scope-badge-attendance', 0); return; }
-    const staffIds = voteStaffIds(membersCache);
-    const answered = new Set(votes.filter(v => !staffIds.has(v.memberId)).map(v => v.memberId));
+    const g = groupVotesByStatus(votes, membersCache);
+    const answered = new Set([...g.attend, ...g.absent, ...g.undecided].map(v => v.memberId));
     const pending = voteEligibleMembers(membersCache, ev).filter(m => !answered.has(m.ID)).length;
     set('scope-badge-attendance', pending);
 }
@@ -1055,9 +1055,8 @@ async function renderAttendanceList(ev) {
     if (currentEventId !== ev.ID) return;
 
     const eligible = membersCache.length > 0 ? voteEligibleMembers(membersCache, ev) : [];
-    const staffIds = voteStaffIds(membersCache);
-    const memberVotes = (votes || []).filter(v => !staffIds.has(v.memberId));
-    const answeredIds = new Set(memberVotes.map(v => v.memberId));
+    const grouped = groupVotesByStatus(votes, membersCache);
+    const answeredIds = new Set([...grouped.attend, ...grouped.absent, ...grouped.undecided].map(v => v.memberId));
 
     attendanceData = {
         attend: memberVotes.filter(v => v.status === 'attend'),

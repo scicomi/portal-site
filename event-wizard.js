@@ -601,7 +601,7 @@ function genTimeOpts(startH, endH, withEmpty) {
     for (let h = startH; h <= endH; h++) {
         for (let m = 0; m < 60; m += 30) {
             if (h === endH && m > 0) break;
-            const v = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+            const v = formatTimeHM(h, m);
             html += `<option value="${v}">${v}</option>`;
         }
     }
@@ -1355,17 +1355,9 @@ function updateDeadlines(dateInput) {
 function calculateDeadlines(dateStr) {
     if (!dateStr) return { kyoka: '', houkoku: '' };
 
-    const eventDate = parseISODate(dateStr); // タイムゾーン安全
     const rules = CONFIG.DEADLINE_RULES;
-
-    const kyokaDate = new Date(eventDate);
-    kyokaDate.setDate(eventDate.getDate() + rules.kyoka); // 既定: -10日
-
-    const houkokuDate = new Date(eventDate);
-    houkokuDate.setDate(eventDate.getDate() + rules.houkoku); // 既定: +7日
-
     return {
-        kyoka: toISODate(kyokaDate),
-        houkoku: toISODate(houkokuDate)
+        kyoka: addDaysISO(dateStr, rules.kyoka),       // 既定: -10日
+        houkoku: addDaysISO(dateStr, rules.houkoku)    // 既定: +7日
     };
 }

@@ -2,7 +2,7 @@
  * SciComi Portal - Bot（意図解析分離型）
  *
  * 構成:
- *   1. Gemini API で質問の「意図」だけを解析（個人情報は送信しない）
+ *   1. Gemini API で質問の「意図」だけを解析（この段階で送るのは質問文のみ）
  *   2. ローカルのキャッシュ済みデータに対してクエリ実行
  *   3. 結果をチャットUIに表示
  */
@@ -32,7 +32,7 @@ const usageTracker = {
 
   setFromServer(count, limit) {
     const d = { date: todayISO(), count: count || 0, limit: limit || this._limit() };
-    localStorage.setItem(this._key(), JSON.stringify(d));
+    try { localStorage.setItem(this._key(), JSON.stringify(d)); } catch (_) { /* 保存できなくてもゲージ表示は続ける */ }
     renderGauge();
   },
 
@@ -118,7 +118,7 @@ const queryEngine = {
 
   // --- イベント検索 ---
   findEvents(p) {
-    let items = allData.events;
+    let items = allData.events.slice();   // 下で sort するので、キャッシュ本体の並びは変えない
     if (p.event_category) items = items.filter(e => e.Category === p.event_category);
     if (p.date_from) items = items.filter(e => (e.Date || '') >= p.date_from);
     if (p.date_to) items = items.filter(e => (e.Date || '') <= p.date_to);
@@ -276,12 +276,11 @@ const queryEngine = {
 
   _formatEvents(items) {
     if (items.length === 0) return '<div class="bot-empty">該当するイベントが見つかりませんでした。</div>';
-    const catLabels = { normal: 'イベント', other: 'その他', general: '全体MTG', admin: '幹部MTG' };
     return `<div class="bot-result-count">${items.length}件</div>
       <div class="bot-result-list">${items.slice(0, BOT_MAX_LIST_ITEMS).map(e => {
         const d = e.Date ? shortDate(e.Date) : '未定';
-        const cat = catLabels[e.Category] || e.Category;
         const catCfg = getEventCategory(e.Category);
+        const cat = catCfg.short;
         const loc = e.Location ? ` | ${escapeHtml(e.Location)}` : '';
         const admin = [];
         if (e.AdminKyoka) admin.push(`許可願: ${escapeHtml(e.AdminKyoka)}`);
@@ -301,11 +300,10 @@ const queryEngine = {
 
   _formatExperiments(items) {
     if (items.length === 0) return '<div class="bot-empty">該当する実験ネタが見つかりませんでした。</div>';
-    const catLabels = { workshop: '工作', show: '実験ショー', other: 'その他' };
     return `<div class="bot-result-count">${items.length}件</div>
       <div class="bot-result-list">${items.slice(0, BOT_MAX_LIST_ITEMS).map(x => {
-        const cat = catLabels[x.Category] || x.Category;
         const catCfg = getExperimentCategory(x.Category);
+        const cat = catCfg.label;
         const mat = x.Materials ? x.Materials.split('\n').slice(0, 3).join(', ') : '';
         const matStr = mat ? `<div class="bot-ri-sub">材料: ${escapeHtml(mat)}</div>` : '';
         return `<div class="bot-result-item exp-item bot-clickable" data-bot-open="exp" data-id="${escapeAttr(x.ID)}" role="button" tabindex="0" title="クリックで詳細を表示">
@@ -469,20 +467,68 @@ function openFromResultItem(target) {
 }
 
 // ====== キーワード検索（Gemini未設定時のフォールバック） ======
+// 質問文をそのまま部分一致させても「6Cで書類を…」のような文はヒットしないので、
+// 助詞・句読点で検索語に分け、語ごとにフィールドへの一致でスコアを付けて上位から並べる。
+// 比較は searchNormalize（全角半角・大文字小文字・カタカナ/ひらがなを揃える）で行う。
+
+// 助詞・依頼表現・句読点・空白で区切る（元の文字列に対して行うので、カタカナ語は助詞と誤って割れない）
+const KEYWORD_SPLIT_RE = /[\s　、。，．,.？?！!「」『』（）()［］\[\]・：:；;]+|について|に関して|を教えて|教えて|ください|知りたい|探して|一覧|[のをはがにでともやへ]/;
+// どのデータにも当てはまる汎用語（検索語としては絞り込みに役立たない）
+const KEYWORD_STOPWORDS = new Set(['メンバー', 'イベント', '実験', 'ネタ', '検索', '誰', 'いつ', '何'].map(searchNormalize));
+
+// tokens は比較用（正規化済み）、labels は表示用（入力どおりの表記）。
+function keywordTokens(text) {
+  const raw = String(text).replace(/[？?。、！!]/g, ' ').trim();
+  const whole = searchNormalize(raw);
+  const tokens = [], labels = [];
+  raw.split(KEYWORD_SPLIT_RE).forEach(part => {
+    const t = searchNormalize(part);
+    if (!t || KEYWORD_STOPWORDS.has(t) || tokens.includes(t)) return;
+    tokens.push(t);
+    labels.push(part.trim());
+  });
+  if (!tokens.length && whole) { tokens.push(whole); labels.push(raw); }   // 汎用語だけの質問は、質問文そのままで探す
+  return { whole, tokens, labels };
+}
+
+// fields: [{ text, weight }]。語が含まれるフィールドの最大重みを語ごとに加点し、質問文全体が含まれれば加点する。
+function keywordScore(fields, tokens, whole) {
+  const hay = fields.map(f => ({ t: searchNormalize(f.text), w: f.weight }));
+  let score = 0, matched = 0;
+  tokens.forEach(tok => {
+    const hits = hay.filter(h => h.t.includes(tok));
+    if (hits.length) { matched++; score += Math.max(...hits.map(h => h.w)); }
+  });
+  if (whole && hay.some(h => h.t.includes(whole))) score += 5;
+  return { score, matched };
+}
+
+function keywordRank(items, fieldsOf, tokens, whole) {
+  return items
+    .map(it => Object.assign({ it }, keywordScore(fieldsOf(it), tokens, whole)))
+    .filter(r => r.matched > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(r => r.it);
+}
 
 function keywordSearch(text) {
-  const kw = text.toLowerCase().replace(/[？?。、！!]/g, '').trim();
-  if (!kw) return { html: '', response_text: '質問を入力してください。' };
+  const { whole, tokens, labels } = keywordTokens(text);
+  if (!tokens.length) return { html: '', response_text: '質問を入力してください。' };
 
-  const memberHits = allData.members.filter(m =>
-    [m.Name, m.Role, m.StudentID, m.Note, m.Affiliation].some(v => (v || '').toLowerCase().includes(kw))
-  );
-  const eventHits = allData.events.filter(e =>
-    [e.Title, e.Location, e.Remarks, e.AdminKyoka, e.AdminHoukoku].some(v => (v || '').toLowerCase().includes(kw))
-  );
-  const expHits = allData.experiments.filter(x => x.Active !== 'false' &&
-    [x.Name, x.Materials, x.Notes].some(v => (v || '').toLowerCase().includes(kw))
-  );
+  const memberHits = keywordRank(allData.members, m => [
+    { text: m.Name, weight: 3 }, { text: m.Role, weight: 2 }, { text: m.StudentID, weight: 2 },
+    { text: m.Note, weight: 1 }, { text: m.Affiliation, weight: 1 }
+  ], tokens, whole);
+  const eventHits = keywordRank(allData.events, e => [
+    { text: e.Title, weight: 3 }, { text: e.Location, weight: 2 },
+    { text: e.AdminKyoka, weight: 2 }, { text: e.AdminHoukoku, weight: 2 },
+    { text: queryEngine._getPresenters(e).join(' '), weight: 2 },
+    { text: eventExperimentNames(e).join(' '), weight: 2 },
+    { text: e.Remarks, weight: 1 }
+  ], tokens, whole);
+  const expHits = keywordRank(allData.experiments.filter(x => x.Active !== 'false'), x => [
+    { text: x.Name, weight: 3 }, { text: x.Materials, weight: 1 }, { text: x.Notes, weight: 1 }
+  ], tokens, whole);
 
   let html = '';
   let total = 0;
@@ -499,9 +545,10 @@ function keywordSearch(text) {
     total += expHits.length;
   }
 
-  if (total === 0) html = '<div class="bot-empty">「' + escapeHtml(kw) + '」に一致するデータが見つかりませんでした。</div>';
+  const shown = labels.join(' / ');
+  if (total === 0) html = '<div class="bot-empty">「' + escapeHtml(shown) + '」に一致するデータが見つかりませんでした。</div>';
 
-  return { html, response_text: `「${kw}」でキーワード検索しました。(${total}件)` };
+  return { html, response_text: `「${shown}」でキーワード検索しました。(${total}件)` };
 }
 
 // ====== チャットUI ======
@@ -521,7 +568,7 @@ function sourceBadge(source) {
 function renderMessages() {
   const container = document.getElementById('bot-messages');
   container.innerHTML = chatHistory.map((msg, i) => {
-    const timeStr = msg.time.getHours().toString().padStart(2, '0') + ':' + msg.time.getMinutes().toString().padStart(2, '0');
+    const timeStr = formatTimeHM(msg.time);
     if (msg.role === 'user') {
       return `<div class="bot-msg bot-msg-user">
         <div class="bot-msg-bubble user-bubble">${escapeHtml(msg.text).replace(/\n/g, '<br>')}</div>
@@ -809,96 +856,63 @@ function fallbackToKeyword(text) {
   addMessage('bot', result.response_text, result.html, 'keyword');
 }
 
+// エラーコード → 案内。msg: 表示文 / detail: 詳細（e.detail）を付ける / fallback: キーワード検索に切り替える /
+// retry: 一度だけ自動再試行する（待ち秒数は e.retrySec を min〜max に丸める）。retry.msg は再試行前の案内、msg は再試行しても直らなかったとき。
+const BOT_ERRORS = {
+  gemini_key_not_configured: { fallback: true,
+    msg: 'Gemini APIキーがサーバー側で未設定です。管理者設定（⚙→管理）で設定してください。\nキーワード検索にフォールバックします。' },
+  API_KEY_INVALID: { fallback: true,
+    msg: 'APIキーが無効です。⚙→管理 から正しいキーを設定してください。\nキーワード検索に切り替えます。' },
+  // キーは有効だが、API未有効化・地域制限・請求設定などでプロジェクト側が使えない状態
+  API_FORBIDDEN: { fallback: true, detail: true,
+    msg: 'APIキーは認識されましたが、このキーのプロジェクトで Gemini API を利用できない状態です。\n' +
+      'Google AI Studio / Cloud Console で「Generative Language API」が有効か、地域・請求設定に問題がないか確認してください。' },
+  MODEL_NOT_FOUND: { fallback: true, detail: true,
+    msg: '指定中のモデルが利用できません（廃止またはキー未対応）。⚙→管理 の「使用モデル」を別のものに切り替えてください。' },
+  // モデルの一時的な過負荷（503/500）。少し待てば回復するので一度だけ自動再試行。
+  MODEL_OVERLOADED: { fallback: true, detail: true,
+    retry: { def: 15, min: 5, max: 30, msg: s => `AIモデルが一時的に混雑しています。${s}秒後に自動で再試行します…` },
+    msg: 'AIモデルの混雑が解消しませんでした（しばらくすると回復します）。\nキーワード検索に切り替えます。' },
+  // サーバーが HTML を返した（API_URL の誤り／サーバー障害など）。キャッシュでキーワード検索は可能。
+  HTML_RESPONSE: { fallback: true,
+    msg: 'サーバーに接続できません。管理者は config.js の API_URL とサーバー（Cloudflare Workers）の状態を確認してください。\nキャッシュ済みデータでキーワード検索に切り替えます。' },
+  NETWORK_UNREACHABLE: { fallback: true,
+    msg: 'ネットワークに接続できません。通信環境を確認してください。\nキャッシュ済みデータでキーワード検索に切り替えます。' },
+  // 1日あたりの上限（再試行しても当日は回復しない）。サーバー側の上限は日本時間0時にリセットされる。
+  RATE_LIMIT_DAILY: { fallback: true, detail: true,
+    msg: '本日の利用上限に達しました。サーバー側の上限は日本時間の0時にリセットされます（Google側の無料枠が原因の場合は日本時間17時ごろ）。\nそれまではキーワード検索をご利用ください。' },
+  // 1分あたりの上限。少し待てば回復するので、一度だけ自動再試行する
+  RATE_LIMIT_MINUTE: { fallback: true, detail: true,
+    retry: { def: 20, min: 5, max: 40, msg: s => `アクセスが集中しています（無料枠は「1分あたりの回数」に上限があります）。${s}秒後に自動で再試行します…` },
+    msg: '時間をおいても混雑が解消しませんでした。少し待ってから再度お試しください。\nキーワード検索に切り替えます。' },
+  NETWORK_ERROR: { fallback: true,
+    msg: '通信エラーが発生しました。ネットワーク接続を確認してください。\nキーワード検索に切り替えます。' },
+  BLOCKED: { fallback: false,
+    msg: '安全フィルタにより応答がブロックされました。質問の表現を変えてお試しください。' },
+  PARSE_ERROR: { fallback: true,
+    msg: 'AIの応答を解釈できませんでした。もう一度お試しください。\nキーワード検索に切り替えます。' }
+};
+BOT_ERRORS.EMPTY_RESPONSE = BOT_ERRORS.PARSE_ERROR;
+
 async function handleBotError(e, text, isRetry) {
+  // 認証切れは api.js がログイン画面を出してリロードする（e.handled）。ここで二重にエラーを出さない。
+  if (e && (e.handled || e.code === 'unauthorized')) return;
+
   const errMsg = e.message || String(e);
   const detailNote = e.detail ? '\n\n（詳細: ' + e.detail + '）' : '';
+  // 未知のコードの本文は renderMessages 側で escapeHtml されるため、ここでエスケープしない（二重になる）
+  const entry = BOT_ERRORS[errMsg] || { fallback: true, detail: true, msg: 'エラーが発生しました: ' + errMsg };
 
-  switch (errMsg) {
-    case 'gemini_key_not_configured':
-      addMessage('bot', 'Gemini APIキーがサーバー側で未設定です。管理者設定（⚙→管理）で設定してください。\nキーワード検索にフォールバックします。');
-      fallbackToKeyword(text);
-      break;
-
-    case 'API_KEY_INVALID':
-      addMessage('bot', 'APIキーが無効です。⚙→管理 から正しいキーを設定してください。\nキーワード検索に切り替えます。');
-      fallbackToKeyword(text);
-      break;
-
-    // キーは有効だが、API未有効化・地域制限・請求設定などでプロジェクト側が使えない状態
-    case 'API_FORBIDDEN':
-      addMessage('bot', 'APIキーは認識されましたが、このキーのプロジェクトで Gemini API を利用できない状態です。\n' +
-        'Google AI Studio / Cloud Console で「Generative Language API」が有効か、地域・請求設定に問題がないか確認してください。' + detailNote);
-      fallbackToKeyword(text);
-      break;
-
-    case 'MODEL_NOT_FOUND':
-      addMessage('bot', '指定中のモデルが利用できません（廃止またはキー未対応）。⚙→管理 の「使用モデル」を別のものに切り替えてください。' + detailNote);
-      fallbackToKeyword(text);
-      break;
-
-    // モデルの一時的な過負荷（503/500）。少し待てば回復するので一度だけ自動再試行。
-    case 'MODEL_OVERLOADED':
-      if (!isRetry) {
-        const wsec = Math.min(Math.max(parseInt(e.retrySec, 10) || 15, 5), 30);
-        addMessage('bot', `AIモデルが一時的に混雑しています。${wsec}秒後に自動で再試行します…`);
-        await sleep(wsec * 1000);
-        await processQuery(text, true);
-        return;
-      }
-      addMessage('bot', 'AIモデルの混雑が解消しませんでした（しばらくすると回復します）。\nキーワード検索に切り替えます。' + detailNote);
-      fallbackToKeyword(text);
-      break;
-
-    // サーバーが HTML を返した（API_URL の誤り／サーバー障害など）。キャッシュでキーワード検索は可能。
-    case 'HTML_RESPONSE':
-      addMessage('bot', 'サーバーに接続できません。管理者は config.js の API_URL とサーバー（Cloudflare Workers）の状態を確認してください。\nキャッシュ済みデータでキーワード検索に切り替えます。');
-      fallbackToKeyword(text);
-      break;
-
-    case 'NETWORK_UNREACHABLE':
-      addMessage('bot', 'ネットワークに接続できません。通信環境を確認してください。\nキャッシュ済みデータでキーワード検索に切り替えます。');
-      fallbackToKeyword(text);
-      break;
-
-    // 1日あたりの無料枠を使い切った（再試行しても当日は回復しない）
-    case 'RATE_LIMIT_DAILY':
-      addMessage('bot', '本日の無料枠（1日あたりの上限）を使い切りました。日本時間17時ごろ（太平洋時間0時）にリセットされます。\nそれまではキーワード検索をご利用ください。' + detailNote);
-      fallbackToKeyword(text);
-      break;
-
-    // 1分あたりの上限。少し待てば回復するので、一度だけ自動再試行する
-    case 'RATE_LIMIT_MINUTE':
-      if (!isRetry) {
-        const sec = Math.min(Math.max(parseInt(e.retrySec, 10) || 20, 5), 40);
-        addMessage('bot', `アクセスが集中しています（無料枠は「1分あたりの回数」に上限があります）。${sec}秒後に自動で再試行します…`);
-        await sleep(sec * 1000);
-        await processQuery(text, true);
-        return;
-      }
-      addMessage('bot', '時間をおいても混雑が解消しませんでした。少し待ってから再度お試しください。\nキーワード検索に切り替えます。' + detailNote);
-      fallbackToKeyword(text);
-      break;
-
-    case 'NETWORK_ERROR':
-      addMessage('bot', '通信エラーが発生しました。ネットワーク接続を確認してください。\nキーワード検索に切り替えます。');
-      fallbackToKeyword(text);
-      break;
-
-    case 'BLOCKED':
-      addMessage('bot', '安全フィルタにより応答がブロックされました。質問の表現を変えてお試しください。');
-      break;
-
-    case 'PARSE_ERROR':
-    case 'EMPTY_RESPONSE':
-      addMessage('bot', 'AIの応答を解釈できませんでした。もう一度お試しください。\nキーワード検索に切り替えます。');
-      fallbackToKeyword(text);
-      break;
-
-    default:
-      // text は renderMessages 側で escapeHtml されるため、ここでエスケープすると二重になる
-      addMessage('bot', 'エラーが発生しました: ' + errMsg + detailNote);
-      fallbackToKeyword(text);
+  if (entry.retry && !isRetry) {
+    const r = entry.retry;
+    const wsec = Math.min(Math.max(parseInt(e.retrySec, 10) || r.def, r.min), r.max);
+    addMessage('bot', r.msg(wsec));
+    await sleep(wsec * 1000);
+    await processQuery(text, true);
+    return;
   }
+  addMessage('bot', entry.msg + (entry.detail ? detailNote : ''));
+  if (entry.fallback) fallbackToKeyword(text);
 }
 
 // ====== 起動 ======

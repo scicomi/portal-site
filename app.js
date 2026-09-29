@@ -102,6 +102,20 @@ function todayISO() {
   return toISODate(new Date());
 }
 
+// ISO 日付（YYYY-MM-DD）に n 日（負も可）を足した ISO 日付。iso 省略時は今日から数える。
+function addDaysISO(iso, n) {
+  const d = iso ? parseISODate(iso) : new Date();
+  d.setDate(d.getDate() + n);
+  return toISODate(d);
+}
+
+// 時刻を "HH:MM" に整形する。Date 1 つ、または (時, 分) の数値 2 つを受ける。
+function formatTimeHM(dateOrHour, minute) {
+  const h = dateOrHour instanceof Date ? dateOrHour.getHours() : dateOrHour;
+  const m = dateOrHour instanceof Date ? dateOrHour.getMinutes() : minute;
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+
 function dayOfWeekJP(str) {
   const d = parseISODate(str);
   if (!d) return '';
@@ -831,8 +845,7 @@ function updateSyncStatus(state, timestamp, errMsg) {
 
   const fmtTime = (ts) => {
     if (!ts) return '';
-    const d = new Date(ts);
-    return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+    return formatTimeHM(new Date(ts));
   };
 
   // 正常同期済みはドットだけにして常時のテキストノイズを減らす（詳細はツールチップで）

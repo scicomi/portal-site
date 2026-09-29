@@ -273,11 +273,11 @@ let votesByEvent = {};
 // 投票は集計から除外する（他ページの集計と基準を揃えた）。
 function rebuildVotesByEvent() {
     votesByEvent = {};
-    const staffIds = voteStaffIds(membersData);
-    (allVotesData || []).forEach(v => {
-        if (staffIds.has(v.memberId)) return;
-        const b = votesByEvent[v.eventId] || (votesByEvent[v.eventId] = { attend: 0, absent: 0, undecided: 0 });
-        if (b[v.status] !== undefined) b[v.status]++;
+    const perEvent = {};
+    (allVotesData || []).forEach(v => (perEvent[v.eventId] || (perEvent[v.eventId] = [])).push(v));
+    Object.keys(perEvent).forEach(id => {
+        const g = groupVotesByStatus(perEvent[id], membersData);
+        votesByEvent[id] = { attend: g.attend.length, absent: g.absent.length, undecided: g.undecided.length };
     });
 }
 
