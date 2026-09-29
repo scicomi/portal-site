@@ -11,6 +11,10 @@
     --text-tertiary: #8a8886;
     --border-color: #e1dfdd;
     --border-subtle: #f0f0f0;
+    /* 別名（一部のルールが使っている名前。値は上のトークンに合わせる） */
+    --primary-bg: var(--primary-subtle);
+    --surface: var(--card-bg);
+    --text-primary: var(--text-color);
     --hover-bg: #f8f8f8;
     --danger-color: #d13438;
     --danger-text: #c92a2a;
@@ -622,9 +626,9 @@ textarea {
 
 
 /* --- Form Fields --- */
-input[type="text"],
-input[type="date"],
-.e1-input {
+/* ウィザード等の .e1-input は上の .e1-input の見た目（タグ入力と同じ枠・角丸）を使うので、ここでは対象外にする */
+input[type="text"]:not(.e1-input),
+input[type="date"]:not(.e1-input) {
     width: 100%;
     padding: 0.5rem;
     border: 1px solid var(--border-color);
