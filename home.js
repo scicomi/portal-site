@@ -167,7 +167,7 @@ function renderLineInvite() {
 
 function renderStats(all) {
     const today = todayISO();
-    const upcomingCount = (all.events || []).filter(e => (e.DateEnd || e.Date_End || e.Date) >= today).length;
+    const upcomingCount = (all.events || []).filter(e => (e.DateEnd || e.Date) >= today).length;
     document.getElementById('stat-upcoming').textContent = upcomingCount;
     const curFY = currentFiscalYear();
     document.getElementById('stat-members').textContent = (all.members || []).filter(m => parseInt(m.FiscalYear || curFY) === curFY).length;
@@ -213,12 +213,12 @@ function initHomeCalendar(attempt = 0) {
             const fcEvents = (latestEvents || []).map(e => {
                 const cat = getEventCategory(e.Category);
                 let displayTitle = e.Title;
-                const meetingNo = e.MeetingNumber || e.Meeting_Number;
+                const meetingNo = e.MeetingNumber;
                 if (cat.isMeeting && meetingNo) {
                     displayTitle = `第${meetingNo}回 ${displayTitle}`;
                 }
                 let endDate = null;
-                const rawEnd = e.DateEnd || e.Date_End;
+                const rawEnd = e.DateEnd;
                 if (rawEnd) {
                     endDate = addDaysISO(rawEnd, 1);
                 }
@@ -278,13 +278,13 @@ function renderKyokaCard(events) {
     const items = [];
     (events || []).forEach(e => {
         if (e.Category === 'general' || e.Category === 'admin') return;
-        const deadline = e.KyokaDeadline || e.Kyoka_Deadline || '';
+        const deadline = e.KyokaDeadline || '';
         if (!deadline) return;
         if ((e.KyokaStatus || '') === 'submitted') return;
-        const endDate = e.DateEnd || e.Date_End || e.Date;
+        const endDate = e.DateEnd || e.Date;
         if (!endDate || endDate < today) return;
         if (deadline > in30) return;
-        items.push({ id: e.ID, date: deadline, event: e.Title, admin: e.AdminKyoka || e.Admin_Kyoka || '', status: e.KyokaStatus || '' });
+        items.push({ id: e.ID, date: deadline, event: e.Title, admin: e.AdminKyoka || '', status: e.KyokaStatus || '' });
     });
     items.sort((a, b) => a.date.localeCompare(b.date));
 
@@ -326,12 +326,12 @@ function renderReportsCard(events) {
     const reports = [];
     (events || []).forEach(e => {
         if (e.Category === 'general' || e.Category === 'admin') return;
-        const deadline = e.HoukokuDeadline || e.Houkoku_Deadline || '';
+        const deadline = e.HoukokuDeadline || '';
         if (!deadline) return;
         const status = e.ReportStatus || '';
         if (status === 'clc') return;
         if (deadline > in30 || deadline < past90) return;
-        reports.push({ id: e.ID, date: deadline, event: e.Title, admin: e.AdminHoukoku || e.Admin_Houkoku || '', status });
+        reports.push({ id: e.ID, date: deadline, event: e.Title, admin: e.AdminHoukoku || '', status });
     });
     reports.sort((a, b) => a.date.localeCompare(b.date));
 
@@ -393,7 +393,7 @@ function renderFeedbackPending(events) {
     const pending = (events || [])
         .filter(e => {
             if (e.Category === 'general' || e.Category === 'admin') return false;
-            const endDate = e.DateEnd || e.Date_End || e.Date;
+            const endDate = e.DateEnd || e.Date;
             if (!endDate || endDate >= today || endDate < cutoff) return false;
             return !(e.Positives || '').trim() && !(e.Reflections || '').trim();
         })
@@ -476,7 +476,7 @@ function renderVoteReminder(events, members, votes, memberId) {
     const today = todayISO();
     const pending = (events || [])
         .filter(e => e.Category !== 'admin')
-        .filter(e => (e.DateEnd || e.Date_End || e.Date) >= today)
+        .filter(e => (e.DateEnd || e.Date) >= today)
         .filter(e => !voteDeadlinePassed(e))
         .filter(e => voteEligibleMembers(members, e).some(m => m.ID === memberId))
         .filter(e => !(votes || []).some(v => v.eventId === e.ID && v.memberId === memberId))
