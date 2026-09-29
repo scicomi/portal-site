@@ -237,7 +237,7 @@ function renderPasswords() {
                 ${photo ? `<div class="pw-row pw-row-photo">
                     <span class="pw-row-label">写真</span>
                     <a href="${escapeAttr(photo.url || '')}" target="_blank" rel="noopener" title="${escapeAttr(photo.name || '')}">
-                        <img class="pw-photo-thumb" src="${escapeAttr(photo.driveId ? `https://drive.google.com/thumbnail?id=${photo.driveId}&sz=w200` : photo.url)}" alt="${escapeAttr(photo.name || '')}" loading="lazy" referrerpolicy="no-referrer">
+                        <img class="pw-photo-thumb" src="${escapeAttr(fileImageUrl(photo, 200))}" alt="${escapeAttr(photo.name || '')}" loading="lazy" referrerpolicy="no-referrer">
                     </a>
                 </div>` : ''}
                 <div class="pw-card-actions">
@@ -344,16 +344,9 @@ function renderPwPhotoPreview() {
     wrap.classList.toggle('hidden', !has);
     if (has) {
         const p = pwEditingPhotos[0];
-        const id = p.driveId || extractPwDriveId(p.url);
-        img.src = id ? `https://drive.google.com/thumbnail?id=${id}&sz=w400` : p.url;
+        img.src = fileImageUrl(p, 400);
     }
     btn.classList.toggle('hidden', has);
-}
-
-function extractPwDriveId(url) {
-    if (!url) return '';
-    const m = String(url).match(/\/d\/([-\w]{20,})/) || String(url).match(/[?&]id=([-\w]{20,})/);
-    return m ? m[1] : '';
 }
 
 async function handlePwPhotoSelect(input) {

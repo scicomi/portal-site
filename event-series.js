@@ -1002,7 +1002,7 @@ async function openVoteListModal() {
 // ---- 参加状況サブタブ（回答一覧をタブ表示のテーブルで） ----
 
 let attendanceData = null;   // { attend, absent, undecided, noAnswer }（現在の開催回の集計。タブ切替の再取得を避けるため保持）
-let attendanceFilter = 'all';
+let attendanceFilter = 'attend';
 
 // 参加状況の表示メタ。一覧の状態バッジとフィルタチップの両方で使う。
 const ATTENDANCE_STATUS = {
@@ -1019,7 +1019,7 @@ async function renderAttendanceTab() {
     if (!ev) { box.innerHTML = ''; return; }
 
     attendanceData = null;
-    attendanceFilter = 'all';
+    attendanceFilter = 'attend';
     // 参加投票はスッキリさせるため折りたたみ（デフォルト非表示）。開いた時に初めて描画する。
     box.innerHTML = `
         <div class="detail-section-card" id="series-detail-votes">
@@ -1119,39 +1119,32 @@ function renderAttendanceListBody() {
     if (!body || !attendanceData) return;
 
     const keys = ['attend', 'absent', 'undecided', 'noAnswer'];
-    const total = keys.reduce((n, k) => n + attendanceData[k].length, 0);
 
-    // 既定は「全員」。誰がどの状態かを1つの表でまとめて見渡せるようにする。
+    // 既定は「参加」。
     const chip = (key, label, count) =>
         `<button type="button" class="filter-chip ${attendanceFilter === key ? 'active' : ''}" aria-pressed="${attendanceFilter === key}" onclick="switchAttendanceFilter('${key}')">${label} (${count})</button>`;
     const tabsHtml = `<div class="expd-feedback-filters">
-        ${chip('all', '全員', total)}
         ${keys.map(k => chip(k, ATTENDANCE_STATUS[k].label, attendanceData[k].length)).join('')}
     </div>`;
 
     const memberOf = (id) => membersCache.find(x => x.ID === id);
     const nameOf = (id) => { const m = memberOf(id); return m ? m.Name : id; };
 
-    // 全員表示では4区分をまとめ、行ごとに状態を持たせる
-    const items = (attendanceFilter === 'all'
-        ? keys.flatMap(k => attendanceData[k].map(v => ({ ...v, _status: k })))
-        : attendanceData[attendanceFilter].map(v => ({ ...v, _status: attendanceFilter })))
+    const items = attendanceData[attendanceFilter].map(v => ({ ...v }))
         .sort((a, b) => nameOf(a.memberId).localeCompare(nameOf(b.memberId), 'ja'));
 
     const rowsHtml = items.length === 0
-        ? '<tr><td colspan="5" class="empty-state">該当者はいません</td></tr>'
+        ? '<tr><td colspan="4" class="empty-state">該当者はいません</td></tr>'
         : items.map(v => {
             const m = memberOf(v.memberId);
             const role = m ? memberRoleOf(m) : '';
             const roleInfo = role ? getRoleDisplay(role) : null;
             const roleBadge = roleInfo ? `<span class="cat-badge" style="background:${roleInfo.color};">${escapeHtml(role)}</span>` : '';
-            const st = ATTENDANCE_STATUS[v._status];
             return `
             <tr data-id="${escapeAttr(v.memberId)}" class="clickable-row" title="タップで詳細を表示">
                 <td>${escapeHtml(m && m.StudentID ? m.StudentID : '')}</td>
                 <td class="cell-name">${escapeHtml(nameOf(v.memberId))}</td>
                 <td class="cell-role">${roleBadge}</td>
-                <td><span class="att-status ${st.cls}">${st.label}</span></td>
                 <td>${v.note ? escapeHtml(v.note) : ''}</td>
             </tr>`;
         }).join('');
@@ -1160,7 +1153,7 @@ function renderAttendanceListBody() {
         ${tabsHtml}
         <div class="table-wrapper">
             <table class="data-table">
-                <thead><tr><th>学籍番号</th><th>名前</th><th>役職</th><th>状態</th><th>メモ</th></tr></thead>
+                <thead><tr><th>学籍番号</th><th>名前</th><th>役職</th><th>メモ</th></tr></thead>
                 <tbody>${rowsHtml}</tbody>
             </table>
         </div>
