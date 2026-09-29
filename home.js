@@ -368,34 +368,23 @@ function renderReportsCard(events) {
 async function setDocStatus(id, field, value) {
     const ev = latestEvents.find(e => e.ID === id);
     if (!ev) { toast('データを読み込み中です。少し待ってから操作してください。', 'info', 3000); return; }
-    const prev = ev[field] || '';
-    if (prev === value) return;
+    if ((ev[field] || '') === value) return;
 
     const isKyoka = field === 'KyokaStatus';
     const statusDef = isKyoka ? KYOKA_STATUS : REPORT_STATUS;
     const docName = isKyoka ? '許可願' : '報告書';
     const rerender = () => { renderKyokaCard(latestEvents); renderReportsCard(latestEvents); updateActionNeeded(); };
-
-    ev[field] = value;
-    api.saveCache('events', latestEvents);
-    rerender();
-
     const label = (statusDef[value] || statusDef['']).label;
-    try {
-        const saved = await api.save('events', { ...ev, _baseUpdatedAt: ev.UpdatedAt || '' });
-        Object.assign(ev, saved);
-        api.saveCache('events', latestEvents);
-        toast(`${docName}ステータスを「${label}」にしました`, 'success', 2000);
-    } catch (e) {
-        ev[field] = prev;
-        rerender();
-        if (String(e.message).includes('conflict')) {
-            toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', 4000);
-            refreshData();
-        } else {
-            toast('保存失敗: ' + e.message, 'error');
-        }
-    }
+
+    // 楽観更新・直列化・競合トースト・ロールバックは saveEventPatch（app.js）に任せる
+    await saveEventPatch(id, { [field]: value }, {
+        getEvent: evId => latestEvents.find(e => e.ID === evId),
+        persist: () => api.saveCache('events', latestEvents),
+        onOptimistic: rerender,
+        onRollback: rerender,
+        onConflict: () => refreshData(),
+        successMessage: `${docName}ステータスを「${label}」にしました`
+    });
 }
 
 function renderFeedbackPending(events) {

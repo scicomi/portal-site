@@ -595,7 +595,8 @@ async function deleteExp(id) {
                 toast('復元に失敗しました: ' + e.message, 'error');
             }
         },
-        () => {},
+        // 元に戻せる期間が過ぎたら、写真の実体（R2）も消す（Undo で復元した記録の画像が壊れないよう、確定後に消す）
+        () => deleteStoredFiles(getPhotos(backup).map(p => p.driveId)),
         5000
     );
 }

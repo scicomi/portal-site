@@ -120,11 +120,17 @@ export async function saveResource(env, name, item) {
   return { item: rowToObj(res, row), created: isNewRow };
 }
 
+// 出欠投票(event_votes)が参照する resource。削除時に同じ batch(=1 トランザクション)で該当行を消し、孤児を残さない。
+const VOTE_OWNER_COLUMN = { events: 'EventID', members: 'MemberID' };
+
 export async function deleteResource(env, name, id) {
   const res = getResource(name);
   if (!res || !id) return false;
-  const r = await env.DB.prepare('DELETE FROM ' + res.table + ' WHERE ID = ?').bind(String(id)).run();
-  return !!(r.meta && r.meta.changes > 0);
+  const stmts = [env.DB.prepare('DELETE FROM ' + res.table + ' WHERE ID = ?').bind(String(id))];
+  const voteCol = VOTE_OWNER_COLUMN[name];
+  if (voteCol) stmts.push(env.DB.prepare('DELETE FROM event_votes WHERE ' + voteCol + ' = ?').bind(String(id)));
+  const out = await env.DB.batch(stmts);
+  return !!(out[0].meta && out[0].meta.changes > 0);
 }
 
 // ---- 出欠投票 ----

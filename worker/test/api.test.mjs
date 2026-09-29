@@ -177,6 +177,37 @@ test('save: 同じ新規 ID を同時に保存しても内部エラーになら�
   await post({ action: 'delete', resource: 'events', id, token: adminMember, adminToken: admin });
 });
 
+test('delete: イベント・メンバーを削除すると、その出欠投票も同時に消える(他の投票は残る)', async () => {
+  const t = Date.now();
+  const evA = 'ev_test_vote_a_' + t, evB = 'ev_test_vote_b_' + t;
+  const mbA = 'mb_test_vote_a_' + t, mbB = 'mb_test_vote_b_' + t;
+  for (const id of [evA, evB]) {
+    assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Title: '投票', Date: '2099-01-01' } })).success, true);
+  }
+  for (const id of [mbA, mbB]) {
+    assert.equal((await post({ action: 'save', resource: 'members', token: member, item: { ID: id, Name: '投票者' + id } })).success, true);
+  }
+  const vote = (eventId, memberId) => post({ action: 'submitVote', token: member, vote: { eventId, memberId, status: 'attend' } });
+  for (const [e, m] of [[evA, mbA], [evA, mbB], [evB, mbA], [evB, mbB]]) assert.equal((await vote(e, m)).success, true);
+  const votesOf = async () => (await post({ action: 'listVotes', token: member })).votes.filter(v => [evA, evB].includes(v.eventId));
+
+  assert.equal((await votesOf()).length, 4);
+
+  // イベントを消すと、そのイベントの投票だけが消える
+  assert.equal((await post({ action: 'delete', resource: 'events', id: evA, token: adminMember, adminToken: admin })).success, true);
+  let left = await votesOf();
+  assert.deepEqual(left.map(v => v.eventId).sort(), [evB, evB]);
+
+  // メンバーを消すと、そのメンバーの投票だけが消える
+  assert.equal((await post({ action: 'delete', resource: 'members', id: mbA, token: adminMember, adminToken: admin })).success, true);
+  left = await votesOf();
+  assert.deepEqual(left.map(v => v.memberId), [mbB]);
+
+  await post({ action: 'delete', resource: 'events', id: evB, token: adminMember, adminToken: admin });
+  await post({ action: 'delete', resource: 'members', id: mbB, token: adminMember, adminToken: admin });
+  assert.equal((await votesOf()).length, 0);
+});
+
 test('save: 削除済み ID に _baseUpdatedAt 付きで保存すると conflict(復活させない)。基準なしの再作成(Undo)は通る', async () => {
   const id = 'ev_test_deleted_' + Date.now();
   const created = await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Title: '消す予定', Date: '2026-10-02' } });

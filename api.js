@@ -49,6 +49,10 @@ const HOLIDAYS_CACHE_TTL_MS = (typeof CONFIG !== 'undefined' && CONFIG.HOLIDAYS_
 const RESOURCE_NAMES = (typeof CONFIG !== 'undefined' && CONFIG.RESOURCE_NAMES)
   || ['events', 'members', 'experiments'];
 
+// API 呼び出しのタイムアウト（ms）。通常は 30 秒、uploadFile（最大 10MB の base64）は 120 秒。
+const API_TIMEOUT_MS = 30 * 1000;
+const API_UPLOAD_TIMEOUT_MS = 120 * 1000;
+
 const ADMIN_TOKEN_KEY = (typeof CONFIG !== 'undefined' && CONFIG.ADMIN_TOKEN_KEY) || 'scicomi_admin_token';
 const ADMIN_TOKEN_TS_KEY = (typeof CONFIG !== 'undefined' && CONFIG.ADMIN_TOKEN_TS_KEY) || 'scicomi_admin_token_ts';
 const ADMIN_TOKEN_TTL = (typeof CONFIG !== 'undefined' && CONFIG.ADMIN_TOKEN_TTL_MS) || (180 * 24 * 60 * 60 * 1000);
@@ -172,10 +176,17 @@ const api = {
     if (oldest) localStorage.removeItem(CACHE_KEY_PREFIX + oldest);
   },
 
+  // CACHE_KEY_PREFIX で始まるキャッシュをすべて消す（RESOURCE_NAMES 以外の votes なども含む）。
+  // ログアウト・セッション切れのときに、出欠などのデータが端末に残らないようにするため。
   clearAllCache() {
-    RESOURCE_NAMES.forEach(r => {
-      localStorage.removeItem(CACHE_KEY_PREFIX + r);
-    });
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.indexOf(CACHE_KEY_PREFIX) === 0) keys.push(k);
+      }
+      keys.forEach(k => localStorage.removeItem(k));
+    } catch (_) {}
   },
 
   async loadHolidaysCached() {
@@ -427,19 +438,32 @@ const api = {
   async _postOnce(payload) {
     let res, text;
     const started = Date.now();
+    // 回線が半死のときに応答待ちで固まらないよう、タイムアウトを設ける（通常 30 秒、ファイルアップロードは 120 秒）。
+    // タイムアウトは通信断（NETWORK_UNREACHABLE）と同じ扱い。読み取り系は自動リトライされる。
+    const timeoutMs = (payload && payload.action === 'uploadFile') ? API_UPLOAD_TIMEOUT_MS : API_TIMEOUT_MS;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       res = await fetch(API_URL, {
         method: 'POST',
         redirect: 'follow',
         headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
       text = await res.text();
     } catch (e) {
-      this._logErr(payload, 'NETWORK_UNREACHABLE', { ms: Date.now() - started, status: res && res.status, exc: String(e && e.message || e).slice(0, 80) });
+      const timedOut = controller.signal.aborted;
+      this._logErr(payload, 'NETWORK_UNREACHABLE', {
+        ms: Date.now() - started, status: res && res.status,
+        exc: timedOut ? ('timeout ' + timeoutMs + 'ms') : String(e && e.message || e).slice(0, 80)
+      });
       const err = new Error('NETWORK_UNREACHABLE');
       err.code = 'NETWORK_UNREACHABLE';
+      if (timedOut) err.timedOut = true;
       throw err;
+    } finally {
+      clearTimeout(timer);
     }
     try {
       const parsed = JSON.parse(text);

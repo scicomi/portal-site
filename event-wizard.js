@@ -17,6 +17,7 @@ let holidaysData = {};
 // 実験マスタ（populateDatalists で取得）。実験名のタイポで振り返りが
 // 別レコードに紐づかないよう、ウィザードでは実在する名前しか保存できない。
 let experimentsList = [];
+let experimentsMasterWarned = false; // マスタ未取得の警告をウィザード 1 回につき 1 度だけ出す
 
 // ---- ホスト連携 ----
 // ウィザードが触るページ側データ（取得・楽観更新・確定・巻き戻し・削除）はホスト経由にする。
@@ -554,7 +555,15 @@ function buildExperimentRow(expName, presenters) {
 function invalidExperimentNames() {
     const container = document.getElementById('wz-ev-exp-container');
     if (!container) return [];
-    if (experimentsList.length === 0) return []; // マスタ未取得時は入力を妨げない
+    if (experimentsList.length === 0) {
+        // マスタを取得できていない（または空）。実在チェックはスキップして入力は妨げないが、無言で無効化せず警告する
+        const hasName = Array.from(container.querySelectorAll('.experiment-name')).some(input => input.value.trim());
+        if (hasName && !experimentsMasterWarned) {
+            experimentsMasterWarned = true;
+            toast('実験ネタの一覧を取得できていないため、実験名が登録済みかどうかの確認をスキップしました。名前に誤りがないか確認してください', 'info', 6000);
+        }
+        return [];
+    }
     const invalid = [];
     container.querySelectorAll('.experiment-name').forEach(input => {
         const name = input.value.trim();
@@ -630,6 +639,8 @@ function openEventWizard(editId, template) {
     evWizardCategory = e.Category || 'normal';
 
     tempNewEvent = e;
+    experimentsMasterWarned = false;
+    e._sessionUploads = []; // このウィザードでアップロードした R2 ファイルの driveId（保存せず閉じたら消す）
 
     const isMeeting = evWizardCategory === 'general' || evWizardCategory === 'admin';
     const steps = isMeeting ? EV_STEPS_MEETING : EV_STEPS_EVENT;
@@ -919,12 +930,27 @@ function openEventWizard(editId, template) {
     }, 80);
 }
 
+// 保存しないで閉じたときは、このウィザードでアップロード済みの未保存ファイルを R2 から消す。
+// 保存時は saveEventFromWizard が _sessionUploads を空にしてから呼ぶので、保存したファイルは消えない。
 function closeEventWizard() {
     const overlay = document.getElementById('ev-wizard-overlay');
     if (overlay) overlay.remove();
+    if (tempNewEvent && Array.isArray(tempNewEvent._sessionUploads)) {
+        tempNewEvent._sessionUploads.forEach(discardUploadedFile);
+        tempNewEvent._sessionUploads = [];
+    }
     editingEventId = null;
     evWizardStep = 0;
     tempNewEvent = null;
+}
+
+// アップロード済みで不要になったファイルを R2 から消す。deleteFile は管理者のみ可能なので、
+// 権限が無いなどで失敗しても握りつぶさずコンソールに残す。
+function discardUploadedFile(driveId) {
+    if (!driveId) return;
+    api.deleteFile(driveId).catch(err => {
+        console.warn('不要になったアップロード済みファイルを削除できませんでした（管理者権限が必要な場合があります）:', driveId, err && err.message);
+    });
 }
 
 function updateEvWizardUI() {
@@ -1013,29 +1039,40 @@ function addWzEvExpRow() {
 
 // ---- ウィザード内ファイルアップロード ----
 async function wzUploadFiles(fileList) {
+    // 開始時の対象を握る。完了時に tempNewEvent が別物（閉じた・別イベントに切替）なら結果を捨てる。
+    const target = tempNewEvent;
+    if (!target) return;
     const maxSizeMB = (CONFIG.FILE_UPLOAD && CONFIG.FILE_UPLOAD.maxSizeMB) || 10;
     for (const file of fileList) {
+        if (tempNewEvent !== target) return;
         if (file.size > maxSizeMB * 1024 * 1024) {
             toast(`「${file.name}」はサイズ上限(${maxSizeMB}MB)を超えています`, 'error');
             continue;
         }
-        if (!tempNewEvent) continue;
-        if (!Array.isArray(tempNewEvent.Files)) tempNewEvent.Files = [];
+        if (!Array.isArray(target.Files)) target.Files = [];
+        if (!Array.isArray(target._sessionUploads)) target._sessionUploads = [];
 
         const placeholder = { name: file.name, size: file.size, _uploading: true };
-        tempNewEvent.Files.push(placeholder);
+        target.Files.push(placeholder);
         wzRefreshFileList();
 
         try {
             const result = await api.uploadFile(file);
-            const idx = tempNewEvent.Files.indexOf(placeholder);
-            if (idx >= 0) tempNewEvent.Files[idx] = result;
-            else tempNewEvent.Files.push(result);
+            const idx = target.Files.indexOf(placeholder);
+            if (tempNewEvent !== target || idx < 0) {
+                // ウィザードが閉じた／切り替わった、またはキャンセル済み → 一覧に戻さず、アップロード済みの実体を消す
+                discardUploadedFile(result && result.driveId);
+                continue;
+            }
+            target.Files[idx] = result;
+            if (result && result.driveId) target._sessionUploads.push(result.driveId);
             toast(`「${file.name}」をアップロードしました`, 'success', 2000);
         } catch (err) {
+            if (tempNewEvent !== target) return;
+            const idx = target.Files.indexOf(placeholder);
+            if (idx < 0) continue; // キャンセル済み。失敗を表示しない
             toast(`「${file.name}」のアップロード失敗: ${err.message}`, 'error');
-            const idx = tempNewEvent.Files.indexOf(placeholder);
-            if (idx >= 0) tempNewEvent.Files[idx] = { name: file.name, size: file.size, _failed: true };
+            target.Files[idx] = { name: file.name, size: file.size, _failed: true };
         }
         wzRefreshFileList();
     }
@@ -1052,8 +1089,16 @@ function wzRemoveFile(index) {
     const file = tempNewEvent.Files[index];
     if (!file) return;
     if (file.driveId) {
-        if (!Array.isArray(tempNewEvent._filesToDelete)) tempNewEvent._filesToDelete = [];
-        tempNewEvent._filesToDelete.push(file.driveId);
+        const si = Array.isArray(tempNewEvent._sessionUploads) ? tempNewEvent._sessionUploads.indexOf(file.driveId) : -1;
+        if (si >= 0) {
+            // このウィザードでアップロードしたばかりのファイル（未保存）は、その場で実体も消す
+            tempNewEvent._sessionUploads.splice(si, 1);
+            discardUploadedFile(file.driveId);
+        } else {
+            // 保存済みのファイルは、イベントの保存が成功してから消す（保存に失敗しても失われないように）
+            if (!Array.isArray(tempNewEvent._filesToDelete)) tempNewEvent._filesToDelete = [];
+            tempNewEvent._filesToDelete.push(file.driveId);
+        }
     }
     tempNewEvent.Files.splice(index, 1);
     wzRefreshFileList();
@@ -1064,6 +1109,9 @@ function wzRefreshFileList() {
     if (!el || !tempNewEvent) return;
     const files = tempNewEvent.Files || [];
     if (files.length === 0) { el.innerHTML = ''; return; }
+    // ファイル実体（R2）を消せるのは管理者だけ。それ以外の人が外したファイルは、この一覧から外れるだけで保存領域には残る。
+    const isAdmin = api.isAdmin();
+    const removeHint = isAdmin ? '' : '<p class="text-hint" style="font-size:0.78rem; margin:6px 0 0;">※ ファイルを外しても、保存領域からは削除されません（削除は管理者のみ可能です）</p>';
     el.innerHTML = files.map((f, i) => {
         const name = escapeHtml(f.name || ('ファイル ' + (i + 1)));
         const size = f.size ? formatFileSize(f.size) : '';
@@ -1079,11 +1127,11 @@ function wzRefreshFileList() {
                 <span class="file-size">${size}</span>
                 <div class="file-actions">
                     ${!uploading && !failed && safeHttpUrl(f.url) ? `<a href="${escapeAttr(safeHttpUrl(f.url))}" target="_blank" rel="noopener" class="tbl-btn">開く</a>` : ''}
-                    <button class="tbl-btn tbl-btn-danger" data-action="ew-remove-file" data-index="${i}" type="button">${uploading ? 'キャンセル' : '削除'}</button>
+                    <button class="tbl-btn tbl-btn-danger" data-action="ew-remove-file" data-index="${i}" type="button">${uploading ? 'キャンセル' : (isAdmin ? '削除' : '外す')}</button>
                 </div>
             </div>
         `;
-    }).join('');
+    }).join('') + removeHint;
 }
 
 // ---- ウィザードから保存 ----
@@ -1195,16 +1243,21 @@ function saveEventFromWizard() {
     }
 
     const host = _wzHost();
-    const isExisting = !!host.getEvent(tempNewEvent.ID);
+    const eventId = tempNewEvent.ID;
+    const isExisting = !!host.getEvent(eventId);
     const gasItem = uiToGas(tempNewEvent);
-    if (isExisting) gasItem._baseUpdatedAt = tempNewEvent.UpdatedAt || '';
+    const openedUpdatedAt = tempNewEvent.UpdatedAt || '';
 
     const filesToDelete = Array.isArray(tempNewEvent._filesToDelete) ? tempNewEvent._filesToDelete.slice() : [];
+    // このウィザードでアップロードして、いま一覧に残っているファイル（保存に成功しなければ孤児になる）
+    const uploadedNow = Array.isArray(tempNewEvent._sessionUploads) ? tempNewEvent._sessionUploads.slice() : [];
+    tempNewEvent._sessionUploads = []; // closeEventWizard がアップロード済みファイルを消さないようにする
 
     // Optimistic UI
     const snapshot = host.snapshot();
     const optimisticItem = { ...tempNewEvent };
     delete optimisticItem._filesToDelete;
+    delete optimisticItem._sessionUploads;
     host.applyOptimistic(optimisticItem);
 
     closeEventWizard();
@@ -1216,12 +1269,30 @@ function saveEventFromWizard() {
         toast(`許可願の期限（${optimisticItem.Kyoka_Deadline}）を過ぎています。至急対応してください`, 'error', 6000);
     }
 
-    api.save('events', gasItem).then(savedGas => {
+    // 同じイベントへの保存（詳細ページの個別保存など）が送信中なら、その完了を待ってから送る。
+    // 待っている間に自分の保存で UpdatedAt が進んでいたら、それを基準にする（別の人の編集だけを競合とみなす）。
+    runEventSaveSerial(eventId, () => {
+        if (isExisting) {
+            const live = host.getEvent(eventId);
+            const liveStamp = live && live.UpdatedAt;
+            gasItem._baseUpdatedAt = (liveStamp && liveStamp !== openedUpdatedAt && isOwnSavedStamp(eventId, liveStamp))
+                ? liveStamp : openedUpdatedAt;
+        }
+        return api.save('events', gasItem);
+    }).then(savedGas => {
         host.commitSaved(savedGas);
-        filesToDelete.forEach(driveId => { api.deleteFile(driveId).catch(() => {}); });
+        if (savedGas && savedGas.UpdatedAt) _ownSavedStamps.add(eventId + ':' + savedGas.UpdatedAt);
+        filesToDelete.forEach(driveId => {
+            api.deleteFile(driveId).catch(err => {
+                // 削除は管理者のみ可能。イベントからは外れているが、R2 には残る
+                console.warn('外したファイルを削除できませんでした（管理者権限が必要な場合があります）:', driveId, err && err.message);
+            });
+        });
     }).catch(err => {
         host.rollback(snapshot);
         if (String(err.message).includes('conflict')) {
+            // 競合ならサーバーは何も保存していない。今回アップロードしたファイルは参照されないので消す
+            uploadedNow.forEach(discardUploadedFile);
             toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', 5000);
             host.onConflict();
         } else {
