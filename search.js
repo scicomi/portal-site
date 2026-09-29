@@ -128,7 +128,7 @@ const SEARCH_MATCH_PARTIAL = 1;
  */
 function createSearcher(getData, fieldSpec) {
   // 正規化済みテキストのキャッシュ。このアプリのデータ更新はどの経路でも
-  // 「新しいオブジェクトへの差し替え」（gasToUi / {...item} / JSON クローン）なので、
+  // 「新しいオブジェクトへの差し替え」（サーバー応答 / {...item} / JSON クローン）なので、
   // オブジェクト単位の WeakMap にしておけば明示的な無効化なしで常に最新が引ける。
   let cache = new WeakMap();
 

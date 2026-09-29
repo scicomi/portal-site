@@ -3,13 +3,13 @@
  *
  * events.html と event-series.html の両方から読み込む（config.js / api.js / app.js の後、
  * 各ページスクリプトの前）。含まれるもの:
- *   - サーバー形 ⇔ UI形 のスキーマ変換（gasToUi / uiToGas / cacheItemsToUi）
  *   - 日付レンジピッカー・タグ入力・実験行などの入力部品
- *   - 既存イベントの編集ウィザード（openEventWizard 一式）
+ *   - 既存イベントの編集・複製ウィザード（openEventWizard 一式）
  *   - 書類期限の自動計算（calculateDeadlines / updateDeadlines）
+ *   - 削除と「元に戻す」（deleteEventWithUndo）
  *
- * ページ固有のデータ配列・再描画は EVENT_WIZARD_HOST で差し替える。
- * 未定義ならイベント一覧ページ（script.js の eventsData / renderEvents）を既定とする。
+ * イベントはどのページでもサーバー形（worker/src/tables.js の events.columns の列名）で扱う。
+ * ページ固有のデータ配列・再描画は、各ページが configureEventWizard で渡す。
  */
 
 let holidaysData = {};
@@ -20,43 +20,50 @@ let experimentsList = [];
 let experimentsMasterWarned = false; // マスタ未取得の警告をウィザード 1 回につき 1 度だけ出す
 
 // ---- ホスト連携 ----
-// ウィザードが触るページ側データ（取得・楽観更新・確定・巻き戻し・削除）はホスト経由にする。
-// event-series.html はサーバー形で持つため window.EVENT_WIZARD_HOST で差し替える。
-// 未定義時はイベント一覧ページ（script.js の eventsData / renderEvents）を既定とする。
-function _wzHost() {
-    return window.EVENT_WIZARD_HOST || _eventsPageWizardHost;
+// ウィザードが触るページ側データ（取得・楽観更新・確定・巻き戻し・削除）は、各ページが渡す設定経由にする。
+//   list():          そのページのイベント配列（再読込で配列ごと差し替わるので、毎回関数で受け取る）
+//   rerender():      一覧・詳細の再描画
+//   onConflict():    競合時の再読込
+//   confirmDelete(id): 削除の確認フロー
+let _wzHostConfig = null;
+
+function configureEventWizard(config) {
+    _wzHostConfig = config;
 }
 
-// ホストとの受け渡しはサーバー形（DB の列名）。eventsData（script.js）はまだ UI形なので境界で変換する。
-const _eventsPageWizardHost = {
-    getEvent(id) {
-        const u = eventsData.find(x => x.ID === id);
-        return u ? uiToGas(u) : null;
-    },
-    snapshot() { return JSON.parse(JSON.stringify(eventsData)); },
-    applyOptimistic(item) {
-        const itemUi = gasToUi(item);
-        const idx = eventsData.findIndex(x => x.ID === itemUi.ID);
-        if (idx > -1) eventsData[idx] = itemUi; else eventsData.unshift(itemUi);
-        api.saveCache('events', eventsData);
-        renderEvents();
-    },
-    commitSaved(saved) {
-        const savedEvent = gasToUi(saved);
-        const idx = eventsData.findIndex(x => x.ID === savedEvent.ID);
-        if (idx >= 0) {
-            eventsData[idx] = savedEvent;
-            api.saveCache('events', eventsData);
-        }
-    },
-    rollback(snap) {
-        eventsData.splice(0, eventsData.length, ...snap);
-        api.saveCache('events', eventsData);
-        renderEvents();
-    },
-    onConflict() { refreshData(); },
-    confirmDelete(id) { confirmDeleteEvent(id); }
-};
+function _wzHost() {
+    const c = _wzHostConfig;
+    if (!c) throw new Error('configureEventWizard が呼ばれていません');
+    const list = () => c.list();
+    const persist = () => api.saveCache('events', list());
+    return {
+        getEvent(id) { return list().find(x => x.ID === id) || null; },
+        snapshot() { return JSON.parse(JSON.stringify(list())); },
+        applyOptimistic(item) {
+            const arr = list();
+            const idx = arr.findIndex(x => x.ID === item.ID);
+            if (idx > -1) arr[idx] = item; else arr.unshift(item);
+            persist();
+            c.rerender();
+        },
+        commitSaved(saved) {
+            const arr = list();
+            const idx = arr.findIndex(x => x.ID === saved.ID);
+            if (idx < 0) return;
+            arr[idx] = saved;
+            persist();
+            c.rerender();
+        },
+        rollback(snap) {
+            const arr = list();
+            arr.splice(0, arr.length, ...snap);
+            persist();
+            c.rerender();
+        },
+        onConflict() { c.onConflict(); },
+        confirmDelete(id) { c.confirmDelete(id); }
+    };
+}
 
 // ---- ウィザード定義 ----
 let evWizardStep = 0;
@@ -74,105 +81,6 @@ const EV_STEPS_MEETING = [
     { label: '日時' },
     { label: 'その他' }
 ];
-
-// ---- スキーマ変換: サーバー形(DB の列名) ⇔ UI形(旧スキーマ) ----
-// サーバー側: Date, DateEnd, TimeStart, TimeEnd, PartsList(配列), Files(配列), Logistics, AdminKyoka 等
-// UI側:     Date, Date_End, Event_Time, PartsList(JSON文字列), Files(カンマ区切り), Meeting_Logistics, Admin_Kyoka 等
-function gasToUi(g) {
-    const u = { ...g };
-    u.Date_End = g.DateEnd || '';
-    u.Event_Time = (g.TimeStart && g.TimeEnd) ? `${g.TimeStart} - ${g.TimeEnd}` : '';
-    u.Meeting_Logistics = g.Logistics || '';
-    u.Admin_Kyoka = g.AdminKyoka || '';
-    u.Admin_Houkoku = g.AdminHoukoku || '';
-    u.Kyoka_Deadline = g.KyokaDeadline || '';
-    u.Houkoku_Deadline = g.HoukokuDeadline || '';
-    u.Vote_Deadline = g.VoteDeadline || '';
-    u.Meeting_Number = g.MeetingNumber || '';
-    u.Gather_Time = g.GatherTime || '';
-    u.Dismiss_Time = g.DismissTime || '';
-    u.Accompany = g.Accompany || '';
-    u.PlanName = g.PlanName || '';
-    u.Address = g.Address || '';
-    u.LocationTel = g.LocationTel || '';
-    u.EmergencyHospital = g.EmergencyHospital || '';
-    u.EmergencyPolice = g.EmergencyPolice || '';
-    u.KyokaNotRequired = g.KyokaNotRequired || '';
-    u.HoukokuNotRequired = g.HoukokuNotRequired || '';
-    u.PartsList = Array.isArray(g.PartsList) ? JSON.stringify(g.PartsList) : (g.PartsList || '');
-    u.Files = Array.isArray(g.Files)
-        ? g.Files.map(f => typeof f === 'string' ? { name: '', url: f } : f)
-        : [];
-    return u;
-}
-
-function uiToGas(u) {
-    const time = (u.Event_Time || '').split(' - ');
-
-    let partsList = [];
-    if (u.PartsList) {
-        if (typeof u.PartsList === 'string') {
-            try { partsList = JSON.parse(u.PartsList); } catch (_) { partsList = []; }
-        } else if (Array.isArray(u.PartsList)) {
-            partsList = u.PartsList;
-        }
-    }
-
-    return {
-        ID: u.ID || '',
-        Date: u.Date || '',
-        DateEnd: u.Date_End || '',
-        Title: u.Title || '',
-        Category: u.Category || 'normal',
-        Location: u.Location || '',
-        Audience: u.Audience || '',
-        TimeStart: (time[0] || '').trim(),
-        TimeEnd: (time[1] || '').trim(),
-        MeetingNumber: u.Meeting_Number || '',
-        GatherTime: u.Gather_Time || '',
-        DismissTime: u.Dismiss_Time || '',
-        Accompany: u.Accompany || '',
-        PlanName: u.PlanName || '',
-        PartsList: partsList,
-        AdminKyoka: u.Admin_Kyoka || '',
-        AdminHoukoku: u.Admin_Houkoku || '',
-        KyokaDeadline: u.Kyoka_Deadline || '',
-        HoukokuDeadline: u.Houkoku_Deadline || '',
-        KyokaNotRequired: u.KyokaNotRequired || '',
-        HoukokuNotRequired: u.HoukokuNotRequired || '',
-        VoteDeadline: u.Vote_Deadline || '',
-        Logistics: u.Meeting_Logistics || '',
-        Remarks: u.Remarks || '',
-        Belongings: u.Belongings || '',
-        Files: Array.isArray(u.Files) ? u.Files : [],
-        Address: u.Address || '',
-        LocationTel: u.LocationTel || '',
-        EmergencyHospital: u.EmergencyHospital || '',
-        EmergencyPolice: u.EmergencyPolice || '',
-        SeriesKey: u.SeriesKey || '',
-        Positives: u.Positives || '',
-        Reflections: u.Reflections || '',
-        // ウィザードでは編集しない列。サーバーは全列を上書きするので、UI形オブジェクトが持つ値をそのまま通す(無ければ '')
-        PostalCode: u.PostalCode || '',
-        VisitorCount: u.VisitorCount || '',
-        ParticipantCount: u.ParticipantCount || '',
-        PrAssignments: u.PrAssignments || '',
-        ResultsMemo: u.ResultsMemo || '',
-        ReportStatus: u.ReportStatus || '',  // 報告書ステータスをイベント編集保存でも保持する
-        KyokaStatus: u.KyokaStatus || '',    // 許可願ステータスも同様に保持する
-        UpdatedBy: u.UpdatedBy || '',
-        CreatedAt: u.CreatedAt || '',  // 既存の作成日時を保持（更新・UNDO再作成で消さない）
-        UpdatedAt: u.UpdatedAt || ''   // サーバー形キャッシュ統一を将来行うための準備。サーバーは送信値を上書きする。
-    };
-}
-
-// ---- キャッシュ読込の正規化 ----
-// 'events' キャッシュは、イベントページが UI形（Event_Time 等）、home/bot/詳細ページが
-// サーバー形（DateEnd/TimeStart 等）を書き込むため、同じキーに2スキーマが混在しうる。
-// 直前に別ページがサーバー形で書いていても破綻しないよう、UI形でなければ gasToUi で変換する。
-function cacheItemsToUi(items) {
-    return (items || []).map(e => (e && 'Event_Time' in e) ? e : gasToUi(e));
-}
 
 /**
  * 担当者(members)・実験名(experiments)のdatalist候補を構築。

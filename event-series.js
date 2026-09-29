@@ -32,39 +32,19 @@ let detailFbOpen = false;    // 「この回の振り返り」トグルの開閉
 const KYOKA_STATUS = CONFIG.KYOKA_STATUS;
 const REPORT_STATUS = CONFIG.REPORT_STATUS;
 
-// ---- イベント編集ウィザードのホスト実装 ----
-// event-wizard.js の共通ウィザードをこのページ内で使う。
-// このページのデータ（allEventsData）もウィザードもサーバー形なので、そのまま受け渡す。
-window.EVENT_WIZARD_HOST = {
-    getEvent(id) { return allEventsData.find(e => e.ID === id) || null; },
-    snapshot() { return JSON.parse(JSON.stringify(allEventsData)); },
-    applyOptimistic(item) {
-        const idx = allEventsData.findIndex(e => e.ID === item.ID);
-        if (idx >= 0) allEventsData[idx] = item; else allEventsData.unshift(item);
-        api.saveCache('events', allEventsData);
-        this._rerender();
-    },
-    commitSaved(saved) {
-        const idx = allEventsData.findIndex(e => e.ID === saved.ID);
-        if (idx >= 0) allEventsData[idx] = saved;
-        api.saveCache('events', allEventsData);
-        this._rerender();
-    },
-    rollback(snap) {
-        allEventsData.splice(0, allEventsData.length, ...snap);
-        api.saveCache('events', allEventsData);
-        this._rerender();
-    },
-    onConflict() { init(); },
-    confirmDelete(id) { confirmDeleteSeriesEvent(id); },
-    _rerender() {
+// ---- 共通ウィザード（event-wizard.js）が読み書きするこのページのデータ ----
+configureEventWizard({
+    list: () => allEventsData,
+    rerender() {
         // タイトル変更でシリーズキーが変わることがあるため、選択中イベントから再導出する
         const ev = allEventsData.find(e => e.ID === currentEventId);
         if (ev) seriesKey = seriesKeyNormalize(ev);
         filterSeries();
         if (seriesEvents.length > 0) renderAll();
-    }
-};
+    },
+    onConflict: () => init(),
+    confirmDelete: id => confirmDeleteSeriesEvent(id)
+});
 
 // saveEventPatch（app.js）に渡す共通オプション。このページの allEventsData（サーバー形）を対象にする。
 function seriesPatchOpts(extra) {
@@ -143,27 +123,6 @@ function seriesKeyNormalize(e) {
     return k.replace(/\s+/g, '').replace(/^第\d+回/, '');
 }
 
-// events キャッシュはイベントページが UI形（Event_Time 等）で書くことがあるため、
-// サーバー形へ正規化してから使う（script.js の cacheItemsToUi の逆向き）。
-function toGasForm(e) {
-    if (!e || !('Event_Time' in e)) return e;
-    const g = { ...e };
-    const t = (e.Event_Time || '').split(' - ');
-    g.DateEnd = e.Date_End || '';
-    g.TimeStart = (t[0] || '').trim();
-    g.TimeEnd = (t[1] || '').trim();
-    g.GatherTime = e.Gather_Time || '';
-    g.DismissTime = e.Dismiss_Time || '';
-    g.Logistics = e.Meeting_Logistics || '';
-    g.AdminKyoka = e.Admin_Kyoka || '';
-    g.AdminHoukoku = e.Admin_Houkoku || '';
-    g.KyokaDeadline = e.Kyoka_Deadline || '';
-    g.HoukokuDeadline = e.Houkoku_Deadline || '';
-    g.VoteDeadline = e.Vote_Deadline || '';
-    g.MeetingNumber = e.Meeting_Number || '';
-    return g;
-}
-
 document.addEventListener('DOMContentLoaded', () => {
     bootPage('series', init);
 });
@@ -196,7 +155,7 @@ async function init() {
 
     const cached = api.loadCache('events');
     if (cached && cached.items && cached.items.length > 0) {
-        allEventsData = cached.items.map(toGasForm);
+        allEventsData = cached.items;
         onDataReady(false);
         updateSyncStatus('cached', cached.timestamp);
     } else {
