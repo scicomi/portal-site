@@ -32,10 +32,12 @@ let detailFbOpen = false;    // 「この回の振り返り」トグルの開閉
 const KYOKA_STATUS = CONFIG.KYOKA_STATUS;
 const REPORT_STATUS = CONFIG.REPORT_STATUS;
 
-// ---- 共通ウィザード（event-wizard.js）が読み書きするこのページのデータ ----
+// ---- 共通ウィザード・削除フロー（event-wizard.js）が読み書きするこのページのデータ ----
 configureEventWizard({
     list: () => allEventsData,
     rerender() {
+        // 削除などで選択中のイベントが無くなったら選択を外す（renderAll が先頭の回を選ぶ）
+        if (currentEventId && !allEventsData.some(e => e.ID === currentEventId)) currentEventId = '';
         // タイトル変更でシリーズキーが変わることがあるため、選択中イベントから再導出する
         const ev = allEventsData.find(e => e.ID === currentEventId);
         if (ev) seriesKey = seriesKeyNormalize(ev);
@@ -43,7 +45,12 @@ configureEventWizard({
         if (seriesEvents.length > 0) renderAll();
     },
     onConflict: () => init(),
-    confirmDelete: id => confirmDeleteSeriesEvent(id)
+    // シリーズの最後の1回を消したら一覧モードへ戻る（ページを離れるので「元に戻す」は出さない）
+    onDeleted() {
+        if (seriesEvents.length > 0) return true;
+        location.href = 'event-series.html';
+        return false;
+    }
 });
 
 // saveEventPatch（app.js）に渡す共通オプション。このページの allEventsData（サーバー形）を対象にする。
@@ -53,69 +60,6 @@ function seriesPatchOpts(extra) {
         persist: () => api.saveCache('events', allEventsData),
         onConflict: () => init()
     }, extra);
-}
-
-// ウィザードの削除ボタンから呼ばれる削除フロー（一覧ページと同じ Undo つき）
-function confirmDeleteSeriesEvent(id) {
-    if (!api.isAdmin()) {
-        showAdminAuthModal(() => confirmDeleteSeriesEvent(id));
-        return;
-    }
-    const ev = allEventsData.find(e => e.ID === id);
-    if (!ev) return;
-    showConfirmDialog({
-        title: `「${ev.Title || '(無題)'}」を削除`,
-        message: 'この操作は元に戻せます（削除直後のみ）。',
-        okLabel: '削除する',
-        danger: true,
-        onOk: () => executeDeleteSeriesEvent(id)
-    });
-}
-
-async function executeDeleteSeriesEvent(id) {
-    const idx = allEventsData.findIndex(e => e.ID === id);
-    if (idx < 0) return;
-    const backup = allEventsData[idx];
-
-    allEventsData.splice(idx, 1);
-    api.saveCache('events', allEventsData);
-
-    try {
-        await api.delete('events', id);
-    } catch (e) {
-        allEventsData.splice(idx, 0, backup);
-        api.saveCache('events', allEventsData);
-        toast('削除失敗: ' + e.message, 'error');
-        return;
-    }
-
-    filterSeries();
-    if (seriesEvents.length === 0) {
-        // シリーズの最後の1回を消したら一覧モードへ戻る
-        location.href = 'event-series.html';
-        return;
-    }
-    if (currentEventId === id) currentEventId = '';
-    renderAll();
-
-    toastUndo(
-        `「${backup.Title || '(無題)'}」を削除しました`,
-        async () => {
-            try {
-                const saved = await api.save('events', backup);
-                allEventsData.push(saved);
-                api.saveCache('events', allEventsData);
-                filterSeries();
-                renderAll();
-                toast('元に戻しました', 'success', 2000);
-            } catch (e) {
-                toast('復元に失敗しました: ' + e.message, 'error');
-            }
-        },
-        // 元に戻せる期間が過ぎたら、添付ファイルの実体（R2）も消す（Undo で復元した記録のリンクが壊れないよう、確定後に消す）
-        () => deleteStoredFiles((Array.isArray(backup.Files) ? backup.Files : []).map(f => f && f.driveId)),
-        5000
-    );
 }
 
 function seriesKeyNormalize(e) {
@@ -299,7 +243,7 @@ function buildSeriesIndex() {
 function seriesSuggestSources() {
     const titles = new Set(), locations = new Set();
     buildSeriesIndex().forEach(s => {
-        if (s.category === 'general' || s.category === 'admin') return;
+        if (isMeetingCategory(s.category)) return;
         if (s.title) titles.add(s.title);
         if (s.location) locations.add(s.location);
     });
@@ -318,7 +262,7 @@ function renderSeriesIndex() {
     let list = buildSeriesIndex();
     list = list.filter(s => {
         // ミーティング類はこのページでは扱わない（全部でもイベント＋その他のみ）
-        if (s.category === 'general' || s.category === 'admin') return false;
+        if (isMeetingCategory(s.category)) return false;
         const isOther = s.category === 'other';
         if (indexFilter === 'event' && isOther) return false;
         if (indexFilter === 'other' && !isOther) return false;
@@ -399,7 +343,7 @@ function renderAll() {
 
     // ミーティングでは不要なタブを隠す（振り返り・会場・履歴統計はイベント向けの機能）
     const ev0 = currentEvent();
-    const isMtg = ev0 && (ev0.Category === 'general' || ev0.Category === 'admin');
+    const isMtg = ev0 && isMeetingCategory(ev0.Category);
     document.querySelectorAll('.scope-tab[data-tab="reflection"], .scope-tab[data-tab="venue"], .scope-tab[data-tab="history"]').forEach(t => {
         t.style.display = isMtg ? 'none' : '';
     });
@@ -545,7 +489,7 @@ function updateScopeBadges() {
     };
     if (!ev) { set('scope-badge-summary', 0); set('scope-badge-attendance', 0); return; }
 
-    const isMeeting = ev.Category === 'general' || ev.Category === 'admin';
+    const isMeeting = isMeetingCategory(ev.Category);
     let docs = 0;
     if (!isMeeting) {
         if (!ev.KyokaNotRequired && (ev.KyokaStatus || '') !== 'submitted') docs++;
@@ -685,7 +629,7 @@ function formatTelLink(text) {
 
 // 未入力チェックリスト（案C: 枠だけ作成→あとから追記、の「あとから」を可視化する）
 function missingFields(ev) {
-    const isMeeting = ev.Category === 'general' || ev.Category === 'admin';
+    const isMeeting = isMeetingCategory(ev.Category);
     const miss = [];
     if (!ev.Location) miss.push('場所');
     if (!ev.TimeStart) miss.push('時間');
@@ -713,7 +657,7 @@ function renderDetail() {
     const ev = currentEvent();
     if (!ev) { box.innerHTML = ''; return; }
 
-    const isMeeting = ev.Category === 'general' || ev.Category === 'admin';
+    const isMeeting = isMeetingCategory(ev.Category);
     const today = todayISO();
     const isUpcoming = (ev.DateEnd || ev.Date) >= today;
 
@@ -1093,7 +1037,7 @@ function renderReflectionTab() {
     const ev = currentEvent();
     if (!ev) { box.innerHTML = ''; return; }
 
-    const isMeeting = ev.Category === 'general' || ev.Category === 'admin';
+    const isMeeting = isMeetingCategory(ev.Category);
     const parts = normalizeParts(ev.PartsList).filter(p => p.name || (p.presenters && p.presenters.length));
 
     box.innerHTML = `

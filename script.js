@@ -8,8 +8,7 @@ let allVotesData = null;   // null = 未取得
 configureEventWizard({
     list: () => eventsData,
     rerender: () => renderEvents(),
-    onConflict: () => refreshData(),
-    confirmDelete: id => confirmDeleteEvent(id)
+    onConflict: () => refreshData()
 });
 
 // ---- グローバルキーボードショートカット ----
@@ -594,9 +593,10 @@ function startNewEvent(category, template) {
 
 function openQuickCreate(category) {
     let cat = category || 'normal';
-    const isMeeting = cat === 'general' || cat === 'admin' || cat === 'meeting';
+    // 'meeting' は種類選択の「ミーティング」。全体会／幹部会はこの後のラジオで選ぶ（既定は全体会）
+    const isMeeting = cat === 'meeting' || isMeetingCategory(cat);
     if (cat === 'meeting') cat = 'general';
-    const catInfo = isMeeting ? { bg: '#93c5fd', text: '#1e3a5f', short: 'ミーティング' } : getEventCategory(cat);
+    const catInfo = isMeeting ? { ...getEventCategory('general'), short: 'ミーティング' } : getEventCategory(cat);
 
     const startDate = todayISO();
     const endDate = '';
@@ -648,22 +648,11 @@ function openQuickCreate(category) {
                     <input id="qc-title" class="e1-input" type="text" placeholder="例: サイエンスフェスタ" value="${escapeAttr(draft.Title || '')}">
                 </div>`}
                 <div class="e1-group">
-                    <label class="e1-label">日にち *</label>
-                    <div class="date-range-picker-wrapper">
-                        <input type="text" class="e1-input date-range-display" readonly placeholder="クリックして日にちを選択">
-                        <input type="hidden" data-field="Date" value="${escapeAttr(draft.Date || '')}">
-                        <input type="hidden" data-field="DateEnd" value="${escapeAttr(draft.DateEnd || '')}">
-                        <div class="date-range-popup hidden"></div>
-                    </div>
+                    <label class="e1-label">日にち *</label>${dateRangePickerHtml(draft.Date, draft.DateEnd)}
                     <p id="qc-deadline-note" class="text-muted" style="font-size:0.8rem; margin:6px 0 0;"></p>
                 </div>
                 <div class="e1-group">
-                    <label class="e1-label">時間（未定なら空欄のまま）</label>
-                    <div class="time-select-group">
-                        <select class="e1-input" id="qc-time-start">${genTimeOpts(7, 21, true)}</select>
-                        <span>〜</span>
-                        <select class="e1-input" id="qc-time-end">${genTimeOpts(7, 21, true)}</select>
-                    </div>
+                    <label class="e1-label">時間（未定なら空欄のまま）</label>${timeRangeSelectHtml('qc-time-start', 'qc-time-end')}
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">場所（任意）</label>
@@ -718,7 +707,7 @@ async function saveQuickCreate() {
     // ミーティング種別ラジオの反映
     const mtgRadio = document.querySelector('input[name="qc-meeting-type"]:checked');
     if (mtgRadio) draft.Category = mtgRadio.value;
-    const isMeeting = draft.Category === 'general' || draft.Category === 'admin';
+    const isMeeting = isMeetingCategory(draft.Category);
 
     if (isMeeting) {
         draft.Title = draft.Category === 'admin' ? '幹部会' : '全体会';
@@ -744,18 +733,10 @@ async function saveQuickCreate() {
         draft.Audience = memberContainer?._tagInput ? memberContainer._tagInput.getValues().join('、') : '';
     }
 
-    const ts = document.getElementById('qc-time-start')?.value || '';
-    const te = document.getElementById('qc-time-end')?.value || '';
-    if ((ts && !te) || (!ts && te)) {
-        toast('時間は開始と終了の両方を選択してください（未定なら両方空欄）', 'error');
-        return;
-    }
-    if (ts && te && te <= ts) {
-        toast('終了時刻は開始時刻より後にしてください', 'error');
-        return;
-    }
-    draft.TimeStart = ts && te ? ts : '';
-    draft.TimeEnd = ts && te ? te : '';
+    const time = readTimeRange('qc-time-start', 'qc-time-end');
+    if (!time) return;
+    draft.TimeStart = time.start;
+    draft.TimeEnd = time.end;
 
     const dl = isMeeting ? { kyoka: '', houkoku: '' } : calculateDeadlines(draft.Date);
     draft.KyokaDeadline = dl.kyoka;
@@ -770,9 +751,7 @@ async function saveQuickCreate() {
         eventsData.unshift(saved);
         api.saveCache('events', eventsData);
         closeQuickCreate();
-        if (!isMeeting && dl.kyoka && dl.kyoka < todayISO() && (draft.DateEnd || draft.Date) >= todayISO()) {
-            toast(`許可願の期限（${dl.kyoka}）を過ぎています。至急対応してください`, 'error', 6000);
-        }
+        warnKyokaOverdue(saved);
         // 続きの入力はイベント詳細ページで（未入力チェックリストが出る）
         location.href = 'event-series.html?event=' + encodeURIComponent(saved.ID);
     } catch (err) {
@@ -780,66 +759,6 @@ async function saveQuickCreate() {
         btn.textContent = '追加';
         toast('保存失敗: ' + err.message, 'error');
     }
-}
-
-// ---- イベント削除（確認ダイアログ） ----
-function confirmDeleteEvent(id) {
-    if (!api.isAdmin()) {
-        showAdminAuthModal(() => confirmDeleteEvent(id));
-        return;
-    }
-    const ev = eventsData.find(x => x.ID === id);
-    if (!ev) return;
-    showConfirmDialog({
-        title: `「${ev.Title || '(無題)'}」を削除`,
-        message: 'この操作は元に戻せます（削除直後のみ）。',
-        okLabel: '削除する',
-        danger: true,
-        onOk: () => executeDeleteEvent(id)
-    });
-}
-
-async function executeDeleteEvent(id) {
-    if (!api.isAdmin()) {
-        showAdminAuthModal(() => executeDeleteEvent(id));
-        return;
-    }
-    const eventIndex = eventsData.findIndex(x => x.ID === id);
-    if (eventIndex < 0) return;
-    const backup = eventsData[eventIndex];
-
-    eventsData.splice(eventIndex, 1);
-    api.saveCache('events', eventsData);
-    renderEvents();
-
-    try {
-        await api.delete('events', id);
-    } catch (err) {
-        eventsData.splice(eventIndex, 0, backup);
-        api.saveCache('events', eventsData);
-        renderEvents();
-        toast('削除失敗: ' + err.message, 'error');
-        return;
-    }
-
-    toastUndo(
-        `「${backup.Title}」を削除しました`,
-        async () => {
-            try {
-                const restored = await api.save('events', backup);
-                const insertAt = eventsData.findIndex(e => (e.Date || '') > (restored.Date || ''));
-                eventsData.splice(insertAt >= 0 ? insertAt : eventsData.length, 0, restored);
-                api.saveCache('events', eventsData);
-                renderEvents();
-                toast('元に戻しました', 'success', 2000);
-            } catch (err) {
-                toast('復元に失敗しました: ' + err.message, 'error');
-            }
-        },
-        // 元に戻せる期間が過ぎたら、添付ファイルの実体（R2）も消す（Undo で復元した記録のリンクが壊れないよう、確定後に消す）
-        () => deleteStoredFiles((Array.isArray(backup.Files) ? backup.Files : []).map(f => f && f.driveId)),
-        5000
-    );
 }
 
 // 日付フォーマットは app.js の toISODate / todayISO を使用

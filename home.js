@@ -277,7 +277,7 @@ function renderKyokaCard(events) {
 
     const items = [];
     (events || []).forEach(e => {
-        if (e.Category === 'general' || e.Category === 'admin') return;
+        if (isMeetingCategory(e.Category)) return;
         const deadline = e.KyokaDeadline || '';
         if (!deadline) return;
         if ((e.KyokaStatus || '') === 'submitted') return;
@@ -325,7 +325,7 @@ function renderReportsCard(events) {
 
     const reports = [];
     (events || []).forEach(e => {
-        if (e.Category === 'general' || e.Category === 'admin') return;
+        if (isMeetingCategory(e.Category)) return;
         const deadline = e.HoukokuDeadline || '';
         if (!deadline) return;
         const status = e.ReportStatus || '';
@@ -392,7 +392,7 @@ function renderFeedbackPending(events) {
     const cutoff = addDaysISO(todayISO(), -14);
     const pending = (events || [])
         .filter(e => {
-            if (e.Category === 'general' || e.Category === 'admin') return false;
+            if (isMeetingCategory(e.Category)) return false;
             const endDate = e.DateEnd || e.Date;
             if (!endDate || endDate >= today || endDate < cutoff) return false;
             return !(e.Positives || '').trim() && !(e.Reflections || '').trim();
