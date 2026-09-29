@@ -576,7 +576,7 @@ function startNewEventBlank() {
 // template あり（複製）の場合は、枠だけのクイック作成ではなく実験・担当などの詳細も
 // その場で全て入力できるフルウィザードを開く。template 無し（真っさらな新規）はクイック作成のまま。
 function startNewEvent(category, template) {
-    if (template) openEventWizard(null, template);
+    if (template) openEventWizard(null, uiToGas(template));
     else openQuickCreate(category);
 }
 
@@ -650,7 +650,7 @@ function openQuickCreate(category) {
                     <div class="date-range-picker-wrapper">
                         <input type="text" class="e1-input date-range-display" readonly placeholder="クリックして日にちを選択">
                         <input type="hidden" data-field="Date" value="${escapeAttr(draft.Date || '')}">
-                        <input type="hidden" data-field="Date_End" value="${escapeAttr(draft.Date_End || '')}">
+                        <input type="hidden" data-field="DateEnd" value="${escapeAttr(draft.Date_End || '')}">
                         <div class="date-range-popup hidden"></div>
                     </div>
                     <p id="qc-deadline-note" class="text-muted" style="font-size:0.8rem; margin:6px 0 0;"></p>
@@ -730,7 +730,7 @@ async function saveQuickCreate() {
     }
     const overlay = document.getElementById('qc-overlay');
     draft.Date = overlay.querySelector('[data-field="Date"]')?.value || '';
-    draft.Date_End = overlay.querySelector('[data-field="Date_End"]')?.value || '';
+    draft.Date_End = overlay.querySelector('[data-field="DateEnd"]')?.value || '';
     if (!draft.Date) {
         toast('日にちを選択してください', 'error');
         return;
