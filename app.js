@@ -144,20 +144,6 @@ function genId(prefix) {
   return prefix + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
 }
 
-// 学籍番号の先頭2文字（例: "1C"）を学年グループとして返す。members.js の学年フィルタと共有。
-function gradeOf(m) {
-  const id = (m.StudentID || '').trim();
-  if (id.length < 2) return '';
-  return id.slice(0, 2).toUpperCase();
-}
-
-function isGradStudent(m) {
-  const id = (m.StudentID || '').trim();
-  return id.length >= 5 && (id[4] === 'm' || id[4] === 'M');
-}
-
-// メンバーを学年グループ（1A生・2C生…）ごとにまとめる。出欠・発表者・書類担当などの
-// メンバー選択UIで候補を探しやすくするための共通ヘルパー。院生・学籍番号なしは末尾にまとめる。
 // JSON 配列を文字列から取り出す。空・不正な JSON・配列以外は [] を返す（Photos / Videos など JSON 列用）。
 function parseJsonArray(str) {
   if (Array.isArray(str)) return str;
@@ -290,6 +276,20 @@ async function _drainEventPatches(id) {
   }
 }
 
+// 学籍番号の先頭2文字（例: "1C"）を学年グループとして返す。members.js の学年フィルタと共有。
+function gradeOf(m) {
+  const id = (m.StudentID || '').trim();
+  if (id.length < 2) return '';
+  return id.slice(0, 2).toUpperCase();
+}
+
+function isGradStudent(m) {
+  const id = (m.StudentID || '').trim();
+  return id.length >= 5 && (id[4] === 'm' || id[4] === 'M');
+}
+
+// メンバーを学年グループ（1A生・2C生…）ごとにまとめる。出欠・発表者・書類担当などの
+// メンバー選択UIで候補を探しやすくするための共通ヘルパー。院生・学籍番号なしは末尾にまとめる。
 function groupMembersByGrade(members) {
   const groups = {};
   const grad = [];
