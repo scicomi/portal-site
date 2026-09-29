@@ -14,6 +14,27 @@ document.addEventListener('DOMContentLoaded', () => {
     bootPage('experiments', init);
 });
 
+// currentExp を更新して保存する共通処理（JSON 列の parse → 変更 → stringify → save → 反映）。
+// mutator(draft) は currentExp の浅いコピー draft を書き換える（false を返すと「変更なし」として保存せず null を返す）。
+// 保存に成功してから currentExp / allExperiments / キャッシュへ反映するので、失敗時（例外）は currentExp は変わらない。
+// 呼び出しは直列化され、mutator は常に直前の保存結果（最新の UpdatedAt）に対して実行される。
+let _expPersistChain = Promise.resolve();
+function persistCurrentExp(mutator) {
+    const run = async () => {
+        const draft = { ...currentExp };
+        if (mutator(draft) === false) return null;
+        const saved = await api.save('experiments', { ...draft, _baseUpdatedAt: currentExp.UpdatedAt || '' });
+        Object.assign(currentExp, saved);
+        const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
+        if (idx >= 0) allExperiments[idx] = currentExp;
+        api.saveCache('experiments', allExperiments);
+        return saved;
+    };
+    const p = _expPersistChain.catch(() => {}).then(run);
+    _expPersistChain = p;
+    return p;
+}
+
 // 「読み込み中」のスピナーを止めて、エラー・未発見メッセージに置き換える
 function showLoadMessage(html) {
     const el = document.getElementById('exp-loading');
@@ -324,8 +345,6 @@ async function saveFeedback() {
     const eventDate = selectedOpt ? (selectedOpt.dataset.date || '') : '';
 
     const field = type === 'positive' ? 'Positives' : 'Reflections';
-    const entries = parseFeedbackEntries(currentExp[field]);
-
     const newEntry = {
         id: genFeedbackId(),
         date: eventDate || todayISO(),
@@ -334,24 +353,16 @@ async function saveFeedback() {
         text: text
     };
 
-    entries.push(newEntry);
-    currentExp[field] = stringifyFeedbackEntries(entries);
-
-    const item = { ...currentExp };
-    item._baseUpdatedAt = currentExp.UpdatedAt || '';
-
     try {
-        const saved = await api.save('experiments', item);
-        Object.assign(currentExp, saved);
-        const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
-        if (idx >= 0) allExperiments[idx] = currentExp;
-        api.saveCache('experiments', allExperiments);
+        await persistCurrentExp(draft => {
+            const entries = parseFeedbackEntries(draft[field]);
+            entries.push(newEntry);
+            draft[field] = stringifyFeedbackEntries(entries);
+        });
         closeFeedbackModal();
         renderFeedback();
         toast('振り返りを保存しました', 'success');
     } catch (e) {
-        entries.pop();
-        currentExp[field] = stringifyFeedbackEntries(entries);
         if (String(e.message).includes('conflict')) {
             toast('他の人が編集しました。ページを再読み込みしてください。', 'error', 5000);
         } else {
@@ -392,27 +403,18 @@ function deleteFeedbackEntry(fbId, type) {
 
 async function executeDeleteFeedbackEntry(fbId, type) {
     const field = type === 'positive' ? 'Positives' : 'Reflections';
-    const entries = parseFeedbackEntries(currentExp[field]);
-    const idx = entries.findIndex(e => e.id === fbId);
-    if (idx < 0) { toast('エントリが見つかりません', 'error'); return; }
-
-    const removed = entries.splice(idx, 1)[0];
-    currentExp[field] = stringifyFeedbackEntries(entries);
-
-    const item = { ...currentExp };
-    item._baseUpdatedAt = currentExp.UpdatedAt || '';
-
     try {
-        const saved = await api.save('experiments', item);
-        Object.assign(currentExp, saved);
-        const eIdx = allExperiments.findIndex(e => e.ID === currentExp.ID);
-        if (eIdx >= 0) allExperiments[eIdx] = currentExp;
-        api.saveCache('experiments', allExperiments);
+        const saved = await persistCurrentExp(draft => {
+            const entries = parseFeedbackEntries(draft[field]);
+            const idx = entries.findIndex(e => e.id === fbId);
+            if (idx < 0) return false;
+            entries.splice(idx, 1);
+            draft[field] = stringifyFeedbackEntries(entries);
+        });
+        if (!saved) { toast('エントリが見つかりません', 'error'); return; }
         renderFeedback();
         toast('削除しました', 'success');
     } catch (e) {
-        entries.splice(idx, 0, removed);
-        currentExp[field] = stringifyFeedbackEntries(entries);
         toast('削除失敗: ' + e.message, 'error');
     }
 }
@@ -437,9 +439,7 @@ function renderPhotos() {
     const gallery = document.getElementById('expd-photo-gallery');
     if (!gallery || !currentExp) return;
 
-    let photos = [];
-    try { photos = JSON.parse(currentExp.Photos || '[]'); } catch (_) {}
-    if (!Array.isArray(photos)) photos = [];
+    const photos = getPhotos(currentExp);
 
     const adminBtn = document.getElementById('photo-add-btn');
     if (adminBtn) {
@@ -473,9 +473,7 @@ function openPhotoUpload() {
         showAdminAuthModal(() => openPhotoUpload());
         return;
     }
-    let photos = [];
-    try { photos = JSON.parse(currentExp.Photos || '[]'); } catch (_) {}
-    if (photos.length >= PHOTO_LIMIT) { toast(`写真は最大${PHOTO_LIMIT}枚までです`, 'error'); return; }
+    if (getPhotos(currentExp).length >= PHOTO_LIMIT) { toast(`写真は最大${PHOTO_LIMIT}枚までです`, 'error'); return; }
     document.getElementById('photo-file-input').click();
 }
 
@@ -484,68 +482,70 @@ async function handlePhotoSelect(input) {
     input.value = '';
     if (!files.length) return;
 
-    let photos = [];
-    try { photos = JSON.parse(currentExp.Photos || '[]'); } catch (_) {}
-    const remaining = PHOTO_LIMIT - photos.length;
+    const remaining = PHOTO_LIMIT - getPhotos(currentExp).length;
     const toUpload = files.slice(0, remaining);
 
+    const uploaded = [];
     for (const file of toUpload) {
         if (file.size > 10 * 1024 * 1024) { toast(file.name + ' は10MBを超えています', 'error'); continue; }
         toast('アップロード中: ' + file.name, 'info', 2000);
         try {
             const result = await api.uploadFile(file);  // api.uploadFile は引数1つ（第2引数は無効だったため削除）
-            photos.push({ name: file.name, url: result.url, driveId: result.driveId, size: file.size });
+            uploaded.push({ name: file.name, url: result.url, driveId: result.driveId, size: file.size });
         } catch (e) {
             toast('アップロード失敗: ' + e.message, 'error');
         }
     }
+    if (uploaded.length === 0) return;
 
-    currentExp.Photos = JSON.stringify(photos);
     try {
-        const saved = await api.save('experiments', { ...currentExp, _baseUpdatedAt: currentExp.UpdatedAt || '' });
-        Object.assign(currentExp, saved);
-        const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
-        if (idx >= 0) allExperiments[idx] = currentExp;
-        api.saveCache('experiments', allExperiments);
+        await persistCurrentExp(draft => {
+            draft.Photos = JSON.stringify(getPhotos(draft).concat(uploaded));
+        });
         renderPhotos();
         toast('写真を保存しました', 'success');
     } catch (e) {
         toast('保存失敗: ' + e.message, 'error');
+        // 記録に載らなかったアップロード済みファイルは孤児になるので消す
+        deleteStoredFiles(uploaded.map(p => p.driveId));
     }
 }
 
 function deletePhoto(index) {
     if (!api.isAdmin()) { showAdminAuthModal(() => deletePhoto(index)); return; }
-    let photos = [];
-    try { photos = JSON.parse(currentExp.Photos || '[]'); } catch (_) {}
-    if (index < 0 || index >= photos.length) return;
+    const photo = getPhotos(currentExp)[index];
+    if (!photo) return;
 
-    const name = photos[index].name || '';
+    const name = photo.name || '';
     showConfirmDialog({
         title: '写真を削除',
         message: name ? `「${name}」を削除します。この操作は元に戻せません。` : 'この写真を削除します。この操作は元に戻せません。',
         okLabel: '削除する',
         danger: true,
-        onOk: () => executeDeletePhoto(index)
+        onOk: () => executeDeletePhoto(photo)
     });
 }
 
-async function executeDeletePhoto(index) {
-    let photos = [];
-    try { photos = JSON.parse(currentExp.Photos || '[]'); } catch (_) {}
-    if (index < 0 || index >= photos.length) return;
+// 写真の同一判定（他の保存で並びが変わっていても正しい 1 枚を消せるよう、位置ではなく実体で探す）
+function _samePhoto(a, b) {
+    if (a.driveId || b.driveId) return a.driveId === b.driveId;
+    return a.url === b.url && a.name === b.name;
+}
 
-    photos.splice(index, 1);
-    currentExp.Photos = JSON.stringify(photos);
-
+async function executeDeletePhoto(photo) {
     try {
-        const saved = await api.save('experiments', { ...currentExp, _baseUpdatedAt: currentExp.UpdatedAt || '' });
-        Object.assign(currentExp, saved);
-        const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
-        if (idx >= 0) allExperiments[idx] = currentExp;
-        api.saveCache('experiments', allExperiments);
+        const saved = await persistCurrentExp(draft => {
+            const photos = getPhotos(draft);
+            const idx = photos.findIndex(p => _samePhoto(p, photo));
+            if (idx < 0) return false;
+            photos.splice(idx, 1);
+            draft.Photos = JSON.stringify(photos);
+        });
+        if (!saved) { toast('写真が見つかりません（すでに削除されています）', 'error'); renderPhotos(); return; }
         renderPhotos();
         toast('写真を削除しました', 'success');
+        // 記録から外れたので、保存領域（R2）の実体も消す。失敗はトースト・コンソールに出る
+        deleteStoredFiles([photo.driveId]);
     } catch (e) {
         // showConfirmDialog は onOk が例外を投げると別トーストで再通知するため、ここでは投げずに独自通知のみ行う
         toast('削除失敗: ' + e.message, 'error');
@@ -579,10 +579,8 @@ function extractYoutubeId(url) {
     return '';
 }
 
-function getVideos() {
-    let videos = [];
-    try { videos = JSON.parse(currentExp.Videos || '[]'); } catch (_) {}
-    return Array.isArray(videos) ? videos : [];
+function getVideos(exp) {
+    return parseJsonArray((exp || currentExp).Videos);
 }
 
 function renderVideos() {
@@ -670,8 +668,7 @@ async function saveVideo() {
         return;
     }
 
-    const videos = getVideos();
-    if (videos.some(v => v.id === id)) {
+    if (getVideos().some(v => v.id === id)) {
         toast('この動画はすでに登録されています', 'error');
         return;
     }
@@ -679,16 +676,15 @@ async function saveVideo() {
     const saveBtn = document.getElementById('video-save-btn');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
 
-    // 新しい動画ほど上に来るよう先頭へ追加する
-    videos.unshift({ id, url: safeHttpUrl(url) || `https://www.youtube.com/watch?v=${id}`, title });
-    currentExp.Videos = JSON.stringify(videos);
-
     try {
-        const saved = await api.save('experiments', { ...currentExp, _baseUpdatedAt: currentExp.UpdatedAt || '' });
-        Object.assign(currentExp, saved);
-        const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
-        if (idx >= 0) allExperiments[idx] = currentExp;
-        api.saveCache('experiments', allExperiments);
+        // 新しい動画ほど上に来るよう先頭へ追加する（失敗しても currentExp は変わらないので、そのまま再試行できる）
+        const saved = await persistCurrentExp(draft => {
+            const videos = getVideos(draft);
+            if (videos.some(v => v.id === id)) return false;
+            videos.unshift({ id, url: safeHttpUrl(url) || `https://www.youtube.com/watch?v=${id}`, title });
+            draft.Videos = JSON.stringify(videos);
+        });
+        if (!saved) { toast('この動画はすでに登録されています', 'error'); return; }
         videoVisibleCount = VIDEO_PAGE_SIZE;
         renderVideos();
         toast('動画を追加しました', 'success');
@@ -711,23 +707,20 @@ function deleteVideo(index) {
         message: title ? `「${title}」を削除します。この操作は元に戻せません。` : 'この動画を削除します。この操作は元に戻せません。',
         okLabel: '削除する',
         danger: true,
-        onOk: () => executeDeleteVideo(index)
+        onOk: () => executeDeleteVideo(videos[index].id)
     });
 }
 
-async function executeDeleteVideo(index) {
-    const videos = getVideos();
-    if (index < 0 || index >= videos.length) return;
-
-    videos.splice(index, 1);
-    currentExp.Videos = JSON.stringify(videos);
-
+async function executeDeleteVideo(videoId) {
     try {
-        const saved = await api.save('experiments', { ...currentExp, _baseUpdatedAt: currentExp.UpdatedAt || '' });
-        Object.assign(currentExp, saved);
-        const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
-        if (idx >= 0) allExperiments[idx] = currentExp;
-        api.saveCache('experiments', allExperiments);
+        const saved = await persistCurrentExp(draft => {
+            const videos = getVideos(draft);
+            const idx = videos.findIndex(v => v.id === videoId);
+            if (idx < 0) return false;
+            videos.splice(idx, 1);
+            draft.Videos = JSON.stringify(videos);
+        });
+        if (!saved) { toast('動画が見つかりません（すでに削除されています）', 'error'); renderVideos(); return; }
         renderVideos();
         toast('動画を削除しました', 'success');
     } catch (e) {
@@ -745,8 +738,8 @@ const FIXED_SECTIONS = [
     { key: 'Notes',        title: '注意事項',   alwaysShow: true }
 ];
 
-function getCustomSections() {
-    try { return JSON.parse(currentExp.Sections || '[]'); } catch (_) { return []; }
+function getCustomSections(exp) {
+    return parseJsonArray((exp || currentExp).Sections);
 }
 
 function getAllSections() {
@@ -837,25 +830,24 @@ async function saveSection(sectionEl, type, keyOrIndex) {
     const contentEl = sectionEl.querySelector('.expd-edit-content');
     const content = contentEl.value;
 
-    if (isFixed) {
-        currentExp[keyOrIndex] = content;
-    } else {
+    let title = '';
+    if (!isFixed) {
         const titleEl = sectionEl.querySelector('.expd-edit-title');
-        const title = titleEl ? titleEl.value.trim() : '';
-        if (!title) { toast('見出しを入力してください', 'error'); titleEl.focus(); return; }
-        const customs = getCustomSections();
-        customs[keyOrIndex] = { title, content };
-        currentExp.Sections = JSON.stringify(customs);
+        title = titleEl ? titleEl.value.trim() : '';
+        if (!title) { toast('見出しを入力してください', 'error'); if (titleEl) titleEl.focus(); return; }
     }
 
-    const item = { ...currentExp, _baseUpdatedAt: currentExp.UpdatedAt || '' };
-
     try {
-        const saved = await api.save('experiments', item);
-        Object.assign(currentExp, saved);
-        const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
-        if (idx >= 0) allExperiments[idx] = currentExp;
-        api.saveCache('experiments', allExperiments);
+        await persistCurrentExp(draft => {
+            if (isFixed) {
+                draft[keyOrIndex] = content;
+            } else {
+                // 追加中の新規セクションは、保存で初めて Sections に加わる（index が末尾なら追加になる）
+                const customs = getCustomSections(draft);
+                customs[keyOrIndex] = { title, content };
+                draft.Sections = JSON.stringify(customs);
+            }
+        });
         renderInfoSections();
         toast('保存しました', 'success');
     } catch (e) {
@@ -872,20 +864,19 @@ async function deleteSection(index) {
         showAdminAuthModal(() => deleteSection(index));
         return;
     }
-    const customs = getCustomSections();
-    if (index < 0 || index >= customs.length) return;
-
-    customs.splice(index, 1);
-    currentExp.Sections = JSON.stringify(customs);
-
-    const item = { ...currentExp, _baseUpdatedAt: currentExp.UpdatedAt || '' };
+    if (index < 0 || index >= getCustomSections().length) {
+        // 追加途中の（まだ保存していない）セクション。サーバーには無いので画面から外すだけ
+        renderInfoSections();
+        return;
+    }
 
     try {
-        const saved = await api.save('experiments', item);
-        Object.assign(currentExp, saved);
-        const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
-        if (idx >= 0) allExperiments[idx] = currentExp;
-        api.saveCache('experiments', allExperiments);
+        await persistCurrentExp(draft => {
+            const customs = getCustomSections(draft);
+            if (index >= customs.length) return false;
+            customs.splice(index, 1);
+            draft.Sections = JSON.stringify(customs);
+        });
         renderInfoSections();
         toast('セクションを削除しました', 'success');
     } catch (e) {
@@ -893,17 +884,22 @@ async function deleteSection(index) {
     }
 }
 
+// 「+ セクション追加」。currentExp は変更せず、編集欄だけを画面に出す（保存して初めて追加される。
+// キャンセルしても空のセクションが残らず、他の保存に紛れてサーバーへ書き込まれることもない）。
 function addCustomSection() {
-    const customs = getCustomSections();
-    customs.push({ title: '', content: '' });
-    currentExp.Sections = JSON.stringify(customs);
-    renderInfoSections();
-
-    const newIndex = customs.length - 1;
-    const el = document.getElementById(`section-custom-${newIndex}`);
-    if (el) {
-        enterEditMode(el, 'custom', newIndex);
-        const titleInput = el.querySelector('.expd-edit-title');
-        if (titleInput) titleInput.focus();
+    const body = document.getElementById('expd-info-body');
+    const newIndex = getCustomSections().length;
+    const existing = document.getElementById(`section-custom-${newIndex}`);
+    if (existing) {
+        const t = existing.querySelector('.expd-edit-title');
+        if (t) t.focus();
+        return;
     }
+    const el = document.createElement('div');
+    el.className = 'expd-info-section';
+    el.id = `section-custom-${newIndex}`;
+    body.insertBefore(el, body.querySelector('.expd-add-section-btn'));
+    enterEditMode(el, 'custom', newIndex);
+    const titleInput = el.querySelector('.expd-edit-title');
+    if (titleInput) titleInput.focus();
 }

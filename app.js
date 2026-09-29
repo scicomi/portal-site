@@ -144,6 +144,138 @@ function isGradStudent(m) {
 
 // メンバーを学年グループ（1A生・2C生…）ごとにまとめる。出欠・発表者・書類担当などの
 // メンバー選択UIで候補を探しやすくするための共通ヘルパー。院生・学籍番号なしは末尾にまとめる。
+// JSON 配列を文字列から取り出す。空・不正な JSON・配列以外は [] を返す（Photos / Videos など JSON 列用）。
+function parseJsonArray(str) {
+  if (Array.isArray(str)) return str;
+  if (!str) return [];
+  try {
+    const v = JSON.parse(str);
+    return Array.isArray(v) ? v : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+// 実験レコードの写真一覧（Photos 列）
+function getPhotos(exp) {
+  return parseJsonArray(exp && exp.Photos);
+}
+
+// 保存領域（R2）のファイル実体を消す。deleteFile は管理者専用。
+// 失敗（権限なし・通信断など）は握りつぶさず、トーストとコンソールに残す。全件成功なら true。
+async function deleteStoredFiles(driveIds) {
+  const ids = (driveIds || []).filter(Boolean);
+  if (ids.length === 0) return true;
+  let failed = 0;
+  await Promise.all(ids.map(id => api.deleteFile(id).catch(err => {
+    failed++;
+    console.warn('ファイル実体を削除できませんでした:', id, err && err.message);
+  })));
+  if (failed > 0) {
+    toast(`保存領域から ${failed} 件のファイルを削除できませんでした（画面上の記録からは外れています）`, 'error', 6000);
+  }
+  return failed === 0;
+}
+
+// ---- イベント保存の直列化 ----
+// 同じイベントに対する保存は、前の保存が終わってから最新の UpdatedAt で次を送る。
+// 応答前に次を送ると古い UpdatedAt で conflict になり、「他の人が編集しました」と誤表示されるため。
+const _eventSaveChains = {};     // イベントID -> 直近の保存 Promise（末尾）
+const _eventPatchQueues = {};    // イベントID -> 未送信の patch ジョブ
+const _eventDrainScheduled = {}; // イベントID -> drain 予約済みか
+const _ownSavedStamps = new Set(); // 自分の保存で確定した「ID:UpdatedAt」（ウィザードの競合判定用）
+
+// task を、同一イベントの保存の列の末尾で実行する。task の失敗は次の保存を止めない。
+function runEventSaveSerial(id, task) {
+  const prev = _eventSaveChains[id] || Promise.resolve();
+  const next = prev.catch(() => {}).then(task);
+  _eventSaveChains[id] = next;
+  next.catch(() => {}).then(() => { if (_eventSaveChains[id] === next) delete _eventSaveChains[id]; });
+  return next;
+}
+
+// 自分の保存で確定した UpdatedAt か（別の人の編集と区別する）
+function isOwnSavedStamp(id, updatedAt) {
+  return !!updatedAt && _ownSavedStamps.has(id + ':' + updatedAt);
+}
+
+function _cloneEventVal(v) {
+  return (v !== null && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
+}
+
+// イベントの一部の列を更新して保存する（楽観更新 → 直列化した送信 → 失敗時ロールバック）。
+//   patch: { 列名: 値 }
+//   opts.getEvent(id)            … 画面が持つ「生の」イベントオブジェクトを返す（必須。以降は同じオブジェクトを更新する）
+//   opts.onOptimistic(ev)        … 楽観更新の直後に呼ぶ（再描画）
+//   opts.onSaved(ev, saved)      … 保存成功時
+//   opts.onRollback(ev)          … 失敗でロールバックした後（再描画）
+//   opts.onConflict()            … 競合時（再読み込み）
+//   opts.persist()               … ローカルキャッシュへの書き戻し（更新・ロールバックのたびに呼ぶ）
+//   opts.successMessage / successDuration / conflictDuration … トースト
+// 応答待ちの間に積まれた patch は 1 回の送信にまとめる。失敗した場合は、そのイベントで未確定の
+// patch をすべて元に戻す（確定済みの状態へ戻る）。戻り値は保存できたら true の Promise。
+function saveEventPatch(id, patch, opts) {
+  opts = opts || {};
+  const ev = opts.getEvent && opts.getEvent(id);
+  if (!ev) return Promise.resolve(false);
+
+  const prev = {};
+  Object.keys(patch).forEach(k => { prev[k] = _cloneEventVal(ev[k]); ev[k] = patch[k]; });
+
+  return new Promise(resolve => {
+    const job = { id, patch, prev, opts, resolve, ev };
+    (_eventPatchQueues[id] || (_eventPatchQueues[id] = [])).push(job);
+    if (opts.persist) opts.persist();
+    if (opts.onOptimistic) opts.onOptimistic(ev);
+    if (!_eventDrainScheduled[id]) {
+      _eventDrainScheduled[id] = true;
+      runEventSaveSerial(id, () => _drainEventPatches(id));
+    }
+  });
+}
+
+async function _drainEventPatches(id) {
+  _eventDrainScheduled[id] = false;
+  const batch = (_eventPatchQueues[id] || []).splice(0);
+  if (batch.length === 0) return;
+  const opts = batch[0].opts;
+  const ev = opts.getEvent(id);
+  if (!ev) { batch.forEach(j => j.resolve(false)); return; }
+  // 待っている間に画面が再読み込みされ、イベントのオブジェクトが入れ替わっていたら、patch を新しい方へ反映し直す
+  batch.forEach(j => { if (j.ev !== ev) Object.assign(ev, j.patch); });
+
+  try {
+    // ev には、この batch までの楽観更新がすべて入っている。UpdatedAt は直前の保存で更新済み。
+    const saved = await api.save('events', { ...ev, _baseUpdatedAt: ev.UpdatedAt || '' });
+    Object.assign(ev, saved);
+    if (saved && saved.UpdatedAt) _ownSavedStamps.add(id + ':' + saved.UpdatedAt);
+    // 送信中に積まれた patch は、応答で上書きされないよう反映し直す
+    (_eventPatchQueues[id] || []).forEach(j => Object.assign(ev, j.patch));
+    if (opts.persist) opts.persist();
+    batch.forEach(j => {
+      if (j.opts.onSaved) j.opts.onSaved(ev, saved);
+      if (j.opts.successMessage) toast(j.opts.successMessage, 'success', j.opts.successDuration || 2000);
+      j.resolve(true);
+    });
+  } catch (e) {
+    // 未確定の patch（この batch と、送信中に積まれた分）を新しい順に元へ戻す
+    const later = (_eventPatchQueues[id] || []).splice(0);
+    const all = batch.concat(later);
+    for (let i = all.length - 1; i >= 0; i--) {
+      Object.keys(all[i].prev).forEach(k => { ev[k] = all[i].prev[k]; });
+    }
+    if (opts.persist) opts.persist();
+    all.forEach(j => { if (j.opts.onRollback) j.opts.onRollback(ev); });
+    if (String(e && e.message).includes('conflict')) {
+      toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', opts.conflictDuration || 4000);
+      if (opts.onConflict) opts.onConflict();
+    } else {
+      toast('保存失敗: ' + (e && e.message), 'error');
+    }
+    all.forEach(j => j.resolve(false));
+  }
+}
+
 function groupMembersByGrade(members) {
   const groups = {};
   const grad = [];

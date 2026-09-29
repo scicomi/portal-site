@@ -70,6 +70,15 @@ window.EVENT_WIZARD_HOST = {
     }
 };
 
+// saveEventPatch（app.js）に渡す共通オプション。このページの allEventsData（サーバー形）を対象にする。
+function seriesPatchOpts(extra) {
+    return Object.assign({
+        getEvent: id => allEventsData.find(e => e.ID === id),
+        persist: () => api.saveCache('events', allEventsData),
+        onConflict: () => init()
+    }, extra);
+}
+
 // ウィザードの削除ボタンから呼ばれる削除フロー（一覧ページと同じ Undo つき）
 function confirmDeleteSeriesEvent(id) {
     if (!api.isAdmin()) {
@@ -127,7 +136,8 @@ async function executeDeleteSeriesEvent(id) {
                 toast('復元に失敗しました: ' + e.message, 'error');
             }
         },
-        () => {},
+        // 元に戻せる期間が過ぎたら、添付ファイルの実体（R2）も消す（Undo で復元した記録のリンクが壊れないよう、確定後に消す）
+        () => deleteStoredFiles((Array.isArray(backup.Files) ? backup.Files : []).map(f => f && f.driveId)),
         5000
     );
 }
@@ -203,7 +213,11 @@ async function init() {
         allEventsData = all.events || [];
         api.saveCache('events', allEventsData);
         if (all.members) { membersCache = all.members; api.saveCache('members', membersCache); }
-        if (all.experiments) { experimentsCache = all.experiments; api.saveCache('experiments', experimentsCache); }
+        if (all.experiments) {
+            experimentsCache = all.experiments;
+            api.saveCache('experiments', experimentsCache);
+            populateDatalists(); // 実験名の入力候補・実在チェックを最新のマスタに更新する
+        }
         if (Array.isArray(all.votes)) {
             primeVotesCache(all.votes);
             api.saveCache('votes', all.votes);
@@ -690,25 +704,14 @@ async function saveSafetyInfo() {
     const hospital = document.getElementById('series-safety-hospital-input')?.value.trim() || '';
     const police = document.getElementById('series-safety-police-input')?.value.trim() || '';
 
-    try {
-        const saved = await api.save('events', {
-            ...ev, PostalCode: postalCode, Address: address, LocationTel: tel, EmergencyHospital: hospital, EmergencyPolice: police,
-            _baseUpdatedAt: ev.UpdatedAt || ''
-        });
-        const idx = allEventsData.findIndex(e => e.ID === ev.ID);
-        if (idx >= 0) allEventsData[idx] = saved;
-        api.saveCache('events', allEventsData);
-        filterSeries();
-        toast('会場情報を保存しました', 'success');
-        renderSafetyInfo();
-    } catch (e) {
-        if (String(e.message).includes('conflict')) {
-            toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', 4000);
-            init();
-        } else {
-            toast('保存失敗: ' + e.message, 'error');
-        }
-    }
+    // 失敗時は入力フォームを開いたままにする（再描画しない）
+    await saveEventPatch(ev.ID, {
+        PostalCode: postalCode, Address: address, LocationTel: tel, EmergencyHospital: hospital, EmergencyPolice: police
+    }, seriesPatchOpts({
+        successMessage: '会場情報を保存しました',
+        successDuration: 3000,
+        onSaved: () => { filterSeries(); renderSafetyInfo(); }
+    }));
 }
 
 function formatTelLink(text) {
@@ -919,54 +922,26 @@ function renderPrAssignments(ev) {
 async function savePrField(id, channel, value) {
     const ev = allEventsData.find(e => e.ID === id);
     if (!ev) return;
-    const prev = ev.PrAssignments ? { ...ev.PrAssignments } : {};
-    if (!ev.PrAssignments) ev.PrAssignments = {};
-    if ((ev.PrAssignments[channel] || '') === value) return;
-    ev.PrAssignments[channel] = value;
-    api.saveCache('events', allEventsData);
-    try {
-        const saved = await api.save('events', { ...ev, _baseUpdatedAt: ev.UpdatedAt || '' });
-        Object.assign(ev, saved);
-        api.saveCache('events', allEventsData);
-        toast('広報担当を保存しました', 'success', 2000);
-    } catch (e) {
-        ev.PrAssignments = prev;
-        renderDetail();
-        if (String(e.message).includes('conflict')) {
-            toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', 4000);
-            init();
-        } else {
-            toast('保存失敗: ' + e.message, 'error');
-        }
-    }
+    const current = ev.PrAssignments ? { ...ev.PrAssignments } : {};
+    if ((current[channel] || '') === value) return;
+    current[channel] = value;
+    await saveEventPatch(id, { PrAssignments: current }, seriesPatchOpts({
+        successMessage: '広報担当を保存しました',
+        onRollback: () => renderDetail()
+    }));
 }
 
 // 「イベント後に記入」欄の保存（楽観的更新。失敗時は元の値へ戻す）
 async function savePostEventField(id, field, value) {
     const ev = allEventsData.find(e => e.ID === id);
     if (!ev) return;
-    const prev = ev[field] || '';
-    if (prev === value) return;
-
-    ev[field] = value;
-    api.saveCache('events', allEventsData);
+    if ((ev[field] || '') === value) return;
 
     const label = field === 'VisitorCount' ? '来場者数' : '参加メンバー数';
-    try {
-        const saved = await api.save('events', { ...ev, _baseUpdatedAt: ev.UpdatedAt || '' });
-        Object.assign(ev, saved);
-        api.saveCache('events', allEventsData);
-        toast(`${label}を保存しました`, 'success', 2000);
-    } catch (e) {
-        ev[field] = prev;
-        renderDetail();
-        if (String(e.message).includes('conflict')) {
-            toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', 4000);
-            init();
-        } else {
-            toast('保存失敗: ' + e.message, 'error');
-        }
-    }
+    await saveEventPatch(id, { [field]: value }, seriesPatchOpts({
+        successMessage: `${label}を保存しました`,
+        onRollback: () => renderDetail()
+    }));
 }
 
 // ---- 参加状況（出欠のインライン回答＋サマリー。vote-widget.js の共通実装を使う） ----
@@ -1332,32 +1307,16 @@ function renderExpResultsHtml(expName) {
 async function saveDocStatus(id, field, value) {
     const ev = allEventsData.find(e => e.ID === id);
     if (!ev) return;
-    const prev = ev[field] || '';
-    if (prev === value) return;
-
-    ev[field] = value;
-    api.saveCache('events', allEventsData);
-    filterSeries();
-    renderDetail();
+    if ((ev[field] || '') === value) return;
 
     const def = field === 'KyokaStatus' ? KYOKA_STATUS : REPORT_STATUS;
     const docName = field === 'KyokaStatus' ? '許可願' : '報告書';
-    try {
-        const saved = await api.save('events', { ...ev, _baseUpdatedAt: ev.UpdatedAt || '' });
-        Object.assign(ev, saved);
-        api.saveCache('events', allEventsData);
-        toast(`${docName}を「${(def[value] || def['']).label}」にしました`, 'success', 2000);
-    } catch (e) {
-        ev[field] = prev;
-        filterSeries();
-        renderDetail();
-        if (String(e.message).includes('conflict')) {
-            toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', 4000);
-            init();
-        } else {
-            toast('保存失敗: ' + e.message, 'error');
-        }
-    }
+    const rerender = () => { filterSeries(); renderDetail(); };
+    await saveEventPatch(id, { [field]: value }, seriesPatchOpts({
+        successMessage: `${docName}を「${(def[value] || def['']).label}」にしました`,
+        onOptimistic: rerender,
+        onRollback: rerender
+    }));
 }
 
 async function saveDetailFeedback() {
@@ -1370,45 +1329,51 @@ async function saveDetailFeedback() {
     const saveBtn = document.getElementById('series-fb-save-btn');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
 
-    try {
-        const saved = await api.save('events', {
-            ...ev, Positives: positives, Reflections: reflections,
-            _baseUpdatedAt: ev.UpdatedAt || ''
-        });
-        const idx = allEventsData.findIndex(e => e.ID === ev.ID);
-        if (idx >= 0) allEventsData[idx] = saved;
-        api.saveCache('events', allEventsData);
-        filterSeries();
+    // 失敗（競合を含む）はヘルパーがトースト表示・ロールバックする。入力欄はそのまま残す
+    const ok = await saveEventPatch(ev.ID, { Positives: positives, Reflections: reflections }, seriesPatchOpts({ conflictDuration: 5000 }));
+    if (!ok) {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; }
+        return;
+    }
+    filterSeries();
 
-        await saveExperimentFeedbackEntries(saved);
-
-        toast('保存しました', 'success');
-        renderDetail();
-        renderReflectionTab();
+    // 実験ごとの振り返りの保存に失敗したら、成功トーストは出さず、入力を残したままエラーを表示する
+    const failures = await saveExperimentFeedbackEntries(ev);
+    if (failures.length > 0) {
+        toast('イベントの振り返りは保存しましたが、実験ごとの振り返りを保存できませんでした（' + failures.join('、') + '）。入力は残してあります。', 'error', 8000);
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; }
         renderFeedbackTimeline();
         renderStats();
         renderOverview();
-        // 記入欄と表示は同じ「振り返り」タブに並んでいるので、その場で表示側を描き直す
+
+    toast('保存しました', 'success');
+    renderDetail();
+    renderReflectionTab();
+    renderFeedbackTimeline();
+    renderStats();
+    renderOverview();
+    // 記入欄と表示は同じ「振り返り」タブに並んでいるので、その場で表示側を描き直す
+    renderResultsTab();
         renderResultsTab();
-    } catch (e) {
-        if (String(e.message).includes('conflict')) {
-            toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', 5000);
-            init();
-            return;
-        }
-        toast('保存失敗: ' + e.message, 'error');
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; }
+        return;
     }
 }
 
-// 実験ごとの振り返りを、対応する実験レコード（Positives/Reflections の履歴JSON）へ追記する
+    const failures = [];
+// 実験ごとの振り返りを、対応する実験レコード（Positives/Reflections の履歴JSON）へ追記する。
+// 失敗した実験の説明（文字列）の配列を返す。空配列なら全件成功。
 async function saveExperimentFeedbackEntries(eventData) {
     const fbCards = document.querySelectorAll('#series-exp-feedback .exp-fb-card');
-    if (!fbCards.length) return;
+    if (!fbCards.length) return failures;
 
     let experiments = (api.loadCache('experiments') || {}).items;
     if (!experiments) {
-        try { experiments = await api.list('experiments'); api.saveCache('experiments', experiments); } catch (_) { return; }
+        try {
+            experiments = await api.list('experiments');
+            api.saveCache('experiments', experiments);
+        } catch (e) {
+            return ['実験一覧を取得できません: ' + (e && e.message)];
+        }
     }
 
     for (const fbCard of fbCards) {
@@ -1417,6 +1382,8 @@ async function saveExperimentFeedbackEntries(eventData) {
         const refText = (fbCard.querySelector('.exp-fb-reflection')?.value || '').trim();
         if (!posText && !refText) continue;
 
+        const prevPositives = exp.Positives;
+        const prevReflections = exp.Reflections;
         const exp = experiments.find(e => e.Name === expName);
         if (!exp) continue;
 
@@ -1439,12 +1406,18 @@ async function saveExperimentFeedbackEntries(eventData) {
 
         try {
             const saved = await api.save('experiments', { ...exp, _baseUpdatedAt: exp.UpdatedAt || '' });
+            // 失敗した分は追記前の状態に戻す（再保存で二重に追記されないように）
+            exp.Positives = prevPositives;
+            exp.Reflections = prevReflections;
+            const reason = String(e && e.message).includes('conflict') ? '他の人が編集中' : (e && e.message);
+            failures.push(`${expName}: ${reason}`);
             const idx = experiments.findIndex(e => e.ID === exp.ID);
             if (idx >= 0) experiments[idx] = saved;
         } catch (e) {
             console.warn('Experiment feedback save failed for', expName, e);
         }
     }
+    return failures;
 
     api.saveCache('experiments', experiments);
     experimentsCache = experiments;

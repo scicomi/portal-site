@@ -221,9 +221,8 @@ function renderPasswords() {
         const open = expandedPw.has(p.ID);
         const host = hostOf(p.URL);
         const urlHref = safeHttpUrl(p.URL);
-        let photos = [];
-        try { photos = JSON.parse(p.Photos || '[]'); } catch (_) {}
-        const photo = Array.isArray(photos) && photos.length > 0 ? photos[0] : null;
+        const photos = parseJsonArray(p.Photos);
+        const photo = photos.length > 0 ? photos[0] : null;
         const photoSrc = photo ? safeHttpUrl(fileImageUrl(photo, 200)) : '';   // http(s) 以外は表示しない
         return `
         <div class="pw-card ${open ? 'open' : ''}" data-id="${escapeAttr(p.ID)}">
@@ -320,6 +319,10 @@ function togglePwField(inputId, btn) {
 
 let pwWizardStep = 0;
 let pwEditingPhotos = []; // [{name,url,driveId}] 最大1枚
+// R2 の孤児を残さないための管理（モーダルを開くたびに初期化）
+let pwSessionUploads = [];  // このモーダルでアップロードして、まだ保存していないファイルの driveId
+let pwPhotosToDelete = [];  // 保存済みの写真を外した分。保存に成功してから R2 の実体を消す
+let pwModalSession = 0;     // モーダルを開いた回数。アップロード中に閉じられたかの判定用
 
 function pwWizardSetStep(step) {
     pwWizardStep = step;
@@ -376,16 +379,35 @@ async function handlePwPhotoSelect(input) {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) { toast(file.name + ' は10MBを超えています', 'error'); return; }
     toast('アップロード中: ' + file.name, 'info', 2000);
+    const session = pwModalSession;
     try {
         const result = await api.uploadFile(file);
+        if (session !== pwModalSession || document.getElementById('pw-modal-edit').classList.contains('hidden')) {
+            // アップロード中にモーダルが閉じられた（または開き直された）。結果は捨て、実体も消す
+            deleteStoredFiles([result.driveId]);
+            return;
+        }
         pwEditingPhotos = [{ name: file.name, url: result.url, driveId: result.driveId }];
+        if (result.driveId) pwSessionUploads.push(result.driveId);
         renderPwPhotoPreview();
     } catch (e) {
-        toast('アップロード失敗: ' + e.message, 'error');
+        if (session === pwModalSession) toast('アップロード失敗: ' + e.message, 'error');
     }
 }
 
 function removePwPhoto() {
+    pwEditingPhotos.forEach(p => {
+        if (!p.driveId) return;
+        const si = pwSessionUploads.indexOf(p.driveId);
+        if (si >= 0) {
+            // このモーダルでアップロードしたばかりの写真は、その場で実体も消す
+            pwSessionUploads.splice(si, 1);
+            deleteStoredFiles([p.driveId]);
+        } else {
+            // 保存済みの写真は、保存に成功してから実体を消す（キャンセルすれば元に戻るため）
+            pwPhotosToDelete.push(p.driveId);
+        }
+    });
     pwEditingPhotos = [];
     renderPwPhotoPreview();
 }
@@ -393,6 +415,9 @@ function removePwPhoto() {
 function openPwModal() {
     editingPwId = null;
     pwEditingPhotos = [];
+    pwSessionUploads = [];
+    pwPhotosToDelete = [];
+    pwModalSession++;
     document.getElementById('pw-modal-title').textContent = 'パスワードを追加';
     document.getElementById('pw-f-category').value = 'other';
     document.getElementById('pw-f-logintype').value = 'normal';
@@ -415,8 +440,10 @@ function editPwEntry(id) {
     const p = pwData.find(x => x.ID === id);
     if (!p) return;
     editingPwId = id;
-    try { pwEditingPhotos = JSON.parse(p.Photos || '[]'); } catch (_) { pwEditingPhotos = []; }
-    if (!Array.isArray(pwEditingPhotos)) pwEditingPhotos = [];
+    pwEditingPhotos = parseJsonArray(p.Photos);
+    pwSessionUploads = [];
+    pwPhotosToDelete = [];
+    pwModalSession++;
     document.getElementById('pw-modal-title').textContent = 'パスワードを編集';
     document.getElementById('pw-f-category').value = p.Category || 'other';
     document.getElementById('pw-f-logintype').value = p.LoginType || 'normal';
@@ -438,8 +465,12 @@ function editPwEntry(id) {
     setTimeout(() => document.getElementById('pw-f-name').focus(), 50);
 }
 
+// 保存せずに閉じたときは、このモーダルでアップロードした未保存の写真を R2 から消す（保存成功時は空になっている）。
 function closePwModal() {
     document.getElementById('pw-modal-edit').classList.add('hidden');
+    if (pwSessionUploads.length > 0) deleteStoredFiles(pwSessionUploads);
+    pwSessionUploads = [];
+    pwPhotosToDelete = [];
 }
 
 async function savePwEntry() {
@@ -472,9 +503,13 @@ async function savePwEntry() {
             pwData.push(saved);
             if (saved.ID) expandedPw.add(saved.ID);
         }
+        // 保存できたので、残した写真は消さない。外した保存済みの写真は実体も消す
+        const removedPhotos = pwPhotosToDelete.slice();
+        pwSessionUploads = [];
         renderPasswords();
         closePwModal();
         toast('保存しました', 'success');
+        deleteStoredFiles(removedPhotos);
     } catch (e) {
         const msg = String(e.message || e);
         if (msg.includes('ADMIN_REQUIRED')) {
@@ -532,6 +567,8 @@ async function executeDeletePwEntry(id) {
     try {
         await api.deletePassword(id);
         toast('削除しました', 'success', 2000);
+        // 添付の写真（QR・スクリーンショット等）が公開 URL のまま R2 に残らないよう、実体も消す
+        deleteStoredFiles(parseJsonArray(backup.Photos).map(ph => ph.driveId));
     } catch (e) {
         pwData.splice(idx, 0, backup);
         renderPasswords();

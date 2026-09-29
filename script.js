@@ -240,7 +240,10 @@ async function refreshData(isManual = false) {
         api.saveCache('events', eventsData);
         membersData = all.members || [];
         api.saveCache('members', membersData);
-        if (all.experiments) api.saveCache('experiments', all.experiments);
+        if (all.experiments) {
+            api.saveCache('experiments', all.experiments);
+            populateDatalists(); // 実験名の入力候補・実在チェックを最新のマスタに更新する
+        }
         allVotesData = all.votes;
         api.saveCache('votes', allVotesData);
         rebuildVotesByEvent();
@@ -831,7 +834,8 @@ async function executeDeleteEvent(id) {
                 toast('復元に失敗しました: ' + err.message, 'error');
             }
         },
-        () => {},
+        // 元に戻せる期間が過ぎたら、添付ファイルの実体（R2）も消す（Undo で復元した記録のリンクが壊れないよう、確定後に消す）
+        () => deleteStoredFiles((Array.isArray(backup.Files) ? backup.Files : []).map(f => f && f.driveId)),
         5000
     );
 }
