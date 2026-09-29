@@ -99,13 +99,34 @@ function onLoginTypeChange() {
 function buildCategoryFilter() {
     const container = document.getElementById('pw-cat-filter');
     if (!container) return;
-    let html = '<button class="pw-cat-tab active" data-cat="" aria-pressed="true" onclick="setPwCatFilter(\'\')">すべて</button>';
+    let html = '<button class="pw-cat-tab active" data-cat="" aria-pressed="true" data-action="pw-cat-filter">すべて</button>';
     Object.keys(PW_CATS).forEach(key => {
         const cat = PW_CATS[key];
-        html += `<button class="pw-cat-tab" data-cat="${key}" aria-pressed="false" onclick="setPwCatFilter('${key}')" style="--cat-color:${cat.color}">${escapeHtml(cat.label)}</button>`;
+        html += `<button class="pw-cat-tab" data-cat="${escapeAttr(key)}" aria-pressed="false" data-action="pw-cat-filter" style="--cat-color:${cat.color}">${escapeHtml(cat.label)}</button>`;
     });
     container.innerHTML = html;
 }
+
+// 描画した data-action の受け口(onclick 属性に ID・URL を埋め込まない。app.js の registerActions 参照)。
+// URL を開く操作は、カード全体の開閉(pw-toggle-card)と衝突しないよう、最も内側の data-action だけが処理される。
+registerActions({
+    'pw-cat-filter': el => setPwCatFilter(el.dataset.cat || ''),
+    'pw-toggle-card': el => togglePwCard(el.dataset.id),
+    'pw-open-url': el => { const u = safeHttpUrl(el.dataset.url); if (u) window.open(u, '_blank', 'noopener'); },
+    'pw-copy': el => copyPwField(el.dataset.id, el.dataset.field, el),
+    'pw-toggle-secret': el => toggleSecret(el.dataset.id, el),
+    'pw-edit': el => editPwEntry(el.dataset.id),
+    'pw-delete': el => deletePwEntry(el.dataset.id)
+});
+// リンク(role=link の span)は Enter でも開く
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const el = e.target.closest && e.target.closest('[data-action="pw-open-url"]');
+    if (!el) return;
+    e.preventDefault();
+    const u = safeHttpUrl(el.dataset.url);
+    if (u) window.open(u, '_blank', 'noopener');
+});
 
 function setPwCatFilter(cat) {
     pwCatFilter = cat;
@@ -199,19 +220,19 @@ function renderPasswords() {
     list.innerHTML = items.map(p => {
         const open = expandedPw.has(p.ID);
         const host = hostOf(p.URL);
-        const urlHref = p.URL ? (/^https?:\/\//i.test(p.URL) ? p.URL : 'https://' + p.URL) : '';
+        const urlHref = safeHttpUrl(p.URL);
         let photos = [];
         try { photos = JSON.parse(p.Photos || '[]'); } catch (_) {}
         const photo = Array.isArray(photos) && photos.length > 0 ? photos[0] : null;
+        const photoSrc = photo ? safeHttpUrl(fileImageUrl(photo, 200)) : '';   // http(s) 以外は表示しない
         return `
         <div class="pw-card ${open ? 'open' : ''}" data-id="${escapeAttr(p.ID)}">
-            <button type="button" class="pw-card-head" aria-expanded="${open}" onclick="togglePwCard('${escapeAttr(p.ID)}')">
+            <button type="button" class="pw-card-head" aria-expanded="${open}" data-action="pw-toggle-card" data-id="${escapeAttr(p.ID)}">
                 <div class="pw-card-title">
                     ${catBadgeHtml(p.Category)}
                     <span class="pw-card-name">${escapeHtml(p.SiteName || '(名称未設定)')}</span>
                     ${urlHref ? `<span class="pw-card-link" role="link" tabindex="0" title="${escapeAttr(host || p.URL)} を開く"
-                        onclick="event.stopPropagation(); window.open('${escapeAttr(urlHref)}', '_blank', 'noopener');"
-                        onkeydown="if(event.key==='Enter'){event.stopPropagation(); window.open('${escapeAttr(urlHref)}', '_blank', 'noopener');}">&#x2197;</span>` : ''}
+                        data-action="pw-open-url" data-url="${escapeAttr(urlHref)}">&#x2197;</span>` : ''}
                 </div>
                 <span class="pw-card-chevron">${open ? '▲' : '▼'}</span>
             </button>
@@ -219,7 +240,7 @@ function renderPasswords() {
                 <div class="pw-row">
                     <span class="pw-row-label">ID / メール</span>
                     <span class="pw-row-value pw-mono">${escapeHtml(p.LoginID || '—')}</span>
-                    ${p.LoginID ? `<button class="pw-copy-btn" onclick="copyPwField('${escapeAttr(p.ID)}', 'LoginID', this)" title="コピー">コピー</button>` : ''}
+                    ${p.LoginID ? `<button class="pw-copy-btn" data-action="pw-copy" data-id="${escapeAttr(p.ID)}" data-field="LoginID" title="コピー">コピー</button>` : ''}
                 </div>
                 ${isSocialLogin(p.LoginType) ? `
                 <div class="pw-row">
@@ -230,19 +251,19 @@ function renderPasswords() {
                     <span class="pw-row-label">パスワード</span>
                     <span class="pw-row-value pw-mono pw-secret" id="pw-secret-${escapeAttr(p.ID)}" data-revealed="false">${p.Password ? '••••••••' : '—'}</span>
                     ${p.Password ? `
-                    <button class="pw-copy-btn" onclick="toggleSecret('${escapeAttr(p.ID)}', this)" title="表示切替">表示</button>
-                    <button class="pw-copy-btn" onclick="copyPwField('${escapeAttr(p.ID)}', 'Password', this)" title="コピー">コピー</button>` : ''}
+                    <button class="pw-copy-btn" data-action="pw-toggle-secret" data-id="${escapeAttr(p.ID)}" title="表示切替">表示</button>
+                    <button class="pw-copy-btn" data-action="pw-copy" data-id="${escapeAttr(p.ID)}" data-field="Password" title="コピー">コピー</button>` : ''}
                 </div>`}
                 ${p.Note ? `<div class="pw-row pw-row-note"><span class="pw-row-label">メモ</span><span class="pw-row-value pw-note-body">${noteToHtml(p.Note)}</span></div>` : ''}
-                ${photo ? `<div class="pw-row pw-row-photo">
+                ${photoSrc ? `<div class="pw-row pw-row-photo">
                     <span class="pw-row-label">写真</span>
-                    <a href="${escapeAttr(photo.url || '')}" target="_blank" rel="noopener" title="${escapeAttr(photo.name || '')}">
-                        <img class="pw-photo-thumb" src="${escapeAttr(fileImageUrl(photo, 200))}" alt="${escapeAttr(photo.name || '')}" loading="lazy" referrerpolicy="no-referrer">
-                    </a>
+                    ${safeHttpUrl(photo.url) ? `<a href="${escapeAttr(safeHttpUrl(photo.url))}" target="_blank" rel="noopener" title="${escapeAttr(photo.name || '')}">` : '<span>'}
+                        <img class="pw-photo-thumb" src="${escapeAttr(photoSrc)}" alt="${escapeAttr(photo.name || '')}" loading="lazy" referrerpolicy="no-referrer">
+                    ${safeHttpUrl(photo.url) ? '</a>' : '</span>'}
                 </div>` : ''}
                 <div class="pw-card-actions">
-                    <button class="tbl-btn" onclick="editPwEntry('${escapeAttr(p.ID)}')">編集</button>
-                    <button class="tbl-btn tbl-btn-danger" onclick="deletePwEntry('${escapeAttr(p.ID)}')">削除</button>
+                    <button class="tbl-btn" data-action="pw-edit" data-id="${escapeAttr(p.ID)}">編集</button>
+                    <button class="tbl-btn tbl-btn-danger" data-action="pw-delete" data-id="${escapeAttr(p.ID)}">削除</button>
                 </div>
             </div>
         </div>`;

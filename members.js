@@ -180,9 +180,11 @@ function buildGradeChips(fyMembers) {
     }
     row.style.display = 'inline-flex'; // 区分チップと同じ行に並べる（span ラッパーのため flex 指定）
     wrap.innerHTML = list.map(g =>
-        `<button class="filter-chip ${gradeFilter === g ? 'active' : ''}" aria-pressed="${gradeFilter === g}" onclick="setGradeFilter('${g}')">${g === '院生' ? '院生' : g + '生'}</button>`
+        `<button class="filter-chip ${gradeFilter === g ? 'active' : ''}" aria-pressed="${gradeFilter === g}" data-action="mb-grade-filter" data-grade="${escapeAttr(g)}">${g === '院生' ? '院生' : g + '生'}</button>`
     ).join('');
 }
+
+registerActions({ 'mb-grade-filter': el => setGradeFilter(el.dataset.grade) });   // onclick 属性に値を埋め込まない(app.js の registerActions 参照)
 
 function setGradeFilter(g) {
     gradeFilter = (gradeFilter === g) ? null : g;

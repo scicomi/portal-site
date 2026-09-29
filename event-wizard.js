@@ -841,7 +841,7 @@ function openEventWizard(editId, template) {
             <div class="wizard-progress">
                 ${steps.map((s, i) => `
                     ${i > 0 ? '<div class="wizard-step-line" data-line="' + i + '"></div>' : ''}
-                    <button type="button" class="wizard-step-dot${i === 0 ? ' active' : ''}" data-dot="${i}" title="${s.label}へ移動" onclick="evWizardGoto(${i})">${i + 1}</button>
+                    <button type="button" class="wizard-step-dot${i === 0 ? ' active' : ''}" data-dot="${i}" title="${escapeAttr(s.label)}へ移動" data-action="ew-goto">${i + 1}</button>
                 `).join('')}
             </div>
             <div class="wizard-body">${stepsHtml}</div>
@@ -1043,6 +1043,12 @@ async function wzUploadFiles(fileList) {
     }
 }
 
+// ウィザード内ボタンの委譲先（onclick 属性にインデックス等を埋め込まない。app.js の registerActions 参照）
+registerActions({
+    'ew-goto': el => evWizardGoto(Number(el.dataset.dot)),
+    'ew-remove-file': el => wzRemoveFile(Number(el.dataset.index))
+});
+
 function wzRemoveFile(index) {
     if (!tempNewEvent || !Array.isArray(tempNewEvent.Files)) return;
     const file = tempNewEvent.Files[index];
@@ -1074,8 +1080,8 @@ function wzRefreshFileList() {
                 <span class="file-name">${name}${statusLabel}</span>
                 <span class="file-size">${size}</span>
                 <div class="file-actions">
-                    ${!uploading && !failed && f.url ? `<a href="${escapeAttr(f.url)}" target="_blank" rel="noopener" class="tbl-btn">開く</a>` : ''}
-                    <button class="tbl-btn tbl-btn-danger" onclick="wzRemoveFile(${i})" type="button">${uploading ? 'キャンセル' : '削除'}</button>
+                    ${!uploading && !failed && safeHttpUrl(f.url) ? `<a href="${escapeAttr(safeHttpUrl(f.url))}" target="_blank" rel="noopener" class="tbl-btn">開く</a>` : ''}
+                    <button class="tbl-btn tbl-btn-danger" data-action="ew-remove-file" data-index="${i}" type="button">${uploading ? 'キャンセル' : '削除'}</button>
                 </div>
             </div>
         `;
