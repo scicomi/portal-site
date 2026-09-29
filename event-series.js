@@ -1059,9 +1059,7 @@ async function renderAttendanceList(ev) {
     const answeredIds = new Set([...grouped.attend, ...grouped.absent, ...grouped.undecided].map(v => v.memberId));
 
     attendanceData = {
-        attend: memberVotes.filter(v => v.status === 'attend'),
-        absent: memberVotes.filter(v => v.status === 'absent'),
-        undecided: memberVotes.filter(v => v.status === 'undecided'),
+        ...grouped,
         noAnswer: eligible.filter(m => !answeredIds.has(m.ID)).map(m => ({ memberId: m.ID }))
     };
     renderAttendanceListBody();
@@ -1344,6 +1342,9 @@ async function saveDetailFeedback() {
         renderFeedbackTimeline();
         renderStats();
         renderOverview();
+        renderResultsTab();
+        return;
+    }
 
     toast('保存しました', 'success');
     renderDetail();
@@ -1353,15 +1354,12 @@ async function saveDetailFeedback() {
     renderOverview();
     // 記入欄と表示は同じ「振り返り」タブに並んでいるので、その場で表示側を描き直す
     renderResultsTab();
-        renderResultsTab();
-        return;
-    }
 }
 
-    const failures = [];
 // 実験ごとの振り返りを、対応する実験レコード（Positives/Reflections の履歴JSON）へ追記する。
 // 失敗した実験の説明（文字列）の配列を返す。空配列なら全件成功。
 async function saveExperimentFeedbackEntries(eventData) {
+    const failures = [];
     const fbCards = document.querySelectorAll('#series-exp-feedback .exp-fb-card');
     if (!fbCards.length) return failures;
 
@@ -1381,11 +1379,11 @@ async function saveExperimentFeedbackEntries(eventData) {
         const refText = (fbCard.querySelector('.exp-fb-reflection')?.value || '').trim();
         if (!posText && !refText) continue;
 
-        const prevPositives = exp.Positives;
-        const prevReflections = exp.Reflections;
         const exp = experiments.find(e => e.Name === expName);
         if (!exp) continue;
 
+        const prevPositives = exp.Positives;
+        const prevReflections = exp.Reflections;
         if (posText) {
             const entries = parseFeedbackEntries(exp.Positives);
             entries.push({
@@ -1405,21 +1403,21 @@ async function saveExperimentFeedbackEntries(eventData) {
 
         try {
             const saved = await api.save('experiments', { ...exp, _baseUpdatedAt: exp.UpdatedAt || '' });
+            const idx = experiments.findIndex(e => e.ID === exp.ID);
+            if (idx >= 0) experiments[idx] = saved;
+        } catch (e) {
             // 失敗した分は追記前の状態に戻す（再保存で二重に追記されないように）
             exp.Positives = prevPositives;
             exp.Reflections = prevReflections;
             const reason = String(e && e.message).includes('conflict') ? '他の人が編集中' : (e && e.message);
             failures.push(`${expName}: ${reason}`);
-            const idx = experiments.findIndex(e => e.ID === exp.ID);
-            if (idx >= 0) experiments[idx] = saved;
-        } catch (e) {
             console.warn('Experiment feedback save failed for', expName, e);
         }
     }
-    return failures;
 
     api.saveCache('experiments', experiments);
     experimentsCache = experiments;
+    return failures;
 }
 
 // ---- 帯同メンバーのクリッカブル表示 ----
