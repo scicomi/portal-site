@@ -324,6 +324,9 @@ function getMyVoteForEvent(eventId) {
     return allVotesData.find(v => v.eventId === eventId && v.memberId === memberId) || null;
 }
 
+// 出欠セレクトの change 委譲（イベント ID は既存の data-vote-event から取る。onchange 属性に ID を埋め込まない）
+registerActions({ 'ev-inline-vote': el => onInlineVoteChange(el, el.dataset.voteEvent) });
+
 function onInlineVoteChange(selectEl, eventId) {
     const memberId = getSavedVoteMemberId();
     if (!memberId) { toast('先に名前を選択してください', 'info'); selectEl.value = ''; return; }
@@ -526,7 +529,7 @@ function renderEvents() {
             const closed = voteDeadlinePassed(ev);
             voteCell = `<select class="ev-vote-select ${colorClass}" data-vote-event="${escapeAttr(ev.ID)}"
                 aria-label="「${escapeAttr(displayTitle)}」の出欠を回答"
-                onchange="onInlineVoteChange(this, '${escapeAttr(ev.ID)}')"
+                data-change-action="ev-inline-vote"
                 ${closed && !isAdmin ? 'disabled title="締切済み"' : ''}>
                 <option value="">--</option>
                 <option value="attend" ${curStatus === 'attend' ? 'selected' : ''}>参加</option>

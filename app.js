@@ -61,6 +61,29 @@ function escapeAttr(s) {
   return escapeHtml(s);
 }
 
+// ---- data-* によるイベント委譲（XSS 対策: onclick 属性に ID・URL 等のユーザーデータを埋め込まない） ----
+// 使い方: 描画側は data-action="名前" data-id="…"（値は escapeAttr）を持たせ、ページ側は
+//   registerActions({ 名前: (el, ev) => … }) で登録する。click は [data-action]、change は [data-change-action]。
+// 名前はページをまたいで共有されるため、領域名の接頭辞を付けること（未登録の名前は無視される）。
+const _actionHandlers = {};
+function registerActions(map) { Object.assign(_actionHandlers, map); }
+function _dispatchAction(attr, e) {
+  const el = e.target.closest && e.target.closest('[' + attr + ']');
+  if (!el) return;
+  const fn = _actionHandlers[el.getAttribute(attr)];
+  if (fn) fn(el, e);
+}
+document.addEventListener('click', e => _dispatchAction('data-action', e));
+document.addEventListener('change', e => _dispatchAction('data-change-action', e));
+// 画像の読み込み失敗時のフォールバック: <img data-fallback="検証済みURL"> を1回だけ差し替える（onerror 属性の代替）。
+// error は bubble しないので capture で拾う。fallback は描画側で safeHttpUrl を通すこと。
+document.addEventListener('error', e => {
+  const img = e.target;
+  if (!img || img.tagName !== 'IMG' || !img.dataset.fallback || img.dataset.fbDone) return;
+  img.dataset.fbDone = '1';
+  img.src = img.dataset.fallback;
+}, true);
+
 function toISODate(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');

@@ -273,7 +273,7 @@ function renderFeedbackEntry(f) {
                 <span class="fb-label">${label}</span>
                 ${eventLink}
                 <span class="fb-date">${escapeHtml(dateStr)}</span>
-                <button class="fb-del-btn" onclick="deleteFeedbackEntry('${escapeAttr(f.id || '')}', '${f.type}')" title="削除">&#10005;</button>
+                <button class="fb-del-btn" data-action="expd-del-feedback" data-id="${escapeAttr(f.id || '')}" data-type="${escapeAttr(f.type || '')}" title="削除">&#10005;</button>
             </div>
             <div class="fb-entry-text">${escapeHtml(f.text || '')}</div>
         </div>
@@ -462,17 +462,17 @@ function renderPhotos() {
 
     // 画像の表示 URL は fileImageUrl(api.js)が決める(R2 の公開 URL、旧 Drive の URL の両方に対応)
     gallery.innerHTML = photos.map((p, i) => {
-        const thumb = fileImageUrl(p, 1600);
-        const fallback = p.url || thumb;
-        const openUrl = p.url || thumb;
+        // URL は http(s) のみ通す(javascript: 等は描画しない)。画像の読み込み失敗時の代替は data-fallback(app.js の error 委譲)
+        const thumb = safeHttpUrl(fileImageUrl(p, 1600));
+        const openUrl = safeHttpUrl(p.url) || thumb;
+        const fallback = safeHttpUrl(p.url) || thumb;
         return `
         <div class="photo-item">
-            <a href="${escapeAttr(openUrl)}" target="_blank" rel="noopener" title="${escapeAttr(p.name || '')}">
+            ${thumb ? `<a href="${escapeAttr(openUrl)}" target="_blank" rel="noopener" title="${escapeAttr(p.name || '')}">
                 <img src="${escapeAttr(thumb)}" alt="${escapeAttr(p.name || '')}" loading="lazy"
-                     referrerpolicy="no-referrer"
-                     onerror="this.onerror=null; this.src='${escapeAttr(fallback)}';">
-            </a>
-            ${api.isAdmin() ? `<button class="photo-delete" onclick="event.preventDefault(); deletePhoto(${i})" title="削除">✕</button>` : ''}
+                     referrerpolicy="no-referrer" data-fallback="${escapeAttr(fallback)}">
+            </a>` : `<span class="empty-state">表示できない画像</span>`}
+            ${api.isAdmin() ? `<button class="photo-delete" data-action="expd-del-photo" data-index="${i}" title="削除">✕</button>` : ''}
         </div>`;
     }).join('');
 }
@@ -568,6 +568,14 @@ const VIDEO_PAGE_SIZE = 12;
 let videoVisibleCount = VIDEO_PAGE_SIZE;
 
 // youtube.com/watch?v=, youtu.be/, /embed/, /shorts/ のいずれの形式からも動画IDを取り出す。取れなければ空文字。
+// 描画した data-action の受け口(onclick 属性に id・index を埋め込まない。app.js の registerActions 参照)
+registerActions({
+    'expd-del-feedback': el => deleteFeedbackEntry(el.dataset.id, el.dataset.type),
+    'expd-del-photo': (el, e) => { e.preventDefault(); deletePhoto(Number(el.dataset.index)); },
+    'expd-del-video': el => deleteVideo(Number(el.dataset.index)),
+    'expd-play-video': el => playVideo(el, el.dataset.id)
+});
+
 function extractYoutubeId(url) {
     if (!url) return '';
     const s = String(url).trim();
@@ -608,18 +616,20 @@ function renderVideos() {
     const visible = videos.slice(0, videoVisibleCount);
 
     gallery.innerHTML = visible.map((v, i) => {
+        // id は保存データ由来なので、YouTube の ID 形式(11 文字)に合うものだけ描画する(サムネ・iframe の URL は検証済み id のみで組み立てる)
+        if (!v || !YT_ID_RE.test(String(v.id))) return '';
         const thumb = `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`;
         const fallback = `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`;
         return `
         <div class="video-item">
-            <button type="button" class="video-thumb-btn" onclick="playVideo(this, '${v.id}')" aria-label="${escapeAttr(v.title || '動画を再生')}">
-                <img src="${thumb}" alt="" loading="lazy" onerror="this.onerror=null; this.src='${fallback}';">
+            <button type="button" class="video-thumb-btn" data-action="expd-play-video" data-id="${escapeAttr(v.id)}" aria-label="${escapeAttr(v.title || '動画を再生')}">
+                <img src="${thumb}" alt="" loading="lazy" data-fallback="${fallback}">
                 <span class="video-play-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
                 </span>
             </button>
             ${v.title ? `<p class="video-title" title="${escapeAttr(v.title)}">${escapeHtml(v.title)}</p>` : ''}
-            ${api.isAdmin() ? `<button class="video-delete" onclick="deleteVideo(${i})" title="削除">✕</button>` : ''}
+            ${api.isAdmin() ? `<button class="video-delete" data-action="expd-del-video" data-index="${i}" title="削除">✕</button>` : ''}
         </div>`;
     }).join('');
 
@@ -632,7 +642,9 @@ function showMoreVideos() {
 }
 
 // サムネイルをクリックした時だけ埋め込み再生に切り替える（多数登録時に全件同時ロードしないため）
+const YT_ID_RE = /^[\w-]{11}$/;
 function playVideo(btn, id) {
+    if (!YT_ID_RE.test(String(id))) return;
     const wrap = btn.closest('.video-item');
     if (!wrap) return;
     const embed = document.createElement('div');

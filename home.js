@@ -2,6 +2,9 @@
  * ホームページ（ダッシュボード）
  */
 
+// リスト行クリックで詳細ページへ(遷移先はこのサイト内の event-series.html のみ)
+registerActions({ 'home-goto': el => { const h = el.dataset.href || ''; if (/^event-series\.html\?/.test(h)) location.href = h; } });
+
 document.addEventListener('DOMContentLoaded', () => {
     bootPage('home', init);
 });
@@ -425,7 +428,7 @@ function renderFeedbackPending(events) {
     }
     container.innerHTML = pending.map(e => {
         const url = `event-series.html?event=${encodeURIComponent(e.ID)}&tab=feedback`;
-        return `<li onclick="location.href='${url}'" style="cursor:pointer;">
+        return `<li data-action="home-goto" data-href="${escapeAttr(url)}" style="cursor:pointer;">
             <span class="dl-date">${shortDate(e.Date)}</span>
             <span class="dl-title"><a href="${url}" class="report-event-link">${escapeHtml(e.Title || '(無題)')}</a></span>
             <span class="dl-badge badge-warning">未記入</span>

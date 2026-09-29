@@ -477,7 +477,7 @@ function renderHeaderActions() {
     const ev = currentEvent();
     if (!ev) { box.innerHTML = ''; return; }
     box.innerHTML = `
-        <button type="button" class="btn btn-secondary btn-sm" onclick="openEventWizard('${escapeAttr(ev.ID)}')">編集</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-action="es-edit-event" data-id="${escapeAttr(ev.ID)}">編集</button>
         <a class="btn btn-secondary btn-sm" href="events.html?duplicate=${encodeURIComponent(ev.ID)}" title="この回の内容を引き継いで新しい開催を作る">複製</a>
     `;
 }
@@ -528,7 +528,7 @@ function renderScopeContext() {
     const navBtn = (step, glyph, title) => {
         const t = asc[idx + step];
         return `<button type="button" class="scope-ctx-nav" title="${title}" aria-label="${title}"
-            ${t ? `onclick="selectOccurrence('${escapeAttr(t.ID)}')"` : 'disabled'}>${glyph}</button>`;
+            ${t ? `data-action="es-select-occ" data-id="${escapeAttr(t.ID)}"` : 'disabled'}>${glyph}</button>`;
     };
 
     box.innerHTML = `
@@ -538,7 +538,7 @@ function renderScopeContext() {
             <small>${idx + 1}回目${isUpcoming ? '・開催予定' : ''}</small>
         </span>
         ${seriesEvents.length > 1 ? navBtn(1, '&rsaquo;', '次の回') : ''}
-        ${seriesEvents.length > 1 ? `<select class="scope-ctx-select" aria-label="開催回を選ぶ" onchange="selectOccurrence(this.value)">${options}</select>` : ''}`;
+        ${seriesEvents.length > 1 ? `<select class="scope-ctx-select" aria-label="開催回を選ぶ" data-change-action="es-select-occ">${options}</select>` : ''}`;
 }
 
 function selectOccurrence(id) {
@@ -768,7 +768,7 @@ function renderDetail() {
         <div class="detail-checklist">
             <span class="detail-checklist-label">未入力の項目:</span>
             ${miss.map(m => `<span class="checklist-chip">${escapeHtml(m)}</span>`).join('')}
-            <button type="button" class="detail-checklist-link" onclick="openEventWizard('${escapeAttr(ev.ID)}')">編集して追記 &rarr;</button>
+            <button type="button" class="detail-checklist-link" data-action="es-edit-event" data-id="${escapeAttr(ev.ID)}">編集して追記 &rarr;</button>
         </div>` : '';
 
     // 実験・発表者
@@ -1114,6 +1114,15 @@ function switchAttendanceFilter(status) {
     renderAttendanceListBody();
 }
 
+// 描画した data-action / data-change-action の受け口（onclick 属性に ID を埋め込まない。app.js の registerActions 参照）
+registerActions({
+    'es-edit-event': el => openEventWizard(el.dataset.id),
+    'es-select-occ': el => selectOccurrence(el.dataset.id || el.value),   // ‹ › ボタンは data-id、<select> は value
+    'es-open-occ': el => openOccurrence(el.dataset.id),
+    'es-attendance-filter': el => switchAttendanceFilter(el.dataset.key),
+    'es-staff-detail': el => openStaffDetailModal(el.dataset.id)
+});
+
 function renderAttendanceListBody() {
     const body = document.getElementById('attendance-list-body');
     if (!body || !attendanceData) return;
@@ -1122,7 +1131,7 @@ function renderAttendanceListBody() {
 
     // 既定は「参加」。
     const chip = (key, label, count) =>
-        `<button type="button" class="filter-chip ${attendanceFilter === key ? 'active' : ''}" aria-pressed="${attendanceFilter === key}" onclick="switchAttendanceFilter('${key}')">${label} (${count})</button>`;
+        `<button type="button" class="filter-chip ${attendanceFilter === key ? 'active' : ''}" aria-pressed="${attendanceFilter === key}" data-action="es-attendance-filter" data-key="${escapeAttr(key)}">${label} (${count})</button>`;
     const tabsHtml = `<div class="expd-feedback-filters">
         ${keys.map(k => chip(k, ATTENDANCE_STATUS[k].label, attendanceData[k].length)).join('')}
     </div>`;
@@ -1284,7 +1293,7 @@ function renderVenueResultsHtml() {
             return `
             <div class="detail-section-card results-occ-card">
                 <div class="results-occ-date">
-                    <button type="button" class="sfb-event-link" onclick="openOccurrence('${escapeAttr(ev.ID)}')">${escapeHtml(ev.Date || '')} (${dayOfWeekJP(ev.Date)})</button>
+                    <button type="button" class="sfb-event-link" data-action="es-open-occ" data-id="${escapeAttr(ev.ID)}">${escapeHtml(ev.Date || '')} (${dayOfWeekJP(ev.Date)})</button>
                 </div>
                 ${visitors || participants ? `<div class="results-counts">
                     ${visitors ? `<span class="results-count-chip">来場者数 <strong>${escapeHtml(visitors)}</strong> 人</span>` : ''}
@@ -1327,7 +1336,7 @@ function renderExpResultsHtml(expName) {
             <span class="sfb-icon">${isPos ? '&#9675;' : '&#9651;'}</span>
             <span class="sfb-label">${isPos ? '良かった点' : '改善点'}</span>
             <span class="sfb-text">${escapeHtml(en.text || '')}</span>
-            ${en.eventId ? `<button type="button" class="sfb-event-link" onclick="openOccurrence('${escapeAttr(en.eventId)}')">${escapeHtml(en.date || '')}</button>` : `<span class="sfb-date">${escapeHtml(en.date || '')}</span>`}
+            ${en.eventId ? `<button type="button" class="sfb-event-link" data-action="es-open-occ" data-id="${escapeAttr(en.eventId)}">${escapeHtml(en.date || '')}</button>` : `<span class="sfb-date">${escapeHtml(en.date || '')}</span>`}
         </div>`;
     }).join('')}</div>`;
 }
@@ -1466,7 +1475,7 @@ function renderAccompanyHtml(accompanyStr) {
             const role = memberRoleOf(member);
             const isStaff = role === 'アドバイザー' || role === 'コーディネーター';
             if (isStaff) {
-                return `<button type="button" class="accompany-staff-link" onclick="openStaffDetailModal('${escapeAttr(member.ID)}')">${escapeHtml(name)}</button>`;
+                return `<button type="button" class="accompany-staff-link" data-action="es-staff-detail" data-id="${escapeAttr(member.ID)}">${escapeHtml(name)}</button>`;
             }
         }
         return escapeHtml(name);
@@ -1571,7 +1580,7 @@ function renderFeedbackTimeline() {
                         <span class="sfb-icon">${isPos ? '&#9675;' : '&#9651;'}</span>
                         <span class="sfb-label">${isPos ? '良かった点' : '改善点'}</span>
                         <span class="sfb-text">${escapeHtml(f.text)}</span>
-                        <button type="button" class="sfb-event-link" onclick="openOccurrence('${escapeAttr(f.id)}')">${escapeHtml(f.date)}</button>
+                        <button type="button" class="sfb-event-link" data-action="es-open-occ" data-id="${escapeAttr(f.id)}">${escapeHtml(f.date)}</button>
                     </div>`;
                 }).join('')}
             </div>
@@ -1694,7 +1703,7 @@ function renderOverview() {
                     ${pos ? `<div class="sfb-entry sfb-positive"><span class="sfb-icon">&#9675;</span><span class="sfb-label">良</span><span class="sfb-text">${escapeHtml(pos)}</span></div>` : ''}
                     ${ref ? `<div class="sfb-entry sfb-reflection"><span class="sfb-icon">&#9651;</span><span class="sfb-label">改</span><span class="sfb-text">${escapeHtml(ref)}</span></div>` : ''}
                 </div>` : ''}
-                <button type="button" class="sfb-detail-link" onclick="openOccurrence('${escapeAttr(ev.ID)}')">この回の詳細を見る &rarr;</button>
+                <button type="button" class="sfb-detail-link" data-action="es-open-occ" data-id="${escapeAttr(ev.ID)}">この回の詳細を見る &rarr;</button>
             </div>
         </div>`;
     }).join('');
