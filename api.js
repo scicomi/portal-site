@@ -388,8 +388,28 @@ const api = {
     }
   },
 
+  // 同期エラーの原因調査用ログ（直近30件を localStorage に保持。api.getErrorLog() / api.errorLogText() で確認）
+  _logErr(payload, code, info) {
+    try {
+      const list = JSON.parse(localStorage.getItem('scicomi_err_log') || '[]');
+      list.push(Object.assign({
+        t: new Date().toISOString(),
+        action: payload && payload.action,
+        code,
+        online: navigator.onLine,
+        ua: navigator.userAgent.slice(0, 120)
+      }, info));
+      localStorage.setItem('scicomi_err_log', JSON.stringify(list.slice(-30)));
+    } catch (_) {}
+  },
+  getErrorLog() {
+    try { return JSON.parse(localStorage.getItem('scicomi_err_log') || '[]'); } catch (_) { return []; }
+  },
+  errorLogText() { return JSON.stringify(this.getErrorLog(), null, 1); },
+
   async _postOnce(payload) {
     let res, text;
+    const started = Date.now();
     try {
       res = await fetch(API_URL, {
         method: 'POST',
@@ -399,6 +419,7 @@ const api = {
       });
       text = await res.text();
     } catch (e) {
+      this._logErr(payload, 'NETWORK_UNREACHABLE', { ms: Date.now() - started, status: res && res.status, exc: String(e && e.message || e).slice(0, 80) });
       const err = new Error('NETWORK_UNREACHABLE');
       err.code = 'NETWORK_UNREACHABLE';
       throw err;
@@ -406,6 +427,7 @@ const api = {
     try {
       const parsed = JSON.parse(text);
       if (!parsed.success && parsed.error === 'unauthorized') {
+        this._logErr(payload, 'unauthorized', { ms: Date.now() - started });
         this.clearToken();
         this.clearAllCache();
         if (typeof showPasswordModal === 'function') {
@@ -424,6 +446,10 @@ const api = {
       const looksHtml = /^\s*<(!doctype|html)/i.test(text || '');
       const looksLogin = /accounts\.google\.com|ServiceLogin|ウェブ ワープロ|docs\.google\.com/i.test(text || '')
         || (res && res.url && /accounts\.google\.com|ServiceLogin/i.test(res.url));
+      this._logErr(payload, looksHtml || looksLogin ? 'GAS_NOT_PUBLIC' : 'BAD_RESPONSE', {
+        ms: Date.now() - started, status: res && res.status, finalUrl: res && res.url && res.url.slice(0, 80),
+        body: (text || '').replace(/\s+/g, ' ').slice(0, 150)
+      });
       if (looksHtml || looksLogin) {
         const err = new Error('GAS_NOT_PUBLIC');
         err.code = 'GAS_NOT_PUBLIC';
