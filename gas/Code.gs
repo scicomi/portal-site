@@ -255,6 +255,14 @@ function escapeHtml_(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+const CODE_VERSION = '2026-09-29-listall-cache';
+
+// Cloudflare への移行中・移行後に、旧サーバーへの書き込みを止める(古い画面がキャッシュされていても、
+// データが旧サーバーに入って失われないようにする)。読み取りとログインは動く。
+// 移行を取りやめる場合は false に戻して再デプロイする。
+const READ_ONLY_MODE = true;
+const READ_ONLY_MESSAGE = 'サイトを新しいサーバーへ移行しました。ページを再読み込み(Ctrl+Shift+R)してから、もう一度操作してください。';
+
 // ====== エントリポイント ======
 
 function doGet(e) {
@@ -262,6 +270,9 @@ function doGet(e) {
     const params = e.parameter || {};
     const action = params.action || 'list';
     const resource = params.resource || 'events';
+
+    // デプロイ済みコードの確認用（認証不要）。ブラウザで <API_URL>?action=version を開いて確認する。
+    if (action === 'version') return jsonResponse({ success: true, version: CODE_VERSION, serverTime: new Date().toISOString() });
 
     if (!checkAuth(params.token)) {
       return jsonResponse({ success: false, error: 'unauthorized' });
@@ -296,6 +307,8 @@ function doPost(e) {
     const resource = body.resource || params.resource || 'events';
 
     Logger.log('doPost: action=' + action + ', resource=' + resource);
+
+    if (action === 'version') return jsonResponse({ success: true, version: CODE_VERSION, serverTime: new Date().toISOString() });
 
     // --- 認証（パスワード不要） ---
     if (action === 'auth') {
@@ -383,6 +396,11 @@ function doPost(e) {
     // --- 以下は認証必須 ---
     if (!checkAuth(token)) {
       return jsonResponse({ success: false, error: 'unauthorized' });
+    }
+
+    // 書き込み系は、読み取り専用モード中は受け付けない
+    if (READ_ONLY_MODE && ['save', 'delete', 'uploadFile', 'deleteFile', 'submitVote', 'adminSetConfig'].indexOf(action) >= 0) {
+      return jsonResponse({ success: false, error: READ_ONLY_MESSAGE });
     }
 
     if (action === 'save') {
@@ -2200,6 +2218,35 @@ function upsertVote_(voteData) {
     invalidateListAllCache_();
     lock.releaseLock();
   }
+}
+
+// ====== Cloudflare 移行用エクスポート ======
+// GAS エディタで exportAllForMigration を 1 回実行すると、マイの Drive 直下に JSON ファイルを作る。
+// 中身は API(listAll など)が返す形と同一なので、日付・時刻の書式が表示と食い違わない。
+// パスワード一覧(passwords)を含むため、取り込み後は Drive のファイルを必ず削除すること。
+// 機密設定(パスワード・API キー)は含めない(切り替え時に再設定する)。
+function exportAllForMigration() {
+  var cfgMap = loadConfigMap_();
+  var config = {};
+  Object.keys(DEFAULT_CONFIG).forEach(function (k) {
+    if (isSecretKey_(k)) return;
+    if (Object.prototype.hasOwnProperty.call(cfgMap, k)) config[k] = cfgMap[k];
+  });
+  var data = {
+    exportedAt: new Date().toISOString(),
+    events: listResource('events'),
+    members: listResource('members'),
+    experiments: listResource('experiments'),
+    passwords: listResource('passwords'),
+    votes: listAllVotes_(),
+    config: config
+  };
+  var name = 'scicomi_export_' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMMdd_HHmm') + '.json';
+  var file = DriveApp.createFile(name, JSON.stringify(data), 'application/json');
+  Logger.log('書き出し完了: ' + file.getUrl());
+  Logger.log('件数 events=' + data.events.length + ' members=' + data.members.length + ' experiments=' + data.experiments.length +
+    ' passwords=' + data.passwords.length + ' votes=' + data.votes.length + ' config=' + Object.keys(config).length);
+  Logger.log('※ このファイルにはパスワード一覧が含まれます。取り込み後は Drive から削除してください。');
 }
 
 // ====== ユーティリティ ======
