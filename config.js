@@ -6,17 +6,16 @@
  *   新しいカテゴリの追加・色変更・項目追加は、原則ここだけ直せば全ページに反映される。
  *
  * ◆ よくある変更
- *   - GASのURLを変えた          → API_URL
+ *   - APIのURLを変えた          → API_URL(Cloudflare Workers。worker/ を参照)
  *   - イベントカテゴリを増やす    → EVENT_CATEGORIES に1行足す
  *   - 実験のタブを増やす          → EXPERIMENT_CATEGORIES に1行足す
  *   - メンバー区分を増やす        → MEMBER_CATEGORIES に1行足す
  *   - 書類期限の日数を変える      → DEADLINE_RULES
- *   - リマインダーの日数を変える  → REMINDER.days
  */
 
 const CONFIG = {
   // ===== バックエンド =====
-  API_URL: 'https://script.google.com/macros/s/AKfycbwfR0LGJmGhCzBZIj7UXhYok11Kmt0ZAmnwv1SIeWFFUUUCk0H0wMFHiZuMmEBII8FA/exec',
+  API_URL: 'https://scicomi-portal.scicomi.workers.dev',   // Cloudflare Workers(旧 GAS の /exec から 2026-09 に移行)
 
   // ===== キャッシュ =====
   CACHE_PREFIX: 'scicomi_cache_',
@@ -48,12 +47,6 @@ const CONFIG = {
     '':            { label: '未提出',                 color: '#9ca3af', cssClass: 'none' },
     'coordinator': { label: 'コーディネーター提出済', color: '#f59e0b', cssClass: 'coordinator' },
     'clc':         { label: 'CLC提出済',              color: '#10b981', cssClass: 'clc' }
-  },
-
-  // ===== Phase 4: リマインダーメール =====
-  REMINDER: {
-    days: [7, 3, 1],              // 期限の何日前に送信するか
-    subjectPrefix: '[SciComi]'    // メール件名接頭辞
   },
 
   // ===== Phase 2: ファイルアップロード =====

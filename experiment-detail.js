@@ -460,12 +460,10 @@ function renderPhotos() {
         return;
     }
 
-    // Google Drive の getUrl() は「閲覧ページ」URLのため <img> では表示できない（ファイル名だけ出てしまう）。
-    // ファイルIDから thumbnail エンドポイントの直リンクを作って表示する。失敗時は uc?export=view を試す。
+    // 画像の表示 URL は fileImageUrl(api.js)が決める(R2 の公開 URL、旧 Drive の URL の両方に対応)
     gallery.innerHTML = photos.map((p, i) => {
-        const id = p.driveId || extractDriveId(p.url);
-        const thumb = id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1600` : p.url;
-        const fallback = id ? `https://drive.google.com/uc?export=view&id=${id}` : p.url;
+        const thumb = fileImageUrl(p, 1600);
+        const fallback = p.url || thumb;
         const openUrl = p.url || thumb;
         return `
         <div class="photo-item">
@@ -477,13 +475,6 @@ function renderPhotos() {
             ${api.isAdmin() ? `<button class="photo-delete" onclick="event.preventDefault(); deletePhoto(${i})" title="削除">✕</button>` : ''}
         </div>`;
     }).join('');
-}
-
-// Drive の各種URL形式（/d/<id>/view, ?id=<id>, uc?id=<id> 等）からファイルIDを取り出す。
-function extractDriveId(url) {
-    if (!url) return '';
-    const m = String(url).match(/\/d\/([-\w]{20,})/) || String(url).match(/[?&]id=([-\w]{20,})/);
-    return m ? m[1] : '';
 }
 
 function openPhotoUpload() {
@@ -512,7 +503,6 @@ async function handlePhotoSelect(input) {
         toast('アップロード中: ' + file.name, 'info', 2000);
         try {
             const result = await api.uploadFile(file);  // api.uploadFile は引数1つ（第2引数は無効だったため削除）
-            // driveId を保存しておくと、表示時に確実にサムネイル直リンクを生成できる。
             photos.push({ name: file.name, url: result.url, driveId: result.driveId, size: file.size });
         } catch (e) {
             toast('アップロード失敗: ' + e.message, 'error');

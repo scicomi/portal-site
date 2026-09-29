@@ -822,7 +822,7 @@ async function applySiteSettings() {
         if (cached) {
             const obj = JSON.parse(cached);
             // 旧版は管理者設定（パスワード・APIキー）ごと保存していたため、残っていれば破棄する
-            const LEGACY_SECRET_KEYS = ['password', 'admin_password', 'gemini_api_key', 'line_channel_access_token', 'report_recipients'];
+            const LEGACY_SECRET_KEYS = ['password', 'admin_password', 'gemini_api_key', 'line_channel_access_token', 'report_recipients'];  // report_recipients は廃止済み。古いキャッシュの掃除用に残す
             if (obj.data && LEGACY_SECRET_KEYS.some(k => k in obj.data)) {
                 localStorage.removeItem(SETTINGS_CACHE_KEY);
             } else if (Date.now() - obj.ts < SETTINGS_TTL) {
@@ -847,10 +847,6 @@ function _applyCfg(cfg) {
     if (cfg.deadline_houkoku != null && cfg.deadline_houkoku !== '') CONFIG.DEADLINE_RULES.houkoku = safeInt(cfg.deadline_houkoku, CONFIG.DEADLINE_RULES.houkoku);
     if (cfg.deadline_alert_danger != null && cfg.deadline_alert_danger !== '') CONFIG.DEADLINE_ALERT.danger = safeInt(cfg.deadline_alert_danger, CONFIG.DEADLINE_ALERT.danger);
     if (cfg.deadline_alert_warning != null && cfg.deadline_alert_warning !== '') CONFIG.DEADLINE_ALERT.warning = safeInt(cfg.deadline_alert_warning, CONFIG.DEADLINE_ALERT.warning);
-    if (cfg.reminder_days) {
-        const days = String(cfg.reminder_days).split(/[,\s]+/).map(Number).filter(n => n > 0);
-        if (days.length) CONFIG.REMINDER.days = days;
-    }
     // ホームのメッセージは空なら削除（管理者がクリアしたら既定文へ戻す）
     if (cfg.welcome_message !== undefined) {
         if (cfg.welcome_message) localStorage.setItem('scicomi_welcome_message', cfg.welcome_message);

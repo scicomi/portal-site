@@ -12,7 +12,35 @@
  *   await api.delete('events', id)        → 削除
  */
 
-const API_URL = (typeof CONFIG !== 'undefined' && CONFIG.API_URL) || '';
+// 接続先 API。通常は config.js の API_URL。
+// 切り替え前の試験運用用に、URL に ?api=https://xxx.workers.dev を付けて開くと、そのブラウザだけ接続先を切り替えられる
+// (localStorage に保存。?api=reset で解除)。フィッシング対策として、workers.dev と localhost 以外は受け付けない。
+const API_URL_OVERRIDE_KEY = 'scicomi_api_url_override';
+function resolveApiUrl() {
+  const base = (typeof CONFIG !== 'undefined' && CONFIG.API_URL) || '';
+  const OK = /^(https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.workers\.dev|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/;
+  try {
+    const q = new URLSearchParams(location.search).get('api');
+    if (q === 'reset') localStorage.removeItem(API_URL_OVERRIDE_KEY);
+    else if (q && OK.test(q.replace(/\/$/, ''))) localStorage.setItem(API_URL_OVERRIDE_KEY, q.replace(/\/$/, ''));
+    const saved = localStorage.getItem(API_URL_OVERRIDE_KEY);
+    if (saved && OK.test(saved)) { console.info('[api] 接続先を切り替えています: ' + saved); return saved; }
+  } catch (_) {}
+  return base;
+}
+const API_URL = resolveApiUrl();
+
+// アップロード済みファイル(画像)の表示用 URL。
+// 現在は Worker(R2)の公開 URL をそのまま使う。旧 Google Drive の閲覧ページ URL は <img> で表示できないため、
+// サムネイル直リンクに変換する(Drive の既存ファイルが残っている場合の互換)。
+function fileImageUrl(file, size) {
+  const url = (file && file.url) || '';
+  if (/drive\.google\.com/.test(url)) {
+    const m = url.match(/\/d\/([-\w]{20,})/) || url.match(/[?&]id=([-\w]{20,})/);
+    if (m) return 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w' + (size || 400);
+  }
+  return url;
+}
 const TOKEN_KEY = (typeof CONFIG !== 'undefined' && CONFIG.TOKEN_KEY) || 'scicomi_portal_token';
 const CACHE_KEY_PREFIX = (typeof CONFIG !== 'undefined' && CONFIG.CACHE_PREFIX) || 'scicomi_cache_';
 const HOLIDAYS_CACHE_KEY = (typeof CONFIG !== 'undefined' && CONFIG.HOLIDAYS_CACHE_KEY) || 'scicomi_holidays_cache';
