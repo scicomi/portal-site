@@ -64,9 +64,8 @@ function voteEligibleMembers(members, ev) {
 // ====== 締切 ======
 
 // 出欠の締切日時。VoteDeadline（任意設定）が優先、無ければイベント最終日。いずれも当日23:59まで。
-// イベントはサーバー形（VoteDeadline/DateEnd）・UI形（Vote_Deadline/Date_End）のどちらでも受ける。
 function voteDeadlineDate(ev) {
-  const d = ev.VoteDeadline || ev.Vote_Deadline || ev.DateEnd || ev.Date_End || ev.Date;
+  const d = ev.VoteDeadline || ev.DateEnd || ev.Date;
   if (!d) return null;
   const dt = parseISODate(d);
   if (!dt) return null;
@@ -106,7 +105,7 @@ function voteErrorMessage(e) {
 /**
  * container に「名前選択＋参加/不参加/未定＋一言メモ」を描画する。
  * opts:
- *   event    : 対象イベント（サーバー形・UI形どちらでも可）
+ *   event    : 対象イベント（サーバー形）
  *   members  : メンバー配列
  *   votes    : このイベントの投票配列（ライブ参照。送信成功時に中身を書き換える）
  *   onChange : (votes) => void  送信成功・ロールバック後に呼ぶ（ホスト側の再集計用）
@@ -125,7 +124,7 @@ function renderVoteWidget(container, opts) {
 
   // 締切表示
   let deadlineHtml = '';
-  const explicitDl = ev.VoteDeadline || ev.Vote_Deadline || '';
+  const explicitDl = ev.VoteDeadline || '';
   if (closed) {
     deadlineHtml = `<div class="vw-deadline vw-deadline-passed">出欠の締切を過ぎています${api.isAdmin() ? '（管理者として変更できます）' : '。変更が必要な場合は管理者に連絡してください'}</div>`;
   } else if (explicitDl) {
