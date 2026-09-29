@@ -275,13 +275,7 @@ function doGet(e) {
       return jsonResponse({ success: true, items: listResource(resource) });
     }
     if (action === 'listAll') {
-      return jsonResponse({
-        success: true,
-        events: listResource('events'),
-        members: listResource('members'),
-        experiments: listResource('experiments'),
-        votes: listAllVotes_()
-      });
+      return jsonResponse(Object.assign({ success: true }, getListAllCached_()));
     }
 
     return jsonResponse({ success: false, error: 'unknown action: ' + action });
@@ -383,13 +377,7 @@ function doPost(e) {
     if (action === 'listAll') {
       if (!checkAuth(token)) return jsonResponse({ success: false, error: 'unauthorized' });
       // votes も同梱してフロントの listVotes / getEventVotes の追加往復を無くす
-      return jsonResponse({
-        success: true,
-        events: listResource('events'),
-        members: listResource('members'),
-        experiments: listResource('experiments'),
-        votes: listAllVotes_()
-      });
+      return jsonResponse(Object.assign({ success: true }, getListAllCached_()));
     }
 
     // --- 以下は認証必須 ---
@@ -773,6 +761,60 @@ function getFileFields(resource) { return getResourceDef(resource).fileFields ||
 
 // ====== 汎用CRUD ======
 
+// ---- listAll のサーバー側キャッシュ ----
+// 毎回4シートを読むと2〜3秒かかり、同時アクセスでタイムアウトや HTML エラーの原因になる。
+// CacheService は1値100KBまでなので分割して保存する。書き込み系（保存・削除・投票）で破棄する。
+const LISTALL_CACHE_KEY = 'listall_v1';
+const LISTALL_CACHE_TTL = 120;   // 秒（シートを直接編集した場合の反映遅延の上限）
+const LISTALL_CHUNK = 30000;     // 文字数（日本語は UTF-8 で3バイトのため余裕を持たせる）
+
+function buildListAll_() {
+  return {
+    events: listResource('events'),
+    members: listResource('members'),
+    experiments: listResource('experiments'),
+    votes: listAllVotes_()
+  };
+}
+
+function getListAllCached_() {
+  var cache = CacheService.getScriptCache();
+  try {
+    var n = parseInt(cache.get(LISTALL_CACHE_KEY + '_n'), 10);
+    if (n > 0) {
+      var keys = [];
+      for (var i = 0; i < n; i++) keys.push(LISTALL_CACHE_KEY + '_' + i);
+      var parts = cache.getAll(keys);
+      var json = '';
+      for (var j = 0; j < n; j++) {
+        var part = parts[keys[j]];
+        if (part === undefined || part === null) { json = null; break; }
+        json += part;
+      }
+      if (json) return JSON.parse(json);
+    }
+  } catch (_) { /* キャッシュ不良は無視して再構築 */ }
+
+  var data = buildListAll_();
+  try {
+    var str = JSON.stringify(data);
+    var chunks = {};
+    var count = 0;
+    for (var pos = 0; pos < str.length; pos += LISTALL_CHUNK) {
+      chunks[LISTALL_CACHE_KEY + '_' + count] = str.substr(pos, LISTALL_CHUNK);
+      count++;
+    }
+    chunks[LISTALL_CACHE_KEY + '_n'] = String(count);
+    cache.putAll(chunks, LISTALL_CACHE_TTL);
+  } catch (_) { /* 容量超過などは無視（キャッシュ無しで動作） */ }
+  return data;
+}
+
+function invalidateListAllCache_() {
+  try { CacheService.getScriptCache().remove(LISTALL_CACHE_KEY + '_n'); } catch (_) {}
+}
+
+
 function listResource(resource) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(getSheetName(resource));
   if (!sheet) return [];
@@ -922,6 +964,7 @@ function saveResource(resource, item) {
     });
     return returned;
   } finally {
+    invalidateListAllCache_();
     lock.releaseLock();
   }
 }
@@ -945,6 +988,7 @@ function deleteResource(resource, id) {
     }
     return false;
   } finally {
+    invalidateListAllCache_();
     lock.releaseLock();
   }
 }
@@ -2153,6 +2197,7 @@ function upsertVote_(voteData) {
     }
     return { eventId: voteData.eventId, memberId: voteData.memberId, status: voteData.status, updatedAt: now, note: note };
   } finally {
+    invalidateListAllCache_();
     lock.releaseLock();
   }
 }
