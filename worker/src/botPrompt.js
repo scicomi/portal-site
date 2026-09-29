@@ -28,7 +28,7 @@ export function buildBotSystemPrompt(now = new Date()) {
 - AdminHoukoku: 報告書の担当者名（人名）
 - KyokaDeadline: 許可願期限(YYYY-MM-DD), HoukokuDeadline: 報告書期限
 - PartsList: 部ごとの実験・担当者リスト JSON配列
-  形式: [{"partName":"一部","items":[{"name":"実験名","presenter":"担当者名"}]}]
+  形式: [{"name":"実験名","presenters":["担当者名1","担当者名2"]}]
 - Positives: 良かった点, Reflections: 反省点
 - Remarks: 備考, Belongings: 持ち物
 
@@ -55,7 +55,7 @@ export function buildBotSystemPrompt(now = new Date()) {
 「書類を書いていない」= どのイベントにも名前がない
 
 ## 参加の判定ルール
-「イベントに参加した」= PartsList内のitemsのpresenterにその人の名前がある
+「イベントに参加した」= PartsListの各要素のpresenters（担当者名の配列）にその人の名前がある
 
 ## 返答JSON形式（必ずこの形式のJSONのみ返す）
 

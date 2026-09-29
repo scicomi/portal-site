@@ -7,8 +7,8 @@ import { appendAuditLog } from './data.js';
 const CAT_LABELS = { normal: 'イベント', other: 'その他', general: '全体ミーティング', admin: '幹部ミーティング' };
 
 export async function notifyNewEvent(env, event) {
-  if ((await getConfig(env, 'event_notify_enabled')) === 'false') return;
   try {
+    if ((await getConfig(env, 'event_notify_enabled')) === 'false') return;
     const catLabel = CAT_LABELS[event.Category] || event.Category || '';
     const dateRange = (event.Date || '') + (event.DateEnd && event.DateEnd !== event.Date ? '(〜' + event.DateEnd + ')' : '');
     const text = '📅 新しいイベントが登録されました\n\n'

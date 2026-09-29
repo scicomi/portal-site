@@ -494,6 +494,8 @@ function attachSearchBox(input, opts) {
       const n = currentItems.length;
       setActive(e.key === 'ArrowDown' ? (activeIndex + 1) % n : (activeIndex - 1 + n) % n);
     } else if (e.key === 'Enter') {
+      // IME 変換確定の Enter（keyCode 229 は isComposing が false になる Safari 等向け）では検索を確定しない
+      if (e.isComposing || e.keyCode === 229) return;
       if (open && activeIndex >= 0) {
         e.preventDefault();
         commit(currentItems[activeIndex].text);
