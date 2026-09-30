@@ -72,10 +72,11 @@
                     <div class="series-header-top">
                         <div class="series-header-titles">
                             <h1 id="series-title" class="series-title"></h1>
-                            <p id="series-subtitle" class="series-subtitle"></p>
                         </div>
                         <div id="series-header-actions" class="series-header-actions"></div>
                     </div>
+                    <!-- 開催回の選択（複数回あるときだけ表示）。プルダウンだけで切り替える -->
+                    <div id="series-occ-picker" class="series-occ-picker"></div>
                 </div>
 
                 <!--
@@ -97,7 +98,7 @@
                     </div>
                 </div>
 
-                <!-- 対象範囲バー: 「この回」なら開催回セレクタ、「シリーズ全体」なら対象期間を出す -->
+                <!-- 対象範囲バー: 「シリーズ全体」のときだけ対象期間を出す（開催回の選択はヘッダーカード内） -->
                 <div class="scope-ctx" id="series-scope-ctx"></div>
 
                 <!-- この回: 概要 -->

@@ -21,7 +21,12 @@
 
     <main class="container">
         <div class="page-header">
-            <h1 class="page-title" style="margin:0; flex:1;">予定</h1>
+            <div class="page-title-group">
+                <h1 class="page-title">予定</h1>
+                <select id="period-filter" class="period-select" aria-label="表示する期間（年度）" title="表示する期間（年度）" onchange="onPeriodFilter(this.value)">
+                    <option value="upcoming" selected>今後</option>
+                </select>
+            </div>
             <div class="search-box" role="search">
                 <input id="event-search" class="search-input" type="search" placeholder="イベント名・企画名・場所で検索"
                     title="ショートカット: / キーで検索欄へ" aria-label="予定を検索"
@@ -37,10 +42,6 @@
             <button class="filter-chip" data-cat="other" aria-pressed="false" onclick="onCategoryFilter('other')"><span class="cat-dot" style="color:#86efac;">&#9679;</span><span class="chip-label">その他</span></button>
             <button class="filter-chip" data-cat="general" aria-pressed="false" onclick="onCategoryFilter('general')"><span class="cat-dot" style="color:#93c5fd;">&#9679;</span><span class="chip-label">全体MTG</span></button>
             <button class="filter-chip" data-cat="admin" aria-pressed="false" onclick="onCategoryFilter('admin')"><span class="cat-dot" style="color:#fde68a;">&#9679;</span><span class="chip-label">幹部MTG</span></button>
-            <span class="filter-divider"></span>
-            <select id="period-filter" class="e1-input" style="width:auto; padding:4px 10px; font-size:0.85rem;" title="表示する期間" onchange="onPeriodFilter(this.value)">
-                <option value="upcoming" selected>今後</option>
-            </select>
             <button class="btn btn-text btn-sm hidden" id="filter-reset-btn" onclick="resetFilters()" title="検索・絞り込みをすべて解除">リセット</button>
         </div>
 

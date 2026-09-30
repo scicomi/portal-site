@@ -69,11 +69,13 @@ let evWizardStep = 0;
 let editingEventId = null;
 let evWizardCategory = 'normal';
 
+// 詳細ページの表のグループ（イベント / 日程 / 荷物運搬 / 内容・メンバー / 備考・書類）と同じ並び・同じ区切りにする
 const EV_STEPS_EVENT = [
-    { label: '基本情報' },
-    { label: '日時' },
-    { label: '実験・担当' },
-    { label: 'その他' }
+    { label: 'イベント' },
+    { label: '日程' },
+    { label: '荷物運搬' },
+    { label: '内容・メンバー' },
+    { label: '備考・書類' }
 ];
 const EV_STEPS_MEETING = [
     { label: '基本情報' },
@@ -278,6 +280,7 @@ function _initTagInputViewportListeners() {
 }
 
 // opts.strict: true なら候補にないメンバーの自由入力（Enter）を受け付けない。
+// opts.onChange: 利用者が値を追加・削除したとき（setValues 以外）に、新しい値の配列を渡して呼ぶ。
 // 戻り値の setFilter(fn, strict) で、あとから候補の絞り込みを切り替えられる。
 function initTagInput(container, selectedValues, placeholder, filterFn, opts) {
     container.innerHTML = '';
@@ -299,6 +302,7 @@ function initTagInput(container, selectedValues, placeholder, filterFn, opts) {
     let values = [...(selectedValues || [])];
     let curFilter = filterFn;
     let strict = !!(opts && opts.strict);
+    const notifyChange = () => { if (opts && opts.onChange) opts.onChange([...values]); };
 
     function renderTags() {
         wrapper.querySelectorAll('.tag-input-tag').forEach(t => t.remove());
@@ -379,7 +383,7 @@ function initTagInput(container, selectedValues, placeholder, filterFn, opts) {
             const allowed = (curFilter ? getActiveMembers().filter(curFilter) : getActiveMembers()).some(m => m.Name === val);
             if (!allowed) { toast('候補から選んでください', 'error', 2500); input.value = ''; hideDropdown(); return; }
         }
-        if (val && !values.includes(val)) { values.push(val); renderTags(); }
+        if (val && !values.includes(val)) { values.push(val); renderTags(); notifyChange(); }
         input.value = '';
         hideDropdown();
     }
@@ -389,7 +393,7 @@ function initTagInput(container, selectedValues, placeholder, filterFn, opts) {
     input.addEventListener('blur', () => setTimeout(hideDropdown, 200));
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); if (input.value.trim()) addValue(input.value); }
-        if (e.key === 'Backspace' && !input.value && values.length > 0) { values.pop(); renderTags(); showDropdown(); }
+        if (e.key === 'Backspace' && !input.value && values.length > 0) { values.pop(); renderTags(); notifyChange(); showDropdown(); }
     });
     dropdown.addEventListener('mousedown', (e) => {
         e.preventDefault();
@@ -403,6 +407,7 @@ function initTagInput(container, selectedValues, placeholder, filterFn, opts) {
             const tag = removeBtn.closest('.tag-input-tag');
             values = values.filter(v => v !== tag.dataset.value);
             renderTags();
+            notifyChange();
             return;
         }
         input.focus();
@@ -643,12 +648,12 @@ function eventWizardStepsHtml(e, steps, catInfo) {
                     <input id="wz-ev-planname" class="e1-input" type="text" placeholder="例: 夏休み科学教室" value="${escapeAttr(e.PlanName || '')}">
                 </div>
                 <div class="e1-group">
-                    <label class="e1-label">場所</label>
-                    <input id="wz-ev-location" class="e1-input" type="text" placeholder="例: ○○公民館" value="${escapeAttr(e.Location || '')}">
-                </div>
-                <div class="e1-group">
                     <label class="e1-label">企画担当者</label>
                     <div id="wz-ev-planleader"></div>
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">場所</label>
+                    <input id="wz-ev-location" class="e1-input" type="text" placeholder="例: ○○公民館" value="${escapeAttr(e.Location || '')}">
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">対象者・人数</label>
@@ -673,11 +678,6 @@ function eventWizardStepsHtml(e, steps, catInfo) {
                 </div>${voteDeadlineInputHtml(e.VoteDeadline)}`)
         + wizardStepHtml(2, steps, `
                 <div class="e1-group">
-                    <label class="e1-label">実験内容・発表者</label>
-                    <div id="wz-ev-exp-container" class="experiments-container"></div>
-                    <button class="btn-add-exp" onclick="addWzEvExpRow()" type="button">＋ 実験を追加</button>
-                </div>
-                <div class="e1-group">
                     <label class="e1-label">帯同（コーディネーター・アドバイザー）</label>
                     <div id="wz-ev-accompany"></div>
                 </div>
@@ -691,6 +691,10 @@ function eventWizardStepsHtml(e, steps, catInfo) {
                 <div id="wz-ev-car-fields" class="${TRANSPORT_WITH_CAR.includes(e.TransportMethod) ? '' : 'hidden'}">
                     <div class="e1-group">
                         <label class="e1-label">運転者を選択<span id="wz-ev-driver-hint" class="text-muted" style="font-size:0.8rem;"></span></label>
+                        <label id="wz-ev-driver-same-wrap" class="text-label doc-not-required-toggle hidden">
+                            <input type="checkbox" id="wz-ev-driver-same" ${driverSameChecked(e) ? 'checked' : ''}>
+                            運転者は帯同と同じ
+                        </label>
                         <div id="wz-ev-driver"></div>
                     </div>
                     <div class="e1-group">
@@ -700,12 +704,15 @@ function eventWizardStepsHtml(e, steps, catInfo) {
                 </div>`)
         + wizardStepHtml(3, steps, `
                 <div class="e1-group">
-                    <label class="e1-label">スケジュール・運搬</label>
-                    <textarea id="wz-ev-logistics" class="e1-input" rows="4" placeholder="タイムテーブルや運搬の段取り">${escapeHtml(e.Logistics || '')}</textarea>
+                    <label class="e1-label">実験内容・発表者</label>
+                    <div id="wz-ev-exp-container" class="experiments-container"></div>
+                    <button class="btn-add-exp" onclick="addWzEvExpRow()" type="button">＋ 実験を追加</button>
                 </div>
+`)
+        + wizardStepHtml(4, steps, `
                 <div class="e1-group">
                     <label class="e1-label">備考</label>
-                    <textarea id="wz-ev-remarks" class="e1-input" rows="3" placeholder="その他メモ">${escapeHtml(e.Remarks || '')}</textarea>
+                    <textarea id="wz-ev-remarks" class="e1-input" rows="5" placeholder="スケジュール・運搬の段取り、その他メモ">${escapeHtml(e.Remarks || '')}</textarea>
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">関連ファイル</label>
@@ -756,7 +763,8 @@ function eventForWizard(editId, template) {
 // editId のみ: 既存イベントの編集。template のみ（editId 無し）: 複製して新規作成
 // （この場合だけは、クイック作成の「枠だけ」ではなく実験・担当などの詳細もこの場で全て入力する）。
 // 真っさらな新規作成はクイック作成（openQuickCreate）に一本化した。
-function openEventWizard(editId, template) {
+// focusId: 開いた直後に、その入力欄があるステップへ移って入力欄にフォーカスする（詳細の「—」から直行する用）
+function openEventWizard(editId, template, focusId) {
     const e = eventForWizard(editId, template);
     if (!e) return;
     const isEdit = !!editId;
@@ -811,6 +819,22 @@ function openEventWizard(editId, template) {
         const firstInput = overlay.querySelector('.wizard-step.active input:not([type="hidden"]), .wizard-step.active textarea, .wizard-step.active select');
         if (firstInput) firstInput.focus();
     }, 80);
+    if (focusId) setTimeout(() => focusEvWizardField(overlay, focusId), 160);
+}
+
+function focusEvWizardField(overlay, focusId) {
+    let el = document.getElementById(focusId);
+    // 運転者・同乗者は運搬方法が車のときだけ表示される。隠れているときは運搬方法の欄へ
+    if (el && el.closest('.hidden')) el = document.getElementById('wz-ev-transport');
+    if (!el) return;
+    const stepEl = el.closest('.wizard-step');
+    if (stepEl) {
+        evWizardStep = parseInt(stepEl.dataset.step) || 0;
+        updateEvWizardUI();
+    }
+    const target = el.matches('input, textarea, select, button') ? el : el.querySelector('input, textarea, select, button');
+    if (target) target.focus();
+    (target || el).scrollIntoView({ block: 'center' });
 }
 
 // 描画後に、セレクトの値・日付ピッカー・実験行・タグ入力・ファイル欄を初期化する
@@ -834,7 +858,8 @@ function initEventWizardInputs(overlay, e, isMeeting) {
     });
 
     const splitNames = v => (v || '').split(',').map(s => s.trim()).filter(Boolean);
-    initTagInput(document.getElementById('wz-ev-accompany'), splitNames(e.Accompany), 'コーディネーター・アドバイザーを検索...', isStaffMember);
+    initTagInput(document.getElementById('wz-ev-accompany'), splitNames(e.Accompany), 'コーディネーター・アドバイザーを検索...', isStaffMember,
+        { onChange: () => { if (wzSyncDriver) wzSyncDriver(); } });
     initTagInput(document.getElementById('wz-ev-planleader'), splitNames(e.PlanLeader), '企画担当者を検索...', isRegularMember);
     initTransportInputs(e, splitNames);
     initTagInput(document.getElementById('wz-ev-admin-kyoka'), splitNames(e.AdminKyoka), '担当者を検索...', isRegularMember);
@@ -935,8 +960,8 @@ function evWizardNext() {
         }
     }
 
-    // 実験・担当ステップから先へ進む前に、実験名が実在するか確認する
-    if (evWizardStep === 2 && !isMeeting) {
+    // 内容・メンバー（実験）ステップから先へ進む前に、実験名が実在するか確認する
+    if (evWizardStep === 3 && !isMeeting) {
         const bad = invalidExperimentNames();
         if (bad.length > 0) {
             toastInvalidExperiment(bad);
@@ -1144,12 +1169,12 @@ function buildEventFromWizard(time) {
     item.Audience = val('wz-ev-audience').trim();
     item.GatherTime = val('wz-ev-gather');
     item.DismissTime = val('wz-ev-dismiss');
-    item.Logistics = val('wz-ev-logistics');
     const planLeader = tags('wz-ev-planleader');
     if (planLeader !== null) item.PlanLeader = planLeader;
     item.TransportMethod = val('wz-ev-transport');
     const withCar = TRANSPORT_WITH_CAR.includes(item.TransportMethod);   // 車を使わない方法なら運転者・同乗者は持たせない
-    item.TransportDriver = withCar ? (tags('wz-ev-driver') || '') : '';
+    const driverSame = withCar && item.TransportMethod === TRANSPORT_SCHOOL_CAR && document.getElementById('wz-ev-driver-same')?.checked;
+    item.TransportDriver = withCar ? (driverSame ? (tags('wz-ev-accompany') || '') : (tags('wz-ev-driver') || '')) : '';
     item.TransportPassengers = withCar ? (tags('wz-ev-passenger') || '') : '';
 
     const expContainer = document.getElementById('wz-ev-exp-container');

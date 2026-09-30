@@ -673,18 +673,6 @@ textarea:focus {
     text-decoration-style: dotted;
 }
 .exp-link-inline:hover { color: #8a6d00; }
-.accompany-staff-link {
-    background: none;
-    border: none;
-    padding: 0;
-    font: inherit;
-    color: #1a6b3c;
-    font-weight: 600;
-    text-decoration: underline;
-    text-decoration-style: dotted;
-    cursor: pointer;
-}
-.accompany-staff-link:hover { color: #10b981; }
 .tag-presenter { color: #806a2e; font-weight: 400; }
 
 .tag-deadline {
@@ -1330,7 +1318,9 @@ textarea:focus {
     border: 1px solid var(--border-subtle);
     text-align: center;
     transition: transform 0.15s, box-shadow 0.15s;
+    display: block; color: inherit; text-decoration: none;
 }
+.stat-card:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
 .stat-card:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-md);
@@ -1374,34 +1364,6 @@ textarea:focus {
 #welcome-editor-area .rich-editor-content { color: white; }
 #welcome-editor-area .action-buttons .btn-text { color: rgba(255,255,255,0.8); }
 #welcome-editor-area .action-buttons .btn-primary { background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); }
-
-/* Quick Actions */
-.quick-actions {
-    display: flex; gap: var(--space-sm); flex-wrap: wrap;
-    margin-top: var(--space-md);
-}
-.quick-action-btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: rgba(255,255,255,0.15);
-    border: 1px solid rgba(255,255,255,0.25);
-    color: white; padding: 8px 16px;
-    min-height: var(--touch-min);
-    box-sizing: border-box;
-    border-radius: var(--radius-full);
-    font-size: 0.85rem; font-weight: 600;
-    cursor: pointer; transition: all 0.15s;
-    text-decoration: none;
-    backdrop-filter: blur(4px);
-}
-.quick-action-btn:hover {
-    background: rgba(255,255,255,0.25);
-    transform: translateY(-1px);
-}
-/* 濃色ヒーロー上ではブラウザ既定のフォーカス枠が見えづらいため、白い枠を明示 */
-.quick-action-btn:focus-visible {
-    outline: 2px solid white;
-    outline-offset: 2px;
-}
 
 /* ========== Experiments Page ========== */
 .exp-detail h2 { color: var(--primary-color); margin: 0 0 10px 0; }
@@ -1481,7 +1443,21 @@ textarea:focus {
     display: flex; justify-content: space-between; align-items: center;
     margin-bottom: var(--space-md); flex-wrap: wrap; gap: var(--space-sm);
 }
-.page-header .page-title { margin: 0; flex: 1; }
+.page-header .page-title { margin: 0; }
+/* 見出しの右隣に「今後 / 年度」の切替を置き、年度別に見られることを一目で分かるようにする */
+.page-title-group { display: flex; align-items: center; gap: var(--space-sm); flex: 1; flex-wrap: wrap; }
+.period-select {
+    font-family: inherit; font-size: 0.95rem; font-weight: 600;
+    color: var(--primary-color);
+    padding: 6px 30px 6px 14px; min-height: 36px;
+    border: 1px solid var(--primary-light); border-radius: var(--radius-full);
+    background-color: var(--primary-subtle); cursor: pointer;
+    appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%234a4a7a'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+}
+.period-select:hover { background-color: white; }
+.period-select:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
 .page-filters {
     display: flex; gap: var(--space-sm); align-items: center;
     flex-wrap: wrap;
@@ -1720,9 +1696,12 @@ textarea:focus {
     /* --header-h は app.js が実際のヘッダー高さを測って設定する（固定値だと折り返しや
        管理者バッジの有無でヘッダーの高さが変わった時にはみ出す） */
     height: calc(100vh - var(--header-h, 90px));
+    /* スマホではアドレスバーの出入りで 100vh が実表示より高くなり、ページ全体が縦にずれてスクロールする */
+    height: calc(100dvh - var(--header-h, 90px));
     display: flex;
     flex-direction: column;
     padding: 0;
+    overflow: hidden;
 }
 
 /* Gauge */
@@ -1782,7 +1761,9 @@ textarea:focus {
 /* Messages */
 .bot-messages {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 20px;
     display: flex;
     flex-direction: column;
@@ -3335,40 +3316,6 @@ textarea:focus {
     background: var(--scope-series-bg);
     border-left-color: var(--scope-series);
 }
-.scope-ctx-nav {
-    width: 30px; height: 30px;
-    display: grid; place-items: center;
-    flex-shrink: 0;
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    font-size: 0.95rem;
-    cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
-}
-.scope-ctx-nav:hover:not(:disabled) { border-color: var(--scope-occ); color: var(--scope-occ); }
-.scope-ctx-nav:disabled { opacity: 0.35; cursor: default; }
-.scope-ctx-cur { font-weight: 700; font-size: 0.92rem; line-height: 1.35; }
-.scope-ctx-cur small {
-    display: block;
-    font-weight: 500;
-    font-size: 0.75rem;
-    color: var(--text-tertiary);
-}
-.scope-ctx-select {
-    margin-left: auto;
-    max-width: 260px;
-    padding: 5px 13px;
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-full);
-    font-family: inherit;
-    font-size: 0.79rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    cursor: pointer;
-}
 .scope-ctx-label {
     display: inline-flex;
     align-items: center;
@@ -3383,12 +3330,28 @@ textarea:focus {
     background: var(--scope-series);
 }
 .scope-ctx-sub { font-size: 0.78rem; color: var(--text-tertiary); }
+.scope-ctx:empty { display: none; }
+/* 開催回プルダウン（ヘッダーカード内・イベント名の下）。大きく見やすく */
+.series-occ-picker { margin-top: 10px; }
+.series-occ-picker:empty { display: none; }
+.occ-select {
+    width: auto; max-width: 100%; min-height: 36px; box-sizing: border-box;
+    padding: 6px 34px 6px 14px;
+    font-family: inherit; font-size: 0.9rem; font-weight: 600; color: var(--text-color);
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color); border-radius: var(--radius-full);
+    cursor: pointer;
+    appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23777'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center;
+}
+.occ-select:hover { border-color: var(--primary-light); }
+.occ-select:focus-visible { outline: 3px solid var(--primary-color); outline-offset: 2px; }
 
 @media (max-width: 600px) {
     .scope-tab { padding: 11px 13px; font-size: 0.85rem; }
     .scope-zone-label { font-size: 0.62rem; padding: 0 6px 0 4px; }
     .scope-sep { margin: 12px 5px; }
-    .scope-ctx-select { margin-left: 0; flex-basis: 100%; max-width: none; }
 }
 
 .att-st-attend { background: var(--success-bg); color: var(--success-text); }
@@ -3410,11 +3373,6 @@ textarea:focus {
     font-weight: 700;
     margin: 0 0 6px;
     color: var(--text-color);
-}
-.series-subtitle {
-    margin: 0;
-    font-size: 0.92rem;
-    color: var(--text-secondary);
 }
 /* タイトル・編集/複製ボタン・開催回セレクタを1つのヘッダーカードにまとめ、
    タブ側は純粋なタブ切り替えだけにする */
@@ -3848,37 +3806,6 @@ a.vote-count-badge:hover { color: var(--primary-color); text-decoration: underli
 }
 
 /* --- 詳細タブ: 未入力チェックリスト（枠だけ作成→あとから追記の可視化） --- */
-.detail-checklist {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-    background: var(--warning-bg);
-    border: 1px solid var(--warning-border);
-    border-radius: var(--radius-sm);
-    padding: 8px 12px;
-    margin-bottom: 12px;
-    font-size: 0.82rem;
-}
-.detail-checklist-label {
-    color: var(--warning-text);
-    font-weight: 600;
-}
-.checklist-chip {
-    background: var(--warning-bg-strong);
-    color: var(--warning-text-strong);
-    border-radius: var(--radius-full);
-    padding: 1px 10px;
-    font-size: 0.78rem;
-}
-.detail-checklist-link {
-    margin-left: auto;
-    color: var(--primary-light);
-    font-weight: 600;
-    text-decoration: none;
-    white-space: nowrap;
-}
-.detail-checklist-link:hover { text-decoration: underline; }
 
 /* --- 詳細タブ: 情報テーブル --- */
 /* 詳細ポップアップ共通のラベル/値テーブル（メンバー・日程プレビュー等）。
@@ -3925,12 +3852,6 @@ a.vote-count-badge:hover { color: var(--primary-color); text-decoration: underli
 .series-detail-table tr:last-child td {
     border-bottom: none;
 }
-/* 基本情報と書類情報のブロック感を分ける区切り */
-.series-detail-table tr.series-detail-docs-row th,
-.series-detail-table tr.series-detail-docs-row td {
-    border-top: 1px solid var(--border-color);
-    padding-top: 16px;
-}
 .series-detail-table th {
     width: 108px;
     background: var(--bg-subtle);
@@ -3940,59 +3861,8 @@ a.vote-count-badge:hover { color: var(--primary-color); text-decoration: underli
     white-space: normal;
     word-break: break-word;
 }
-/* --- 詳細タブ: イベント後に記入（来場者数・参加メンバー数・広報担当） --- */
-.post-event-card {
-    margin-top: 14px;
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    padding: 12px 14px;
-}
-.post-event-title {
-    margin: 0 0 8px;
-    font-size: 0.9rem;
-    color: var(--text-label);
-    font-weight: 600;
-}
-.post-event-table { box-shadow: none; border-collapse: collapse; }
-.post-event-table th {
-    padding: 8px 10px;
-    width: 120px;
-    background: var(--bg-subtle);
-    color: var(--text-label);
-    font-weight: 600;
-    font-size: 0.82rem;
-    border-bottom: 1px solid var(--border-subtle);
-    text-align: left;
-    vertical-align: middle;
-}
-.post-event-table td {
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--border-subtle);
-    vertical-align: middle;
-}
-.post-event-table tr:last-child th,
-.post-event-table tr:last-child td { border-bottom: none; }
+/* --- 詳細タブ: イベント後に記入（表のグループ内の入力欄） --- */
 .post-event-input { max-width: 140px; padding: 6px 10px; font-size: 0.9rem; }
-.post-event-pr { margin-top: 12px; }
-.post-event-pr-title {
-    margin: 0 0 6px;
-    font-size: 0.85rem;
-    color: var(--text-label);
-    font-weight: 600;
-}
-.pr-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 0;
-}
-.pr-label {
-    min-width: 90px;
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    font-weight: 500;
-}
 .pr-input {
     flex: 1;
     max-width: 200px;
@@ -4003,6 +3873,68 @@ a.vote-count-badge:hover { color: var(--primary-color); text-decoration: underli
 .exp-fb-card .detail-toggle-header { margin-bottom: 0; }
 .exp-fb-card .detail-toggle-header[aria-expanded="true"] { margin-bottom: 10px; }
 .exp-fb-card-body { padding-top: 4px; }
+
+/* 編集ウィザード: 「運転者は帯同と同じ」でロック中の運転者欄（値は帯同に連動、削除ボタンも隠す） */
+.is-locked { opacity: 0.6; pointer-events: none; }
+.is-locked .tag-input-remove { display: none; }
+
+/* --- 詳細タブ: 未入力の「—」（薄い灰色。押すと編集ウィザードの該当の入力欄へ） --- */
+.empty-cell {
+    border: none; background: none; padding: 0 6px; margin-left: -6px;
+    font: inherit; color: #b9bdc5; cursor: pointer; border-radius: var(--radius-sm);
+    min-width: 28px; min-height: 24px;
+}
+.empty-cell:hover { color: var(--primary-color); background: var(--primary-subtle); }
+.empty-cell:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
+
+/* --- 詳細タブ: 表のグループ見出し行（グループごとに色を変える）・人名チップ --- */
+.series-detail-table tr.series-detail-group th {
+    width: auto; background: var(--g-bg, var(--primary-subtle)); color: var(--g-fg, var(--primary-color));
+    font-size: 0.8rem; letter-spacing: 0.04em; padding: 6px 14px;
+    border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color);
+    border-left: 4px solid var(--g-fg, var(--primary-color));
+}
+.series-detail-table tr.series-detail-group:first-child th { border-top: none; }
+/* 色は 3 種類: 基本情報（イベント・日程・荷物運搬）= 紺 / 内容・備考・書類 = 薄い橙 / イベント後 = 紫 */
+.series-detail-table tr[data-g="event"],
+.series-detail-table tr[data-g="schedule"],
+.series-detail-table tr[data-g="transport"] { --g-fg: #4a4a7a; --g-bg: #eeedf7; }
+.series-detail-table tr[data-g="content"],
+.series-detail-table tr[data-g="notes"],
+.series-detail-table tr[data-g="docs"]      { --g-fg: #b45309; --g-bg: #fdf1dc; }
+.series-detail-table tr[data-g="after"]     { --g-fg: #6d28d9; --g-bg: #efe9fb; }
+.series-detail-table tr.series-detail-group + tr th,
+.series-detail-table tr.series-detail-group + tr td { padding-top: 12px; }
+.series-detail-table th { padding-top: 10px; padding-bottom: 10px; }
+.series-detail-table td { padding-top: 10px; padding-bottom: 10px; }
+.person-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.person-chip {
+    display: inline-block; padding: 1px 10px; border-radius: var(--radius-full);
+    background: transparent;           /* 外枠だけ・中は透明 */
+    border: 1px solid #555;            /* 薄い黒 */
+    color: #555;
+    font: inherit; font-size: 0.88rem; font-weight: 600; line-height: 1.6;
+}
+button.person-chip.is-link { cursor: pointer; }
+button.person-chip.is-link:hover { background: rgba(0, 0, 0, 0.06); }
+button.person-chip.is-link:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.detail-notes-files { margin-top: 8px; }
+.detail-notes-files:first-child { margin-top: 0; }
+/* 参加一覧の上に出す帯同（教職員）の表 */
+.attendance-staff { margin-bottom: 14px; }
+.attendance-staff-title { font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin: 0 0 6px; }
+.attendance-staff-note { font-weight: 400; color: var(--text-tertiary); font-size: 0.8rem; }
+/* 教職員の表と学籍番号の表で列の位置をそろえる（どちらも 4 列） */
+.attendance-table { table-layout: fixed; width: 100%; }
+.attendance-table th:nth-child(1) { width: 24%; }
+.attendance-table th:nth-child(2) { width: 24%; }
+.attendance-table th:nth-child(3) { width: 22%; }
+.attendance-table th:nth-child(4) { width: 30%; }
+.attendance-table td { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+    .series-detail-table tr.series-detail-group th { padding: 6px 10px; border-bottom: 1px solid var(--border-color); background: var(--primary-subtle); }
+    .series-detail-table tr.series-detail-group + tr th { padding-top: 10px; }
+}
 
 /* --- 詳細タブ: 書類ステータス行 --- */
 .doc-status-row {
@@ -4019,6 +3951,35 @@ a.vote-count-badge:hover { color: var(--primary-color); text-decoration: underli
 .doc-status-info {
     font-size: 0.88rem;
 }
+
+/* --- 詳細タブ: 書類ファイル（依頼書など）の小さな枠。空=点線（押す/ドロップで追加）、あり=実線 --- */
+.doc-slots { display: flex; flex-wrap: wrap; gap: 8px; }
+.doc-slot {
+    display: inline-flex; align-items: center; gap: 6px;
+    min-height: 32px; box-sizing: border-box; max-width: 100%;
+    padding: 4px 10px; border-radius: var(--radius-full);
+    border: 1px solid var(--border-color); background: var(--card-bg);
+    font: inherit; font-size: 0.85rem;
+    transition: background 0.15s, border-color 0.15s;
+}
+.doc-slot.is-empty { border-style: dashed; color: var(--text-tertiary); background: transparent; }
+.doc-slot.is-empty:hover, .doc-slot.is-empty:focus-within { border-color: var(--primary-light); color: var(--primary-color); background: var(--primary-subtle); }
+.doc-slot.is-filled { border-color: var(--success-color); background: #f0fdf4; }
+.doc-slot.is-filled .doc-slot-icon { color: #16a34a; font-weight: 700; }
+.doc-slot-main { all: unset; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.doc-slot-main:focus-visible, .doc-slot-inline:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; border-radius: var(--radius-full); }
+.doc-slot-inline { cursor: pointer; }
+.doc-slot-label { font-weight: 600; white-space: nowrap; }
+/* 長いファイル名が表を横に押し広げないよう、幅に上限を付けて省略表示する */
+.doc-slot .file-link { display: inline-block; max-width: min(16em, 45vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.doc-slot-btn {
+    border: none; background: none; cursor: pointer; padding: 0 4px;
+    color: var(--text-tertiary); font-size: 1rem; line-height: 1; min-width: 24px; min-height: 24px;
+}
+.doc-slot-btn:hover { color: var(--primary-color); }
+.detail-file-field { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-radius: var(--radius-sm); }
+.doc-slot.is-dragover { border-color: var(--primary-color); border-style: solid; background: var(--primary-subtle); }
+.detail-file-field.is-dragover { outline: 2px dashed var(--primary-color); outline-offset: 2px; }
 
 /* --- 詳細タブ: 参加状況・振り返りカード --- */
 .detail-section-card {
@@ -4065,21 +4026,6 @@ a.vote-count-badge:hover { color: var(--primary-color); text-decoration: underli
 /* タイムライン・開催履歴の「この回の詳細」ボタン（<a>から<button>に変えたため） */
 button.sfb-detail-link,
 button.sfb-event-link,
-button.detail-checklist-link {
-    background: none;
-    border: none;
-    font: inherit;
-    cursor: pointer;
-    padding: 0;
-}
-/* 未入力チェックリストの「編集して追記」も <a>→<button> 化したため同じ見た目を維持する */
-button.detail-checklist-link {
-    margin-left: auto;
-    color: var(--primary-light);
-    font-weight: 600;
-    white-space: nowrap;
-}
-button.detail-checklist-link:hover { text-decoration: underline; }
 
 /* 年度アコーディオンのヘッダー（キーボード操作できるよう <div> から <button> に変えたため） */
 button.fy-header {
@@ -4366,7 +4312,8 @@ mark.search-hit {
 .ev-vote-member-bar label { font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
 .ev-vote-member-bar select { flex: 1; max-width: 200px; padding: 4px 8px; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px; }
 .ev-vote-cell {
-    min-width: 64px; text-align: center;
+    /* ヘッダー「参加を回答」とプルダウンを同じ幅・中央揃えにして縦の位置を合わせる */
+    width: 96px; min-width: 96px; text-align: center;
 }
 .ev-vote-select {
     font-size: 0.78rem;
@@ -4375,8 +4322,8 @@ mark.search-hit {
     border-radius: 4px;
     background: white;
     cursor: pointer;
-    width: auto;
-    max-width: 68px;
+    display: block;
+    width: 76px;
     margin: 0 auto;
     text-align: center;
     text-align-last: center;

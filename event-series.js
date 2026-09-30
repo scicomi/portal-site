@@ -336,11 +336,6 @@ function renderAll() {
     document.getElementById('series-title').textContent = displayTitle;
     document.title = `${displayTitle} | SciComi Portal`;
 
-    const years = seriesEvents.map(ev => ev.Date.slice(0, 4)).filter(Boolean);
-    const earliest = Math.min(...years.map(Number));
-    document.getElementById('series-subtitle').textContent =
-        seriesEvents.length > 1 ? `通算${seriesEvents.length}回開催（${earliest}年〜）` : '';
-
     // ミーティングでは不要なタブを隠す（振り返り・会場・履歴統計はイベント向けの機能）
     const ev0 = currentEvent();
     const isMtg = ev0 && isMeetingCategory(ev0.Category);
@@ -405,53 +400,39 @@ function compactOccDate(s) {
     return p.length < 3 ? (s || '') : `${p[0]}/${parseInt(p[1])}/${parseInt(p[2])}`;
 }
 
-// タブ直下の対象範囲バー。いま「この回」を見ているのか「シリーズ全体」を見ているのかを常に示す。
+// 開催回の選択プルダウン（イベント名のすぐ下）。開催回が 1 つだけなら出さない。
+function renderOccPicker() {
+    const box = document.getElementById('series-occ-picker');
+    if (!box) return;
+    if (seriesEvents.length <= 1) { box.innerHTML = ''; return; }
+    const today = todayISO();
+    const asc = seriesEvents.slice().sort((a, b) => (a.Date || '').localeCompare(b.Date || ''));
+    const options = asc.slice().reverse().map(e => {
+        const n = asc.findIndex(x => x.ID === e.ID) + 1;
+        const up = (e.DateEnd || e.Date) >= today;
+        const label = `${n}回目　${compactOccDate(e.Date)}(${dayOfWeekJP(e.Date)})${up ? '・開催予定' : ''}`;
+        return `<option value="${escapeAttr(e.ID)}" ${e.ID === currentEvent().ID ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
+    box.innerHTML = `<select class="occ-select" aria-label="開催回を選ぶ" data-change-action="es-select-occ">${options}</select>`;
+}
+
+// タブ直下の対象範囲バー。「シリーズ全体」を見ているときだけ、全何回を対象にしているかを示す
+// （「この回」のときは、ヘッダーカードの開催回プルダウンが現在の回を示すので、バーは出さない）。
 function renderScopeContext() {
+    renderOccPicker();
     const box = document.getElementById('series-scope-ctx');
     if (!box) return;
     const zone = document.querySelector('.scope-tab.active')?.dataset.zone || 'occ';
     box.classList.toggle('scope-ctx--series', zone === 'series');
 
-    if (zone === 'series') {
-        const years = seriesEvents.map(e => (e.Date || '').slice(0, 4)).filter(Boolean).sort();
-        const span = years.length === 0 ? ''
-            : years[0] === years[years.length - 1] ? `${years[0]}年`
-            : `${years[0]}年 〜 ${years[years.length - 1]}年`;
-        box.innerHTML = `
-            <span class="scope-ctx-label"><span class="scope-ctx-dot" aria-hidden="true"></span>全 ${seriesEvents.length} 回を対象に表示中</span>
-            ${span ? `<span class="scope-ctx-sub">${escapeHtml(span)}</span>` : ''}`;
-        return;
-    }
-
-    const ev = currentEvent();
-    if (!ev) { box.innerHTML = ''; return; }
-    const today = todayISO();
-    const asc = seriesEvents.slice().sort((a, b) => (a.Date || '').localeCompare(b.Date || ''));
-    const idx = asc.findIndex(x => x.ID === ev.ID);
-    const isUpcoming = (ev.DateEnd || ev.Date) >= today;
-
-    const options = asc.slice().reverse().map(e => {
-        const n = asc.findIndex(x => x.ID === e.ID) + 1;
-        const up = (e.DateEnd || e.Date) >= today;
-        const label = `${n}回目　${compactOccDate(e.Date)}(${dayOfWeekJP(e.Date)})${up ? '・予定' : ''}`;
-        return `<option value="${escapeAttr(e.ID)}" ${e.ID === currentEventId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
-    }).join('');
-
-    // ‹ は1つ古い回、› は1つ新しい回。端では無効化する。
-    const navBtn = (step, glyph, title) => {
-        const t = asc[idx + step];
-        return `<button type="button" class="scope-ctx-nav" title="${title}" aria-label="${title}"
-            ${t ? `data-action="es-select-occ" data-id="${escapeAttr(t.ID)}"` : 'disabled'}>${glyph}</button>`;
-    };
-
+    if (zone !== 'series') { box.innerHTML = ''; return; }
+    const years = seriesEvents.map(e => (e.Date || '').slice(0, 4)).filter(Boolean).sort();
+    const span = years.length === 0 ? ''
+        : years[0] === years[years.length - 1] ? `${years[0]}年`
+        : `${years[0]}年 〜 ${years[years.length - 1]}年`;
     box.innerHTML = `
-        ${seriesEvents.length > 1 ? navBtn(-1, '&lsaquo;', '前の回') : ''}
-        <span class="scope-ctx-cur">
-            ${escapeHtml(compactOccDate(ev.Date))}（${dayOfWeekJP(ev.Date)}）
-            <small>${idx + 1}回目${isUpcoming ? '・開催予定' : ''}</small>
-        </span>
-        ${seriesEvents.length > 1 ? navBtn(1, '&rsaquo;', '次の回') : ''}
-        ${seriesEvents.length > 1 ? `<select class="scope-ctx-select" aria-label="開催回を選ぶ" data-change-action="es-select-occ">${options}</select>` : ''}`;
+        <span class="scope-ctx-label"><span class="scope-ctx-dot" aria-hidden="true"></span>全 ${seriesEvents.length} 回を対象に表示中</span>
+        ${span ? `<span class="scope-ctx-sub">${escapeHtml(span)}</span>` : ''}`;
 }
 
 function selectOccurrence(id) {
@@ -627,22 +608,6 @@ function formatTelLink(text) {
 
 // ---- イベント詳細タブ ----
 
-// 未入力チェックリスト（案C: 枠だけ作成→あとから追記、の「あとから」を可視化する）
-function missingFields(ev) {
-    const isMeeting = isMeetingCategory(ev.Category);
-    const miss = [];
-    if (!ev.Location) miss.push('場所');
-    if (!ev.TimeStart) miss.push('時間');
-    if (!isMeeting) {
-        if (!ev.Audience) miss.push('対象・人数');
-        if (normalizeParts(ev.PartsList).filter(p => p.name).length === 0) miss.push('実験内容');
-        if (!ev.GatherTime) miss.push('集合時間');
-        if (!ev.KyokaNotRequired && !ev.AdminKyoka) miss.push('許可願の担当');
-        if (!ev.HoukokuNotRequired && !ev.AdminHoukoku) miss.push('報告書の担当');
-    }
-    return miss;
-}
-
 function expLinkHtml(name) {
     const match = experimentsCache.find(e => e.Name === name);
     const href = match
@@ -660,33 +625,54 @@ function splitNamesList(v) {
     return String(v || '').split(',').map(s => s.trim()).filter(Boolean);
 }
 
-function transportHtml(ev) {
-    const parts = [escapeHtml(ev.TransportMethod)];
-    const driver = splitNamesList(ev.TransportDriver).join(', ');
-    const passengers = splitNamesList(ev.TransportPassengers).join(', ');
-    if (driver) parts.push('運転者: ' + escapeHtml(driver));
-    if (passengers) parts.push('同乗者: ' + escapeHtml(passengers));
-    return parts.join(' ／ ');
+// ファイル項目の共通部品。選択用の <input type=file> は項目ごとに 1 つ置き、クリックでもドロップでも同じ経路（uploadDetailFiles）に流す。
+function fileInputHtml(field, multiple) {
+    return `<input type="file" class="hidden" data-ef-input data-field="${field}"${multiple ? ' multiple' : ''}>`;
 }
 
-// ファイル一覧と「アップロード／差し替え／追加」ボタン。multiple なら複数ファイル、そうでなければ 1 ファイル。
+function detailFileLinkHtml(f, i) {
+    const url = safeHttpUrl(f.url);
+    const name = escapeHtml(f.name || ('ファイル ' + (i + 1)));
+    const size = f.size ? ' (' + formatFileSize(f.size) + ')' : '';
+    return url
+        ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="file-link">${name}${size}</a>`
+        : `<span class="file-link text-hint">${name} (リンク切れ)</span>`;
+}
+
+// 書類ファイル（依頼書など・1 ファイル）: 「依頼書」という名前の小さな枠。
+// 空なら点線の枠（押す／ドロップで追加できそうな見た目）、あれば実線の枠にファイル名と 差し替え・外す。
+function docSlotHtml(ev, field) {
+    const label = DETAIL_FILE_LABELS[field];
+    const f = (Array.isArray(ev[field]) ? ev[field] : [])[0];
+    if (!f) {
+        return `<div class="doc-slot is-empty" data-drop-field="${field}">
+            <button type="button" class="doc-slot-main" data-action="es-file-pick" title="クリック、またはファイルをドロップして${label}をアップロード">
+                <span class="doc-slot-icon" aria-hidden="true">&#65291;</span><span class="doc-slot-label">${label}</span>
+            </button>${fileInputHtml(field, false)}</div>`;
+    }
+    return `<div class="doc-slot is-filled" data-drop-field="${field}">
+        <span class="doc-slot-icon" aria-hidden="true">&#10003;</span>
+        <span class="doc-slot-label">${label}</span>
+        ${detailFileLinkHtml(f, 0)}
+        <button type="button" class="doc-slot-btn" data-action="es-file-pick" title="ファイルをドロップ、またはクリックで差し替え" aria-label="${label}を差し替え">&#8635;</button>
+        <button type="button" class="doc-slot-btn" data-action="es-file-remove" data-field="${field}" data-index="0" title="外す" aria-label="${label}を外す">&times;</button>
+        ${fileInputHtml(field, false)}</div>`;
+}
+
+// 複数ファイル／議事録（ミーティング用）: ファイル一覧と、点線の「＋ 追加」枠。
 function detailFilesHtml(ev, field, multiple) {
     const files = Array.isArray(ev[field]) ? ev[field] : [];
-    const items = files.map((f, i) => {
-        const url = safeHttpUrl(f.url);
-        const name = escapeHtml(f.name || ('ファイル ' + (i + 1)));
-        const size = f.size ? ' (' + formatFileSize(f.size) + ')' : '';
-        const link = url
-            ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="file-link">${name}${size}</a>`
-            : `<span class="file-link text-hint">${name} (リンク切れ)</span>`;
-        return `<span class="detail-file-item">${link} <button type="button" class="tbl-btn tbl-btn-danger" data-action="es-file-remove" data-field="${field}" data-index="${i}">外す</button></span>`;
-    }).join('');
+    const items = files.map((f, i) =>
+        `<span class="detail-file-item">${detailFileLinkHtml(f, i)} <button type="button" class="tbl-btn tbl-btn-danger" data-action="es-file-remove" data-field="${field}" data-index="${i}">外す</button></span>`
+    ).join('');
     const label = files.length ? (multiple ? '追加' : '差し替え') : 'アップロード';
     return `
-        <div class="detail-file-field" style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
-            ${items || '<span class="text-hint" style="font-size:0.9rem;">なし</span>'}
-            <button type="button" class="btn btn-secondary btn-sm" data-action="es-file-pick">${label}</button>
-            <input type="file" style="display:none;" data-ef-input data-field="${field}"${multiple ? ' multiple' : ''}>
+        <div class="detail-file-field" data-drop-field="${field}">
+            ${items}
+            <button type="button" class="doc-slot is-empty doc-slot-inline" data-action="es-file-pick" title="クリック、またはファイルをドロップして${label}">
+                <span class="doc-slot-icon" aria-hidden="true">&#65291;</span><span class="doc-slot-label">${label}</span>
+            </button>
+            ${fileInputHtml(field, multiple)}
         </div>`;
 }
 
@@ -759,14 +745,9 @@ function renderDetail() {
     let displayTitle = ev.Title || '(無題)';
     if (isMeeting && ev.MeetingNumber) displayTitle = `第${ev.MeetingNumber}回 ${displayTitle}`;
 
-    // 未入力チェックリスト（今後の開催のみ）
-    const miss = isUpcoming ? missingFields(ev) : [];
-    const checklistHtml = miss.length > 0 ? `
-        <div class="detail-checklist">
-            <span class="detail-checklist-label">未入力の項目:</span>
-            ${miss.map(m => `<span class="checklist-chip">${escapeHtml(m)}</span>`).join('')}
-            <button type="button" class="detail-checklist-link" data-action="es-edit-event" data-id="${escapeAttr(ev.ID)}">編集して追記 &rarr;</button>
-        </div>` : '';
+    // 未入力の欄は薄い「—」で示し、押すと編集ウィザードの該当の入力欄へ直行する
+    const emptyCell = (focusId, text = '—') =>
+        `<button type="button" class="empty-cell" data-action="es-edit-event" data-id="${escapeAttr(ev.ID)}" data-focus="${focusId}" title="編集して入力" aria-label="未入力。編集して入力">${text}</button>`;
 
     // 実験・発表者
     const parts = normalizeParts(ev.PartsList).filter(p => p.name || (p.presenters && p.presenters.length));
@@ -776,21 +757,24 @@ function renderDetail() {
             const presenters = (p.presenters && p.presenters.length) ? p.presenters.map(escapeHtml).join(', ') : '未定';
             return `<span class="tag tag-exp">${nameHtml} <span class="tag-presenter">(${presenters})</span></span>`;
         }).join('')
-        : '---';
+        : emptyCell('wz-ev-exp-container');
 
-    // 関連ファイル
+    // 関連ファイル（備考の一番下に添付する）
     const files = Array.isArray(ev.Files) ? ev.Files : [];
-    const filesHtml = files.length > 0
-        ? files.map((f, i) => {
-            const url = f.url || '';
-            const name = escapeHtml(f.name || ('ファイル ' + (i + 1)));
-            const size = f.size ? ' (' + formatFileSize(f.size) + ')' : '';
-            if (/^https?:\/\//i.test(url)) {
-                return `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="file-link">${name}${size}</a>`;
-            }
-            return `<span class="file-link text-hint">${name} (リンク切れ)</span>`;
-        }).join('')
-        : '<span class="text-hint" style="font-size:0.9rem;">なし</span>';
+    const filesHtml = files.map((f, i) => {
+        const url = f.url || '';
+        const name = escapeHtml(f.name || ('ファイル ' + (i + 1)));
+        const size = f.size ? ' (' + formatFileSize(f.size) + ')' : '';
+        if (/^https?:\/\//i.test(url)) {
+            return `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="file-link">${name}${size}</a>`;
+        }
+        return `<span class="file-link text-hint">${name} (リンク切れ)</span>`;
+    }).join('');
+
+    // 備考（ミーティングでは議題）+ 関連ファイル
+    const notesText = (ev.Remarks || '').trim();
+    const notesHtml = (notesText ? `<div style="white-space:pre-wrap;">${escapeHtml(notesText)}</div>` : '')
+        + (filesHtml ? `<div class="file-list detail-notes-files">${filesHtml}</div>` : '');
 
     // 書類（許可願・報告書: 期限＋担当＋ステータス変更）
     const kyokaOverdue = ev.KyokaDeadline && ev.KyokaDeadline < today && (ev.KyokaStatus || '') !== 'submitted';
@@ -801,7 +785,7 @@ function renderDetail() {
             ${ev.KyokaNotRequired
                 ? '<span class="doc-status-info text-muted">不要</span>'
                 : `<span class="doc-status-info">期限 <span class="tag-deadline ${kyokaOverdue ? 'deadline-past' : ''}">${escapeHtml(ev.KyokaDeadline || '---')}</span>
-                ／ 担当 <strong>${escapeHtml(ev.AdminKyoka || '未定')}</strong></span>
+                ／ 担当 ${personChipsHtml(ev.AdminKyoka) || emptyCell('wz-ev-admin-kyoka', '未定')}</span>
             <select class="report-status-select status-${docStatusClass(KYOKA_STATUS, ev.KyokaStatus || '')}" data-doc="KyokaStatus" title="許可願の提出ステータスを変更">
                 ${Object.keys(KYOKA_STATUS).map(v => `<option value="${v}" ${v === (ev.KyokaStatus || '') ? 'selected' : ''}>${KYOKA_STATUS[v].label}</option>`).join('')}
             </select>`}
@@ -811,7 +795,7 @@ function renderDetail() {
             ${ev.HoukokuNotRequired
                 ? '<span class="doc-status-info text-muted">不要</span>'
                 : `<span class="doc-status-info">期限 <span class="tag-deadline ${houkokuOverdue ? 'deadline-past' : ''}">${escapeHtml(ev.HoukokuDeadline || '---')}</span>
-                ／ 担当 <strong>${escapeHtml(ev.AdminHoukoku || '未定')}</strong></span>
+                ／ 担当 ${personChipsHtml(ev.AdminHoukoku) || emptyCell('wz-ev-admin-houkoku', '未定')}</span>
             <select class="report-status-select status-${docStatusClass(REPORT_STATUS, ev.ReportStatus || '')}" data-doc="ReportStatus" title="報告書の提出ステータスを変更">
                 ${Object.keys(REPORT_STATUS).map(v => `<option value="${v}" ${v === (ev.ReportStatus || '') ? 'selected' : ''}>${REPORT_STATUS[v].label}</option>`).join('')}
             </select>`}
@@ -820,60 +804,52 @@ function renderDetail() {
     // 提出ファイル（依頼書・活動許可願・活動報告書）
     const docFilesHtml = `
         <div class="doc-status-row" style="flex-direction:column; align-items:flex-start; gap:6px;">
-            <span class="doc-status-name">提出ファイル</span>
-            ${DETAIL_DOC_FIELDS.map(f => `<div class="detail-doc-file"><span class="doc-status-name">${DETAIL_FILE_LABELS[f]}</span>${detailFilesHtml(ev, f, false)}</div>`).join('')}
+            <span class="doc-status-name">提出ファイル <span class="text-hint" style="font-weight:400; font-size:0.8rem;">クリック or ドロップでアップロード</span></span>
+            <div class="doc-slots">${DETAIL_DOC_FIELDS.map(f => docSlotHtml(ev, f)).join('')}</div>
         </div>`;
 
     // 集合・解散
     const gatherDismiss = (ev.GatherTime || ev.DismissTime)
         ? [ev.GatherTime && `集合 ${escapeHtml(ev.GatherTime)}`, ev.DismissTime && `解散 ${escapeHtml(ev.DismissTime)}`].filter(Boolean).join(' / ')
-        : '---';
+        : emptyCell('wz-ev-gather');
 
     const dateStr = `${escapeHtml(ev.Date)} (${dayOfWeekJP(ev.Date)})`
         + (ev.DateEnd && ev.DateEnd !== ev.Date ? ` 〜 ${escapeHtml(ev.DateEnd)} (${dayOfWeekJP(ev.DateEnd)})` : '');
     const timeStr = (ev.TimeStart && ev.TimeEnd) ? `${escapeHtml(ev.TimeStart)} 〜 ${escapeHtml(ev.TimeEnd)}` : '未定';
 
     box.innerHTML = `
-        ${checklistHtml}
         <table class="d1-table series-detail-table">
-            <tr>
-                <th style="width:108px;">${isMeeting ? 'ミーティング名' : 'イベント名'}</th>
-                <td><span class="text-primary" style="font-size:1.15rem; font-weight:600;">${escapeHtml(displayTitle)}</span></td>
-            </tr>
-            ${!isMeeting && ev.PlanName ? `<tr><th>企画名</th><td>${escapeHtml(ev.PlanName)}</td></tr>` : ''}
-            ${!isMeeting && ev.PlanLeader ? `<tr><th>企画担当者</th><td>${escapeHtml(splitNamesList(ev.PlanLeader).join(', '))}</td></tr>` : ''}
+            <tr class="series-detail-group" data-g="event"><th colspan="2">${isMeeting ? 'ミーティング' : 'イベント'}</th></tr>
+            <tr><th>${isMeeting ? 'ミーティング名' : 'イベント名'}</th><td><span class="text-primary" style="font-size:1.15rem; font-weight:600;">${escapeHtml(displayTitle)}</span></td></tr>
+            ${!isMeeting ? `<tr><th>企画名</th><td>${ev.PlanName ? escapeHtml(ev.PlanName) : emptyCell('wz-ev-planname')}</td></tr>` : ''}
+            ${!isMeeting ? `<tr><th>企画担当者</th><td>${personChipsHtml(ev.PlanLeader) || emptyCell('wz-ev-planleader')}</td></tr>` : ''}
+            <tr><th>場所</th><td>${ev.Location ? `<span class="exp-link-inline" style="cursor:pointer;" onclick="goToVenueInfoTab()" title="会場情報タブへ">${escapeHtml(ev.Location)}</span>` : emptyCell('wz-ev-location')}</td></tr>
+            ${!isMeeting ? `<tr><th>対象・人数</th><td>${ev.Audience ? escapeHtml(ev.Audience) : emptyCell('wz-ev-audience')}</td></tr>` : ''}
+            <tr class="series-detail-group" data-g="schedule"><th colspan="2">日程</th></tr>
             <tr><th>日にち</th><td>${dateStr}${isUpcoming ? ' <span class="occ-badge occ-upcoming">開催予定</span>' : ''}</td></tr>
-            ${ev.TimeStart && ev.TimeEnd ? `<tr><th>時間</th><td>${timeStr}</td></tr>` : ''}
-            ${!isMeeting && (ev.GatherTime || ev.DismissTime) ? `<tr><th>集合・解散</th><td>${gatherDismiss}</td></tr>` : ''}
-            ${ev.Location ? `<tr><th>場所</th><td><span class="exp-link-inline" style="cursor:pointer;" onclick="goToVenueInfoTab()" title="会場情報タブへ">${escapeHtml(ev.Location)}</span></td></tr>` : ''}
-            ${!isMeeting && ev.Audience ? `<tr><th>対象・人数</th><td>${escapeHtml(ev.Audience)}</td></tr>` : ''}
-            ${!isMeeting && parts.length > 0 ? `<tr><th>実験内容・発表者</th><td>${expHtml}</td></tr>` : ''}
-            ${!isMeeting && ev.Logistics ? `<tr><th>スケジュール・運搬</th><td style="white-space:pre-wrap;">${escapeHtml(ev.Logistics)}</td></tr>` : ''}
-            ${!isMeeting && ev.Accompany ? `<tr><th>帯同</th><td>${renderAccompanyHtml(ev.Accompany)}</td></tr>` : ''}
-            ${!isMeeting && ev.TransportMethod ? `<tr><th>荷物運搬方法</th><td>${transportHtml(ev)}</td></tr>` : ''}
-            ${(ev.Remarks || '').trim() ? `<tr><th>${isMeeting ? '議題' : '備考'}</th><td style="white-space:pre-wrap;">${escapeHtml(ev.Remarks)}</td></tr>` : ''}
+            <tr><th>時間</th><td>${ev.TimeStart && ev.TimeEnd ? timeStr : emptyCell('wz-ev-time-start')}</td></tr>
+            ${!isMeeting ? `<tr><th>集合・解散</th><td>${gatherDismiss}</td></tr>` : ''}
+            ${!isMeeting ? `
+            <tr class="series-detail-group" data-g="transport"><th colspan="2">荷物運搬</th></tr>
+            <tr><th>運搬方法</th><td>${ev.TransportMethod ? escapeHtml(ev.TransportMethod) : emptyCell('wz-ev-transport')}</td></tr>
+            <tr><th>運転者</th><td>${personChipsHtml(ev.TransportDriver) || emptyCell('wz-ev-driver')}</td></tr>
+            <tr><th>同乗者</th><td>${personChipsHtml(ev.TransportPassengers) || emptyCell('wz-ev-passenger')}</td></tr>` : ''}
+            ${!isMeeting ? `
+            <tr class="series-detail-group" data-g="content"><th colspan="2">内容・メンバー</th></tr>
+            <tr><th>実験・発表者</th><td>${expHtml}</td></tr>` : ''}
+            <tr class="series-detail-group" data-g="notes"><th colspan="2">${isMeeting ? '議題・資料' : '備考'}</th></tr>
+            <tr><td colspan="2">${notesHtml || emptyCell('wz-ev-remarks')}</td></tr>
             ${isMeeting ? `<tr><th>関連資料</th><td>${detailFilesHtml(ev, 'MeetingDocs', true)}</td></tr>
             <tr><th>議事録</th><td>${detailFilesHtml(ev, 'Minutes', false)}</td></tr>` : ''}
-            ${files.length > 0 ? `<tr><th>関連ファイル</th><td class="file-list">${filesHtml}</td></tr>` : ''}
-            ${!isMeeting ? `<tr class="series-detail-docs-row"><th>書類</th><td>${docsHtml}${docFilesHtml}</td></tr>` : ''}
+            ${!isMeeting ? `<tr class="series-detail-group" data-g="docs"><th colspan="2">書類</th></tr>
+            <tr><td colspan="2">${docsHtml}${docFilesHtml}</td></tr>
+            <tr class="series-detail-group" data-g="after"><th colspan="2">イベント後に記入</th></tr>
+            <tr><th>来場者数</th><td><input type="number" min="0" class="e1-input post-event-input" data-pe-field="VisitorCount"
+                value="${escapeAttr(ev.VisitorCount || '')}" placeholder="未記入" title="この回の来場者数"></td></tr>
+            <tr><th>参加メンバー数</th><td><input type="number" min="0" class="e1-input post-event-input" data-pe-field="ParticipantCount"
+                value="${escapeAttr(ev.ParticipantCount || '')}" placeholder="未記入" title="この回に参加したメンバーの人数"></td></tr>
+            ${prRowsHtml(ev)}` : ''}
         </table>
-        ${!isMeeting ? `
-        <div class="post-event-card">
-            <h3 class="post-event-title">イベント後に記入</h3>
-            <table class="d1-table post-event-table">
-                <tr>
-                    <th>来場者数</th>
-                    <td><input type="number" min="0" class="e1-input post-event-input" data-pe-field="VisitorCount"
-                        value="${escapeAttr(ev.VisitorCount || '')}" placeholder="未記入" title="この回の来場者数"></td>
-                </tr>
-                <tr>
-                    <th>参加メンバー数</th>
-                    <td><input type="number" min="0" class="e1-input post-event-input" data-pe-field="ParticipantCount"
-                        value="${escapeAttr(ev.ParticipantCount || '')}" placeholder="未記入" title="この回に参加したメンバーの人数"></td>
-                </tr>
-            </table>
-            <div id="post-event-pr" class="post-event-pr"></div>
-        </div>` : ''}
     `;
 
     // 書類ステータスの変更を保存
@@ -891,14 +867,29 @@ function renderDetail() {
             input.value = '';
         });
     });
-    renderPrAssignments(ev);
+    // ドラッグ&ドロップでもアップロードできる（クリック選択と同じ経路）
+    box.querySelectorAll('[data-drop-field]').forEach(zone => {
+        const input = zone.querySelector('[data-ef-input]');
+        const hasFiles = e => Array.from(e.dataTransfer?.types || []).includes('Files');
+        zone.addEventListener('dragover', e => { if (!hasFiles(e)) return; e.preventDefault(); zone.classList.add('is-dragover'); });
+        zone.addEventListener('dragleave', e => { if (!zone.contains(e.relatedTarget)) zone.classList.remove('is-dragover'); });
+        zone.addEventListener('drop', e => {
+            if (!hasFiles(e)) return;
+            e.preventDefault();
+            zone.classList.remove('is-dragover');
+            uploadDetailFiles(zone.dataset.dropField, Array.from(e.dataTransfer.files), input.multiple);
+        });
+    });
+    // 広報担当の選択を保存
+    box.querySelectorAll('.pr-input[data-pr-channel]').forEach(select => {
+        select.addEventListener('change', () => savePrField(ev.ID, select.dataset.prChannel, select.value.trim()));
+    });
 }
 
-function renderPrAssignments(ev) {
-    const container = document.getElementById('post-event-pr');
-    if (!container) return;
+// 広報担当（チャンネルごとに 1 行）。「イベント後に記入」グループの表の行として返す。
+function prRowsHtml(ev) {
     const channels = CONFIG.PR_CHANNELS || [];
-    if (!channels.length) { container.innerHTML = ''; return; }
+    if (!channels.length) return '';
     const assignments = ev.PrAssignments || {};
 
     // 教職員は広報担当の対象外。メンバーのみを学年（◯C）ごとにグループ化して選ばせる。
@@ -917,18 +908,10 @@ function renderPrAssignments(ev) {
         `;
     };
 
-    container.innerHTML = `
-        <div class="post-event-pr-title">広報担当</div>
-        ${channels.map(ch => `<div class="pr-row">
-            <span class="pr-label">${escapeHtml(ch)}</span>
-            <select class="e1-input pr-input" data-pr-channel="${escapeAttr(ch)}">
-                ${optionsHtml(assignments[ch] || '')}
-            </select>
-        </div>`).join('')}
-    `;
-    container.querySelectorAll('.pr-input[data-pr-channel]').forEach(select => {
-        select.addEventListener('change', () => savePrField(ev.ID, select.dataset.prChannel, select.value.trim()));
-    });
+    return channels.map(ch => `<tr>
+            <th>広報担当（${escapeHtml(ch)}）</th>
+            <td><select class="e1-input pr-input" data-pr-channel="${escapeAttr(ch)}">${optionsHtml(assignments[ch] || '')}</select></td>
+        </tr>`).join('');
 }
 
 async function savePrField(id, channel, value) {
@@ -1086,13 +1069,14 @@ function switchAttendanceFilter(status) {
 
 // 描画した data-action / data-change-action の受け口（onclick 属性に ID を埋め込まない。app.js の registerActions 参照）
 registerActions({
-    'es-edit-event': el => openEventWizard(el.dataset.id),
-    'es-file-pick': el => el.parentElement.querySelector('[data-ef-input]').click(),
+    'es-edit-event': el => openEventWizard(el.dataset.id, null, el.dataset.focus || ''),
+    'es-file-pick': el => el.closest('[data-drop-field]').querySelector('[data-ef-input]').click(),
     'es-file-remove': el => removeDetailFile(el.dataset.field, Number(el.dataset.index)),
-    'es-select-occ': el => selectOccurrence(el.dataset.id || el.value),   // ‹ › ボタンは data-id、<select> は value
+    'es-select-occ': el => selectOccurrence(el.dataset.id || el.value),   // 開催回プルダウンは value（data-id でも受け付ける）
     'es-open-occ': el => openOccurrence(el.dataset.id),
     'es-attendance-filter': el => switchAttendanceFilter(el.dataset.key),
-    'es-staff-detail': el => openStaffDetailModal(el.dataset.id)
+    'es-staff-detail': el => openStaffDetailModal(el.dataset.id),
+    'es-member-detail': el => openMemberDetailModal(el.dataset.id, membersCache, { hideFurigana: true })
 });
 
 function renderAttendanceListBody() {
@@ -1130,10 +1114,37 @@ function renderAttendanceListBody() {
             </tr>`;
         }).join('');
 
+    // 帯同（教職員）: 「参加」の一覧の上に、教職員用の表（教職員番号・名前・役職・所属）を別に出す
+    const accompanyNames = attendanceFilter === 'attend' ? splitNamesList((currentEvent() || {}).Accompany) : [];
+    const staffRowsHtml = accompanyNames.map(name => {
+        const m = membersCache.find(x => x.Name === name);
+        const role = m ? memberRoleOf(m) : '';
+        const roleInfo = role ? getRoleDisplay(role) : null;
+        const roleBadge = roleInfo ? `<span class="cat-badge" style="background:${roleInfo.color};">${escapeHtml(role)}</span>` : '';
+        return `
+            <tr ${m ? `data-staff-id="${escapeAttr(m.ID)}" class="clickable-row" title="タップで詳細を表示"` : ''}>
+                <td>${escapeHtml(m && m.StudentID ? m.StudentID : '')}</td>
+                <td class="cell-name">${escapeHtml(name)}</td>
+                <td class="cell-role">${roleBadge}</td>
+                <td>${escapeHtml(m && m.Affiliation ? m.Affiliation : '')}</td>
+            </tr>`;
+    }).join('');
+    const staffTableHtml = accompanyNames.length > 0 ? `
+        <div class="attendance-staff">
+            <div class="attendance-staff-title">帯同 <span class="attendance-staff-note">（参加人数に含まない）</span></div>
+            <div class="table-wrapper">
+                <table class="data-table attendance-table">
+                    <thead><tr><th>教職員番号</th><th>名前</th><th>役職</th><th>所属</th></tr></thead>
+                    <tbody>${staffRowsHtml}</tbody>
+                </table>
+            </div>
+        </div>` : '';
+
     body.innerHTML = `
         ${tabsHtml}
+        ${staffTableHtml}
         <div class="table-wrapper">
-            <table class="data-table">
+            <table class="data-table attendance-table">
                 <thead><tr><th>学籍番号</th><th>名前</th><th>役職</th><th>メモ</th></tr></thead>
                 <tbody>${rowsHtml}</tbody>
             </table>
@@ -1141,6 +1152,9 @@ function renderAttendanceListBody() {
     `;
     body.querySelectorAll('tr[data-id]').forEach(row => {
         row.addEventListener('click', () => openMemberDetailModal(row.dataset.id, membersCache, { hideFurigana: true }));
+    });
+    body.querySelectorAll('tr[data-staff-id]').forEach(row => {
+        row.addEventListener('click', () => openStaffDetailModal(row.dataset.staffId));
     });
 }
 
@@ -1434,22 +1448,20 @@ async function saveExperimentFeedbackEntries(eventData) {
     return failures;
 }
 
-// ---- 帯同メンバーのクリッカブル表示 ----
+// ---- 人名のチップ表示（詳細の表で、担当者・運転者・同乗者などを人ごとに分けて見せる） ----
 
-function renderAccompanyHtml(accompanyStr) {
-    const names = (accompanyStr || '').split(',').map(s => s.trim()).filter(Boolean);
-    if (names.length === 0) return '---';
-    return names.map(name => {
+// 名前をカンマ区切りで受け取り、1 人 1 チップにする。メンバー名と一致すれば押して詳細を開ける（教職員は教職員用の詳細）。
+function personChipsHtml(namesStr) {
+    const names = splitNamesList(namesStr);
+    if (names.length === 0) return '';
+    return '<span class="person-chips">' + names.map(name => {
         const member = membersCache.find(m => m.Name === name);
-        if (member) {
-            const role = memberRoleOf(member);
-            const isStaff = role === 'アドバイザー' || role === 'コーディネーター';
-            if (isStaff) {
-                return `<button type="button" class="accompany-staff-link" data-action="es-staff-detail" data-id="${escapeAttr(member.ID)}">${escapeHtml(name)}</button>`;
-            }
-        }
-        return escapeHtml(name);
-    }).join(', ');
+        if (!member) return `<span class="person-chip">${escapeHtml(name)}</span>`;
+        const role = memberRoleOf(member);
+        const isStaff = role === 'アドバイザー' || role === 'コーディネーター';
+        const action = isStaff ? 'es-staff-detail' : 'es-member-detail';
+        return `<button type="button" class="person-chip is-link" data-action="${action}" data-id="${escapeAttr(member.ID)}">${escapeHtml(name)}</button>`;
+    }).join('') + '</span>';
 }
 
 function openStaffDetailModal(id) {

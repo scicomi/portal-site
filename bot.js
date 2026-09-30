@@ -436,7 +436,6 @@ function buildEventDetailBody(e) {
     ${partsHtml ? sec('実験・担当', partsHtml) : ''}
     ${docRows ? sec('書類', `<div class="bot-detail-rows">${docRows}</div>`) : ''}
     ${textSec(isMeeting ? '議題' : '備考', [e.Remarks, e.Belongings].filter(s => s && String(s).trim()).join('\n'))}
-    ${textSec('当日運営・ロジ', e.Logistics)}
     ${filesHtml ? sec('ファイル', filesHtml) : ''}
     ${(e.Positives && e.Positives.trim()) || (e.Reflections && e.Reflections.trim()) ? '<hr class="divider">' : ''}
     ${textSec('良かった点', e.Positives)}
@@ -834,7 +833,6 @@ function buildEventContext(ev) {
   const expNames = eventExperimentNames(ev);
   if (expNames.length) lines.push('実施した実験: ' + expNames.join(', '));
   if (ev.Remarks)   lines.push('備考:\n' + ev.Remarks);
-  if (ev.Logistics) lines.push('当日運営:\n' + ev.Logistics);
   if ((ev.Positives || '').trim())   lines.push('振り返り（良かった点）:\n' + ev.Positives);
   if ((ev.Reflections || '').trim()) lines.push('振り返り（改善点）:\n' + ev.Reflections);
   return lines.join('\n\n');

@@ -7,7 +7,7 @@ export const RESOURCES = {
     idPrefix: 'ev_',
     jsonFields: ["PartsList", "Files", "PrAssignments", "RequestDoc", "KyokaDoc", "HoukokuDoc", "MeetingDocs", "Minutes"],
     adminOnly: false,
-    columns: ["ID", "Date", "DateEnd", "Title", "Category", "Location", "Audience", "Address", "PostalCode", "LocationTel", "EmergencyHospital", "EmergencyPolice", "TimeStart", "TimeEnd", "GatherTime", "DismissTime", "MeetingNumber", "PartsList", "AdminKyoka", "AdminHoukoku", "KyokaDeadline", "HoukokuDeadline", "KyokaNotRequired", "HoukokuNotRequired", "VoteDeadline", "PlanName", "Logistics", "Remarks", "Files", "Belongings", "Accompany", "SeriesKey", "Positives", "Reflections", "ResultsMemo", "VisitorCount", "ParticipantCount", "PrAssignments", "ReportStatus", "KyokaStatus", "PlanLeader", "TransportMethod", "TransportDriver", "TransportPassengers", "RequestDoc", "KyokaDoc", "HoukokuDoc", "MeetingDocs", "Minutes", "CreatedAt", "UpdatedAt", "UpdatedBy"]
+    columns: ["ID", "Date", "DateEnd", "Title", "Category", "Location", "Audience", "Address", "PostalCode", "LocationTel", "EmergencyHospital", "EmergencyPolice", "TimeStart", "TimeEnd", "GatherTime", "DismissTime", "MeetingNumber", "PartsList", "AdminKyoka", "AdminHoukoku", "KyokaDeadline", "HoukokuDeadline", "KyokaNotRequired", "HoukokuNotRequired", "VoteDeadline", "PlanName", "Remarks", "Files", "Belongings", "Accompany", "SeriesKey", "Positives", "Reflections", "ResultsMemo", "VisitorCount", "ParticipantCount", "PrAssignments", "ReportStatus", "KyokaStatus", "PlanLeader", "TransportMethod", "TransportDriver", "TransportPassengers", "RequestDoc", "KyokaDoc", "HoukokuDoc", "MeetingDocs", "Minutes", "CreatedAt", "UpdatedAt", "UpdatedBy"]
   },
   members: {
     table: 'members',

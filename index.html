@@ -20,11 +20,6 @@
                 <button type="button" id="welcome-edit-btn" class="expd-section-edit-btn hidden" title="メッセージを編集" onclick="editWelcomeMessage()">&#9998;</button>
             </div>
             <div id="welcome-editor-area" class="hidden"></div>
-            <div class="quick-actions">
-                <a href="events.html?action=new" class="quick-action-btn">＋ 予定を追加</a>
-                <a href="events.html" class="quick-action-btn">予定を見る</a>
-                <a href="experiments.html" class="quick-action-btn">実験ネタを見る</a>
-            </div>
         </div>
 
         <!-- LINE公式アカウントの友だち追加案内（設定画面で友だち追加URLを登録すると表示される） -->
@@ -53,9 +48,9 @@
         </div>
 
         <div class="dash-stats" id="dash-stats">
-            <div class="stat-card"><div class="stat-num" id="stat-upcoming">&mdash;</div><div class="stat-label">今後の予定</div></div>
-            <div class="stat-card"><div class="stat-num" id="stat-members">&mdash;</div><div class="stat-label">メンバー</div></div>
-            <div class="stat-card"><div class="stat-num" id="stat-experiments">&mdash;</div><div class="stat-label">実験ネタ</div></div>
+            <a href="events.html" class="stat-card"><div class="stat-num" id="stat-upcoming">&mdash;</div><div class="stat-label">今後の予定</div></a>
+            <a href="members.html" class="stat-card"><div class="stat-num" id="stat-members">&mdash;</div><div class="stat-label">メンバー</div></a>
+            <a href="experiments.html" class="stat-card"><div class="stat-num" id="stat-experiments">&mdash;</div><div class="stat-label">実験ネタ</div></a>
         </div>
 
         <!-- 開閉はカード単位。片付いた項目だけを畳めるよう、見出しごとにトグルを置く -->

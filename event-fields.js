@@ -14,12 +14,42 @@ const TRANSPORT_SCHOOL_CAR = '学用車';
 
 // ---- 荷物運搬方法（編集ウィザード） ----
 
+// 帯同（教職員）が変わったときに、運転者との連動（「運転者は帯同と同じ」）をやり直す。initTransportInputs が設定する。
+let wzSyncDriver = null;
+
+// 編集時の初期状態: 学用車で、保存済みの運転者が帯同と同じ顔ぶれ（1 人以上）ならチェック済みにする
+function driverSameChecked(e) {
+    const names = v => (v || '').split(',').map(s => s.trim()).filter(Boolean);
+    const driver = names(e.TransportDriver), acc = names(e.Accompany);
+    return e.TransportMethod === TRANSPORT_SCHOOL_CAR && driver.length > 0
+        && driver.length === acc.length && driver.every(n => acc.includes(n));
+}
+
 function initTransportInputs(e, splitNames) {
     const sel = document.getElementById('wz-ev-transport');
     if (!sel) return;
     const driver = initTagInput(document.getElementById('wz-ev-driver'), splitNames(e.TransportDriver), '運転者を検索...');
     initTagInput(document.getElementById('wz-ev-passenger'), splitNames(e.TransportPassengers), '同乗者を検索...');
     const hint = document.getElementById('wz-ev-driver-hint');
+    const same = document.getElementById('wz-ev-driver-same');
+    const sameWrap = document.getElementById('wz-ev-driver-same-wrap');
+    const accompanyInput = () => document.getElementById('wz-ev-accompany')?._tagInput;
+    const driverBox = document.getElementById('wz-ev-driver');
+
+    // 学用車で、帯同が 1 人以上いるときだけ「運転者は帯同と同じ」を選べる。
+    // チェック中は運転者を帯同の顔ぶれに固定して、入力欄は触れないようにする。
+    const syncDriver = () => {
+        const acc = accompanyInput() ? accompanyInput().getValues() : [];
+        const available = sel.value === TRANSPORT_SCHOOL_CAR && acc.length > 0;
+        if (!available) same.checked = false;
+        sameWrap.classList.toggle('hidden', !available);
+        const locked = available && same.checked;
+        if (locked) driver.setValues(acc);
+        driverBox.classList.toggle('is-locked', locked);
+        driverBox.querySelector('.tag-input-field').disabled = locked;
+    };
+    wzSyncDriver = syncDriver;
+    same.addEventListener('change', syncDriver);
 
     // 学用車のときだけ運転者の候補と入力を教職員に限る。userChanged: 利用者が方法を切り替えたとき。
     const applyMethod = (userChanged) => {
@@ -39,8 +69,9 @@ function initTransportInputs(e, splitNames) {
             }
         }
     };
-    sel.addEventListener('change', () => applyMethod(true));
+    sel.addEventListener('change', () => { applyMethod(true); syncDriver(); });
     applyMethod(false);
+    syncDriver();
 }
 
 // ---- ファイル欄（追加ダイアログ・編集ウィザード用） ----
