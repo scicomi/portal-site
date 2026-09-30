@@ -1098,30 +1098,92 @@ textarea:focus {
     padding: var(--space-md);
     position: relative;
 }
-/* 「年月を選択」ボタンから showPicker() で開くだけの隠し入力。独自のUIは持たない。 */
-.home-calendar-jump-input {
+/* 年月ピッカー（タイトルをタップで開く）。ツールバー直下に中央寄せで重ねる */
+.cal-jump-pop {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 1px;
-    height: 1px;
-    opacity: 0;
-    pointer-events: none;
+    top: 64px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 30;
+    width: min(360px, calc(100% - 16px));
+    padding: 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2);
 }
+.cal-jump-year {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.cal-jump-year-label {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+.cal-jump-nav {
+    width: 44px;
+    height: 44px;
+    font-size: 1.6rem;
+    line-height: 1;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--card-bg);
+    color: var(--text-color);
+    cursor: pointer;
+}
+.cal-jump-nav:hover { background: var(--primary-subtle); }
+.cal-jump-months {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+.cal-jump-month {
+    min-height: 48px;
+    font-size: 1.05rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--card-bg);
+    color: var(--text-color);
+    cursor: pointer;
+}
+.cal-jump-month:hover { background: var(--primary-subtle); }
+.cal-jump-month.is-today { border-color: var(--primary-color); font-weight: 600; }
+.cal-jump-month.is-current { background: var(--primary-color); border-color: var(--primary-color); color: #fff; }
 .home-calendar .fc {
     font-size: 0.8rem;
 }
+/* 3分割グリッドで、年月タイトルを左右ボタンの幅に関係なく常に中央へ固定する */
 .home-calendar .fc-toolbar {
-    margin-bottom: 6px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    margin-bottom: 8px;
     gap: 6px;
 }
+.home-calendar .fc-toolbar-chunk:first-child { justify-self: start; }
+.home-calendar .fc-toolbar-chunk:last-child { justify-self: end; display: flex; gap: 6px; }
 .home-calendar .fc-toolbar-title {
-    font-size: 0.95rem;
+    font-size: 1.15rem;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 8px;
+    white-space: nowrap;
 }
+.home-calendar .fc-toolbar-title::after {
+    content: ' ▾';
+    font-size: 0.8em;
+    opacity: 0.6;
+}
+.home-calendar .fc-toolbar-title:hover { background: rgba(0, 0, 0, 0.06); }
 .home-calendar .fc-button {
-    padding: 2px 8px;
-    font-size: 0.8rem;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 4px 12px;
+    font-size: 1rem;
 }
+.home-calendar .fc-button .fc-icon { font-size: 1.5em; }
 .home-calendar .fc-daygrid-day-frame {
     min-height: 44px;
 }
@@ -1136,8 +1198,8 @@ textarea:focus {
 @media (max-width: 480px) {
     .home-calendar-card { padding: var(--space-sm); }
     .home-calendar .fc { font-size: 0.7rem; }
-    .home-calendar .fc-toolbar-title { font-size: 0.82rem; }
-    .home-calendar .fc-button { padding: 1px 6px; font-size: 0.72rem; }
+    .home-calendar .fc-toolbar-title { font-size: 1rem; padding: 6px; }
+    .home-calendar .fc-button { min-width: 44px; min-height: 44px; padding: 4px 8px; font-size: 0.9rem; }
     .home-calendar .fc-daygrid-day-frame { min-height: 32px; }
     .home-calendar .fc-daygrid-event { font-size: 0.58rem; }
 }

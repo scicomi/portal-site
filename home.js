@@ -197,14 +197,8 @@ function initHomeCalendar(attempt = 0) {
         height: 'auto',
         dayMaxEvents: 2,
         selectable: false,
-        headerToolbar: { left: 'prev,next today jumpToDate', center: 'title', right: '' },
+        headerToolbar: { left: 'prev', center: 'title', right: 'today next' },
         buttonText: { today: '今日' },
-        customButtons: {
-            jumpToDate: {
-                text: '年月を選択',
-                click: openHomeCalendarJumpPicker
-            }
-        },
         dayCellClassNames: function (arg) {
             const dateStr = toISODate(arg.date);
             return holidaysData[dateStr] ? ['holiday'] : [];
@@ -241,27 +235,85 @@ function initHomeCalendar(attempt = 0) {
     });
     homeCalendar.render();
 
-    const jumpInput = document.getElementById('home-calendar-jump');
-    if (jumpInput && !jumpInput.dataset.bound) {
-        jumpInput.dataset.bound = '1';
-        jumpInput.addEventListener('change', () => {
-            if (!jumpInput.value || !homeCalendar) return;
-            const [y, m] = jumpInput.value.split('-').map(Number);
-            homeCalendar.gotoDate(new Date(y, m - 1, 1));
+    // 中央の「2026年9月」をタップすると年月ピッカーを開く
+    if (!el.dataset.jumpBound) {
+        el.dataset.jumpBound = '1';
+        el.addEventListener('click', (ev) => {
+            if (ev.target.closest('.fc-toolbar-title')) openHomeCalendarJumpPicker();
         });
     }
 }
 
-// カレンダー右上の「年月を選択」ボタン。ネイティブの月ピッカーをその場で開く（独自UIは作らない）。
+// カレンダー中央の年月タイトルから開く、大きめの年月ピッカー（‹ 年 › ＋ 12か月ボタン）。
 function openHomeCalendarJumpPicker() {
-    const jumpInput = document.getElementById('home-calendar-jump');
-    if (!jumpInput) return;
-    if (homeCalendar) {
-        const d = homeCalendar.getDate();
-        jumpInput.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    }
-    if (typeof jumpInput.showPicker === 'function') jumpInput.showPicker();
-    else jumpInput.focus();
+    if (!homeCalendar) return;
+    const card = document.querySelector('.home-calendar-card');
+    if (!card) return;
+    if (card.querySelector('.cal-jump-pop')) { closeHomeCalendarJumpPicker(); return; }
+
+    const cur = homeCalendar.getDate();
+    let year = cur.getFullYear();
+    const curY = cur.getFullYear();
+    const curM = cur.getMonth();
+    const now = new Date();
+
+    const pop = document.createElement('div');
+    pop.className = 'cal-jump-pop';
+    pop.setAttribute('role', 'dialog');
+    pop.setAttribute('aria-label', '年月を選択');
+
+    const render = () => {
+        pop.innerHTML = `
+            <div class="cal-jump-year">
+                <button type="button" class="cal-jump-nav" data-y="-1" aria-label="前の年">‹</button>
+                <span class="cal-jump-year-label">${year}年</span>
+                <button type="button" class="cal-jump-nav" data-y="1" aria-label="次の年">›</button>
+            </div>
+            <div class="cal-jump-months">
+                ${Array.from({ length: 12 }, (_, i) => {
+                    const cls = [
+                        'cal-jump-month',
+                        (year === curY && i === curM) ? 'is-current' : '',
+                        (year === now.getFullYear() && i === now.getMonth()) ? 'is-today' : ''
+                    ].join(' ').trim();
+                    return `<button type="button" class="${cls}" data-m="${i}">${i + 1}月</button>`;
+                }).join('')}
+            </div>`;
+    };
+    render();
+
+    pop.addEventListener('click', (ev) => {
+        const nav = ev.target.closest('.cal-jump-nav');
+        if (nav) { year += Number(nav.dataset.y); render(); return; }
+        const mb = ev.target.closest('.cal-jump-month');
+        if (mb) {
+            homeCalendar.gotoDate(new Date(year, Number(mb.dataset.m), 1));
+            closeHomeCalendarJumpPicker();
+        }
+    });
+
+    card.appendChild(pop);
+
+    // 閉じる操作: 外側クリック / Esc
+    setTimeout(() => {
+        document.addEventListener('click', onHomeCalendarPickerOutside, true);
+        document.addEventListener('keydown', onHomeCalendarPickerKey);
+    }, 0);
+}
+
+function closeHomeCalendarJumpPicker() {
+    document.querySelectorAll('.cal-jump-pop').forEach(n => n.remove());
+    document.removeEventListener('click', onHomeCalendarPickerOutside, true);
+    document.removeEventListener('keydown', onHomeCalendarPickerKey);
+}
+
+function onHomeCalendarPickerOutside(ev) {
+    if (ev.target.closest('.cal-jump-pop') || ev.target.closest('.fc-toolbar-title')) return;
+    closeHomeCalendarJumpPicker();
+}
+
+function onHomeCalendarPickerKey(ev) {
+    if (ev.key === 'Escape') closeHomeCalendarJumpPicker();
 }
 
 function refreshHomeCalendar() {
