@@ -23,7 +23,10 @@ export function buildBotSystemPrompt(now = new Date()) {
 - Date: 開催日(YYYY-MM-DD), DateEnd: 終了日
 - Title: イベント名
 - Category: normal(イベント), other(その他), general(全体MTG), admin(幹部MTG)
-- Location: 場所, Audience: 対象者
+- Location: 場所, Audience: 対象者（イベント・その他のみ。ミーティングでは使わない）
+- PlanLeader: 企画担当者名（人名。複数はカンマ区切り）
+- TransportMethod: 荷物運搬方法（レンタカー / 学用車 / 配送 / その他）
+- TransportDriver: 運転者名, TransportPassengers: 同乗者名（人名。レンタカー・学用車のとき）
 - AdminKyoka: 許可願の担当者名（人名）
 - AdminHoukoku: 報告書の担当者名（人名）
 - KyokaDeadline: 許可願期限(YYYY-MM-DD), HoukokuDeadline: 報告書期限

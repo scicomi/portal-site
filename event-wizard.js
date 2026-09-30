@@ -277,7 +277,9 @@ function _initTagInputViewportListeners() {
     window.addEventListener('resize', reposition);
 }
 
-function initTagInput(container, selectedValues, placeholder, filterFn) {
+// opts.strict: true なら候補にないメンバーの自由入力（Enter）を受け付けない。
+// 戻り値の setFilter(fn, strict) で、あとから候補の絞り込みを切り替えられる。
+function initTagInput(container, selectedValues, placeholder, filterFn, opts) {
     container.innerHTML = '';
     const wrapper = document.createElement('div');
     wrapper.className = 'tag-input';
@@ -295,6 +297,8 @@ function initTagInput(container, selectedValues, placeholder, filterFn) {
     container.appendChild(wrapper);
 
     let values = [...(selectedValues || [])];
+    let curFilter = filterFn;
+    let strict = !!(opts && opts.strict);
 
     function renderTags() {
         wrapper.querySelectorAll('.tag-input-tag').forEach(t => t.remove());
@@ -332,7 +336,7 @@ function initTagInput(container, selectedValues, placeholder, filterFn) {
 
     function showDropdown() {
         const query = input.value.toLowerCase().trim();
-        const members = filterFn ? getActiveMembers().filter(filterFn) : getActiveMembers();
+        const members = curFilter ? getActiveMembers().filter(curFilter) : getActiveMembers();
         const filtered = members.filter(m => {
             if (values.includes(m.Name)) return false;
             if (!query) return true;
@@ -371,6 +375,10 @@ function initTagInput(container, selectedValues, placeholder, filterFn) {
 
     function addValue(val) {
         val = (val || '').trim();
+        if (val && strict) {
+            const allowed = (curFilter ? getActiveMembers().filter(curFilter) : getActiveMembers()).some(m => m.Name === val);
+            if (!allowed) { toast('候補から選んでください', 'error', 2500); input.value = ''; hideDropdown(); return; }
+        }
         if (val && !values.includes(val)) { values.push(val); renderTags(); }
         input.value = '';
         hideDropdown();
@@ -403,7 +411,8 @@ function initTagInput(container, selectedValues, placeholder, filterFn) {
     renderTags();
     container._tagInput = {
         getValues: () => [...values],
-        setValues: (vals) => { values = [...vals]; renderTags(); }
+        setValues: (vals) => { values = [...vals]; renderTags(); },
+        setFilter: (fn, strictFlag) => { curFilter = fn; strict = !!strictFlag; }
     };
     return container._tagInput;
 }
@@ -614,8 +623,12 @@ function meetingWizardStepsHtml(e, steps, catInfo) {
                 </div>${voteDeadlineInputHtml(e.VoteDeadline)}`)
         + wizardStepHtml(2, steps, `
                 <div class="e1-group">
-                    <label class="e1-label">議題 / 備考</label>
-                    <textarea id="wz-ev-remarks" class="e1-input" rows="6" placeholder="議題や備考を入力">${escapeHtml(e.Remarks || '')}</textarea>
+                    <label class="e1-label">議題</label>
+                    <textarea id="wz-ev-remarks" class="e1-input" rows="6" placeholder="例: 1. 前回イベントの振り返り&#10;2. 次回企画の担当決め&#10;3. 連絡事項">${escapeHtml(e.Remarks || '')}</textarea>
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">関連資料</label>
+                    <div id="wz-ev-meeting-docs"></div>
                 </div>`);
 }
 
@@ -632,6 +645,10 @@ function eventWizardStepsHtml(e, steps, catInfo) {
                 <div class="e1-group">
                     <label class="e1-label">場所</label>
                     <input id="wz-ev-location" class="e1-input" type="text" placeholder="例: ○○公民館" value="${escapeAttr(e.Location || '')}">
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">企画担当者</label>
+                    <div id="wz-ev-planleader"></div>
                 </div>
                 <div class="e1-group">
                     <label class="e1-label">対象者・人数</label>
@@ -663,6 +680,23 @@ function eventWizardStepsHtml(e, steps, catInfo) {
                 <div class="e1-group">
                     <label class="e1-label">帯同（コーディネーター・アドバイザー）</label>
                     <div id="wz-ev-accompany"></div>
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">荷物運搬方法</label>
+                    <select class="e1-input" id="wz-ev-transport">
+                        <option value="">選択してください</option>
+                        ${TRANSPORT_OPTIONS.map(o => `<option value="${o}"${o === e.TransportMethod ? ' selected' : ''}>${o}</option>`).join('')}
+                    </select>
+                </div>
+                <div id="wz-ev-car-fields" class="${TRANSPORT_WITH_CAR.includes(e.TransportMethod) ? '' : 'hidden'}">
+                    <div class="e1-group">
+                        <label class="e1-label">運転者を選択<span id="wz-ev-driver-hint" class="text-muted" style="font-size:0.8rem;"></span></label>
+                        <div id="wz-ev-driver"></div>
+                    </div>
+                    <div class="e1-group">
+                        <label class="e1-label">同乗者を選択</label>
+                        <div id="wz-ev-passenger"></div>
+                    </div>
                 </div>`)
         + wizardStepHtml(3, steps, `
                 <div class="e1-group">
@@ -712,6 +746,9 @@ function eventForWizard(editId, template) {
         Positives: '', Reflections: '', ResultsMemo: '',
         // 実施後の記録(来場者数・参加人数・広報担当)は回ごとの値なので引き継がない。郵便番号は会場情報として引き継ぐ
         VisitorCount: '', ParticipantCount: '', PrAssignments: '',
+        // 企画担当者・運搬・書類ファイルも回ごとの値なので引き継がない
+        PlanLeader: '', TransportMethod: '', TransportDriver: '', TransportPassengers: '',
+        RequestDoc: [], KyokaDoc: [], HoukokuDoc: [], MeetingDocs: [], Minutes: [],
         UpdatedAt: '', CreatedAt: ''
     };
 }
@@ -783,7 +820,10 @@ function initEventWizardInputs(overlay, e, isMeeting) {
     setVal('wz-ev-time-start', e.TimeStart);
     setVal('wz-ev-time-end', e.TimeEnd);
     initDateRangePicker(overlay);
-    if (isMeeting) return;
+    if (isMeeting) {
+        initFileField('wz-ev-meeting-docs', 'MeetingDocs', true);
+        return;
+    }
 
     setVal('wz-ev-gather', e.GatherTime);
     setVal('wz-ev-dismiss', e.DismissTime);
@@ -795,6 +835,8 @@ function initEventWizardInputs(overlay, e, isMeeting) {
 
     const splitNames = v => (v || '').split(',').map(s => s.trim()).filter(Boolean);
     initTagInput(document.getElementById('wz-ev-accompany'), splitNames(e.Accompany), 'コーディネーター・アドバイザーを検索...', isStaffMember);
+    initTagInput(document.getElementById('wz-ev-planleader'), splitNames(e.PlanLeader), '企画担当者を検索...', isRegularMember);
+    initTransportInputs(e, splitNames);
     initTagInput(document.getElementById('wz-ev-admin-kyoka'), splitNames(e.AdminKyoka), '担当者を検索...', isRegularMember);
     initTagInput(document.getElementById('wz-ev-admin-houkoku'), splitNames(e.AdminHoukoku), '担当者を検索...', isRegularMember);
 
@@ -921,43 +963,48 @@ function addWzEvExpRow() {
 }
 
 // ---- ウィザード内ファイルアップロード ----
-async function wzUploadFiles(fileList) {
+// field: イベントの列名（既定は関連ファイル）。single: true なら 1 ファイルだけ持つ（選び直すと差し替える）。
+async function wzUploadFiles(fileList, field = 'Files', refresh = wzRefreshFileList, single = false) {
     // 開始時の対象を握る。完了時に tempNewEvent が別物（閉じた・別イベントに切替）なら結果を捨てる。
     const target = tempNewEvent;
     if (!target) return;
     const maxSizeMB = getFileMaxMB();
+    if (single) {
+        fileList = fileList.slice(0, 1);
+        if (fileList.length) removeEventFile(target, field, 0, refresh);   // 選び直しは差し替え
+    }
     for (const file of fileList) {
         if (tempNewEvent !== target) return;
         if (file.size > maxSizeMB * 1024 * 1024) {
             toast(`「${file.name}」はサイズ上限(${maxSizeMB}MB)を超えています`, 'error');
             continue;
         }
-        if (!Array.isArray(target.Files)) target.Files = [];
+        if (!Array.isArray(target[field])) target[field] = [];
         if (!Array.isArray(target._sessionUploads)) target._sessionUploads = [];
 
         const placeholder = { name: file.name, size: file.size, _uploading: true };
-        target.Files.push(placeholder);
-        wzRefreshFileList();
+        target[field].push(placeholder);
+        refresh();
 
         try {
             const result = await api.uploadFile(file);
-            const idx = target.Files.indexOf(placeholder);
+            const idx = target[field].indexOf(placeholder);
             if (tempNewEvent !== target || idx < 0) {
                 // ウィザードが閉じた／切り替わった、またはキャンセル済み → 一覧に戻さず、アップロード済みの実体を消す
                 discardUploadedFile(result && result.driveId);
                 continue;
             }
-            target.Files[idx] = result;
+            target[field][idx] = result;
             if (result && result.driveId) target._sessionUploads.push(result.driveId);
             toast(`「${file.name}」をアップロードしました`, 'success', 2000);
         } catch (err) {
             if (tempNewEvent !== target) return;
-            const idx = target.Files.indexOf(placeholder);
+            const idx = target[field].indexOf(placeholder);
             if (idx < 0) continue; // キャンセル済み。失敗を表示しない
             toast(`「${file.name}」のアップロード失敗: ${err.message}`, 'error');
-            target.Files[idx] = { name: file.name, size: file.size, _failed: true };
+            target[field][idx] = { name: file.name, size: file.size, _failed: true };
         }
-        wzRefreshFileList();
+        refresh();
     }
 }
 
@@ -968,23 +1015,27 @@ registerActions({
 });
 
 function wzRemoveFile(index) {
-    if (!tempNewEvent || !Array.isArray(tempNewEvent.Files)) return;
-    const file = tempNewEvent.Files[index];
+    removeEventFile(tempNewEvent, 'Files', index, wzRefreshFileList);
+}
+
+// target[field] の index 番目のファイルを外す。
+// このダイアログでアップロードしたばかりのファイルはその場で実体も消し、保存済みのものは保存成功後に消す。
+function removeEventFile(target, field, index, refresh) {
+    if (!target || !Array.isArray(target[field])) return;
+    const file = target[field][index];
     if (!file) return;
     if (file.driveId) {
-        const si = Array.isArray(tempNewEvent._sessionUploads) ? tempNewEvent._sessionUploads.indexOf(file.driveId) : -1;
+        const si = Array.isArray(target._sessionUploads) ? target._sessionUploads.indexOf(file.driveId) : -1;
         if (si >= 0) {
-            // このウィザードでアップロードしたばかりのファイル（未保存）は、その場で実体も消す
-            tempNewEvent._sessionUploads.splice(si, 1);
+            target._sessionUploads.splice(si, 1);
             discardUploadedFile(file.driveId);
         } else {
-            // 保存済みのファイルは、イベントの保存が成功してから消す（保存に失敗しても失われないように）
-            if (!Array.isArray(tempNewEvent._filesToDelete)) tempNewEvent._filesToDelete = [];
-            tempNewEvent._filesToDelete.push(file.driveId);
+            if (!Array.isArray(target._filesToDelete)) target._filesToDelete = [];
+            target._filesToDelete.push(file.driveId);
         }
     }
-    tempNewEvent.Files.splice(index, 1);
-    wzRefreshFileList();
+    target[field].splice(index, 1);
+    refresh();
 }
 
 function wzRefreshFileList() {
@@ -1048,7 +1099,7 @@ function validateEventWizard() {
             return null;
         }
     }
-    if (Array.isArray(tempNewEvent.Files) && tempNewEvent.Files.some(f => f._uploading)) {
+    if (['Files', 'MeetingDocs'].some(k => Array.isArray(tempNewEvent[k]) && tempNewEvent[k].some(f => f._uploading))) {
         toast('ファイルのアップロードが完了するまでお待ちください', 'error');
         return null;
     }
@@ -1081,6 +1132,7 @@ function buildEventFromWizard(time) {
     // 出欠回答の締切（任意）。欄が無ければ既存値を保持する。
     if (document.getElementById('wz-ev-vote-deadline')) item.VoteDeadline = val('wz-ev-vote-deadline');
     item.Files = (Array.isArray(item.Files) ? item.Files : []).filter(f => !f._failed);
+    item.MeetingDocs = (Array.isArray(item.MeetingDocs) ? item.MeetingDocs : []).filter(f => !f._failed);
 
     if (isMeeting) {
         item.MeetingNumber = val('wz-ev-meeting-num');
@@ -1093,6 +1145,12 @@ function buildEventFromWizard(time) {
     item.GatherTime = val('wz-ev-gather');
     item.DismissTime = val('wz-ev-dismiss');
     item.Logistics = val('wz-ev-logistics');
+    const planLeader = tags('wz-ev-planleader');
+    if (planLeader !== null) item.PlanLeader = planLeader;
+    item.TransportMethod = val('wz-ev-transport');
+    const withCar = TRANSPORT_WITH_CAR.includes(item.TransportMethod);   // 車を使わない方法なら運転者・同乗者は持たせない
+    item.TransportDriver = withCar ? (tags('wz-ev-driver') || '') : '';
+    item.TransportPassengers = withCar ? (tags('wz-ev-passenger') || '') : '';
 
     const expContainer = document.getElementById('wz-ev-exp-container');
     if (expContainer) {

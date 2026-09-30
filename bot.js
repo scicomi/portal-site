@@ -127,13 +127,15 @@ const queryEngine = {
       items = items.filter(e =>
         (e.Title || '').toLowerCase().includes(kw) ||
         (e.Location || '').toLowerCase().includes(kw) ||
-        (e.Remarks || '').toLowerCase().includes(kw)
+        (e.Remarks || '').toLowerCase().includes(kw) ||
+        (e.TransportMethod || '').toLowerCase().includes(kw)
       );
     }
     if (p.name) {
       items = items.filter(e =>
         (e.AdminKyoka || '').includes(p.name) ||
         (e.AdminHoukoku || '').includes(p.name) ||
+        [e.PlanLeader, e.TransportDriver, e.TransportPassengers].some(v => (v || '').includes(p.name)) ||
         this._getPresenters(e).some(n => n.includes(p.name))
       );
     }
@@ -208,7 +210,10 @@ const queryEngine = {
         ((e.AdminKyoka || '').includes(p.name) || (e.AdminHoukoku || '').includes(p.name));
       const inParts = (p.include_in === 'parts' || p.include_in === 'both' || !p.include_in) &&
         this._getPresenters(e).some(n => n.includes(p.name));
-      return inAdmin || inParts;
+      // 企画担当者・運転者・同乗者も「担当した」に含める（担当を絞らない質問のとき）
+      const inPlan = (p.include_in === 'both' || !p.include_in) &&
+        [e.PlanLeader, e.TransportDriver, e.TransportPassengers].some(v => (v || '').includes(p.name));
+      return inAdmin || inParts || inPlan;
     });
 
     result.sort((a, b) => (a.Date || '').localeCompare(b.Date || ''));
@@ -424,11 +429,13 @@ function buildEventDetailBody(e) {
       ${timeStr ? row('時間', timeStr) : ''}
       ${isMeeting && e.MeetingNumber ? row('回数', '第' + e.MeetingNumber + '回') : ''}
       ${row('場所', e.Location)}
-      ${row('対象', e.Audience)}
+      ${isMeeting ? '' : row('対象', e.Audience)}
+      ${isMeeting ? '' : row('企画担当者', e.PlanLeader)}
+      ${isMeeting ? '' : row('荷物運搬方法', [e.TransportMethod, e.TransportDriver && '運転者: ' + e.TransportDriver, e.TransportPassengers && '同乗者: ' + e.TransportPassengers].filter(Boolean).join(' ／ '))}
     </div>
     ${partsHtml ? sec('実験・担当', partsHtml) : ''}
     ${docRows ? sec('書類', `<div class="bot-detail-rows">${docRows}</div>`) : ''}
-    ${textSec(isMeeting ? '議題 / 備考' : '備考', [e.Remarks, e.Belongings].filter(s => s && String(s).trim()).join('\n'))}
+    ${textSec(isMeeting ? '議題' : '備考', [e.Remarks, e.Belongings].filter(s => s && String(s).trim()).join('\n'))}
     ${textSec('当日運営・ロジ', e.Logistics)}
     ${filesHtml ? sec('ファイル', filesHtml) : ''}
     ${(e.Positives && e.Positives.trim()) || (e.Reflections && e.Reflections.trim()) ? '<hr class="divider">' : ''}
@@ -522,6 +529,8 @@ function keywordSearch(text) {
   const eventHits = keywordRank(allData.events, e => [
     { text: e.Title, weight: 3 }, { text: e.Location, weight: 2 },
     { text: e.AdminKyoka, weight: 2 }, { text: e.AdminHoukoku, weight: 2 },
+    { text: e.PlanLeader, weight: 2 }, { text: e.TransportDriver, weight: 1 }, { text: e.TransportPassengers, weight: 1 },
+    { text: e.TransportMethod, weight: 1 },
     { text: queryEngine._getPresenters(e).join(' '), weight: 2 },
     { text: eventExperimentNames(e).join(' '), weight: 2 },
     { text: e.Remarks, weight: 1 }
@@ -821,7 +830,7 @@ function buildEventContext(ev) {
   lines.push('イベント名: ' + (ev.Title || ''));
   if (ev.Date) lines.push('日程: ' + ev.Date + (ev.DateEnd && ev.DateEnd !== ev.Date ? ' 〜 ' + ev.DateEnd : ''));
   if (ev.Location) lines.push('場所: ' + ev.Location);
-  if (ev.Audience) lines.push('対象: ' + ev.Audience);
+  if (ev.Audience && !isMeetingCategory(ev.Category)) lines.push('対象: ' + ev.Audience);
   const expNames = eventExperimentNames(ev);
   if (expNames.length) lines.push('実施した実験: ' + expNames.join(', '));
   if (ev.Remarks)   lines.push('備考:\n' + ev.Remarks);

@@ -651,6 +651,101 @@ function expLinkHtml(name) {
     return `<a href="${href}" class="exp-link-inline" title="実験内容を見る">${escapeHtml(name)}</a>`;
 }
 
+// ---- 書類・資料ファイル（依頼書・活動許可願・活動報告書・関連資料・議事録） ----
+
+const DETAIL_FILE_LABELS = { RequestDoc: '依頼書', KyokaDoc: '活動許可願', HoukokuDoc: '活動報告書', MeetingDocs: '関連資料', Minutes: '議事録' };
+const DETAIL_DOC_FIELDS = ['RequestDoc', 'KyokaDoc', 'HoukokuDoc'];
+
+function splitNamesList(v) {
+    return String(v || '').split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function transportHtml(ev) {
+    const parts = [escapeHtml(ev.TransportMethod)];
+    const driver = splitNamesList(ev.TransportDriver).join(', ');
+    const passengers = splitNamesList(ev.TransportPassengers).join(', ');
+    if (driver) parts.push('運転者: ' + escapeHtml(driver));
+    if (passengers) parts.push('同乗者: ' + escapeHtml(passengers));
+    return parts.join(' ／ ');
+}
+
+// ファイル一覧と「アップロード／差し替え／追加」ボタン。multiple なら複数ファイル、そうでなければ 1 ファイル。
+function detailFilesHtml(ev, field, multiple) {
+    const files = Array.isArray(ev[field]) ? ev[field] : [];
+    const items = files.map((f, i) => {
+        const url = safeHttpUrl(f.url);
+        const name = escapeHtml(f.name || ('ファイル ' + (i + 1)));
+        const size = f.size ? ' (' + formatFileSize(f.size) + ')' : '';
+        const link = url
+            ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="file-link">${name}${size}</a>`
+            : `<span class="file-link text-hint">${name} (リンク切れ)</span>`;
+        return `<span class="detail-file-item">${link} <button type="button" class="tbl-btn tbl-btn-danger" data-action="es-file-remove" data-field="${field}" data-index="${i}">外す</button></span>`;
+    }).join('');
+    const label = files.length ? (multiple ? '追加' : '差し替え') : 'アップロード';
+    return `
+        <div class="detail-file-field" style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
+            ${items || '<span class="text-hint" style="font-size:0.9rem;">なし</span>'}
+            <button type="button" class="btn btn-secondary btn-sm" data-action="es-file-pick">${label}</button>
+            <input type="file" style="display:none;" data-ef-input data-field="${field}"${multiple ? ' multiple' : ''}>
+        </div>`;
+}
+
+// 選んだファイルをアップロードして、イベントに保存する。1 ファイルの項目は差し替え（前のファイルは消す）。
+async function uploadDetailFiles(field, files, multiple) {
+    const ev = currentEvent();
+    if (!ev || files.length === 0) return;
+    const evId = ev.ID;
+    const label = DETAIL_FILE_LABELS[field];
+    const maxMB = getFileMaxMB();
+    const uploaded = [];
+    toast('アップロード中...', 'info', 2000);
+    for (const file of (multiple ? files : files.slice(0, 1))) {
+        if (file.size > maxMB * 1024 * 1024) {
+            toast(`「${file.name}」はサイズ上限(${maxMB}MB)を超えています`, 'error');
+            continue;
+        }
+        try {
+            uploaded.push(await api.uploadFile(file));
+        } catch (err) {
+            toast(`「${file.name}」のアップロード失敗: ${err.message}`, 'error');
+        }
+    }
+    if (uploaded.length === 0) return;
+    const live = allEventsData.find(e => e.ID === evId);
+    if (!live) { uploaded.forEach(f => discardUploadedFile(f.driveId)); return; }
+    const current = Array.isArray(live[field]) ? live[field] : [];
+    const next = multiple ? current.concat(uploaded) : uploaded.slice(0, 1);
+    const ok = await saveEventPatch(evId, { [field]: next }, seriesPatchOpts({
+        successMessage: `${label}を保存しました`,
+        onOptimistic: () => renderDetail(),
+        onRollback: () => renderDetail()
+    }));
+    // 保存できたら差し替えで外れた古いファイルを、できなければ今回のファイルを消す（消せるのは管理者のみ）
+    (ok ? (multiple ? [] : current) : uploaded).forEach(f => discardUploadedFile(f.driveId));
+}
+
+function removeDetailFile(field, index) {
+    const ev = currentEvent();
+    const file = ev && Array.isArray(ev[field]) ? ev[field][index] : null;
+    if (!file) return;
+    const label = DETAIL_FILE_LABELS[field];
+    showConfirmDialog({
+        title: 'ファイルを外しますか？',
+        message: `「${file.name || 'ファイル'}」を${label}から外します。`,
+        okLabel: '外す',
+        danger: true,
+        onOk: async () => {
+            const next = ev[field].filter((_, i) => i !== index);
+            const ok = await saveEventPatch(ev.ID, { [field]: next }, seriesPatchOpts({
+                successMessage: `${label}から外しました`,
+                onOptimistic: () => renderDetail(),
+                onRollback: () => renderDetail()
+            }));
+            if (ok) discardUploadedFile(file.driveId);
+        }
+    });
+}
+
 function renderDetail() {
     const box = document.getElementById('series-detail');
     if (!box) return;
@@ -722,6 +817,13 @@ function renderDetail() {
             </select>`}
         </div>`;
 
+    // 提出ファイル（依頼書・活動許可願・活動報告書）
+    const docFilesHtml = `
+        <div class="doc-status-row" style="flex-direction:column; align-items:flex-start; gap:6px;">
+            <span class="doc-status-name">提出ファイル</span>
+            ${DETAIL_DOC_FIELDS.map(f => `<div class="detail-doc-file"><span class="doc-status-name">${DETAIL_FILE_LABELS[f]}</span>${detailFilesHtml(ev, f, false)}</div>`).join('')}
+        </div>`;
+
     // 集合・解散
     const gatherDismiss = (ev.GatherTime || ev.DismissTime)
         ? [ev.GatherTime && `集合 ${escapeHtml(ev.GatherTime)}`, ev.DismissTime && `解散 ${escapeHtml(ev.DismissTime)}`].filter(Boolean).join(' / ')
@@ -739,17 +841,21 @@ function renderDetail() {
                 <td><span class="text-primary" style="font-size:1.15rem; font-weight:600;">${escapeHtml(displayTitle)}</span></td>
             </tr>
             ${!isMeeting && ev.PlanName ? `<tr><th>企画名</th><td>${escapeHtml(ev.PlanName)}</td></tr>` : ''}
+            ${!isMeeting && ev.PlanLeader ? `<tr><th>企画担当者</th><td>${escapeHtml(splitNamesList(ev.PlanLeader).join(', '))}</td></tr>` : ''}
             <tr><th>日にち</th><td>${dateStr}${isUpcoming ? ' <span class="occ-badge occ-upcoming">開催予定</span>' : ''}</td></tr>
             ${ev.TimeStart && ev.TimeEnd ? `<tr><th>時間</th><td>${timeStr}</td></tr>` : ''}
             ${!isMeeting && (ev.GatherTime || ev.DismissTime) ? `<tr><th>集合・解散</th><td>${gatherDismiss}</td></tr>` : ''}
             ${ev.Location ? `<tr><th>場所</th><td><span class="exp-link-inline" style="cursor:pointer;" onclick="goToVenueInfoTab()" title="会場情報タブへ">${escapeHtml(ev.Location)}</span></td></tr>` : ''}
-            ${ev.Audience ? `<tr><th>${isMeeting ? '参加メンバー' : '対象・人数'}</th><td>${escapeHtml(ev.Audience)}</td></tr>` : ''}
+            ${!isMeeting && ev.Audience ? `<tr><th>対象・人数</th><td>${escapeHtml(ev.Audience)}</td></tr>` : ''}
             ${!isMeeting && parts.length > 0 ? `<tr><th>実験内容・発表者</th><td>${expHtml}</td></tr>` : ''}
             ${!isMeeting && ev.Logistics ? `<tr><th>スケジュール・運搬</th><td style="white-space:pre-wrap;">${escapeHtml(ev.Logistics)}</td></tr>` : ''}
             ${!isMeeting && ev.Accompany ? `<tr><th>帯同</th><td>${renderAccompanyHtml(ev.Accompany)}</td></tr>` : ''}
-            ${(ev.Remarks || '').trim() ? `<tr><th>${isMeeting ? '議題 / 備考' : '備考'}</th><td style="white-space:pre-wrap;">${escapeHtml(ev.Remarks)}</td></tr>` : ''}
+            ${!isMeeting && ev.TransportMethod ? `<tr><th>荷物運搬方法</th><td>${transportHtml(ev)}</td></tr>` : ''}
+            ${(ev.Remarks || '').trim() ? `<tr><th>${isMeeting ? '議題' : '備考'}</th><td style="white-space:pre-wrap;">${escapeHtml(ev.Remarks)}</td></tr>` : ''}
+            ${isMeeting ? `<tr><th>関連資料</th><td>${detailFilesHtml(ev, 'MeetingDocs', true)}</td></tr>
+            <tr><th>議事録</th><td>${detailFilesHtml(ev, 'Minutes', false)}</td></tr>` : ''}
             ${files.length > 0 ? `<tr><th>関連ファイル</th><td class="file-list">${filesHtml}</td></tr>` : ''}
-            ${!isMeeting ? `<tr class="series-detail-docs-row"><th>書類</th><td>${docsHtml}</td></tr>` : ''}
+            ${!isMeeting ? `<tr class="series-detail-docs-row"><th>書類</th><td>${docsHtml}${docFilesHtml}</td></tr>` : ''}
         </table>
         ${!isMeeting ? `
         <div class="post-event-card">
@@ -777,6 +883,13 @@ function renderDetail() {
     // イベント後の実績（来場者数・参加メンバー数）はその場で編集→即保存
     box.querySelectorAll('.post-event-input[data-pe-field]').forEach(input => {
         input.addEventListener('change', () => savePostEventField(ev.ID, input.dataset.peField, input.value.trim()));
+    });
+    // 書類・資料ファイルの選択（選んだらアップロードして保存）
+    box.querySelectorAll('[data-ef-input]').forEach(input => {
+        input.addEventListener('change', () => {
+            uploadDetailFiles(input.dataset.field, Array.from(input.files), input.multiple);
+            input.value = '';
+        });
     });
     renderPrAssignments(ev);
 }
@@ -974,6 +1087,8 @@ function switchAttendanceFilter(status) {
 // 描画した data-action / data-change-action の受け口（onclick 属性に ID を埋め込まない。app.js の registerActions 参照）
 registerActions({
     'es-edit-event': el => openEventWizard(el.dataset.id),
+    'es-file-pick': el => el.parentElement.querySelector('[data-ef-input]').click(),
+    'es-file-remove': el => removeDetailFile(el.dataset.field, Number(el.dataset.index)),
     'es-select-occ': el => selectOccurrence(el.dataset.id || el.value),   // ‹ › ボタンは data-id、<select> は value
     'es-open-occ': el => openOccurrence(el.dataset.id),
     'es-attendance-filter': el => switchAttendanceFilter(el.dataset.key),

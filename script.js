@@ -349,13 +349,13 @@ const EVENT_SEARCH_FIELDS = [
     { key: 'location', label: '場所', weight: 80, aliases: ['location', '場所'], get: e => [e.Location] },
     {
         key: 'person', label: '人', weight: 70, aliases: ['person', '人', '担当'], get: e => {
-            const out = [e.AdminKyoka, e.AdminHoukoku];
+            const out = [e.AdminKyoka, e.AdminHoukoku, e.PlanLeader, e.TransportDriver, e.TransportPassengers];
             normalizeParts(e.PartsList).forEach(p => out.push(...(p.presenters || [])));
             return out;
         }
     },
     { key: 'exp', label: '実験', weight: 50, get: e => normalizeParts(e.PartsList).map(p => p.name) },
-    { key: 'other', label: '備考', weight: 30, get: e => [e.Audience, e.Remarks, e.Belongings] }
+    { key: 'other', label: '備考', weight: 30, get: e => [e.Audience, e.Remarks, e.Belongings, e.TransportMethod] }
 ];
 const eventSearcher = createSearcher(() => eventsData, EVENT_SEARCH_FIELDS);
 
@@ -365,7 +365,9 @@ function eventSuggestSources() {
     eventsData.forEach(e => {
         if (e.Title) titles.add(e.Title);
         if (e.Location) locations.add(e.Location);
-        [e.AdminKyoka, e.AdminHoukoku].forEach(v => { if (v) people.add(v); });
+        [e.AdminKyoka, e.AdminHoukoku, e.PlanLeader, e.TransportDriver, e.TransportPassengers].forEach(v => {
+            String(v || '').split(',').map(n => n.trim()).filter(Boolean).forEach(n => people.add(n));
+        });
         normalizeParts(e.PartsList).forEach(p => (p.presenters || []).forEach(n => { if (n) people.add(n); }));
     });
     return [
@@ -675,7 +677,8 @@ function openQuickCreate(category) {
         Title: '', Location: '', Audience: '',
         MeetingNumber: '', Category: cat,
         TimeStart: '', TimeEnd: '',
-        PartsList: [], Files: []
+        PartsList: [], Files: [],
+        MeetingDocs: [], _sessionUploads: []   // 関連資料。保存せず閉じたら、アップロード済みの実体を消す
     };
     tempNewEvent = draft;
 
@@ -707,8 +710,12 @@ function openQuickCreate(category) {
                     <input id="qc-meeting-num" class="e1-input" type="number" placeholder="3" value="${escapeAttr(draft.MeetingNumber || '')}">
                 </div>
                 <div class="e1-group">
-                    <label class="e1-label">参加メンバー（任意）</label>
-                    <div id="qc-meeting-members"></div>
+                    <label class="e1-label">議題（任意）</label>
+                    <textarea id="qc-agenda" class="e1-input" rows="4" placeholder="例: 1. 前回イベントの振り返り&#10;2. 次回企画の担当決め&#10;3. 連絡事項"></textarea>
+                </div>
+                <div class="e1-group">
+                    <label class="e1-label">関連資料（任意）</label>
+                    <div id="qc-meeting-docs"></div>
                 </div>` : `
                 <div class="e1-group">
                     <label class="e1-label">イベント名 *</label>
@@ -724,7 +731,11 @@ function openQuickCreate(category) {
                 <div class="e1-group">
                     <label class="e1-label">場所（任意）</label>
                     <input id="qc-location" class="e1-input" type="text" placeholder="${isMeeting ? '例: 学生会館3F' : '例: ○○公民館'}" value="${escapeAttr(draft.Location || '')}">
-                </div>
+                </div>${isMeeting ? '' : `
+                <div class="e1-group">
+                    <label class="e1-label">企画担当者（任意）</label>
+                    <div id="qc-planleader"></div>
+                </div>`}
             </div>
             <div class="wizard-footer">
                 <div class="wizard-footer-spacer"></div>
@@ -738,10 +749,8 @@ function openQuickCreate(category) {
     trapFocus(overlay.querySelector('.wizard-panel'));
     initDateRangePicker(overlay);
 
-    if (isMeeting) {
-        const memberContainer = document.getElementById('qc-meeting-members');
-        if (memberContainer) initTagInput(memberContainer, [], 'メンバーを検索...');
-    }
+    if (isMeeting) initFileField('qc-meeting-docs', 'MeetingDocs', true);
+    else initTagInput(document.getElementById('qc-planleader'), [], '企画担当者を検索...', isRegularMember);
 
     const tsEl = document.getElementById('qc-time-start');
     const teEl = document.getElementById('qc-time-end');
@@ -765,6 +774,8 @@ function openQuickCreate(category) {
 function closeQuickCreate() {
     const overlay = document.getElementById('qc-overlay');
     if (overlay) overlay.remove();
+    // 保存せずに閉じたときは、アップロード済みの関連資料を消す（保存成功時は _sessionUploads を空にしてから呼ぶ）
+    if (tempNewEvent && Array.isArray(tempNewEvent._sessionUploads)) tempNewEvent._sessionUploads.forEach(discardUploadedFile);
     tempNewEvent = null;
 }
 
@@ -796,8 +807,15 @@ async function saveQuickCreate() {
     draft.Location = (document.getElementById('qc-location')?.value || '').trim();
     if (isMeeting) {
         draft.MeetingNumber = document.getElementById('qc-meeting-num')?.value || '';
-        const memberContainer = document.getElementById('qc-meeting-members');
-        draft.Audience = memberContainer?._tagInput ? memberContainer._tagInput.getValues().join('、') : '';
+        draft.Remarks = (document.getElementById('qc-agenda')?.value || '').trim();
+        if ((draft.MeetingDocs || []).some(f => f._uploading)) {
+            toast('ファイルのアップロードが完了するまでお待ちください', 'error');
+            return;
+        }
+        draft.MeetingDocs = (draft.MeetingDocs || []).filter(f => !f._failed);
+    } else {
+        const leaderBox = document.getElementById('qc-planleader');
+        draft.PlanLeader = leaderBox?._tagInput ? leaderBox._tagInput.getValues().join(', ') : '';
     }
 
     const time = readTimeRange('qc-time-start', 'qc-time-end');
@@ -814,9 +832,11 @@ async function saveQuickCreate() {
     btn.textContent = '保存中...';
 
     try {
-        const saved = await api.save('events', draft);
+        const { _sessionUploads, ...payload } = draft;
+        const saved = await api.save('events', payload);
         eventsData.unshift(saved);
         api.saveCache('events', eventsData);
+        draft._sessionUploads = [];   // 保存できたので、アップロード済みファイルは消さない
         closeQuickCreate();
         warnKyokaOverdue(saved);
         // 続きの入力はイベント詳細ページで（未入力チェックリストが出る）

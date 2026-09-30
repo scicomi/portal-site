@@ -116,6 +116,31 @@ test('save(新規): イベントを保存し、一覧・listAll に反映され�
   assert.ok(Array.isArray(all.members) && Array.isArray(all.experiments) && Array.isArray(all.votes));
 });
 
+test('save: 企画担当者・荷物運搬方法・書類ファイル・関連資料が保存され、ファイルは配列で返る', async () => {
+  const id = 'ev_test_fields_' + Date.now();
+  const doc = { name: '許可願.pdf', url: 'https://example.com/files/abc.pdf', driveId: 'abc.pdf', size: 10 };
+  const item = {
+    ID: id, Title: '新項目テスト', Date: '2026-10-02', Category: 'normal',
+    PlanLeader: 'A, B', TransportMethod: '学用車', TransportDriver: '先生', TransportPassengers: 'A, B',
+    RequestDoc: [doc], KyokaDoc: [doc], HoukokuDoc: [], MeetingDocs: [doc, doc], Minutes: [doc]
+  };
+  const r = await post({ action: 'save', resource: 'events', token: member, item });
+  assert.equal(r.success, true);
+  const got = (await post({ action: 'list', resource: 'events', token: member })).items.find(e => e.ID === id);
+  assert.equal(got.PlanLeader, 'A, B');
+  assert.equal(got.TransportMethod, '学用車');
+  assert.equal(got.TransportDriver, '先生');
+  assert.equal(got.TransportPassengers, 'A, B');
+  assert.deepEqual(got.RequestDoc, [doc]);
+  assert.deepEqual(got.KyokaDoc, [doc]);
+  assert.deepEqual(got.HoukokuDoc, []);
+  assert.deepEqual(got.MeetingDocs, [doc, doc]);
+  assert.deepEqual(got.Minutes, [doc]);
+  // 後始末
+  const d = await post({ action: 'delete', resource: 'events', id, token: adminMember, adminToken: admin });
+  assert.equal(d.success, true);
+});
+
 test('save(更新): CreatedAt を保持し、_baseUpdatedAt が古ければ conflict', async () => {
   const before = (await post({ action: 'list', resource: 'events', token: member })).items.find(e => e.ID === evId);
   await new Promise(r => setTimeout(r, 5));
