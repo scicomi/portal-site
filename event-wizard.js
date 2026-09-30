@@ -941,7 +941,7 @@ function evWizardGoto(n) {
     updateEvWizardUI();
     const step = document.querySelector('#ev-wizard-overlay .wizard-step.active');
     if (step) {
-        const fi = step.querySelector('input:not([type="hidden"]):not([type="file"]), textarea, select');
+        const fi = step.querySelector('input:not([type="hidden"]):not([type="file"]):not(.tag-input-field), textarea, select');
         if (fi) setTimeout(() => fi.focus(), 100);
     }
 }
@@ -974,7 +974,7 @@ function evWizardNext() {
         updateEvWizardUI();
         const step = document.querySelector('#ev-wizard-overlay .wizard-step.active');
         if (step) {
-            const fi = step.querySelector('input:not([type="hidden"]):not([type="file"]), textarea, select');
+            const fi = step.querySelector('input:not([type="hidden"]):not([type="file"]):not(.tag-input-field), textarea, select');
             if (fi) setTimeout(() => fi.focus(), 100);
         }
     } else {

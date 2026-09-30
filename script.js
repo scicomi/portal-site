@@ -839,8 +839,8 @@ async function saveQuickCreate() {
         draft._sessionUploads = [];   // 保存できたので、アップロード済みファイルは消さない
         closeQuickCreate();
         warnKyokaOverdue(saved);
-        // 続きの入力はイベント詳細ページで（未入力チェックリストが出る）
-        location.href = 'event-series.html?event=' + encodeURIComponent(saved.ID);
+        // 続きの入力はイベント詳細ページで。開いたら編集ウィザードを自動で出す（edit=1）
+        location.href = 'event-series.html?event=' + encodeURIComponent(saved.ID) + '&edit=1';
     } catch (err) {
         btn.disabled = false;
         btn.textContent = '追加';

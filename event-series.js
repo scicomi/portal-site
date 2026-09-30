@@ -24,6 +24,7 @@ let experimentsCache = [];
 const votesCache = {};       // eventId -> votes[]
 let votesPrimed = false;     // listAll で全投票を取得済みなら true（getEventVotes の個別往復を省く）
 let scrollToFeedback = false;
+let autoEditEventId = '';     // ?edit=1 で来たら、その開催回の編集ウィザードを自動で開く（新規作成直後用）
 let scrollToVotes = false;   // ?vote=1 で来たら参加状況カードへスクロール（共有リンク用）
 let detailFbOpen = false;    // 「この回の振り返り」トグルの開閉状態（再描画をまたいで維持）
 
@@ -76,6 +77,13 @@ async function init() {
     currentEventId = params.get('event') || '';
     scrollToFeedback = params.get('tab') === 'feedback';
     scrollToVotes = params.get('vote') === '1'; // 出欠回答の共有リンク（旧 vote.html の代替）
+    if (params.get('edit') === '1') {
+        autoEditEventId = currentEventId;
+        // 再読み込みで編集ウィザードが再度開かないよう、URL から外す
+        params.delete('edit');
+        const q = params.toString();
+        history.replaceState(null, '', location.pathname + (q ? '?' + q : ''));
+    }
     if (scrollToFeedback) detailFbOpen = true; // 未記入通知などから来たら折りたたみを開いておく
     indexMode = !seriesKey && !currentEventId;
 
@@ -359,6 +367,12 @@ function renderAll() {
         renderFeedbackTimeline();
         renderStats();
         renderOverview();
+    }
+
+    if (autoEditEventId) {
+        const editId = autoEditEventId;
+        autoEditEventId = '';
+        if (seriesEvents.some(e => e.ID === editId)) setTimeout(() => openEventWizard(editId), 200);
     }
 
     if (scrollToFeedback && !isMtg) {
