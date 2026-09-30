@@ -22,7 +22,7 @@
             <div class="page-header">
                 <h1 class="page-title" style="margin:0; flex:1;">イベント別</h1>
                 <div class="search-box" role="search">
-                    <input id="series-index-search" class="search-input" type="search" placeholder="イベント名・場所で検索"
+                    <input id="series-index-search" class="search-input" type="search" placeholder="イベント名・企画名・場所で検索"
                         aria-label="イベントを検索"
                         role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="series-index-search-suggest"
                         autocomplete="off">
@@ -39,14 +39,7 @@
                     <option value="upcoming">次回開催あり</option>
                     <option value="past">終了のみ</option>
                 </select>
-                <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="startSeriesPickMode()">＋ 新規イベント</button>
-            </div>
-            <div id="series-pick-banner" class="series-pick-banner hidden">
-                <span>複製したいイベントの行を選んでください</span>
-                <div class="series-pick-actions">
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="goToNewEvent()">複製せず新しく作成</button>
-                    <button type="button" class="btn btn-text btn-sm" onclick="cancelSeriesPickMode()">キャンセル</button>
-                </div>
+                <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="goToNewEvent()">＋ 新規イベント</button>
             </div>
             <div class="table-wrapper">
                 <table class="data-table" id="series-index-table">

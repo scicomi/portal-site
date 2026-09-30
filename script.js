@@ -345,7 +345,7 @@ function onInlineVoteChange(selectEl, eventId) {
 // 検索フィールド定義（search.js の createSearcher 用）。重要度順に並べる。
 // 実験名・発表者は PartsList（配列。旧データは JSON 文字列）に入っているため normalizeParts（app.js）で展開する。
 const EVENT_SEARCH_FIELDS = [
-    { key: 'title', label: 'タイトル', weight: 100, aliases: ['title', 'タイトル'], get: e => [e.Title, e.MeetingNumber ? `第${e.MeetingNumber}回 ${e.Title || ''}` : ''] },
+    { key: 'title', label: 'タイトル', weight: 100, aliases: ['title', 'タイトル'], get: e => [e.Title, e.PlanName, e.MeetingNumber ? `第${e.MeetingNumber}回 ${e.Title || ''}` : ''] },
     { key: 'location', label: '場所', weight: 80, aliases: ['location', '場所'], get: e => [e.Location] },
     {
         key: 'person', label: '人', weight: 70, aliases: ['person', '人', '担当'], get: e => {
@@ -565,7 +565,8 @@ function startNewEventBlank() {
         <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="cat-modal-title">
             <h2 id="cat-modal-title">予定の種類を選択</h2>
             <div class="category-buttons">
-                <button class="btn btn-category cat-normal-btn" data-cat="normal">イベント</button>
+                <button class="btn btn-category cat-normal-btn" data-cat="normal">新規イベント</button>
+                <button class="btn btn-category cat-normal-btn" data-existing="1">既存イベント</button>
                 <button class="btn btn-category cat-other-btn" data-cat="other">その他</button>
                 <button class="btn btn-category cat-meeting-btn" data-cat="meeting">ミーティング</button>
             </div>
@@ -576,10 +577,73 @@ function startNewEventBlank() {
     overlay.querySelectorAll('[data-cat]').forEach(btn => {
         btn.addEventListener('click', () => { close(); startNewEvent(btn.dataset.cat); });
     });
+    overlay.querySelector('[data-existing]').addEventListener('click', () => { close(); openExistingEventPicker(); });
     bindOverlayClose(overlay, close);
     bindModalEscape(overlay, close);
     document.body.appendChild(overlay);
     trapFocus(overlay.querySelector('.modal-content'));
+}
+
+// 同じイベントの各回をまとめるキー（event-series.js の seriesKeyNormalize と同じ規則）
+function seriesKeyOf(ev) {
+    return ((ev.SeriesKey && String(ev.SeriesKey).trim()) || ev.Title || '').replace(/\s+/g, '').replace(/^第\d+回/, '');
+}
+
+// 「既存イベント」: 複製元のイベントを選ぶ（同じイベントの各回は最新の1件にまとめる）。選んだら複製ウィザードへ。
+function openExistingEventPicker() {
+    const latest = new Map();
+    eventsData.forEach(ev => {
+        if (isMeetingCategory(ev.Category)) return;
+        const key = seriesKeyOf(ev);
+        if (!key) return;
+        const cur = latest.get(key);
+        if (!cur || (ev.Date || '') > (cur.Date || '')) latest.set(key, ev);
+    });
+    // 検索は最新回だけでなく同じイベントの全開催回のイベント名・企画名・場所で照合する
+    const searchText = new Map();
+    eventsData.forEach(ev => {
+        const key = seriesKeyOf(ev);
+        searchText.set(key, (searchText.get(key) || '') + ' ' + [ev.Title, ev.PlanName, ev.Location].filter(Boolean).join(' '));
+    });
+    const items = [...latest.values()].sort((a, b) => (a.Title || '').localeCompare(b.Title || '', 'ja'));
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="pick-modal-title">
+            <h2 id="pick-modal-title">複製するイベントを選んでください</h2>
+            <input type="text" id="pick-search" class="e1-input" placeholder="イベント名・企画名・場所で検索" style="margin-top:12px;">
+            <div id="pick-list" style="max-height:50vh; overflow-y:auto; margin-top:12px;"></div>
+            <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+                <button class="btn btn-secondary btn-sm" data-blank>複製せず新しく作成</button>
+                <button class="btn btn-text btn-sm" data-close>キャンセル</button>
+            </div>
+        </div>`;
+    const close = () => overlay.remove();
+    const listEl = overlay.querySelector('#pick-list');
+    const render = () => {
+        const pq = parseSearchQuery(overlay.querySelector('#pick-search').value);
+        const shown = items.filter(ev => matchesParsedQuery(searchNormalize(searchText.get(seriesKeyOf(ev)) || ''), pq));
+        listEl.innerHTML = shown.length
+            ? shown.map(ev => `<button type="button" class="btn btn-secondary" data-id="${escapeAttr(ev.ID)}" style="display:block; width:100%; text-align:left; margin-bottom:6px;">${escapeHtml(ev.Title || '(無題)')} <span class="text-muted" style="font-size:0.8rem;">${escapeHtml(ev.Date || '')}</span></button>`).join('')
+            : '<p class="text-muted">該当するイベントがありません</p>';
+    };
+    render();
+    overlay.querySelector('#pick-search').addEventListener('input', render);
+    listEl.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-id]');
+        if (!b) return;
+        const src = eventsData.find(x => x.ID === b.dataset.id);
+        close();
+        if (src) startNewEvent(src.Category || 'normal', src);
+    });
+    overlay.querySelector('[data-blank]').addEventListener('click', () => { close(); startNewEvent('normal'); });
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    bindOverlayClose(overlay, close);
+    bindModalEscape(overlay, close);
+    document.body.appendChild(overlay);
+    trapFocus(overlay.querySelector('.modal-content'));
+    overlay.querySelector('#pick-search').focus();
 }
 
 // template あり（複製）の場合は、枠だけのクイック作成ではなく実験・担当などの詳細も
