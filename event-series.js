@@ -19,7 +19,6 @@ let currentEventId = '';     // 詳細タブで選択中の開催回
 let indexMode = false;
 let indexFilter = 'event';   // 一覧モードのフィルタ: event / other / all（ミーティングは表示しない）
 let indexStatusFilter = 'all'; // 開催状況フィルタ: all / upcoming（次回開催あり） / past（終了のみ）
-let seriesPickMode = false;  // true の間、一覧のカードは開かず「複製して新規作成」の選択に使う
 let membersCache = [];
 let experimentsCache = [];
 const votesCache = {};       // eventId -> votes[]
@@ -234,7 +233,9 @@ function buildSeriesIndex() {
             latestDate: latest.Date,
             next,
             category: latest.Category || 'normal',
-            location: latest.Location || ''
+            location: latest.Location || '',
+            // 検索用: 全開催回のイベント名・企画名・場所（最新回に無くても過去回の場所で見つかるように）
+            searchText: events.map(e => [e.Title, e.PlanName, e.Location].filter(Boolean).join(' ')).join(' ')
         };
     });
 }
@@ -268,7 +269,7 @@ function renderSeriesIndex() {
         if (indexFilter === 'other' && !isOther) return false;
         if (indexStatusFilter === 'upcoming' && !s.next) return false;
         if (indexStatusFilter === 'past' && s.next) return false;
-        if (pq && !matchesParsedQuery(searchNormalize(s.title + ' ' + s.location), pq)) return false;
+        if (pq && !matchesParsedQuery(searchNormalize(s.title + ' ' + s.searchText), pq)) return false;
         return true;
     });
     if (pq) announceSearchResult(`検索結果 ${list.length}件`);
@@ -296,7 +297,7 @@ function renderSeriesIndex() {
     tbody.innerHTML = list.map(s => {
         const cat = getEventCategory(s.category);
         return `
-            <tr class="clickable-row${s.next ? ' row-has-next' : ''}" data-key="${escapeAttr(s.key)}" data-latest-id="${escapeAttr(s.latestId)}" title="${seriesPickMode ? 'タップでこのイベントを複製' : 'タップで詳細ページへ'}">
+            <tr class="clickable-row${s.next ? ' row-has-next' : ''}" data-key="${escapeAttr(s.key)}" data-latest-id="${escapeAttr(s.latestId)}" title="タップで詳細ページへ">
                 <td><span class="cat-dot" style="color:${cat.bg};" title="${cat.short}">&#9679;</span></td>
                 <td class="cell-name">${hl(s.title)}</td>
                 <td style="white-space:nowrap;"><span class="count-chip">${s.count}回</span></td>
@@ -311,7 +312,6 @@ function renderSeriesIndex() {
     tbody.onclick = (e) => {
         const row = e.target.closest('tr[data-key]');
         if (!row) return;
-        if (seriesPickMode) { onSeriesDupSelect(row.dataset.latestId); return; }
         location.href = `event-series.html?key=${encodeURIComponent(row.dataset.key)}`;
     };
 }
@@ -1608,26 +1608,7 @@ function goToVenueInfoTab() {
     activateSeriesTab('venue');
 }
 
-// ====== 新規イベント作成（イベント一覧モードから。カードを選んでその場で複製） ======
-
-function startSeriesPickMode() {
-    seriesPickMode = true;
-    document.getElementById('series-index-filters')?.classList.add('hidden');
-    document.getElementById('series-pick-banner')?.classList.remove('hidden');
-    renderSeriesIndex();
-}
-
-function cancelSeriesPickMode() {
-    seriesPickMode = false;
-    document.getElementById('series-index-filters')?.classList.remove('hidden');
-    document.getElementById('series-pick-banner')?.classList.add('hidden');
-    renderSeriesIndex();
-}
-
-function onSeriesDupSelect(eventId) {
-    if (!eventId) return;
-    location.href = 'events.html?duplicate=' + encodeURIComponent(eventId);
-}
+// ====== 新規イベント作成（予定一覧の「種類選択」ダイアログを開く） ======
 
 function goToNewEvent() {
     location.href = 'events.html?action=new';
