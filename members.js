@@ -14,7 +14,7 @@ let mbWizardStep = 0;
 
 const MB_WIZARD_STEPS = [
     { label: '基本情報' },
-    { label: '所属・連絡先' }
+    { label: '学部学科・メモ' }
 ];
 
 // 学籍番号・教職員番号を大文字半角英数字へ正規化する。
@@ -51,6 +51,25 @@ function memberSuggestSources() {
         { label: '名前', values: [...names] },
         { label: '所属', values: [...affils] }
     ];
+}
+
+// 「自分の名前」として端末に記憶されている ID（出欠回答などで選択した名前。vote-widget.js と同じキー）
+function myMemberId() {
+    try { return localStorage.getItem('scicomi_vote_member') || ''; } catch (e) { return ''; }
+}
+
+// m が「自分」の記録か。年度ごとに別レコード（ID が違う）になるため、
+// 選択中の名前と同じ学籍番号（無ければ同名）のレコードも本人とみなす。
+function isMyMember(m) {
+    const myId = myMemberId();
+    if (!myId || !m) return false;
+    if (m.ID === myId) return true;
+    const me = membersData.find(x => x.ID === myId);
+    if (!me) return false;
+    const sid = normalizeStudentId(me.StudentID);
+    if (sid) return normalizeStudentId(m.StudentID) === sid;
+    const nm = (me.Name || '').trim();
+    return !!nm && (m.Name || '').trim() === nm;
 }
 
 function deriveCategoryFromRole(role) {
@@ -333,10 +352,12 @@ function renderMembers() {
             const roleCell = `<td class="cell-role">${roleBadge}</td>`;
             // 削除は管理者ログイン時のみ表示（誤タップ防止）。編集は全員に表示し、
             // タップ時に管理者認証を挟む（実験ページ等と表示ルールを統一）
+            // 管理者以外は、自分の名前として選択中の行だけ編集できる（削除は不可）
+            const canEdit = isAdmin || isMyMember(m);
             const actionCell = `
                 <td data-action-cell>
                     <div class="inline-actions">
-                        <button class="inline-action-btn" data-action="edit" title="このメンバーを編集">編集</button>
+                        ${canEdit ? '<button class="inline-action-btn" data-action="edit" title="このメンバーを編集">編集</button>' : ''}
                         ${isAdmin ? '<button class="inline-action-btn danger" data-action="delete" title="このメンバーを削除">削除</button>' : ''}
                     </div>
                 </td>`;
@@ -366,8 +387,6 @@ function renderMembers() {
 
 // ---- ウィザード形式の新規作成・編集 ----
 
-const MEMBER_ROLE_PRESETS = ['アドバイザー', 'コーディネーター'];
-
 function openMemberWizard(editId) {
     editingMemberId = editId || null;
     mbWizardStep = 0;
@@ -375,24 +394,14 @@ function openMemberWizard(editId) {
     const m = editingMemberId ? membersData.find(x => x.ID === editingMemberId) : null;
     const isEdit = !!m;
     const isAdmin = api.isAdmin();
+    const isSelf = isMyMember(m);
 
-    // 編集・削除は管理者のみ（新規追加は誰でも可）
-    if (isEdit && !isAdmin) {
-        showAdminAuthModal(() => openMemberWizard(editId));
+    // 編集は管理者か、自分の名前として選択中の本人のみ（削除は管理者のみ。新規追加は誰でも可）
+    if (isEdit && !isAdmin && !isSelf) {
+        toast('編集できるのは、自分の名前として選択しているメンバーだけです', 'info', 4000);
+        editingMemberId = null;
         return;
     }
-    const currentRole = isEdit ? memberRoleOf(m) : '';
-    const isCustomRole = currentRole && !MEMBER_ROLE_PRESETS.includes(currentRole) && currentRole !== '';
-
-    const roleOptions = [
-        `<option value="" ${!currentRole ? 'selected' : ''}>(なし)</option>`,
-        ...MEMBER_ROLE_PRESETS.map(r => `<option value="${escapeAttr(r)}" ${currentRole === r ? 'selected' : ''}>${escapeHtml(r)}</option>`),
-        isCustomRole ? `<option value="${escapeAttr(currentRole)}" selected>${escapeHtml(currentRole)}</option>` : '',
-        `<option value="__custom__">その他（自由入力）</option>`
-    ].join('');
-
-    // 役職が未設定、または自由入力（プリセット外）の場合は所属・連絡先の入力は不要
-    const showContactFields = currentRole !== '' && !isCustomRole;
 
     const overlay = document.createElement('div');
     overlay.id = 'mb-wizard-overlay';
@@ -415,6 +424,10 @@ function openMemberWizard(editId) {
                 <div class="wizard-step active" data-step="0">
                     <div class="wizard-step-label">Step 1 / ${MB_WIZARD_STEPS.length} &mdash; ${MB_WIZARD_STEPS[0].label}</div>
                     <div class="e1-group">
+                        <label class="e1-label">学生証番号 / 教職員番号 *</label>
+                        <input id="wz-mb-student-id" class="e1-input" type="text" placeholder="例: 5CSC1234" value="${escapeAttr(m ? m.StudentID : '')}">
+                    </div>
+                    <div class="e1-group">
                         <label class="e1-label">名前 *</label>
                         <input id="wz-mb-name" class="e1-input" type="text" placeholder="例: 山田 太郎" value="${escapeAttr(m ? m.Name : '')}">
                     </div>
@@ -422,38 +435,14 @@ function openMemberWizard(editId) {
                         <label class="e1-label">ふりがな</label>
                         <input id="wz-mb-furigana" class="e1-input" type="text" placeholder="例: やまだ たろう" value="${escapeAttr(m ? m.Furigana : '')}">
                     </div>
-                    <div class="e1-group">
-                        <label class="e1-label">役職</label>
-                        <select id="wz-mb-role" class="e1-input" onchange="onWzRoleChange()">${roleOptions}</select>
-                    </div>
-                    <div class="e1-group" id="wz-mb-role-custom-group" style="display:none;">
-                        <label class="e1-label">役職名（自由入力）</label>
-                        <input id="wz-mb-role-custom" class="e1-input" type="text" placeholder="例: 会計">
-                    </div>
                 </div>
 
-                <!-- Step 2: 所属・連絡先 -->
+                <!-- Step 2: 学部学科・メモ -->
                 <div class="wizard-step" data-step="1">
                     <div class="wizard-step-label">Step 2 / ${MB_WIZARD_STEPS.length} &mdash; ${MB_WIZARD_STEPS[1].label}</div>
                     <div class="e1-group">
-                        <label class="e1-label">学生証番号 / 教職員番号</label>
-                        <input id="wz-mb-student-id" class="e1-input" type="text" placeholder="例: 5CSC1234" value="${escapeAttr(m ? m.StudentID : '')}">
-                    </div>
-                    <div class="e1-group" id="wz-mb-affiliation-group" ${!showContactFields ? 'style="display:none;"' : ''}>
-                        <label class="e1-label">所属</label>
-                        <input id="wz-mb-affiliation" class="e1-input" type="text" placeholder="例: 理系教育センター" value="${escapeAttr(m ? m.Affiliation : '')}">
-                    </div>
-                    <div class="e1-group" id="wz-mb-email-group" ${!showContactFields ? 'style="display:none;"' : ''}>
-                        <label class="e1-label">メールアドレス</label>
-                        <input id="wz-mb-email" class="e1-input" type="email" placeholder="例: name@example.com" value="${escapeAttr(m ? m.Email : '')}">
-                    </div>
-                    <div class="e1-group" id="wz-mb-extension-group" ${!showContactFields ? 'style="display:none;"' : ''}>
-                        <label class="e1-label">内線</label>
-                        <input id="wz-mb-extension" class="e1-input" type="text" placeholder="例: 1234" value="${escapeAttr(m ? m.Extension : '')}">
-                    </div>
-                    <div class="e1-group" id="wz-mb-emergency-group" ${!showContactFields ? 'style="display:none;"' : ''}>
-                        <label class="e1-label">緊急連絡先</label>
-                        <input id="wz-mb-emergency" class="e1-input" type="text" placeholder="例: 090-1234-5678" value="${escapeAttr(m ? m.EmergencyContact : '')}">
+                        <label class="e1-label">学部学科</label>
+                        <input id="wz-mb-affiliation" class="e1-input" type="text" placeholder="例: 理学部 物理学科" value="${escapeAttr(m ? m.Affiliation : '')}">
                     </div>
                     <div class="e1-group">
                         <label class="e1-label">メモ</label>
@@ -462,7 +451,7 @@ function openMemberWizard(editId) {
                 </div>
             </div>
             <div class="wizard-footer">
-                ${isEdit ? '<button class="btn btn-danger" onclick="deleteFromMbWizard()">削除</button>' : ''}
+                ${isEdit && isAdmin ? '<button class="btn btn-danger" onclick="deleteFromMbWizard()">削除</button>' : ''}
                 <div class="wizard-footer-spacer"></div>
                 <button class="btn btn-text" onclick="closeMemberWizard()">キャンセル</button>
                 <button id="wz-mb-prev-btn" class="btn btn-secondary" onclick="mbWizardPrev()" style="display:none;">戻る</button>
@@ -486,7 +475,7 @@ function openMemberWizard(editId) {
         ev.preventDefault();
         mbWizardNext();
     });
-    setTimeout(() => document.getElementById('wz-mb-name').focus(), 80);
+    setTimeout(() => document.getElementById('wz-mb-student-id').focus(), 80);
 }
 
 function closeMemberWizard() {
@@ -494,36 +483,6 @@ function closeMemberWizard() {
     if (overlay) overlay.remove();
     editingMemberId = null;
     mbWizardStep = 0;
-}
-
-function onWzRoleChange() {
-    const sel = document.getElementById('wz-mb-role');
-    // 「その他」はブラウザ標準の prompt() ではなく、直下のインライン入力欄で受ける
-    const customG = document.getElementById('wz-mb-role-custom-group');
-    const isCustom = sel.value === '__custom__';
-    if (customG) customG.style.display = isCustom ? '' : 'none';
-    if (isCustom) setTimeout(() => document.getElementById('wz-mb-role-custom')?.focus(), 50);
-
-    // 役職が未設定、または自由入力の場合は所属・連絡先の入力を不要にする
-    const hide = sel.value === '' || sel.value === '__custom__';
-    const emailG = document.getElementById('wz-mb-email-group');
-    const affG = document.getElementById('wz-mb-affiliation-group');
-    const extG = document.getElementById('wz-mb-extension-group');
-    const emerG = document.getElementById('wz-mb-emergency-group');
-    if (emailG) emailG.style.display = hide ? 'none' : '';
-    if (affG) affG.style.display = hide ? 'none' : '';
-    if (extG) extG.style.display = hide ? 'none' : '';
-    if (emerG) emerG.style.display = hide ? 'none' : '';
-}
-
-// ウィザードの役職選択値（自由入力を含む）を解決する
-function wzSelectedRole() {
-    const sel = document.getElementById('wz-mb-role');
-    if (!sel) return '';
-    if (sel.value === '__custom__') {
-        return (document.getElementById('wz-mb-role-custom')?.value || '').trim();
-    }
-    return sel.value;
 }
 
 function updateMbWizardUI() {
@@ -560,6 +519,13 @@ function mbWizardNext() {
     const total = MB_WIZARD_STEPS.length;
 
     if (mbWizardStep === 0) {
+        const sidEl = document.getElementById('wz-mb-student-id');
+        sidEl.value = normalizeStudentId(sidEl.value);
+        if (!sidEl.value) {
+            toast('学生証番号 / 教職員番号を入力してください', 'error');
+            sidEl.focus();
+            return;
+        }
         const name = document.getElementById('wz-mb-name').value.trim();
         if (!name) {
             toast('名前を入力してください', 'error');
@@ -584,22 +550,27 @@ function mbWizardNext() {
 async function saveMember() {
     const name = document.getElementById('wz-mb-name').value.trim();
     if (!name) { toast('名前を入力してください', 'error'); return; }
+    if (!normalizeStudentId(document.getElementById('wz-mb-student-id').value)) {
+        toast('学生証番号 / 教職員番号を入力してください', 'error');
+        return;
+    }
 
     const existing = editingMemberId ? membersData.find(m => m.ID === editingMemberId) : null;
     const isNew = !editingMemberId;
-    const role = wzSelectedRole();
+    // 役職・メール・内線・緊急連絡先は編集画面に出さないため、既存の値をそのまま引き継ぐ
+    const role = existing ? memberRoleOf(existing) : '';
     const item = {
         ID: editingMemberId || genId('mb_'),
         Name: name,
         Furigana: document.getElementById('wz-mb-furigana').value.trim(),
-        Category: deriveCategoryFromRole(role),
+        Category: existing ? (existing.Category || deriveCategoryFromRole(role)) : deriveCategoryFromRole(role),
         Role: role,
         StudentID: normalizeStudentId(document.getElementById('wz-mb-student-id').value),
         Affiliation: document.getElementById('wz-mb-affiliation').value.trim(),
         Note: document.getElementById('wz-mb-note').value.trim(),
-        Email: document.getElementById('wz-mb-email').value.trim(),
-        Extension: document.getElementById('wz-mb-extension').value.trim(),
-        EmergencyContact: document.getElementById('wz-mb-emergency').value.trim(),
+        Email: existing ? (existing.Email || '') : '',
+        Extension: existing ? (existing.Extension || '') : '',
+        EmergencyContact: existing ? (existing.EmergencyContact || '') : '',
         FiscalYear: existing ? (existing.FiscalYear || currentFiscalYear()) : (selectedFiscalYear || currentFiscalYear()),
         Active: 'true'
     };
@@ -610,9 +581,6 @@ async function saveMember() {
     // 学籍番号が数字始まりでないと学年フィルタ・並び順に反映されない。
     if (!item.Role && item.StudentID && !/^\d/.test(item.StudentID)) {
         toast('学籍番号が数字で始まっていません。学年の絞り込み・並び順に反映されない場合があります', 'info', 5000);
-    }
-    if (item.Email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item.Email)) {
-        toast('メールアドレスの形式が正しくない可能性があります', 'info', 5000);
     }
 
     const snapshot = JSON.parse(JSON.stringify(membersData));
