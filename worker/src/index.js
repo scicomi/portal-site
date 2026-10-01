@@ -137,7 +137,7 @@ async function handlePost(env, ctx, request, body) {
       if (res.adminOnly && !(await checkAdmin(env, body.adminToken))) return { success: false, error: 'admin_required' };
       let saved;
       try {
-        saved = await saveResource(env, resource, body.item || {});
+        saved = await saveResource(env, resource, body.item || {}, { isAdmin: !!(await checkAdmin(env, body.adminToken)) });
       } catch (err) {
         if (err instanceof ConflictError) return { success: false, error: 'conflict' };
         throw err;

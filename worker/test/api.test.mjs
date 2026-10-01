@@ -359,6 +359,48 @@ test('パスワード変更でそのロールの既存トークンが失効す�
   }
 });
 
+test('save: 添付・写真などを減らす更新(削除・差し替え)は管理者のみ。追加と他の列の編集はメンバーも可', async () => {
+  const f1 = { name: 'a.pdf', url: 'https://example.com/files/a.pdf', driveId: 'a.pdf', size: 1 };
+  const f2 = { name: 'b.pdf', url: 'https://example.com/files/b.pdf', driveId: 'b.pdf', size: 1 };
+  const id = 'ev_test_rm_' + Date.now();
+  const base = { ID: id, Title: '削除制限', Date: '2026-10-05', Category: 'normal', Files: [f1], KyokaDoc: [f1] };
+  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: base })).success, true);   // 新規は可
+  // 追加・他の列の編集は可
+  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Title: '改題', Files: [f1, f2] } })).success, true);
+  // 外す(減らす)は不可
+  const rm = await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Files: [f2] } });
+  assert.equal(rm.error, 'admin_required');
+  // 1 ファイル項目の差し替えも不可
+  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id, KyokaDoc: [f2] } })).error, 'admin_required');
+  // 空にするのも不可
+  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Files: [] } })).error, 'admin_required');
+  // 管理者は可
+  assert.equal((await post({ action: 'save', resource: 'events', token: adminMember, adminToken: admin, item: { ID: id, Files: [f2], KyokaDoc: [f2] } })).success, true);
+
+  // 実験: 写真は追加のみ可、削除は管理者。振り返りの編集(id が同じ)は可、削除は不可。セクションは件数減が削除
+  const xid = 'ex_test_rm_' + Date.now();
+  const p1 = { name: 'p1.png', url: 'https://example.com/files/p1.png', driveId: 'p1.png' };
+  const p2 = { name: 'p2.png', url: 'https://example.com/files/p2.png', driveId: 'p2.png' };
+  const fb = [{ id: 'fb1', text: 'a' }, { id: 'fb2', text: 'b' }];
+  const secs = [{ title: 's1', content: 'x' }, { title: 's2', content: 'y' }];
+  assert.equal((await post({ action: 'save', resource: 'experiments', token: member, item: { ID: xid, Name: '実験', Photos: JSON.stringify([p1]), Reflections: JSON.stringify(fb), Sections: JSON.stringify(secs), Videos: JSON.stringify([{ id: 'v1' }]) } })).success, true);
+  assert.equal((await post({ action: 'save', resource: 'experiments', token: member, item: { ID: xid, Photos: JSON.stringify([p1, p2]), Reflections: JSON.stringify([{ id: 'fb1', text: '直した' }, fb[1]]), Videos: JSON.stringify([{ id: 'v2' }, { id: 'v1' }]) } })).success, true);
+  for (const item of [
+    { ID: xid, Photos: JSON.stringify([p2]) },
+    { ID: xid, Reflections: JSON.stringify([fb[0]]) },
+    { ID: xid, Videos: JSON.stringify([{ id: 'v2' }]) },
+    { ID: xid, Sections: JSON.stringify([secs[0]]) },
+  ]) {
+    assert.equal((await post({ action: 'save', resource: 'experiments', token: member, item })).error, 'admin_required', JSON.stringify(item));
+  }
+  assert.equal((await post({ action: 'save', resource: 'experiments', token: adminMember, adminToken: admin, item: { ID: xid, Photos: JSON.stringify([p2]), Sections: JSON.stringify([secs[0]]) } })).success, true);
+
+  // 後始末
+  for (const [resource, rid] of [['events', id], ['experiments', xid]]) {
+    assert.equal((await post({ action: 'delete', resource, id: rid, token: adminMember, adminToken: admin })).success, true);
+  }
+});
+
 test('ファイル: アップロード → 公開 URL で取得(ログイン不要) → 管理者が削除', async () => {
   const bytes = Buffer.from('hello r2');
   const up = await post({ action: 'uploadFile', token: member, file: { name: 'メモ.txt', mimeType: 'text/plain', base64: bytes.toString('base64') } });

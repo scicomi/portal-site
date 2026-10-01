@@ -63,11 +63,55 @@ export class ConflictError extends Error {
 // onclick 属性などに ID を埋め込むフロントがあるため、引用符などの記号を含む ID は受け付けない。
 export const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
+// 管理者だけが減らせる列(削除の一種)。JSON 配列の列で、要素を一意に識別するキーを返す関数を持つ。
+// キーを持たない(空の)要素は比較から除外する。Sections は識別子が無いため件数だけを見る(null)。
+const fileKey = f => str(f && (f.driveId || f.url));
+const idKey = e => str(e && e.id);
+const PROTECTED_REMOVALS = {
+  events: {
+    Files: fileKey, RequestDoc: fileKey, KyokaDoc: fileKey, HoukokuDoc: fileKey, MeetingDocs: fileKey, Minutes: fileKey,
+  },
+  experiments: {
+    Photos: fileKey, Videos: idKey, Reflections: idKey, Positives: idKey, Sections: null,
+  },
+};
+
+function parseJsonList(v) {
+  if (Array.isArray(v)) return v;
+  if (v === undefined || v === null || v === '') return [];
+  try { const a = JSON.parse(v); return Array.isArray(a) ? a : []; } catch (_) { return []; }
+}
+
+// 管理者以外の保存で、既存の添付ファイル・写真・動画・振り返り・セクションが減る(=削除・差し替え)なら拒否する。
+// item にキーが無い列は更新されないので対象外。削除は管理者のみ(フロントの方針をサーバーでも強制する)。
+async function assertNoProtectedRemoval(env, name, res, item) {
+  const rules = PROTECTED_REMOVALS[name];
+  if (!rules) return;
+  const cols = Object.keys(rules).filter(c => item[c] !== undefined);
+  if (cols.length === 0) return;
+  const row = await env.DB.prepare('SELECT ' + cols.map(q).join(', ') + ' FROM ' + res.table + ' WHERE ID = ?').bind(item.ID).first();
+  if (!row) return;
+  for (const c of cols) {
+    const before = parseJsonList(row[c]);
+    const after = parseJsonList(item[c]);
+    const keyOf = rules[c];
+    let removed;
+    if (keyOf === null) {
+      removed = after.length < before.length;
+    } else {
+      const kept = new Set(after.map(keyOf).filter(Boolean));
+      removed = before.map(keyOf).filter(Boolean).some(k => !kept.has(k));
+    }
+    if (removed) throw new ApiError('admin_required', '削除・差し替えは管理者のみ可能です(' + c + ')');
+  }
+}
+
 // 1 行を保存(upsert)し、{ item: 保存後の行, created: 新規作成か } を返す。
 // 更新は「item にキーがある列だけ」を書き換える(キーが無い列は既存値を保持。'' や null が来た列は空にする)。
 // 競合検知: クライアントが編集開始時に読んだ版(_baseUpdatedAt)と、現在の UpdatedAt が食い違えば
 // 別の人が先に更新したとみなして ConflictError。UPDATE 文の条件で判定するため原子的に行われる。
-export async function saveResource(env, name, item) {
+// opts.isAdmin が真でなければ、既存の添付などを減らす更新は拒否する(assertNoProtectedRemoval)。
+export async function saveResource(env, name, item, opts = {}) {
   const res = getResource(name);
   if (!res) throw new Error('unknown resource: ' + name);
   item = Object.assign({}, item);
@@ -81,6 +125,7 @@ export async function saveResource(env, name, item) {
     existing = await env.DB.prepare('SELECT ID, CreatedAt, UpdatedAt FROM ' + res.table + ' WHERE ID = ?').bind(item.ID).first();
   }
   const isNewRow = !existing;
+  if (existing && !opts.isAdmin) await assertNoProtectedRemoval(env, name, res, item);
   if (!hasId) item.ID = genId(res.idPrefix);
 
   const hasBase = item._baseUpdatedAt !== undefined && item._baseUpdatedAt !== null && item._baseUpdatedAt !== '';

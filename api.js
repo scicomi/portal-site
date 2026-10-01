@@ -230,10 +230,11 @@ const api = {
   },
 
   async save(resource, item) {
-    const res = await this._post({
-      action: 'save', resource,
-      token: this.getToken(), item
-    });
+    const payload = { action: 'save', resource, token: this.getToken(), item };
+    // 添付・写真・動画などを減らす保存(削除)は管理者のみ許可されるため、持っていれば管理者トークンも添える
+    const adminToken = this.getAdminToken();
+    if (adminToken) payload.adminToken = adminToken;
+    const res = await this._post(payload);
     if (!res.success) {
       console.error('save failed:', res);
       throw new Error(res.error || 'save failed');
