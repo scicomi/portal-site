@@ -134,7 +134,8 @@ async function handlePost(env, ctx, request, body) {
     if (action === 'save') {
       const res = getResource(resource);
       if (!res) return { success: false, error: 'unknown resource: ' + resource };
-      if (res.adminOnly && !(await checkAdmin(env, body.adminToken))) return { success: false, error: 'admin_required' };
+      // adminOnly: 閲覧も管理者のみ(パスワード一覧) / adminWrite: 閲覧はメンバーも可で、書き込みだけ管理者のみ(ガイド)
+      if ((res.adminOnly || res.adminWrite) && !(await checkAdmin(env, body.adminToken))) return { success: false, error: 'admin_required' };
       let saved;
       try {
         saved = await saveResource(env, resource, body.item || {}, { isAdmin: !!(await checkAdmin(env, body.adminToken)) });
@@ -142,8 +143,8 @@ async function handlePost(env, ctx, request, body) {
         if (err instanceof ConflictError) return { success: false, error: 'conflict' };
         throw err;
       }
-      const role = res.adminOnly ? 'admin' : 'member';
-      await appendAuditLog(env, saved.created ? 'create' : 'update', resource + ':' + saved.item.ID, res.adminOnly ? body.adminToken : token, role);
+      const byAdmin = !!(res.adminOnly || res.adminWrite);
+      await appendAuditLog(env, saved.created ? 'create' : 'update', resource + ':' + saved.item.ID, byAdmin ? body.adminToken : token, byAdmin ? 'admin' : 'member');
       // 通知は真の新規作成だけ。削除の Undo による再作成は、元の CreatedAt を持って来るので通知しない
       const isRestore = !!(body.item && body.item.CreatedAt);
       if (saved.created && resource === 'events' && !isRestore) ctx.waitUntil(notifyNewEvent(env, saved.item));

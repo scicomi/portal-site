@@ -23,6 +23,14 @@ export const RESOURCES = {
     adminOnly: false,
     columns: ["ID", "Name", "Category", "Materials", "Preparation", "Flow", "Notes", "SlidesURL", "Sections", "Photos", "Videos", "Reflections", "Positives", "Active", "CreatedAt", "UpdatedAt"]
   },
+  guides: {
+    table: 'guides',
+    idPrefix: 'gd_',
+    jsonFields: [],
+    adminOnly: false,
+    adminWrite: true,   // 閲覧はメンバーも可。作成・編集(save)・削除は管理者のみ
+    columns: ["ID", "Title", "Icon", "ParentID", "SortOrder", "Body", "CreatedAt", "UpdatedAt"]
+  },
   passwords: {
     table: 'passwords',
     idPrefix: 'pw_',

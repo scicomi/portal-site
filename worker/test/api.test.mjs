@@ -439,6 +439,27 @@ test('後始末: 作成したテストデータを削除できる', async () => 
   assert.equal((await post({ action: 'delete', resource: 'events', token: adminMember, adminToken: admin, id: evId })).success, false);
 });
 
+test('guides: 閲覧はメンバーも可、作成・編集・削除は管理者のみ。古い版での上書きは conflict', async () => {
+  const body = JSON.stringify({ blocks: [{ type: 'paragraph', data: { text: 'テスト' } }] });
+  // メンバー(管理者トークンなし)は書き込めない
+  assert.equal((await post({ action: 'save', resource: 'guides', token: member, item: { Title: '拒否されるはず', Body: body } })).error, 'admin_required');
+  assert.equal((await post({ action: 'save', resource: 'guides', token: member, adminToken: member, item: { Title: '拒否されるはず' } })).error, 'admin_required');
+  const r = await post({ action: 'save', resource: 'guides', token: adminMember, adminToken: admin, item: { Title: 'テストガイド', Icon: 'blue', Body: body } });
+  assert.equal(r.success, true);
+  assert.match(r.item.ID, /^gd_/);
+  const id = r.item.ID;
+  // 一覧はメンバーも読める
+  const list = await post({ action: 'list', resource: 'guides', token: member });
+  assert.equal(list.items.find(g => g.ID === id).Body, body);
+  const upd = await post({ action: 'save', resource: 'guides', token: adminMember, adminToken: admin, item: { ID: id, Title: '更新後', _baseUpdatedAt: r.item.UpdatedAt } });
+  assert.equal(upd.success, true);
+  assert.equal(upd.item.Body, body);   // 送らなかった列は保持される
+  const stale = await post({ action: 'save', resource: 'guides', token: adminMember, adminToken: admin, item: { ID: id, Title: '古い版', _baseUpdatedAt: r.item.UpdatedAt } });
+  assert.equal(stale.error, 'conflict');
+  assert.equal((await post({ action: 'delete', resource: 'guides', id, token: member, adminToken: member })).error, 'admin_required');
+  assert.equal((await post({ action: 'delete', resource: 'guides', id, token: adminMember, adminToken: admin })).success, true);
+});
+
 test('不明な action / resource', async () => {
   assert.match((await post({ action: 'bogus', token: member })).error, /unknown action/);
   assert.match((await post({ action: 'list', resource: 'bogus', token: member })).error, /unknown resource/);

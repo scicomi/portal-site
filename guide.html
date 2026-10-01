@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <title>ガイド | SciComi Portal</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="guide.css">
+    <link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="app-header"></header>
+
+    <main class="container gd-container">
+        <div class="gd-layout">
+            <!-- 左: ページ一覧（スマホでは「ページ一覧」ボタンで開閉） -->
+            <aside class="gd-sidebar" id="gd-sidebar">
+                <div class="gd-side-head">
+                    <input id="gd-search" class="search-input" type="search" placeholder="ガイドを検索" aria-label="ガイドを検索" autocomplete="off">
+                </div>
+                <nav id="gd-tree" class="gd-tree" aria-label="ガイドのページ一覧"></nav>
+                <button type="button" class="gd-side-new" id="gd-side-new" data-action="gd-new-root" hidden>＋ 新しいページ</button>
+            </aside>
+
+            <!-- 右: ページの表示・編集 -->
+            <section class="gd-main">
+                <button type="button" class="gd-side-toggle btn btn-secondary" data-action="gd-toggle-side" aria-controls="gd-sidebar" aria-expanded="false">☰ ページ一覧</button>
+                <div id="gd-content" class="gd-content"><p class="loading-text">読み込み中</p></div>
+            </section>
+        </div>
+    </main>
+
+    <script src="config.js"></script>
+    <script src="api.js"></script>
+    <script src="app.js"></script>
+    <!-- Editor.js（Apache-2.0）とブロックツール（MIT）。取得元・版・ライセンスは vendor/editorjs/README.md -->
+    <script src="vendor/editorjs/editorjs.umd.js"></script>
+    <script src="vendor/editorjs/header.umd.js"></script>
+    <script src="vendor/editorjs/editorjs-list.umd.js"></script>
+    <script src="vendor/editorjs/table.umd.js"></script>
+    <script src="vendor/editorjs/quote.umd.js"></script>
+    <script src="vendor/editorjs/delimiter.umd.js"></script>
+    <script src="vendor/editorjs/code.umd.js"></script>
+    <script src="vendor/editorjs/image.umd.js"></script>
+    <script src="vendor/editorjs/marker.umd.js"></script>
+    <script src="vendor/editorjs/inline-code.umd.js"></script>
+    <script src="vendor/editorjs/underline.umd.js"></script>
+    <script src="guide-blocks.js"></script>
+    <script src="guide.js"></script>
+</body>
+</html>

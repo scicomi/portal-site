@@ -73,6 +73,7 @@ API のURL: `https://scicomi-portal.scicomi.workers.dev`(`config.js` の `API_UR
 | イベント別 | `event-series.html` | **イベント1件の正規詳細ページ**。パラメータ無しなら全シリーズの一覧。`?event=<ID>` で該当回の詳細（現地情報・書類ステータス・参加状況・振り返り・統計） |
 | メンバー | `members.html` | 3カテゴリ（アドバイザー/コーディネーター/メンバー）テーブル表示 |
 | 実験ネタ | `experiments.html` | フィルタ式（工作/実験ショー/その他）の実験データベース |
+| ガイド | `guide.html` | Notion 風の手順書・マニュアル集（書類の書き方、活動ガイド、領収書の渡し方など）。ページを入れ子にでき、閲覧画面の文字をそのままクリックして書き換える（編集専用ページはない。「/」でブロックを選ぶ。少し待つと自動保存）。`?p=<ID>` で 1 ページを開く。閲覧は一般メンバーも可、作成・編集・削除は幹部のみ（サーバーでも制限している）。エディタは `vendor/editorjs/`（Editor.js・Apache-2.0 / MIT。取得元と版は同フォルダの README.md） |
 | 実験の詳細 | `experiment-detail.html` | `?id=<ID>` で実験1件の詳細（使用物品・手順・写真・動画・振り返り）。実験ネタ一覧の各行から開く |
 | AI検索 | `bot.html` | **停止中**（無料枠の学習利用を避けるため）。コードは残してあり、再開手順は [docs/09_aibot_suspended.md](docs/09_aibot_suspended.md) |
 | パスワード一覧 | `passwords.html` | 管理者専用 |

@@ -11,7 +11,7 @@ import { purgeOldAuthFail } from './auth.js';
 import { purgeExpiredCache } from './gemini.js';
 import { jstDate } from './util.js';
 
-const BACKUP_TABLES = ['events', 'members', 'experiments', 'passwords', 'event_votes', 'config', 'audit_log', 'gemini_usage'];
+const BACKUP_TABLES = ['events', 'members', 'experiments', 'guides', 'passwords', 'event_votes', 'config', 'audit_log', 'gemini_usage'];
 const BACKUP_PREFIX = 'backups/';
 
 export async function backupToR2(env) {
