@@ -443,7 +443,7 @@ function renderPhotos() {
 
     const adminBtn = document.getElementById('photo-add-btn');
     if (adminBtn) {
-        adminBtn.classList.toggle('hidden', !api.isAdmin() || photos.length >= PHOTO_LIMIT);
+        adminBtn.classList.toggle('hidden', photos.length >= PHOTO_LIMIT);
     }
 
     if (photos.length === 0) {
@@ -469,10 +469,6 @@ function renderPhotos() {
 }
 
 function openPhotoUpload() {
-    if (!api.isAdmin()) {
-        showAdminAuthModal(() => openPhotoUpload());
-        return;
-    }
     if (getPhotos(currentExp).length >= PHOTO_LIMIT) { toast(`写真は最大${PHOTO_LIMIT}枚までです`, 'error'); return; }
     document.getElementById('photo-file-input').click();
 }

@@ -996,7 +996,8 @@ async function wzUploadFiles(fileList, field = 'Files', refresh = wzRefreshFileL
     const maxSizeMB = getFileMaxMB();
     if (single) {
         fileList = fileList.slice(0, 1);
-        if (fileList.length) removeEventFile(target, field, 0, refresh);   // 選び直しは差し替え
+        // 選び直しは差し替え（古いファイルの削除を伴うので、削除できる人だけ）
+        if (fileList.length && target[field] && target[field].length && !removeEventFile(target, field, 0, refresh)) return;
     }
     for (const file of fileList) {
         if (tempNewEvent !== target) return;
@@ -1043,12 +1044,22 @@ function wzRemoveFile(index) {
     removeEventFile(tempNewEvent, 'Files', index, wzRefreshFileList);
 }
 
-// target[field] の index 番目のファイルを外す。
+// ファイル（R2 の実体ごと）を削除できるのは管理者だけ。アップロード中・失敗したもの（実体が無い）は誰でも取り消せる。
+function canRemoveEventFile(file) {
+    return api.isAdmin() || !(file && file.driveId);
+}
+
+// target[field] の index 番目のファイルを削除する（管理者のみ。実体が無いアップロード中・失敗分は誰でも可）。
 // このダイアログでアップロードしたばかりのファイルはその場で実体も消し、保存済みのものは保存成功後に消す。
+// 削除した（または取り消した）ときだけ true を返す。
 function removeEventFile(target, field, index, refresh) {
-    if (!target || !Array.isArray(target[field])) return;
+    if (!target || !Array.isArray(target[field])) return false;
     const file = target[field][index];
-    if (!file) return;
+    if (!file) return false;
+    if (!canRemoveEventFile(file)) {
+        showAdminAuthModal(() => removeEventFile(target, field, index, refresh));
+        return false;
+    }
     if (file.driveId) {
         const si = Array.isArray(target._sessionUploads) ? target._sessionUploads.indexOf(file.driveId) : -1;
         if (si >= 0) {
@@ -1061,6 +1072,7 @@ function removeEventFile(target, field, index, refresh) {
     }
     target[field].splice(index, 1);
     refresh();
+    return true;
 }
 
 function wzRefreshFileList() {
@@ -1068,9 +1080,6 @@ function wzRefreshFileList() {
     if (!el || !tempNewEvent) return;
     const files = tempNewEvent.Files || [];
     if (files.length === 0) { el.innerHTML = ''; return; }
-    // ファイル実体（R2）を消せるのは管理者だけ。それ以外の人が外したファイルは、この一覧から外れるだけで保存領域には残る。
-    const isAdmin = api.isAdmin();
-    const removeHint = isAdmin ? '' : '<p class="text-hint" style="font-size:0.78rem; margin:6px 0 0;">※ ファイルを外しても、保存領域からは削除されません（削除は管理者のみ可能です）</p>';
     el.innerHTML = files.map((f, i) => {
         const name = escapeHtml(f.name || ('ファイル ' + (i + 1)));
         const size = f.size ? formatFileSize(f.size) : '';
@@ -1086,11 +1095,11 @@ function wzRefreshFileList() {
                 <span class="file-size">${size}</span>
                 <div class="file-actions">
                     ${!uploading && !failed && safeHttpUrl(f.url) ? `<a href="${escapeAttr(safeHttpUrl(f.url))}" target="_blank" rel="noopener" class="tbl-btn">開く</a>` : ''}
-                    <button class="tbl-btn tbl-btn-danger" data-action="ew-remove-file" data-index="${i}" type="button">${uploading ? 'キャンセル' : (isAdmin ? '削除' : '外す')}</button>
+                    ${canRemoveEventFile(f) ? `<button class="tbl-btn tbl-btn-danger" data-action="ew-remove-file" data-index="${i}" type="button">${uploading ? 'キャンセル' : '削除'}</button>` : ''}
                 </div>
             </div>
         `;
-    }).join('') + removeHint;
+    }).join('');
 }
 
 // ---- ウィザードから保存（検証 → 組み立て → 保存） ----
@@ -1237,8 +1246,8 @@ function persistEventFromWizard(item) {
         if (saved && saved.UpdatedAt) _ownSavedStamps.add(eventId + ':' + saved.UpdatedAt);
         filesToDelete.forEach(driveId => {
             api.deleteFile(driveId).catch(err => {
-                // 削除は管理者のみ可能。イベントからは外れているが、R2 には残る
-                console.warn('外したファイルを削除できませんでした（管理者権限が必要な場合があります）:', driveId, err && err.message);
+                // 削除は管理者のみ（権限が無いと実体は R2 に残る）
+                console.warn('削除したファイルの実体を消せませんでした（管理者権限が必要な場合があります）:', driveId, err && err.message);
             });
         });
     }).catch(err => {

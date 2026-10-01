@@ -654,7 +654,7 @@ function detailFileLinkHtml(f, i) {
 }
 
 // 書類ファイル（依頼書など・1 ファイル）: 「依頼書」という名前の小さな枠。
-// 空なら点線の枠（押す／ドロップで追加できそうな見た目）、あれば実線の枠にファイル名と 差し替え・外す。
+// 空なら点線の枠（押す／ドロップで追加できそうな見た目）、あれば実線の枠にファイル名と 差し替え・削除（どちらも管理者のみ）。
 function docSlotHtml(ev, field) {
     const label = DETAIL_FILE_LABELS[field];
     const f = (Array.isArray(ev[field]) ? ev[field] : [])[0];
@@ -668,24 +668,27 @@ function docSlotHtml(ev, field) {
         <span class="doc-slot-icon" aria-hidden="true">&#10003;</span>
         <span class="doc-slot-label">${label}</span>
         ${detailFileLinkHtml(f, 0)}
-        <button type="button" class="doc-slot-btn" data-action="es-file-pick" title="ファイルをドロップ、またはクリックで差し替え" aria-label="${label}を差し替え">&#8635;</button>
-        <button type="button" class="doc-slot-btn" data-action="es-file-remove" data-field="${field}" data-index="0" title="外す" aria-label="${label}を外す">&times;</button>
+        ${api.isAdmin() ? `<button type="button" class="doc-slot-btn" data-action="es-file-pick" title="ファイルをドロップ、またはクリックで差し替え" aria-label="${label}を差し替え">&#8635;</button>
+        <button type="button" class="doc-slot-btn" data-action="es-file-remove" data-field="${field}" data-index="0" title="削除" aria-label="${label}を削除">&times;</button>` : ''}
         ${fileInputHtml(field, false)}</div>`;
 }
 
 // 複数ファイル／議事録（ミーティング用）: ファイル一覧と、点線の「＋ 追加」枠。
 function detailFilesHtml(ev, field, multiple) {
     const files = Array.isArray(ev[field]) ? ev[field] : [];
+    const isAdmin = api.isAdmin();
     const items = files.map((f, i) =>
-        `<span class="detail-file-item">${detailFileLinkHtml(f, i)} <button type="button" class="tbl-btn tbl-btn-danger" data-action="es-file-remove" data-field="${field}" data-index="${i}">外す</button></span>`
+        `<span class="detail-file-item">${detailFileLinkHtml(f, i)}${isAdmin ? ` <button type="button" class="tbl-btn tbl-btn-danger" data-action="es-file-remove" data-field="${field}" data-index="${i}">削除</button>` : ''}</span>`
     ).join('');
     const label = files.length ? (multiple ? '追加' : '差し替え') : 'アップロード';
-    return `
-        <div class="detail-file-field" data-drop-field="${field}">
-            ${items}
+    // 1 ファイルの項目は、すでにあるときの差し替えが削除を伴うので管理者だけ
+    const addBtn = (!multiple && files.length && !isAdmin) ? '' : `
             <button type="button" class="doc-slot is-empty doc-slot-inline" data-action="es-file-pick" title="クリック、またはファイルをドロップして${label}">
                 <span class="doc-slot-icon" aria-hidden="true">&#65291;</span><span class="doc-slot-label">${label}</span>
-            </button>
+            </button>`;
+    return `
+        <div class="detail-file-field" data-drop-field="${field}">
+            ${items}${addBtn}
             ${fileInputHtml(field, multiple)}
         </div>`;
 }
@@ -694,6 +697,11 @@ function detailFilesHtml(ev, field, multiple) {
 async function uploadDetailFiles(field, files, multiple) {
     const ev = currentEvent();
     if (!ev || files.length === 0) return;
+    // 1 ファイルの項目の差し替えは古いファイルの削除を伴うので、管理者だけ（ドロップ経由でも通さない）
+    if (!multiple && !api.isAdmin() && Array.isArray(ev[field]) && ev[field].length) {
+        showAdminAuthModal(() => uploadDetailFiles(field, files, multiple));
+        return;
+    }
     const evId = ev.ID;
     const label = DETAIL_FILE_LABELS[field];
     const maxMB = getFileMaxMB();
@@ -720,7 +728,7 @@ async function uploadDetailFiles(field, files, multiple) {
         onOptimistic: () => renderDetail(),
         onRollback: () => renderDetail()
     }));
-    // 保存できたら差し替えで外れた古いファイルを、できなければ今回のファイルを消す（消せるのは管理者のみ）
+    // 保存できたら差し替えで外れた古いファイルを、できなければ今回のファイルを消す
     (ok ? (multiple ? [] : current) : uploaded).forEach(f => discardUploadedFile(f.driveId));
 }
 
@@ -728,16 +736,17 @@ function removeDetailFile(field, index) {
     const ev = currentEvent();
     const file = ev && Array.isArray(ev[field]) ? ev[field][index] : null;
     if (!file) return;
+    if (!api.isAdmin()) { showAdminAuthModal(() => removeDetailFile(field, index)); return; }
     const label = DETAIL_FILE_LABELS[field];
     showConfirmDialog({
-        title: 'ファイルを外しますか？',
-        message: `「${file.name || 'ファイル'}」を${label}から外します。`,
-        okLabel: '外す',
+        title: 'ファイルを削除しますか？',
+        message: `「${file.name || 'ファイル'}」を${label}から削除します。保存領域からも消え、元に戻せません。`,
+        okLabel: '削除する',
         danger: true,
         onOk: async () => {
             const next = ev[field].filter((_, i) => i !== index);
             const ok = await saveEventPatch(ev.ID, { [field]: next }, seriesPatchOpts({
-                successMessage: `${label}から外しました`,
+                successMessage: `${label}から削除しました`,
                 onOptimistic: () => renderDetail(),
                 onRollback: () => renderDetail()
             }));
