@@ -18,6 +18,7 @@ import { handleGeminiProxy, handleGeminiGenerate, geminiUsageGet } from './gemin
 import { notifyNewEvent } from './line.js';
 import { uploadFile, deleteFile, serveFile } from './files.js';
 import { runMaintenance } from './maintenance.js';
+import { moveRecordToTrash, listTrash, restoreTrash, purgeTrash, purgeExpiredTrash, getTrashRow, TRASH_ADMIN_ONLY } from './trash.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -138,7 +139,7 @@ async function handlePost(env, ctx, request, body) {
       if ((res.adminOnly || res.adminWrite) && !(await checkAdmin(env, body.adminToken))) return { success: false, error: 'admin_required' };
       let saved;
       try {
-        saved = await saveResource(env, resource, body.item || {}, { isAdmin: !!(await checkAdmin(env, body.adminToken)) });
+        saved = await saveResource(env, resource, body.item || {});
       } catch (err) {
         if (err instanceof ConflictError) return { success: false, error: 'conflict' };
         throw err;
@@ -151,12 +152,45 @@ async function handlePost(env, ctx, request, body) {
       return { success: true, item: saved.item };
     }
 
-    // --- 削除: 管理者権限必須 ---
+    // --- 削除 ---
+    // ガイドは従来どおり管理者だけが完全に削除する(ゴミ箱の対象外)。
+    // それ以外はメンバーも削除でき、削除したものはゴミ箱に入る(完全削除・復元は下の trash 系 action)。
+    // パスワード一覧は管理者だけ(adminOnly リソースなので上の判定と同じ)。
     if (action === 'delete') {
-      if (!(await checkAdmin(env, body.adminToken))) return { success: false, error: 'admin_required' };
       const id = body.id;
-      await appendAuditLog(env, 'delete', resource + ':' + id, body.adminToken, 'admin');
-      return { success: await deleteResource(env, resource, id) };
+      if (resource === 'guides') {
+        if (!(await checkAdmin(env, body.adminToken))) return { success: false, error: 'admin_required' };
+        await appendAuditLog(env, 'delete', resource + ':' + id, body.adminToken, 'admin');
+        return { success: await deleteResource(env, resource, id) };
+      }
+      const res = getResource(resource);
+      if (!res) return { success: false, error: 'unknown resource: ' + resource };
+      const isAdmin = await checkAdmin(env, body.adminToken);
+      if (TRASH_ADMIN_ONLY.indexOf(resource) >= 0 && !isAdmin) return { success: false, error: 'admin_required' };
+      const trashId = await moveRecordToTrash(env, resource, id);
+      if (trashId) await appendAuditLog(env, 'delete', resource + ':' + id, isAdmin ? body.adminToken : token, isAdmin ? 'admin' : 'member');
+      return { success: !!trashId, trashId: trashId || undefined };
+    }
+
+    // --- ゴミ箱 ---
+    if (action === 'listTrash') {
+      const isAdmin = await checkAdmin(env, body.adminToken);
+      await purgeExpiredTrash(env, 50);   // 定期実行を待たずに、期限切れがあれば消しておく
+      return { success: true, items: await listTrash(env, isAdmin) };
+    }
+    if (action === 'restoreTrash' || action === 'purgeTrash') {
+      const row = await getTrashRow(env, body.id);
+      if (!row) return { success: false, error: 'not_found' };
+      const isAdmin = await checkAdmin(env, body.adminToken);
+      if (TRASH_ADMIN_ONLY.indexOf(row.Resource) >= 0 && !isAdmin) return { success: false, error: 'admin_required' };
+      if (action === 'restoreTrash') {
+        const r = await restoreTrash(env, body.id);
+        if (r.success) await appendAuditLog(env, 'restoreTrash', row.Resource + ':' + row.RecordID, isAdmin ? body.adminToken : token, isAdmin ? 'admin' : 'member');
+        return r;
+      }
+      const ok = await purgeTrash(env, body.id);
+      if (ok) await appendAuditLog(env, 'purgeTrash', row.Resource + ':' + row.RecordID, isAdmin ? body.adminToken : token, isAdmin ? 'admin' : 'member');
+      return { success: ok };
     }
 
     // --- ファイル ---

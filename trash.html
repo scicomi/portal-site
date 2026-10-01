@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <title>ゴミ箱 | SciComi Portal</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="app-header"></header>
+
+    <main class="container">
+        <div class="page-section-actions">
+            <h1 class="page-title" style="margin:0; flex:1;">ゴミ箱</h1>
+        </div>
+        <p class="text-muted" style="font-size:0.88rem; margin:0 0 12px;">
+            削除したイベント・メンバー・実験ネタや、外したファイル・写真などが、期限（初期設定は7日）まで保管されます。
+            「復元」で元の場所に戻せます。「完全に削除」するとファイルも消え、元に戻せません（誤ってアップロードした個人情報などは、ここで今すぐ完全に削除できます）。
+        </p>
+
+        <div class="page-section-actions" style="flex-wrap:wrap;">
+            <button class="filter-chip active" data-kind="" aria-pressed="true" onclick="setTrashFilter('')">すべて</button>
+            <button class="filter-chip" data-kind="record" aria-pressed="false" onclick="setTrashFilter('record')">削除した記録</button>
+            <button class="filter-chip" data-kind="item" aria-pressed="false" onclick="setTrashFilter('item')">外したファイル・項目</button>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="data-table" id="trash-table">
+                <thead>
+                    <tr>
+                        <th>種類</th>
+                        <th>名前</th>
+                        <th class="hide-mobile">削除した日時</th>
+                        <th>残り</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="trash-tbody"><tr><td colspan="5" class="loading-text">読み込み中</td></tr></tbody>
+            </table>
+        </div>
+    </main>
+
+    <script src="config.js"></script>
+    <script src="api.js"></script>
+    <script src="app.js"></script>
+    <script src="trash.js"></script>
+</body>
+</html>

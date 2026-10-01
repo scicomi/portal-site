@@ -100,7 +100,7 @@ function initFileField(containerId, field, multiple) {
                 <span class="file-size">${f.size ? formatFileSize(f.size) : ''}</span>
                 <div class="file-actions">
                     ${!f._uploading && !f._failed && url ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="tbl-btn">開く</a>` : ''}
-                    ${canRemoveEventFile(f) ? `<button type="button" class="tbl-btn tbl-btn-danger" data-ef-remove="${i}">${f._uploading ? 'キャンセル' : '削除'}</button>` : ''}
+                    <button type="button" class="tbl-btn tbl-btn-danger" data-ef-remove="${i}">${f._uploading ? 'キャンセル' : '削除'}</button>
                 </div>
             </div>`;
         }).join('');

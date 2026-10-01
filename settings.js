@@ -75,6 +75,9 @@ async function loadSettings() {
         document.getElementById('cfg-deadline-kyoka').value = kyokaDays;
         document.getElementById('cfg-deadline-houkoku').value = houkokuDays;
 
+        // ゴミ箱の保管日数
+        document.getElementById('cfg-trash-keep-days').value = cfg.trash_keep_days != null && cfg.trash_keep_days !== '' ? parseInt(cfg.trash_keep_days, 10) : 7;
+
         // 広報媒体
         document.getElementById('cfg-pr-channels').value = cfg.pr_channels || 'Twitter,Instagram,HP';
 
@@ -258,6 +261,25 @@ async function saveDeadlineRules(btn) {
         CONFIG.DEADLINE_RULES.kyoka = -kyoka;
         CONFIG.DEADLINE_RULES.houkoku = houkoku;
         toast('期限ルールを保存しました', 'success');
+    });
+}
+
+// --- ゴミ箱の保管日数 ---
+
+async function saveTrashKeepDays(btn) {
+    const raw = String(document.getElementById('cfg-trash-keep-days').value || '').trim();
+    const n = /^\d+$/.test(raw) ? parseInt(raw, 10) : NaN;
+    if (isNaN(n) || n < 1 || n > 365) {
+        toast('保管日数は1〜365の整数で入力してください', 'error');
+        return;
+    }
+    await _withBusyBtn(btn, async () => {
+        try {
+            await api.adminSetConfig('trash_keep_days', String(n));
+            toast('保管日数を保存しました', 'success');
+        } catch (e) {
+            toast('保存失敗: ' + e.message, 'error');
+        }
     });
 }
 

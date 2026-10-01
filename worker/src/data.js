@@ -2,12 +2,13 @@
 
 import { getResource, RESOURCES } from './tables.js';
 import { str, sha256Hex, jstIso, endOfDayJst, ApiError } from './util.js';
+import { getConfigInt } from './config.js';
 
 const q = c => '"' + c + '"';
 
 // ---- 行 → API 用オブジェクト ----
 
-function rowToObj(res, row) {
+export function rowToObj(res, row) {
   const obj = {};
   res.columns.forEach(c => { obj[c] = str(row[c]); });
   res.jsonFields.forEach(f => {
@@ -45,7 +46,7 @@ export async function listAllData(env) {
 
 // ---- 保存・削除 ----
 
-function genId(prefix) {
+export function genId(prefix) {
   return prefix + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
 }
 
@@ -63,55 +64,93 @@ export class ConflictError extends Error {
 // onclick 属性などに ID を埋め込むフロントがあるため、引用符などの記号を含む ID は受け付けない。
 export const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
-// 管理者だけが減らせる列(削除の一種)。JSON 配列の列で、要素を一意に識別するキーを返す関数を持つ。
-// キーを持たない(空の)要素は比較から除外する。Sections は識別子が無いため件数だけを見る(null)。
+// 保存でレコードから外された項目(添付ファイル・写真・動画・振り返り・セクション)は、消さずにゴミ箱へ移す。
+// 対象は JSON 配列の列で、要素を一意に識別するキーを返す関数を持つ(キーが空の要素は比較から除外する)。
+// Sections は要素の識別子が無いため、見出しで照合する(件数が減ったときだけ外れた分を拾う)。
+// single: 1 ファイルだけ持つ列(復元時に枠が埋まっていれば戻せない)。 label: 一覧に出す名前。
 const fileKey = f => str(f && (f.driveId || f.url));
 const idKey = e => str(e && e.id);
-const PROTECTED_REMOVALS = {
+const sectionKey = s => str(s && s.title);
+const fileLabel = f => str(f && f.name) || 'ファイル';
+const snippet = (t, n) => { const s = str(t).replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n) + '…' : s; };
+export const TRASH_ITEM_RULES = {
   events: {
-    Files: fileKey, RequestDoc: fileKey, KyokaDoc: fileKey, HoukokuDoc: fileKey, MeetingDocs: fileKey, Minutes: fileKey,
+    Files:       { key: fileKey, label: fileLabel },
+    RequestDoc:  { key: fileKey, label: fileLabel, single: true },
+    KyokaDoc:    { key: fileKey, label: fileLabel, single: true },
+    HoukokuDoc:  { key: fileKey, label: fileLabel, single: true },
+    MeetingDocs: { key: fileKey, label: fileLabel },
+    Minutes:     { key: fileKey, label: fileLabel, single: true },
   },
   experiments: {
-    Photos: fileKey, Videos: idKey, Reflections: idKey, Positives: idKey, Sections: null,
+    Photos:      { key: fileKey, label: fileLabel },
+    Videos:      { key: idKey, label: v => str(v && (v.title || v.url)) || '動画' },
+    Reflections: { key: idKey, label: e => snippet(e && e.text, 30) || '振り返り' },
+    Positives:   { key: idKey, label: e => snippet(e && e.text, 30) || '良かった点' },
+    Sections:    { key: sectionKey, label: s => str(s && s.title) || 'セクション', countOnly: true },
+  },
+  passwords: {
+    Photos: { key: fileKey, label: fileLabel },
   },
 };
+// レコードの表示名の列(ゴミ箱の一覧用)
+export const TRASH_LABEL_COLUMN = { events: 'Title', members: 'Name', experiments: 'Name', passwords: 'SiteName' };
 
-function parseJsonList(v) {
+export function parseJsonList(v) {
   if (Array.isArray(v)) return v;
   if (v === undefined || v === null || v === '') return [];
   try { const a = JSON.parse(v); return Array.isArray(a) ? a : []; } catch (_) { return []; }
 }
 
-// 管理者以外の保存で、既存の添付ファイル・写真・動画・振り返り・セクションが減る(=削除・差し替え)なら拒否する。
-// item にキーが無い列は更新されないので対象外。削除は管理者のみ(フロントの方針をサーバーでも強制する)。
-async function assertNoProtectedRemoval(env, name, res, item) {
-  const rules = PROTECTED_REMOVALS[name];
-  if (!rules) return;
+// 保存で外れた項目を、ゴミ箱へ入れる INSERT 文にする。
+// 更新(UPDATE)が成功したとき(changes() > 0)だけ入るよう条件を付け、競合で更新されなかった場合は入れない。
+// item にキーが無い列は更新されないので対象外。
+async function removedItemStatements(env, name, res, item, now) {
+  const rules = TRASH_ITEM_RULES[name];
+  if (!rules) return [];
   const cols = Object.keys(rules).filter(c => item[c] !== undefined);
-  if (cols.length === 0) return;
-  const row = await env.DB.prepare('SELECT ' + cols.map(q).join(', ') + ' FROM ' + res.table + ' WHERE ID = ?').bind(item.ID).first();
-  if (!row) return;
+  if (cols.length === 0) return [];
+  const labelCol = TRASH_LABEL_COLUMN[name];
+  const row = await env.DB.prepare('SELECT ' + cols.concat(labelCol).map(q).join(', ') + ' FROM ' + res.table + ' WHERE ID = ?').bind(item.ID).first();
+  if (!row) return [];
+  const keepDays = await getConfigInt(env, 'trash_keep_days', 7);
+  const expires = new Date(Date.parse(now) + keepDays * 86400000).toISOString();
+  const stmts = [];
   for (const c of cols) {
+    const rule = rules[c];
     const before = parseJsonList(row[c]);
     const after = parseJsonList(item[c]);
-    const keyOf = rules[c];
     let removed;
-    if (keyOf === null) {
-      removed = after.length < before.length;
+    if (rule.countOnly) {
+      // 件数が減ったときだけ。外れたのは、残った見出しの数を差し引いても余る分
+      if (after.length >= before.length) continue;
+      const left = new Map();
+      after.map(rule.key).forEach(k => left.set(k, (left.get(k) || 0) + 1));
+      removed = before.filter(it => {
+        const k = rule.key(it);
+        if (left.get(k) > 0) { left.set(k, left.get(k) - 1); return false; }
+        return true;
+      });
     } else {
-      const kept = new Set(after.map(keyOf).filter(Boolean));
-      removed = before.map(keyOf).filter(Boolean).some(k => !kept.has(k));
+      const kept = new Set(after.map(rule.key).filter(Boolean));
+      removed = before.filter(it => { const k = rule.key(it); return k && !kept.has(k); });
     }
-    if (removed) throw new ApiError('admin_required', '削除・差し替えは管理者のみ可能です(' + c + ')');
+    for (const it of removed) {
+      stmts.push(env.DB.prepare(
+        'INSERT INTO trash (ID, Kind, Resource, RecordID, Field, Label, RecordLabel, Payload, Votes, DeletedAt, ExpiresAt) ' +
+        "SELECT ?, 'item', ?, ?, ?, ?, ?, ?, '', ?, ? WHERE changes() > 0"
+      ).bind(genId('tr_'), name, item.ID, c, rule.label(it), str(row[labelCol]), JSON.stringify(it), now, expires));
+    }
   }
+  return stmts;
 }
 
 // 1 行を保存(upsert)し、{ item: 保存後の行, created: 新規作成か } を返す。
 // 更新は「item にキーがある列だけ」を書き換える(キーが無い列は既存値を保持。'' や null が来た列は空にする)。
 // 競合検知: クライアントが編集開始時に読んだ版(_baseUpdatedAt)と、現在の UpdatedAt が食い違えば
 // 別の人が先に更新したとみなして ConflictError。UPDATE 文の条件で判定するため原子的に行われる。
-// opts.isAdmin が真でなければ、既存の添付などを減らす更新は拒否する(assertNoProtectedRemoval)。
-export async function saveResource(env, name, item, opts = {}) {
+// 既存の添付・写真・動画・振り返り・セクションが減る更新は、外れた項目をゴミ箱へ入れる(removedItemStatements)。
+export async function saveResource(env, name, item) {
   const res = getResource(name);
   if (!res) throw new Error('unknown resource: ' + name);
   item = Object.assign({}, item);
@@ -125,7 +164,6 @@ export async function saveResource(env, name, item, opts = {}) {
     existing = await env.DB.prepare('SELECT ID, CreatedAt, UpdatedAt FROM ' + res.table + ' WHERE ID = ?').bind(item.ID).first();
   }
   const isNewRow = !existing;
-  if (existing && !opts.isAdmin) await assertNoProtectedRemoval(env, name, res, item);
   if (!hasId) item.ID = genId(res.idPrefix);
 
   const hasBase = item._baseUpdatedAt !== undefined && item._baseUpdatedAt !== null && item._baseUpdatedAt !== '';
@@ -154,7 +192,10 @@ export async function saveResource(env, name, item, opts = {}) {
       let sql = 'UPDATE ' + res.table + ' SET ' + cols.map(c => q(c) + ' = ?').join(', ') + ' WHERE ID = ?';
       binds.push(item.ID);
       if (hasBase) { sql += ' AND UpdatedAt = ?'; binds.push(String(item._baseUpdatedAt)); }
-      const r = await env.DB.prepare(sql).bind(...binds).run();
+      // 外れた項目のゴミ箱への INSERT は、UPDATE と同じ batch(=1 トランザクション)で行う
+      const trashStmts = await removedItemStatements(env, name, res, item, now);
+      const out = await env.DB.batch([env.DB.prepare(sql).bind(...binds), ...trashStmts]);
+      const r = out[0];
       if (!(r.meta && r.meta.changes > 0)) throw new ConflictError();   // 判定後に別の更新・削除が入った
     }
   }

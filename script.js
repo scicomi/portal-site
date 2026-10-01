@@ -546,7 +546,7 @@ function renderEvents() {
                     <div class="inline-actions">
                         <button class="inline-action-btn" data-action="duplicate" title="この予定を複製して新規作成">複製</button>
                         <button class="inline-action-btn" data-action="edit" title="この予定を編集">編集</button>
-                        ${isAdmin ? '<button class="inline-action-btn danger" data-action="delete" title="この予定を削除">削除</button>' : ''}
+                        <button class="inline-action-btn danger" data-action="delete" title="この予定を削除">削除</button>
                     </div>
                 </td>
             </tr>

@@ -22,6 +22,7 @@ export const DEFAULT_CONFIG = {
   file_max_mb: 10,
   backup_keep_count: 14,
   audit_keep_days: 365,
+  trash_keep_days: 7,         // ゴミ箱に入れたものを完全に削除するまでの日数
   // --- 表示・運用カスタム(settings.js が読み書き。一部はメンバーにも公開) ---
   welcome_message: '',
   deadline_kyoka: -10,        // イベント日の10日前
@@ -151,6 +152,7 @@ export function validateConfigValue(key, value) {
     case 'deadline_alert_warning':
     case 'backup_keep_count':
     case 'audit_keep_days':
+    case 'trash_keep_days':
       return /^\d+$/.test(v.trim()) ? '' : '0以上の整数を指定してください';
     case 'event_notify_enabled':
       return ['true', 'false'].indexOf(v) >= 0 ? '' : 'true か false を指定してください';

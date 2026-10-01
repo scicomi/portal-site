@@ -350,15 +350,14 @@ function renderMembers() {
             // タップした詳細ポップアップ側でのみ確認できるようにする。
             const nameCell = `<td class="cell-name">${hl(m.Name)}</td>`;
             const roleCell = `<td class="cell-role">${roleBadge}</td>`;
-            // 削除は管理者ログイン時のみ表示（誤タップ防止）。編集は全員に表示し、
-            // タップ時に管理者認証を挟む（実験ページ等と表示ルールを統一）
-            // 管理者以外は、自分の名前として選択中の行だけ編集できる（削除は不可）
+            // 削除はゴミ箱に入るので全員に表示する（期限までは誰でも戻せる）。
+            // 編集は、管理者か、自分の名前として選択中の行だけ
             const canEdit = isAdmin || isMyMember(m);
             const actionCell = `
                 <td data-action-cell>
                     <div class="inline-actions">
                         ${canEdit ? '<button class="inline-action-btn" data-action="edit" title="このメンバーを編集">編集</button>' : ''}
-                        ${isAdmin ? '<button class="inline-action-btn danger" data-action="delete" title="このメンバーを削除">削除</button>' : ''}
+                        <button class="inline-action-btn danger" data-action="delete" title="このメンバーを削除">削除</button>
                     </div>
                 </td>`;
 
@@ -396,7 +395,7 @@ function openMemberWizard(editId) {
     const isAdmin = api.isAdmin();
     const isSelf = isMyMember(m);
 
-    // 編集は管理者か、自分の名前として選択中の本人のみ（削除は管理者のみ。新規追加は誰でも可）
+    // 編集は管理者か、自分の名前として選択中の本人のみ（削除は誰でも可でゴミ箱へ入る。新規追加は誰でも可）
     if (isEdit && !isAdmin && !isSelf) {
         toast('編集できるのは、自分の名前として選択しているメンバーだけです', 'info', 4000);
         editingMemberId = null;
@@ -451,7 +450,7 @@ function openMemberWizard(editId) {
                 </div>
             </div>
             <div class="wizard-footer">
-                ${isEdit && isAdmin ? '<button class="btn btn-danger" onclick="deleteFromMbWizard()">削除</button>' : ''}
+                ${isEdit ? '<button class="btn btn-danger" onclick="deleteFromMbWizard()">削除</button>' : ''}
                 <div class="wizard-footer-spacer"></div>
                 <button class="btn btn-text" onclick="closeMemberWizard()">キャンセル</button>
                 <button id="wz-mb-prev-btn" class="btn btn-secondary" onclick="mbWizardPrev()" style="display:none;">戻る</button>
@@ -625,15 +624,11 @@ function deleteFromMbWizard() {
 }
 
 function confirmDeleteMember(id) {
-    if (!api.isAdmin()) {
-        showAdminAuthModal(() => confirmDeleteMember(id));
-        return;
-    }
     const m = membersData.find(x => x.ID === id);
     if (!m) return;
     showConfirmDialog({
         title: `「${m.Name}」を削除`,
-        message: 'この操作は元に戻せます（削除直後のみ）。',
+        message: TRASH_KEEP_NOTE + '（出欠の回答も一緒に戻ります）',
         okLabel: '削除する',
         danger: true,
         onOk: () => deleteMember(id)
@@ -641,10 +636,6 @@ function confirmDeleteMember(id) {
 }
 
 async function deleteMember(id) {
-    if (!api.isAdmin()) {
-        showAdminAuthModal(() => deleteMember(id));
-        return;
-    }
     const idx = membersData.findIndex(m => m.ID === id);
     if (idx < 0) return;
     const backup = membersData[idx];
@@ -653,8 +644,9 @@ async function deleteMember(id) {
     api.saveCache('members', membersData);
     renderMembers();
 
+    let trashId = '';
     try {
-        await api.delete('members', id);
+        trashId = await api.delete('members', id);
     } catch (e) {
         membersData.splice(idx, 0, backup);
         api.saveCache('members', membersData);
@@ -664,10 +656,10 @@ async function deleteMember(id) {
     }
 
     toastUndo(
-        `「${backup.Name}」を削除しました`,
+        `「${backup.Name}」をゴミ箱に移動しました`,
         async () => {
             try {
-                const saved = await api.save('members', backup);
+                const saved = (await api.restoreTrash(trashId)).item || backup;
                 membersData.push(saved);
                 api.saveCache('members', membersData);
                 buildFiscalYearSelect();
@@ -678,7 +670,7 @@ async function deleteMember(id) {
             }
         },
         () => {},
-        5000
+        10000
     );
 }
 

@@ -503,13 +503,11 @@ async function savePwEntry() {
             pwData.push(saved);
             if (saved.ID) expandedPw.add(saved.ID);
         }
-        // 保存できたので、残した写真は消さない。外した保存済みの写真は実体も消す
-        const removedPhotos = pwPhotosToDelete.slice();
+        // 保存できたので、残した写真は消さない。外した保存済みの写真は、サーバーがゴミ箱へ移す（実体は期限まで残る）
         pwSessionUploads = [];
         renderPasswords();
         closePwModal();
         toast('保存しました', 'success');
-        deleteStoredFiles(removedPhotos);
     } catch (e) {
         const msg = String(e.message || e);
         if (msg.includes('ADMIN_REQUIRED')) {
@@ -566,9 +564,8 @@ async function executeDeletePwEntry(id) {
 
     try {
         await api.deletePassword(id);
-        toast('削除しました', 'success', 2000);
-        // 添付の写真（QR・スクリーンショット等）が公開 URL のまま R2 に残らないよう、実体も消す
-        deleteStoredFiles(parseJsonArray(backup.Photos).map(ph => ph.driveId));
+        toast('ゴミ箱に移動しました（管理者の「ゴミ箱」から戻せます）', 'success', 3000);
+        // 添付の写真（QR・スクリーンショット等）は、ゴミ箱の期限まで R2 に残る（公開 URL のまま）。今すぐ消すにはゴミ箱から完全に削除する
     } catch (e) {
         pwData.splice(idx, 0, backup);
         renderPasswords();

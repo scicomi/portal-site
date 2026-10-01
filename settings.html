@@ -78,6 +78,30 @@
                 </div>
             </div>
 
+            <!-- ゴミ箱 -->
+            <div class="settings-section collapsed">
+                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h2>ゴミ箱</h2>
+                        <p class="settings-section-desc">削除したものを、完全に削除するまで保管しておく日数を設定します。</p>
+                    </div>
+                    <span class="settings-section-chevron">&#9662;</span>
+                </div>
+                <div class="settings-card">
+                    <div class="e1-group">
+                        <label class="e1-label">保管日数</label>
+                        <p class="settings-hint">この日数が過ぎたものは、毎日 03:00 ごろに完全に削除されます（ファイルも消えます）。変更は、これから削除するものに反映されます。</p>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <input type="number" id="cfg-trash-keep-days" class="e1-input" min="1" max="365" style="width:100px;">
+                            <span class="text-label">日</span>
+                        </div>
+                    </div>
+                    <div style="margin-top:8px;">
+                        <button class="btn btn-primary-solid" onclick="saveTrashKeepDays(this)" style="width:auto;padding:8px 20px;">保管日数を保存</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- パスワード管理 -->
             <div class="settings-section collapsed">
                 <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">

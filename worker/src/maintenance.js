@@ -7,11 +7,12 @@
 
 import { getConfigInt } from './config.js';
 import { trimAuditLog } from './data.js';
+import { purgeExpiredTrash } from './trash.js';
 import { purgeOldAuthFail } from './auth.js';
 import { purgeExpiredCache } from './gemini.js';
 import { jstDate } from './util.js';
 
-const BACKUP_TABLES = ['events', 'members', 'experiments', 'guides', 'passwords', 'event_votes', 'config', 'audit_log', 'gemini_usage'];
+const BACKUP_TABLES = ['events', 'members', 'experiments', 'guides', 'passwords', 'event_votes', 'trash', 'config', 'audit_log', 'gemini_usage'];
 const BACKUP_PREFIX = 'backups/';
 
 export async function backupToR2(env) {
@@ -34,6 +35,7 @@ export async function runMaintenance(env) {
   const steps = [
     ['backup', () => backupToR2(env)],
     ['trimAuditLog', async () => trimAuditLog(env, await getConfigInt(env, 'audit_keep_days', 365))],
+    ['purgeTrash', () => purgeExpiredTrash(env)],
     ['purgeAuthFail', () => purgeOldAuthFail(env)],
     ['purgeCache', () => purgeExpiredCache(env)]
   ];

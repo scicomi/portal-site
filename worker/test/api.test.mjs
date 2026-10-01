@@ -90,7 +90,8 @@ test('前提: テストが参照する設定をローカル DB で既定値に�
 });
 
 test('メンバートークンでは管理者操作(削除・管理者設定・パスワード一覧)ができない', async () => {
-  assert.equal((await post({ action: 'delete', resource: 'events', id: 'x', token: member, adminToken: member })).error, 'admin_required');
+  assert.equal((await post({ action: 'delete', resource: 'passwords', id: 'x', token: member, adminToken: member })).error, 'admin_required');
+  assert.equal((await post({ action: 'delete', resource: 'guides', id: 'x', token: member, adminToken: member })).error, 'admin_required');
   assert.equal((await post({ action: 'adminGetConfig', token: member, adminToken: member })).error, 'admin_required');
   assert.equal((await post({ action: 'list', resource: 'passwords', token: member })).error, 'admin_required');
 });
@@ -359,46 +360,156 @@ test('パスワード変更でそのロールの既存トークンが失効す�
   }
 });
 
-test('save: 添付・写真などを減らす更新(削除・差し替え)は管理者のみ。追加と他の列の編集はメンバーも可', async () => {
+test('ゴミ箱: 外した項目(添付・写真・動画・振り返り・セクション)はゴミ箱に入り、メンバーも戻せる', async () => {
   const f1 = { name: 'a.pdf', url: 'https://example.com/files/a.pdf', driveId: 'a.pdf', size: 1 };
   const f2 = { name: 'b.pdf', url: 'https://example.com/files/b.pdf', driveId: 'b.pdf', size: 1 };
   const id = 'ev_test_rm_' + Date.now();
-  const base = { ID: id, Title: '削除制限', Date: '2026-10-05', Category: 'normal', Files: [f1], KyokaDoc: [f1] };
-  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: base })).success, true);   // 新規は可
-  // 追加・他の列の編集は可
-  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Title: '改題', Files: [f1, f2] } })).success, true);
-  // 外す(減らす)は不可
-  const rm = await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Files: [f2] } });
-  assert.equal(rm.error, 'admin_required');
-  // 1 ファイル項目の差し替えも不可
-  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id, KyokaDoc: [f2] } })).error, 'admin_required');
-  // 空にするのも不可
-  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Files: [] } })).error, 'admin_required');
-  // 管理者は可
-  assert.equal((await post({ action: 'save', resource: 'events', token: adminMember, adminToken: admin, item: { ID: id, Files: [f2], KyokaDoc: [f2] } })).success, true);
+  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Title: '外し', Date: '2026-10-05', Category: 'normal', Files: [f1, f2], KyokaDoc: [f1] } })).success, true);
+  const trashOf = async () => (await post({ action: 'listTrash', token: member })).items.filter(t => t.recordId === id);
 
-  // 実験: 写真は追加のみ可、削除は管理者。振り返りの編集(id が同じ)は可、削除は不可。セクションは件数減が削除
+  // メンバーが 1 つ外す → 保存でき、ゴミ箱に入る(中身は一覧に出ない)
+  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Files: [f2] } })).success, true);
+  let t = await trashOf();
+  assert.equal(t.length, 1);
+  assert.deepEqual([t[0].kind, t[0].resource, t[0].field, t[0].label, t[0].recordLabel], ['item', 'events', 'Files', 'a.pdf', '外し']);
+  assert.equal(t[0].payload, undefined);
+  let cur = (await post({ action: 'list', resource: 'events', token: member })).items.find(e => e.ID === id);
+  assert.deepEqual(cur.Files.map(f => f.driveId), ['b.pdf']);
+
+  // 戻す → 元の列に戻り、ゴミ箱から消える
+  assert.equal((await post({ action: 'restoreTrash', token: member, id: t[0].id })).success, true);
+  cur = (await post({ action: 'list', resource: 'events', token: member })).items.find(e => e.ID === id);
+  assert.deepEqual(cur.Files.map(f => f.driveId).sort(), ['a.pdf', 'b.pdf']);
+  assert.equal((await trashOf()).length, 0);
+
+  // 1 ファイルの枠(許可願)の差し替え: 古いほうがゴミ箱へ。枠が埋まっている間は戻せない
+  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id, KyokaDoc: [f2] } })).success, true);
+  t = await trashOf();
+  assert.equal(t.length, 1);
+  assert.equal((await post({ action: 'restoreTrash', token: member, id: t[0].id })).error, 'slot_occupied');
+  // 他の列の編集・追加ではゴミ箱に入らない
+  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Title: '改題', Files: [f1, f2] } })).success, true);
+  assert.equal((await trashOf()).length, 1);
+  // 完全に削除(メンバーも可)
+  assert.equal((await post({ action: 'purgeTrash', token: member, id: t[0].id })).success, true);
+  assert.equal((await trashOf()).length, 0);
+
+  // 実験: 写真・動画・振り返り・セクション
   const xid = 'ex_test_rm_' + Date.now();
   const p1 = { name: 'p1.png', url: 'https://example.com/files/p1.png', driveId: 'p1.png' };
   const p2 = { name: 'p2.png', url: 'https://example.com/files/p2.png', driveId: 'p2.png' };
   const fb = [{ id: 'fb1', text: 'a' }, { id: 'fb2', text: 'b' }];
   const secs = [{ title: 's1', content: 'x' }, { title: 's2', content: 'y' }];
-  assert.equal((await post({ action: 'save', resource: 'experiments', token: member, item: { ID: xid, Name: '実験', Photos: JSON.stringify([p1]), Reflections: JSON.stringify(fb), Sections: JSON.stringify(secs), Videos: JSON.stringify([{ id: 'v1' }]) } })).success, true);
-  assert.equal((await post({ action: 'save', resource: 'experiments', token: member, item: { ID: xid, Photos: JSON.stringify([p1, p2]), Reflections: JSON.stringify([{ id: 'fb1', text: '直した' }, fb[1]]), Videos: JSON.stringify([{ id: 'v2' }, { id: 'v1' }]) } })).success, true);
-  for (const item of [
-    { ID: xid, Photos: JSON.stringify([p2]) },
-    { ID: xid, Reflections: JSON.stringify([fb[0]]) },
-    { ID: xid, Videos: JSON.stringify([{ id: 'v2' }]) },
-    { ID: xid, Sections: JSON.stringify([secs[0]]) },
-  ]) {
-    assert.equal((await post({ action: 'save', resource: 'experiments', token: member, item })).error, 'admin_required', JSON.stringify(item));
-  }
-  assert.equal((await post({ action: 'save', resource: 'experiments', token: adminMember, adminToken: admin, item: { ID: xid, Photos: JSON.stringify([p2]), Sections: JSON.stringify([secs[0]]) } })).success, true);
+  const xtrash = async () => (await post({ action: 'listTrash', token: member })).items.filter(t => t.recordId === xid);
+  assert.equal((await post({ action: 'save', resource: 'experiments', token: member, item: { ID: xid, Name: '実験', Photos: JSON.stringify([p1, p2]), Reflections: JSON.stringify(fb), Sections: JSON.stringify(secs), Videos: JSON.stringify([{ id: 'v1', title: '動画1' }]) } })).success, true);
+  // 追加と、振り返りの文面の編集(id が同じ)ではゴミ箱に入らない
+  assert.equal((await post({ action: 'save', resource: 'experiments', token: member, item: { ID: xid, Reflections: JSON.stringify([{ id: 'fb1', text: '直した' }, fb[1]]), Videos: JSON.stringify([{ id: 'v2' }, { id: 'v1', title: '動画1' }]) } })).success, true);
+  assert.equal((await xtrash()).length, 0);
+  assert.equal((await post({ action: 'save', resource: 'experiments', token: member, item: { ID: xid, Photos: JSON.stringify([p2]), Reflections: JSON.stringify([fb[0]]), Videos: JSON.stringify([{ id: 'v2' }]), Sections: JSON.stringify([secs[0]]) } })).success, true);
+  const xt = await xtrash();
+  assert.deepEqual(xt.map(t => t.field).sort(), ['Photos', 'Reflections', 'Sections', 'Videos']);
+  assert.equal(xt.find(t => t.field === 'Sections').label, 's2');
+  assert.equal(xt.find(t => t.field === 'Videos').label, '動画1');
+  for (const e of xt) assert.equal((await post({ action: 'restoreTrash', token: member, id: e.id })).success, true, e.field);
+  const x = (await post({ action: 'list', resource: 'experiments', token: member })).items.find(e => e.ID === xid);
+  assert.equal(JSON.parse(x.Photos).length, 2);
+  assert.equal(JSON.parse(x.Sections).length, 2);
+  assert.equal(JSON.parse(x.Videos).length, 2);
+  assert.equal(JSON.parse(x.Reflections).length, 2);
+  assert.equal((await xtrash()).length, 0);
+
+  // 競合した保存(古い版)ではゴミ箱に入れない
+  const stale = x.UpdatedAt;
+  assert.equal((await post({ action: 'save', resource: 'experiments', token: member, item: { ID: xid, Name: '先に更新' } })).success, true);
+  assert.equal((await post({ action: 'save', resource: 'experiments', token: member, item: { ID: xid, Photos: JSON.stringify([p2]), _baseUpdatedAt: stale } })).error, 'conflict');
+  assert.equal((await xtrash()).length, 0);
+
+  assert.equal((await post({ action: 'delete', resource: 'events', id, token: member })).success, true);
+  assert.equal((await post({ action: 'delete', resource: 'experiments', id: xid, token: member })).success, true);
+  for (const t of [...await trashOf(), ...await xtrash()]) await post({ action: 'purgeTrash', token: member, id: t.id });
+});
+
+test('ゴミ箱: 削除したレコードは(出欠投票ごと)ゴミ箱に入り、メンバーも戻せる。パスワードは管理者だけ', async () => {
+  const t0 = Date.now();
+  const evId2 = 'ev_test_trash_' + t0, mbId = 'mb_test_trash_' + t0, pwId2 = 'pw_test_trash_' + t0;
+  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: evId2, Title: 'ゴミ箱テスト', Date: '2099-01-01', Category: 'normal' } })).success, true);
+  assert.equal((await post({ action: 'save', resource: 'members', token: member, item: { ID: mbId, Name: 'ゴミ箱 太郎', FiscalYear: '2099', Active: 'true' } })).success, true);
+  assert.equal((await post({ action: 'submitVote', token: member, vote: { eventId: evId2, memberId: mbId, status: 'attend' } })).success, true);
+  assert.equal((await post({ action: 'save', resource: 'passwords', token: adminMember, adminToken: admin, item: { ID: pwId2, SiteName: 'テストサイト', Password: 'secret-pass' } })).success, true);
+
+  // メンバーが削除できる(ゴミ箱へ)。一覧から消え、出欠投票も消える
+  const d = await post({ action: 'delete', resource: 'events', id: evId2, token: member });
+  assert.equal(d.success, true);
+  assert.ok(d.trashId);
+  assert.equal((await post({ action: 'list', resource: 'events', token: member })).items.some(e => e.ID === evId2), false);
+  assert.equal((await post({ action: 'listVotes', token: member })).votes.some(v => v.eventId === evId2), false);
+  assert.equal((await post({ action: 'delete', resource: 'events', id: evId2, token: member })).success, false);   // 二重削除
+
+  const list = (await post({ action: 'listTrash', token: member })).items;
+  const rec = list.find(t => t.id === d.trashId);
+  assert.deepEqual([rec.kind, rec.resource, rec.recordId, rec.label], ['record', 'events', evId2, 'ゴミ箱テスト']);
+  assert.ok(rec.expiresAt > rec.deletedAt);
+  assert.equal(rec.payload, undefined);   // 中身(個人情報など)は一覧に出さない
+
+  // 戻す → 一覧に再び現れ、出欠投票も戻る
+  const r = await post({ action: 'restoreTrash', token: member, id: d.trashId });
+  assert.equal(r.success, true);
+  assert.equal(r.item.Title, 'ゴミ箱テスト');
+  assert.equal((await post({ action: 'list', resource: 'events', token: member })).items.some(e => e.ID === evId2), true);
+  assert.equal((await post({ action: 'listVotes', token: member })).votes.some(v => v.eventId === evId2 && v.memberId === mbId), true);
+  assert.equal((await post({ action: 'restoreTrash', token: member, id: d.trashId })).error, 'not_found');
+
+  // 同じ ID が既にあれば戻せない(already_exists)
+  const dm = await post({ action: 'delete', resource: 'members', id: mbId, token: member });
+  assert.equal((await post({ action: 'save', resource: 'members', token: member, item: { ID: mbId, Name: '同じ ID の別人' } })).success, true);
+  assert.equal((await post({ action: 'restoreTrash', token: member, id: dm.trashId })).error, 'already_exists');
+  // 完全に削除
+  assert.equal((await post({ action: 'purgeTrash', token: member, id: dm.trashId })).success, true);
+  assert.equal((await post({ action: 'purgeTrash', token: member, id: dm.trashId })).success, false);
+
+  // パスワード: メンバーは削除できず、ゴミ箱の一覧にも出ない。管理者の削除はゴミ箱に入り、管理者だけが扱える
+  assert.equal((await post({ action: 'delete', resource: 'passwords', id: pwId2, token: member })).error, 'admin_required');
+  const dp = await post({ action: 'delete', resource: 'passwords', id: pwId2, token: adminMember, adminToken: admin });
+  assert.equal(dp.success, true);
+  assert.equal((await post({ action: 'listTrash', token: member })).items.some(t => t.id === dp.trashId), false);
+  assert.equal((await post({ action: 'listTrash', token: adminMember, adminToken: admin })).items.some(t => t.id === dp.trashId), true);
+  assert.equal((await post({ action: 'restoreTrash', token: member, id: dp.trashId })).error, 'admin_required');
+  assert.equal((await post({ action: 'purgeTrash', token: member, id: dp.trashId })).error, 'admin_required');
+  assert.equal((await post({ action: 'purgeTrash', token: adminMember, adminToken: admin, id: dp.trashId })).success, true);
 
   // 後始末
-  for (const [resource, rid] of [['events', id], ['experiments', xid]]) {
-    assert.equal((await post({ action: 'delete', resource, id: rid, token: adminMember, adminToken: admin })).success, true);
-  }
+  assert.equal((await post({ action: 'delete', resource: 'events', id: evId2, token: member })).success, true);
+  assert.equal((await post({ action: 'delete', resource: 'members', id: mbId, token: member })).success, true);
+  for (const t of (await post({ action: 'listTrash', token: member })).items.filter(t => [evId2, mbId].includes(t.recordId))) await post({ action: 'purgeTrash', token: member, id: t.id });
+  // 未ログインは使えない
+  assert.equal((await post({ action: 'listTrash' })).error, 'unauthorized');
+});
+
+test('ゴミ箱: 期限が来たものは完全に削除され、R2 のファイル実体も消える', async () => {
+  const up = await post({ action: 'uploadFile', token: member, file: { name: 'ごみ.txt', mimeType: 'text/plain', base64: Buffer.from('trash me').toString('base64') } });
+  const fileUrl = up.file.url.replace(/^https?:\/\/[^/]+/, BASE);
+  const id = 'ev_test_expire_' + Date.now();
+  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Title: '期限切れ', Date: '2099-01-02', Category: 'normal', Files: [up.file] } })).success, true);
+
+  // ゴミ箱にある間はファイルが残る
+  assert.equal((await post({ action: 'delete', resource: 'events', id, token: member })).success, true);
+  assert.equal((await fetch(fileUrl)).status, 200);
+
+  // 保管日数を 0 にしてもう 1 つ削除 → 一覧を開くと(定期実行を待たずに)期限切れが完全に削除される
+  assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'trash_keep_days', value: '0' })).success, true);
+  const id2 = 'ev_test_expire2_' + Date.now();
+  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id2, Title: '期限切れ2', Date: '2099-01-03', Category: 'normal' } })).success, true);
+  assert.equal((await post({ action: 'delete', resource: 'events', id: id2, token: member })).success, true);
+  await new Promise(r => setTimeout(r, 20));
+  const left = (await post({ action: 'listTrash', token: member })).items;
+  assert.equal(left.some(t => t.recordId === id2), false);   // 期限切れは消えた
+  assert.equal(left.some(t => t.recordId === id), true);     // 7 日(既定)のほうは残る
+  assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'trash_keep_days', value: '7' })).success, true);
+
+  // 完全に削除すると、ファイル実体も消える
+  const mine = left.find(t => t.recordId === id);
+  assert.equal((await post({ action: 'purgeTrash', token: member, id: mine.id })).success, true);
+  assert.equal((await fetch(fileUrl)).status, 404);
 });
 
 test('ファイル: アップロード → 公開 URL で取得(ログイン不要) → 管理者が削除', async () => {

@@ -230,11 +230,10 @@ const api = {
   },
 
   async save(resource, item) {
-    const payload = { action: 'save', resource, token: this.getToken(), item };
-    // 添付・写真・動画などを減らす保存(削除)は管理者のみ許可されるため、持っていれば管理者トークンも添える
-    const adminToken = this.getAdminToken();
-    if (adminToken) payload.adminToken = adminToken;
-    const res = await this._post(payload);
+    const res = await this._post({
+      action: 'save', resource,
+      token: this.getToken(), item
+    });
     if (!res.success) {
       console.error('save failed:', res);
       throw new Error(res.error || 'save failed');
@@ -280,6 +279,7 @@ const api = {
     return true;
   },
 
+  // 削除。ガイド以外はゴミ箱へ入る(メンバーも可)。ゴミ箱の ID(trashId)を返す(元に戻すのに使う)。ガイドは true。
   async delete(resource, id) {
     const res = await this._post({
       action: 'delete', resource,
@@ -292,6 +292,29 @@ const api = {
       console.error('delete failed:', res);
       throw new Error(res.error || 'delete failed');
     }
+    return res.trashId || true;
+  },
+
+  // ---- ゴミ箱 ----
+  // パスワード一覧の分は、管理者トークンがあるときだけ返る。
+  async listTrash() {
+    const res = await this._post({ action: 'listTrash', token: this.getToken(), adminToken: this.getAdminToken() });
+    if (!res.success) throw new Error(res.error || 'listTrash failed');
+    return res.items || [];
+  },
+
+  // 戻す。{ resource, item } を返す。戻した種類のキャッシュは捨てる(各ページが取り直す)。
+  async restoreTrash(id) {
+    const res = await this._post({ action: 'restoreTrash', token: this.getToken(), adminToken: this.getAdminToken(), id });
+    if (!res.success) throw new Error(res.error || 'restoreTrash failed');
+    try { localStorage.removeItem(CACHE_KEY_PREFIX + res.resource); } catch (_) {}
+    return { resource: res.resource, item: res.item };
+  },
+
+  // 完全に削除する(ファイル実体も消える)。
+  async purgeTrash(id) {
+    const res = await this._post({ action: 'purgeTrash', token: this.getToken(), adminToken: this.getAdminToken(), id });
+    if (!res.success) throw new Error(res.error || 'purgeTrash failed');
     return true;
   },
 

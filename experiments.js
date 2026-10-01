@@ -271,9 +271,6 @@ function render() {
         return;
     }
 
-    // 削除は管理者ログイン時のみ表示（誤タップ防止）。編集は全員に表示し、
-    // タップ時に管理者認証を挟む（メンバーページと表示ルールを統一）
-    const isAdmin = api.isAdmin();
     const hlTerms = searchMeta ? searchQueryTerms(pq) : [];
     tbody.innerHTML = items.map(e => {
         // 使用物品は1行に短縮（先頭項目＋他n点）。全文はポップアップ・詳細ページで見る
@@ -301,7 +298,7 @@ function render() {
                 <td data-action-cell>
                     <div class="inline-actions">
                         <button class="inline-action-btn" data-action="edit" title="この実験を編集">編集</button>
-                        ${isAdmin ? '<button class="inline-action-btn danger" data-action="delete" title="この実験を削除">削除</button>' : ''}
+                        <button class="inline-action-btn danger" data-action="delete" title="この実験を削除">削除</button>
                     </div>
                 </td>
             </tr>
@@ -544,15 +541,11 @@ function deleteFromWizard() {
 
 // ---- 削除（確認ダイアログ） ----
 function confirmDeleteExp(id) {
-    if (!api.isAdmin()) {
-        showAdminAuthModal(() => confirmDeleteExp(id));
-        return;
-    }
     const e = expData.find(x => x.ID === id);
     if (!e) return;
     showConfirmDialog({
         title: `「${e.Name}」を削除`,
-        message: 'この操作は元に戻せます（削除直後のみ）。',
+        message: TRASH_KEEP_NOTE,
         okLabel: '削除する',
         danger: true,
         onOk: () => deleteExp(id)
@@ -560,10 +553,6 @@ function confirmDeleteExp(id) {
 }
 
 async function deleteExp(id) {
-    if (!api.isAdmin()) {
-        showAdminAuthModal(() => deleteExp(id));
-        return;
-    }
     const idx = expData.findIndex(x => x.ID === id);
     if (idx < 0) return;
     const backup = expData[idx];
@@ -572,8 +561,9 @@ async function deleteExp(id) {
     api.saveCache('experiments', expData);
     render();
 
+    let trashId = '';
     try {
-        await api.delete('experiments', id);
+        trashId = await api.delete('experiments', id);
     } catch (e) {
         expData.splice(idx, 0, backup);
         api.saveCache('experiments', expData);
@@ -583,10 +573,10 @@ async function deleteExp(id) {
     }
 
     toastUndo(
-        `「${backup.Name}」を削除しました`,
+        `「${backup.Name}」をゴミ箱に移動しました`,
         async () => {
             try {
-                const saved = await api.save('experiments', backup);
+                const saved = (await api.restoreTrash(trashId)).item || backup;
                 expData.push(saved);
                 api.saveCache('experiments', expData);
                 render();
@@ -595,8 +585,8 @@ async function deleteExp(id) {
                 toast('復元に失敗しました: ' + e.message, 'error');
             }
         },
-        // 元に戻せる期間が過ぎたら、写真の実体（R2）も消す（Undo で復元した記録の画像が壊れないよう、確定後に消す）
-        () => deleteStoredFiles(getPhotos(backup).map(p => p.driveId)),
-        5000
+        // 写真の実体（R2）は、ゴミ箱の期限が来るまでサーバーに残る
+        () => {},
+        10000
     );
 }

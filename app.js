@@ -161,6 +161,9 @@ function getPhotos(exp) {
   return parseJsonArray(exp && exp.Photos);
 }
 
+// 削除の確認画面に出す共通の説明（削除したものはゴミ箱に入り、期限までは誰でも戻せる）
+const TRASH_KEEP_NOTE = 'ゴミ箱に移動します。期限（初期設定は7日）までは、「ゴミ箱」から元に戻せます。';
+
 // 保存領域（R2）のファイル実体を消す。deleteFile は管理者専用。
 // 失敗（権限なし・通信断など）は握りつぶさず、トーストとコンソールに残す。全件成功なら true。
 async function deleteStoredFiles(driveIds) {

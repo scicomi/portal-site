@@ -39,7 +39,8 @@ const columnsOf = {
   event_votes: ['EventID', 'MemberID', 'Status', 'UpdatedAt', 'Note'],
   config: ['Key', 'Value'],
   audit_log: ['Timestamp', 'Action', 'Detail', 'TokenHash', 'Role'],
-  gemini_usage: ['Date', 'Count']
+  gemini_usage: ['Date', 'Count'],
+  trash: ['ID', 'Kind', 'Resource', 'RecordID', 'Field', 'Label', 'RecordLabel', 'Payload', 'Votes', 'DeletedAt', 'ExpiresAt']
 };
 
 const sql = [];

@@ -375,10 +375,6 @@ async function saveFeedback() {
 
 function deleteFeedbackEntry(fbId, type) {
     if (!fbId || !currentExp) return;
-    if (!api.isAdmin()) {
-        showAdminAuthModal(() => deleteFeedbackEntry(fbId, type));
-        return;
-    }
     // 他ページと同じ確認ダイアログ（ネイティブ confirm は使わない）
     const overlay = document.createElement('div');
     overlay.className = 'confirm-dialog-overlay';
@@ -386,7 +382,7 @@ function deleteFeedbackEntry(fbId, type) {
     overlay.innerHTML = `
         <div class="confirm-dialog">
             <h3>振り返りを削除</h3>
-            <p>この振り返りエントリを削除しますか？</p>
+            <p>この振り返りエントリを削除しますか？${escapeHtml(TRASH_KEEP_NOTE)}</p>
             <div class="confirm-dialog-actions">
                 <button class="btn btn-secondary" onclick="this.closest('.confirm-dialog-overlay').remove()">キャンセル</button>
                 <button class="btn btn-danger" id="confirm-fb-del-btn">削除する</button>
@@ -413,7 +409,7 @@ async function executeDeleteFeedbackEntry(fbId, type) {
         });
         if (!saved) { toast('エントリが見つかりません', 'error'); return; }
         renderFeedback();
-        toast('削除しました', 'success');
+        toast('ゴミ箱に移動しました', 'success');
     } catch (e) {
         toast('削除失敗: ' + e.message, 'error');
     }
@@ -463,7 +459,7 @@ function renderPhotos() {
                 <img src="${escapeAttr(thumb)}" alt="${escapeAttr(p.name || '')}" loading="lazy"
                      referrerpolicy="no-referrer" data-fallback="${escapeAttr(fallback)}">
             </a>` : `<span class="empty-state">表示できない画像</span>`}
-            ${api.isAdmin() ? `<button class="photo-delete" data-action="expd-del-photo" data-index="${i}" title="削除">✕</button>` : ''}
+            <button class="photo-delete" data-action="expd-del-photo" data-index="${i}" title="削除">✕</button>
         </div>`;
     }).join('');
 }
@@ -508,14 +504,13 @@ async function handlePhotoSelect(input) {
 }
 
 function deletePhoto(index) {
-    if (!api.isAdmin()) { showAdminAuthModal(() => deletePhoto(index)); return; }
     const photo = getPhotos(currentExp)[index];
     if (!photo) return;
 
     const name = photo.name || '';
     showConfirmDialog({
         title: '写真を削除',
-        message: name ? `「${name}」を削除します。この操作は元に戻せません。` : 'この写真を削除します。この操作は元に戻せません。',
+        message: (name ? `「${name}」を削除します。` : 'この写真を削除します。') + TRASH_KEEP_NOTE,
         okLabel: '削除する',
         danger: true,
         onOk: () => executeDeletePhoto(photo)
@@ -539,9 +534,7 @@ async function executeDeletePhoto(photo) {
         });
         if (!saved) { toast('写真が見つかりません（すでに削除されています）', 'error'); renderPhotos(); return; }
         renderPhotos();
-        toast('写真を削除しました', 'success');
-        // 記録から外れたので、保存領域（R2）の実体も消す。失敗はトースト・コンソールに出る
-        deleteStoredFiles([photo.driveId]);
+        toast('写真をゴミ箱に移動しました', 'success');   // 実体（R2）はゴミ箱の期限まで残る
     } catch (e) {
         // showConfirmDialog は onOk が例外を投げると別トーストで再通知するため、ここでは投げずに独自通知のみ行う
         toast('削除失敗: ' + e.message, 'error');
@@ -586,7 +579,7 @@ function renderVideos() {
     const videos = getVideos();
 
     const adminBtn = document.getElementById('video-add-btn');
-    if (adminBtn) adminBtn.classList.toggle('hidden', !api.isAdmin());
+    if (adminBtn) adminBtn.classList.remove('hidden');
 
     const loadMore = document.getElementById('video-load-more');
 
@@ -614,7 +607,7 @@ function renderVideos() {
                 </span>
             </button>
             ${v.title ? `<p class="video-title" title="${escapeAttr(v.title)}">${escapeHtml(v.title)}</p>` : ''}
-            ${api.isAdmin() ? `<button class="video-delete" data-action="expd-del-video" data-index="${i}" title="削除">✕</button>` : ''}
+            <button class="video-delete" data-action="expd-del-video" data-index="${i}" title="削除">✕</button>
         </div>`;
     }).join('');
 
@@ -640,7 +633,6 @@ function playVideo(btn, id) {
 }
 
 function openAddVideoModal() {
-    if (!api.isAdmin()) { showAdminAuthModal(() => openAddVideoModal()); return; }
     document.getElementById('video-url').value = '';
     document.getElementById('video-title').value = '';
     const modal = document.getElementById('video-modal');
@@ -693,14 +685,13 @@ async function saveVideo() {
 }
 
 function deleteVideo(index) {
-    if (!api.isAdmin()) { showAdminAuthModal(() => deleteVideo(index)); return; }
     const videos = getVideos();
     if (index < 0 || index >= videos.length) return;
 
     const title = videos[index].title || '';
     showConfirmDialog({
         title: '動画を削除',
-        message: title ? `「${title}」を削除します。この操作は元に戻せません。` : 'この動画を削除します。この操作は元に戻せません。',
+        message: (title ? `「${title}」を削除します。` : 'この動画を削除します。') + TRASH_KEEP_NOTE,
         okLabel: '削除する',
         danger: true,
         onOk: () => executeDeleteVideo(videos[index].id)
@@ -718,7 +709,7 @@ async function executeDeleteVideo(videoId) {
         });
         if (!saved) { toast('動画が見つかりません（すでに削除されています）', 'error'); renderVideos(); return; }
         renderVideos();
-        toast('動画を削除しました', 'success');
+        toast('動画をゴミ箱に移動しました', 'success');
     } catch (e) {
         toast('削除失敗: ' + e.message, 'error');
     }
@@ -856,10 +847,6 @@ async function saveSection(sectionEl, type, keyOrIndex) {
 }
 
 async function deleteSection(index) {
-    if (!api.isAdmin()) {
-        showAdminAuthModal(() => deleteSection(index));
-        return;
-    }
     if (index < 0 || index >= getCustomSections().length) {
         // 追加途中の（まだ保存していない）セクション。サーバーには無いので画面から外すだけ
         renderInfoSections();
@@ -874,7 +861,7 @@ async function deleteSection(index) {
             draft.Sections = JSON.stringify(customs);
         });
         renderInfoSections();
-        toast('セクションを削除しました', 'success');
+        toast('セクションをゴミ箱に移動しました', 'success');
     } catch (e) {
         toast('削除失敗: ' + e.message, 'error');
     }

@@ -798,7 +798,7 @@ function openEventWizard(editId, template, focusId) {
             </div>
             <div class="wizard-body">${stepsHtml}</div>
             <div class="wizard-footer">
-                ${isEdit && api.isAdmin() ? '<button class="btn btn-danger" onclick="deleteFromEvWizard()">削除</button>' : ''}
+                ${isEdit ? '<button class="btn btn-danger" onclick="deleteFromEvWizard()">削除</button>' : ''}
                 <div class="wizard-footer-spacer"></div>
                 <button class="btn btn-text" onclick="closeEventWizard()">キャンセル</button>
                 <button id="wz-ev-prev" class="btn btn-secondary" onclick="evWizardPrev()" style="display:none;">戻る</button>
@@ -996,8 +996,7 @@ async function wzUploadFiles(fileList, field = 'Files', refresh = wzRefreshFileL
     const maxSizeMB = getFileMaxMB();
     if (single) {
         fileList = fileList.slice(0, 1);
-        // 選び直しは差し替え（古いファイルの削除を伴うので、削除できる人だけ）
-        if (fileList.length && target[field] && target[field].length && !removeEventFile(target, field, 0, refresh)) return;
+        if (fileList.length) removeEventFile(target, field, 0, refresh);   // 選び直しは差し替え
     }
     for (const file of fileList) {
         if (tempNewEvent !== target) return;
@@ -1044,35 +1043,20 @@ function wzRemoveFile(index) {
     removeEventFile(tempNewEvent, 'Files', index, wzRefreshFileList);
 }
 
-// ファイル（R2 の実体ごと）を削除できるのは管理者だけ。アップロード中・失敗したもの（実体が無い）は誰でも取り消せる。
-function canRemoveEventFile(file) {
-    return api.isAdmin() || !(file && file.driveId);
-}
-
-// target[field] の index 番目のファイルを削除する（管理者のみ。実体が無いアップロード中・失敗分は誰でも可）。
-// このダイアログでアップロードしたばかりのファイルはその場で実体も消し、保存済みのものは保存成功後に消す。
-// 削除した（または取り消した）ときだけ true を返す。
+// target[field] の index 番目のファイルを一覧から外す（削除。誰でも可）。
+// 保存済みのファイルは、保存するとサーバーがゴミ箱へ移す（実体は期限まで R2 に残り、ゴミ箱から戻せる）。
+// このダイアログでアップロードしたばかりの（まだどの記録にも載っていない）ファイルは、その場で実体も消す。
 function removeEventFile(target, field, index, refresh) {
-    if (!target || !Array.isArray(target[field])) return false;
+    if (!target || !Array.isArray(target[field])) return;
     const file = target[field][index];
-    if (!file) return false;
-    if (!canRemoveEventFile(file)) {
-        showAdminAuthModal(() => removeEventFile(target, field, index, refresh));
-        return false;
-    }
-    if (file.driveId) {
-        const si = Array.isArray(target._sessionUploads) ? target._sessionUploads.indexOf(file.driveId) : -1;
-        if (si >= 0) {
-            target._sessionUploads.splice(si, 1);
-            discardUploadedFile(file.driveId);
-        } else {
-            if (!Array.isArray(target._filesToDelete)) target._filesToDelete = [];
-            target._filesToDelete.push(file.driveId);
-        }
+    if (!file) return;
+    const si = (file.driveId && Array.isArray(target._sessionUploads)) ? target._sessionUploads.indexOf(file.driveId) : -1;
+    if (si >= 0) {
+        target._sessionUploads.splice(si, 1);
+        discardUploadedFile(file.driveId);
     }
     target[field].splice(index, 1);
     refresh();
-    return true;
 }
 
 function wzRefreshFileList() {
@@ -1095,7 +1079,7 @@ function wzRefreshFileList() {
                 <span class="file-size">${size}</span>
                 <div class="file-actions">
                     ${!uploading && !failed && safeHttpUrl(f.url) ? `<a href="${escapeAttr(safeHttpUrl(f.url))}" target="_blank" rel="noopener" class="tbl-btn">開く</a>` : ''}
-                    ${canRemoveEventFile(f) ? `<button class="tbl-btn tbl-btn-danger" data-action="ew-remove-file" data-index="${i}" type="button">${uploading ? 'キャンセル' : '削除'}</button>` : ''}
+                    <button class="tbl-btn tbl-btn-danger" data-action="ew-remove-file" data-index="${i}" type="button">${uploading ? 'キャンセル' : '削除'}</button>
                 </div>
             </div>
         `;
@@ -1150,7 +1134,6 @@ function buildEventFromWizard(time) {
     };
     const isMeeting = isMeetingCategory(evWizardCategory);
     const item = { ...tempNewEvent };
-    delete item._filesToDelete;
     delete item._sessionUploads;
 
     item.Category = evWizardCategory;
@@ -1220,7 +1203,6 @@ function persistEventFromWizard(item) {
     const eventId = item.ID;
     const isExisting = !!host.getEvent(eventId);
     const openedUpdatedAt = tempNewEvent.UpdatedAt || '';
-    const filesToDelete = Array.isArray(tempNewEvent._filesToDelete) ? tempNewEvent._filesToDelete.slice() : [];
     // このウィザードでアップロードして、いま一覧に残っているファイル（保存に成功しなければ孤児になる）
     const uploadedNow = Array.isArray(tempNewEvent._sessionUploads) ? tempNewEvent._sessionUploads.slice() : [];
     tempNewEvent._sessionUploads = []; // closeEventWizard がアップロード済みファイルを消さないようにする
@@ -1244,12 +1226,6 @@ function persistEventFromWizard(item) {
     }).then(saved => {
         host.commitSaved(saved);
         if (saved && saved.UpdatedAt) _ownSavedStamps.add(eventId + ':' + saved.UpdatedAt);
-        filesToDelete.forEach(driveId => {
-            api.deleteFile(driveId).catch(err => {
-                // 削除は管理者のみ（権限が無いと実体は R2 に残る）
-                console.warn('削除したファイルの実体を消せませんでした（管理者権限が必要な場合があります）:', driveId, err && err.message);
-            });
-        });
     }).catch(err => {
         host.rollback(snapshot);
         if (String(err.message).includes('conflict')) {
@@ -1281,28 +1257,20 @@ function deleteFromEvWizard() {
 
 // ---- イベント削除（確認 → 削除 → 「元に戻す」）: events.html / event-series.html 共通 ----
 function confirmDeleteEvent(id) {
-    if (!api.isAdmin()) {
-        showAdminAuthModal(() => confirmDeleteEvent(id));
-        return;
-    }
     const ev = _wzHost().getEvent(id);
     if (!ev) return;
     showConfirmDialog({
         title: `「${ev.Title || '(無題)'}」を削除`,
-        message: 'この操作は元に戻せます（削除直後のみ）。',
+        message: TRASH_KEEP_NOTE,
         okLabel: '削除する',
         danger: true,
         onOk: () => deleteEventWithUndo(id)
     });
 }
 
-// 画面から先に消し、サーバーで削除する。「元に戻す」は削除前のデータをそのまま再保存して元の位置へ戻す。
-// 添付ファイルの実体（R2）は、元に戻せる期間が過ぎてから消す（復元した記録のリンクが壊れないように）。
+// 画面から先に消し、サーバーで削除する（削除したイベントはゴミ箱に入る）。
+// 「元に戻す」はゴミ箱から戻して元の位置へ入れる。添付ファイルの実体（R2）はゴミ箱の期限が来るまでサーバーに残る。
 async function deleteEventWithUndo(id) {
-    if (!api.isAdmin()) {
-        showAdminAuthModal(() => deleteEventWithUndo(id));
-        return;
-    }
     const c = _wzHostConfig;
     const list = c.list();
     const idx = list.findIndex(e => e.ID === id);
@@ -1319,8 +1287,9 @@ async function deleteEventWithUndo(id) {
     api.saveCache('events', list);
     c.rerender();
 
+    let trashId = '';
     try {
-        await api.delete('events', id);
+        trashId = await api.delete('events', id);
     } catch (err) {
         putBack(backup);
         toast('削除失敗: ' + err.message, 'error');
@@ -1329,17 +1298,18 @@ async function deleteEventWithUndo(id) {
     if (c.onDeleted && c.onDeleted(id) === false) return;
 
     toastUndo(
-        `「${backup.Title || '(無題)'}」を削除しました`,
+        `「${backup.Title || '(無題)'}」をゴミ箱に移動しました`,
         async () => {
             try {
-                putBack(await api.save('events', backup));
+                const r = await api.restoreTrash(trashId);
+                putBack(r.item || backup);
                 toast('元に戻しました', 'success', 2000);
             } catch (err) {
-                toast('復元に失敗しました: ' + err.message, 'error');
+                toast('復元に失敗しました（ゴミ箱から戻せます）: ' + err.message, 'error');
             }
         },
-        () => deleteStoredFiles(normalizeEventFiles(backup.Files).map(f => f && f.driveId)),
-        5000
+        () => {},
+        10000
     );
 }
 

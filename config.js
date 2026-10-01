@@ -112,6 +112,7 @@ const CONFIG = {
     { href: 'experiments.html', label: '実験ネタ',   page: 'experiments' },
     { href: 'guide.html',       label: 'ガイド',     page: 'guide' },
     { href: 'bot.html',         label: 'AI検索',     page: 'bot', feature: 'BOT' },
+    { href: 'trash.html',       label: 'ゴミ箱',     page: 'trash' },
     // 管理者ログイン時のみ表示（セパレーター付き）
     { href: 'passwords.html',   label: 'パスワード', page: 'passwords', adminOnly: true, adminFirst: true },
     { href: 'settings.html',    label: '設定',       page: 'settings',  adminOnly: true }
