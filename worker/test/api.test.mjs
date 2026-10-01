@@ -383,13 +383,13 @@ test('ファイル: アップロード → 公開 URL で取得(ログイン不�
   assert.equal((await fetch(BASE + '/files/..%2Fsecret')).status, 404);
 });
 
-test('Gemini: キー未設定ならエラーコードを返し、使用量は取得できる', async () => {
-  assert.equal((await post({ action: 'geminiProxy', token: member, message: 'こんにちは' })).error, 'gemini_key_not_configured');
-  assert.equal((await post({ action: 'geminiGenerate', token: member, instruction: 'x', context: 'y' })).error, 'gemini_key_not_configured');
-  const u = await post({ action: 'geminiUsage', token: member });
-  assert.equal(u.success, true);
-  assert.equal(u.usage, 0);
-  assert.equal(u.limit, 1500);
+// AI検索は停止中(wrangler.toml の GEMINI_ENABLED = "false")。キーの有無にかかわらず Gemini へ送らないことを確認する。
+// 再開するときは GEMINI_ENABLED を "true" にし、このテストを「キー未設定なら gemini_key_not_configured」に戻す(docs/09_aibot_suspended.md)。
+test('Gemini: 停止中は feature_disabled を返し、認証なしは拒否される', async () => {
+  assert.equal((await post({ action: 'geminiProxy', message: 'こんにちは' })).error, 'unauthorized');
+  assert.equal((await post({ action: 'geminiProxy', token: member, message: 'こんにちは' })).error, 'feature_disabled');
+  assert.equal((await post({ action: 'geminiGenerate', token: member, instruction: 'x', context: 'y' })).error, 'feature_disabled');
+  assert.equal((await post({ action: 'geminiUsage', token: member })).error, 'feature_disabled');
 });
 
 test('後始末: 作成したテストデータを削除できる', async () => {

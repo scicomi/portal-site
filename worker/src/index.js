@@ -171,6 +171,8 @@ async function handlePost(env, ctx, request, body) {
     }
 
     // --- Gemini ---
+    // 停止中は、キーの有無にかかわらず Gemini へ送らない(再開: wrangler.toml の GEMINI_ENABLED)
+    if (String(action).indexOf('gemini') === 0 && env.GEMINI_ENABLED !== 'true') return { success: false, error: 'feature_disabled' };
     if (action === 'geminiProxy') return handleGeminiProxy(env, Object.assign({}, body, { token }));
     if (action === 'geminiGenerate') return handleGeminiGenerate(env, Object.assign({}, body, { token }));
     if (action === 'geminiUsage') {

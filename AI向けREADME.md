@@ -41,7 +41,8 @@ D1（データ・SQLite） ／ R2（ファイル・毎日のバックアップ�
 - API の URL: `https://scicomi-portal.scicomi.workers.dev`（`config.js` の `API_URL`）
 - 認証は「一般パスワード」「幹部パスワード」の 2 種類（共通パスワード方式。個人認証なし）
 - 本番の識別子: D1 `scicomi-portal`、R2 `scicomi-portal-files`、Worker `scicomi-portal`
-- 旧バックエンドの `gas/` は履歴用。**触らない**。`.github/workflows/deploy-gas.yml` も旧 GAS 用
+- 旧バックエンド(GAS)は削除済み(git の履歴には残っている)
+- **AI検索(`bot.html` / Gemini)は停止中**。無料枠は入力が学習に使われるため。`config.js` の `FEATURES.BOT` と `worker/wrangler.toml` の `GEMINI_ENABLED` で無効化している。再開手順は [docs/09_aibot_suspended.md](docs/09_aibot_suspended.md)
 
 ### 主要ファイル
 

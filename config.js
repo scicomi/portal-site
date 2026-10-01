@@ -65,6 +65,14 @@ const CONFIG = {
   ADMIN_TOKEN_TS_KEY: 'scicomi_admin_token_ts',
   ADMIN_TOKEN_TTL_MS: 180 * 24 * 60 * 60 * 1000, // 180日（サーバー側 worker/src/auth.js の ADMIN_SESSION_TTL_MS と一致させること）
 
+  // ===== 機能フラグ =====
+  // BOT: AI検索(Gemini)。無料枠は入力が学習に使われるため停止中。再開手順は docs/09_aibot_suspended.md。
+  //      サーバー側の GEMINI_ENABLED(worker/wrangler.toml)も同時に切り替えること。
+  //      こちらは画面を隠すだけで、実際の遮断はサーバー側が行う。
+  FEATURES: {
+    BOT: false
+  },
+
   // ===== Gemini API (Bot用 — APIキー・モデルはサーバー側 Config で管理) =====
   // ※ 使用モデルはサーバーの設定（gemini_model。設定ページで変更）が正で、フロントでは持たない。
   GEMINI: {
@@ -102,7 +110,7 @@ const CONFIG = {
     { href: 'event-series.html', label: 'イベント別',   page: 'series' },
     { href: 'members.html',      label: 'メンバー',     page: 'members' },
     { href: 'experiments.html', label: '実験ネタ',   page: 'experiments' },
-    { href: 'bot.html',         label: 'AI検索',     page: 'bot' },
+    { href: 'bot.html',         label: 'AI検索',     page: 'bot', feature: 'BOT' },
     // 管理者ログイン時のみ表示（セパレーター付き）
     { href: 'passwords.html',   label: 'パスワード', page: 'passwords', adminOnly: true, adminFirst: true },
     { href: 'settings.html',    label: '設定',       page: 'settings',  adminOnly: true }

@@ -925,6 +925,11 @@ async function handleBotError(e, text, isRetry) {
 // ====== 起動 ======
 
 document.addEventListener('DOMContentLoaded', () => {
+  // 停止中(config.js の FEATURES.BOT)。URL 直打ちはホームへ戻す。実際の遮断はサーバー側の GEMINI_ENABLED。
+  if (!(CONFIG.FEATURES && CONFIG.FEATURES.BOT)) {
+    location.replace('index.html');
+    return;
+  }
   bootPage('bot', init);
 });
 

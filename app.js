@@ -473,7 +473,8 @@ function renderHeader(activePage) {
   const brandIcon = (cachedCfg && cachedCfg.brand_icon) || 'SC';
   const brandName = (cachedCfg && cachedCfg.brand_name) || 'SciComi Portal';
 
-  const navItems = CONFIG.NAV_ITEMS.filter(item => !item.adminOnly || isAdmin);
+  const navItems = CONFIG.NAV_ITEMS.filter(item =>
+    (!item.adminOnly || isAdmin) && (!item.feature || (CONFIG.FEATURES && CONFIG.FEATURES[item.feature])));
   let navHtml = '';
   navItems.forEach(item => {
     if (item.adminFirst) navHtml += '<span class="nav-separator"></span>';

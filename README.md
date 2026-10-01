@@ -74,7 +74,7 @@ API のURL: `https://scicomi-portal.scicomi.workers.dev`(`config.js` の `API_UR
 | メンバー | `members.html` | 3カテゴリ（アドバイザー/コーディネーター/メンバー）テーブル表示 |
 | 実験ネタ | `experiments.html` | フィルタ式（工作/実験ショー/その他）の実験データベース |
 | 実験の詳細 | `experiment-detail.html` | `?id=<ID>` で実験1件の詳細（使用物品・手順・写真・動画・振り返り）。実験ネタ一覧の各行から開く |
-| AI検索 | `bot.html` | Gemini による自然文検索・要約（キー未設定でもキーワード検索は動く） |
+| AI検索 | `bot.html` | **停止中**（無料枠の学習利用を避けるため）。コードは残してあり、再開手順は [docs/09_aibot_suspended.md](docs/09_aibot_suspended.md) |
 | パスワード一覧 | `passwords.html` | 管理者専用 |
 | 設定 | `settings.html` | 管理者専用 |
 
@@ -107,8 +107,6 @@ portal-site/
 │   ├── scripts/       #   パスワード設定・データ取り込み・突き合わせ・マージ・復元
 │   ├── test/          #   結合テスト
 │   └── README.md      #   デプロイ・運用手順
-├── gas/               # 旧バックエンド（GAS）。読み取り専用で保険として残している。停止後は履歴用
-├── .github/workflows/deploy-gas.yml   # 旧 GAS 用の自動デプロイ。不要になったら削除してよい
 └── docs/              # 設計資料（08 が Cloudflare 移行の設計）
 ```
 

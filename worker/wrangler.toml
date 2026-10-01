@@ -10,6 +10,8 @@ workers_dev = true
 ALLOWED_ORIGINS = "https://scicomi.github.io"
 # パスワードのハッシュ反復回数(PBKDF2-SHA256)。無料枠の CPU 時間に収まらない場合は下げる。
 PBKDF2_ITERATIONS = "100000"
+# AI検索(Gemini)の有効/無効。"true" 以外は Gemini へ一切送信しない。再開手順は docs/09_aibot_suspended.md。
+GEMINI_ENABLED = "false"
 
 [[d1_databases]]
 binding = "DB"
