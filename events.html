@@ -21,36 +21,49 @@
 
     <main class="container">
         <div class="page-header">
-            <div class="page-title-group">
-                <h1 class="page-title">予定</h1>
-                <select id="period-filter" class="period-select" aria-label="表示する期間（年度）" title="表示する期間（年度）" onchange="onPeriodFilter(this.value)">
-                    <option value="upcoming" selected>今後</option>
-                </select>
-            </div>
-            <div class="search-box" role="search">
-                <input id="event-search" class="search-input" type="search" placeholder="イベント名・企画名・場所で検索"
-                    title="ショートカット: / キーで検索欄へ" aria-label="予定を検索"
-                    role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="event-search-suggest"
-                    autocomplete="off">
-                <ul id="event-search-suggest" class="search-suggest" role="listbox" aria-label="検索候補" hidden></ul>
+            <h1 class="page-title">予定</h1>
+            <div class="ev-search-row">
+                <div class="search-box" role="search">
+                    <input id="event-search" class="search-input" type="search" placeholder="イベント名・企画名・場所で検索"
+                        title="ショートカット: / キーで検索欄へ" aria-label="予定を検索"
+                        role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="event-search-suggest"
+                        autocomplete="off">
+                    <ul id="event-search-suggest" class="search-suggest" role="listbox" aria-label="検索候補" hidden></ul>
+                </div>
+                <div class="ev-filter-anchor" id="ev-filter-anchor">
+                    <button type="button" class="btn btn-secondary ev-filter-btn" id="ev-filter-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="ev-filter-panel" onclick="toggleFilterPanel()">絞り込み<span class="ev-filter-badge hidden" id="ev-filter-badge"></span></button>
+                    <div class="ev-filter-scrim hidden" id="ev-filter-scrim" onclick="toggleFilterPanel(false)"></div>
+                    <div class="ev-filter-panel hidden" id="ev-filter-panel" role="dialog" aria-label="絞り込み">
+                        <div class="ev-filter-label">期間</div>
+                        <div class="ev-filter-chips" id="period-chips"></div>
+                        <select id="period-filter" class="ev-filter-select" aria-label="それ以前の年度で絞り込む" onchange="onPeriodFilter(this.value)"></select>
+                        <div class="ev-filter-label">カテゴリ</div>
+                        <div class="ev-filter-chips">
+                            <button class="filter-chip active" data-cat="all" aria-pressed="true" onclick="onCategoryFilter('all')"><span class="chip-label">全部</span></button>
+                            <button class="filter-chip" data-cat="normal" aria-pressed="false" onclick="onCategoryFilter('normal')"><span class="cat-dot" style="color:#f8b4b4;">&#9679;</span><span class="chip-label">イベント</span></button>
+                            <button class="filter-chip" data-cat="other" aria-pressed="false" onclick="onCategoryFilter('other')"><span class="cat-dot" style="color:#86efac;">&#9679;</span><span class="chip-label">その他</span></button>
+                            <button class="filter-chip" data-cat="general" aria-pressed="false" onclick="onCategoryFilter('general')"><span class="cat-dot" style="color:#93c5fd;">&#9679;</span><span class="chip-label">全体MTG</span></button>
+                            <button class="filter-chip" data-cat="admin" aria-pressed="false" onclick="onCategoryFilter('admin')"><span class="cat-dot" style="color:#fde68a;">&#9679;</span><span class="chip-label">幹部MTG</span></button>
+                        </div>
+                        <div class="ev-filter-foot">
+                            <button class="btn btn-text btn-sm" id="filter-reset-btn" onclick="resetFilters()" title="検索・絞り込みをすべて解除">条件をクリア</button>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="toggleFilterPanel(false)">閉じる</button>
+                        </div>
+                    </div>
+                </div>
             </div>
             <button class="btn btn-primary page-new-btn" onclick="openNewEventModal()" title="ショートカット: n キー">＋ 予定を追加</button>
         </div>
-        <div class="page-filters">
-            <button class="filter-chip active" data-cat="all" aria-pressed="true" onclick="onCategoryFilter('all')"><span class="chip-label">全部</span></button>
-            <button class="filter-chip" data-cat="normal" aria-pressed="false" onclick="onCategoryFilter('normal')"><span class="cat-dot" style="color:#f8b4b4;">&#9679;</span><span class="chip-label">イベント</span></button>
-            <button class="filter-chip" data-cat="other" aria-pressed="false" onclick="onCategoryFilter('other')"><span class="cat-dot" style="color:#86efac;">&#9679;</span><span class="chip-label">その他</span></button>
-            <button class="filter-chip" data-cat="general" aria-pressed="false" onclick="onCategoryFilter('general')"><span class="cat-dot" style="color:#93c5fd;">&#9679;</span><span class="chip-label">全体MTG</span></button>
-            <button class="filter-chip" data-cat="admin" aria-pressed="false" onclick="onCategoryFilter('admin')"><span class="cat-dot" style="color:#fde68a;">&#9679;</span><span class="chip-label">幹部MTG</span></button>
-            <button class="btn btn-text btn-sm hidden" id="filter-reset-btn" onclick="resetFilters()" title="検索・絞り込みをすべて解除">リセット</button>
-        </div>
 
-        <h3 id="event-list-heading" class="event-list-heading" aria-live="polite"></h3>
-        <div id="ev-vote-member-bar" class="ev-vote-member-bar hidden">
-            <label for="ev-vote-member-select">あなたの名前:</label>
-            <select id="ev-vote-member-select" aria-label="出欠回答に使うあなたの名前">
-                <option value="">-- 選択 --</option>
-            </select>
+        <div class="event-list-top">
+            <h3 id="event-list-heading" class="event-list-heading" aria-live="polite"></h3>
+            <div id="ev-vote-member-bar" class="ev-vote-member-bar hidden">
+                <span id="ev-vote-who" class="ev-vote-who"></span>
+                <button type="button" id="ev-vote-change" class="btn btn-text btn-sm" onclick="startChangeVoteMember()">変更</button>
+                <select id="ev-vote-member-select" aria-label="出欠回答に使うあなたの名前">
+                    <option value="">-- 選択 --</option>
+                </select>
+            </div>
         </div>
         <div class="table-wrapper">
             <table class="data-table" id="events-table">

@@ -80,13 +80,44 @@ function restoreFilterFromUrl() {
     if (period) filterState.period = period;
 }
 
-// 「リセット」ボタン（キーワード・カテゴリ・期間のいずれかが初期値以外の時だけ表示）
+// 「絞り込み」ボタンのバッジ（期間・カテゴリが初期値以外の数）と、パネル内「条件をクリア」の表示更新
 function updateResetButton() {
+    const n = (filterState.category !== 'all' ? 1 : 0) + (filterState.period !== 'upcoming' ? 1 : 0);
+    const badge = document.getElementById('ev-filter-badge');
+    if (badge) { badge.textContent = String(n); badge.classList.toggle('hidden', n === 0); }
+    const fbtn = document.getElementById('ev-filter-btn');
+    if (fbtn) fbtn.classList.toggle('is-active', n > 0);
     const btn = document.getElementById('filter-reset-btn');
     if (!btn) return;
-    const active = !!(filterState.keyword || filterState.category !== 'all' || filterState.period !== 'upcoming');
+    const active = !!(filterState.keyword || n > 0);
     btn.classList.toggle('hidden', !active);
 }
+
+// 絞り込みパネルの開閉（PC=ポップオーバー / スマホ=下から出るシート）
+function toggleFilterPanel(force) {
+    const panel = document.getElementById('ev-filter-panel');
+    const btn = document.getElementById('ev-filter-btn');
+    const scrim = document.getElementById('ev-filter-scrim');
+    if (!panel || !btn) return;
+    const open = typeof force === 'boolean' ? force : panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !open);
+    if (scrim) scrim.classList.toggle('hidden', !open);
+    btn.setAttribute('aria-expanded', String(open));
+}
+document.addEventListener('click', (e) => {
+    const panel = document.getElementById('ev-filter-panel');
+    if (!panel || panel.classList.contains('hidden')) return;
+    if (!e.target.closest('#ev-filter-anchor')) toggleFilterPanel(false);
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const panel = document.getElementById('ev-filter-panel');
+    if (panel && !panel.classList.contains('hidden')) {
+        toggleFilterPanel(false);
+        const btn = document.getElementById('ev-filter-btn');
+        if (btn) btn.focus();
+    }
+});
 
 function resetFilters() {
     filterState.keyword = '';
@@ -99,27 +130,48 @@ function resetFilters() {
         c.classList.toggle('active', isActive);
         c.setAttribute('aria-pressed', String(isActive));
     });
-    const sel = document.getElementById('period-filter');
-    if (sel) sel.value = 'upcoming';
+    syncPeriodControls();
     syncFilterToUrl();
     renderEvents();
 }
 
+// 期間の選択肢。よく使う「今後」と新しい2年度はチップ、それ以前の年度はプルダウンにまとめる
+// （年度が増え続けてもパネルが縦に伸びないようにするため）。
 function buildPeriodFilterOptions() {
+    const chips = document.getElementById('period-chips');
     const sel = document.getElementById('period-filter');
-    if (!sel) return;
+    if (!chips || !sel) return;
     const fySet = new Set();
     eventsData.forEach(e => {
         const fy = getFiscalYear(e.Date);
         if (fy) fySet.add(fy);
     });
     const sorted = [...fySet].sort((a, b) => b - a);
-    let html = '<option value="upcoming">今後</option>';
-    sorted.forEach(fy => {
-        html += `<option value="fy_${fy}">${fy}年度</option>`;
+    const quick = sorted.slice(0, 2);
+    const older = sorted.slice(2);
+    // URL 共有などで選ばれている年度が一覧に無くても、選択肢として残す
+    if (filterState.period.startsWith('fy_') && !sorted.includes(parseInt(filterState.period.slice(3)))) {
+        quick.push(parseInt(filterState.period.slice(3)));
+    }
+    chips.innerHTML = [['upcoming', '今後'], ...quick.map(fy => ['fy_' + fy, fy + '年度'])]
+        .map(([v, n]) => `<button type="button" class="filter-chip" data-period="${escapeAttr(v)}" onclick="onPeriodFilter(this.dataset.period)">${escapeHtml(n)}</button>`).join('');
+    sel.innerHTML = '<option value="">それ以前の年度</option>' + older.map(fy => `<option value="fy_${fy}">${fy}年度</option>`).join('');
+    sel.classList.toggle('hidden', older.length === 0);
+    syncPeriodControls();
+}
+
+// 期間チップ・プルダウンの選択表示を filterState に合わせる
+function syncPeriodControls() {
+    document.querySelectorAll('#period-chips .filter-chip').forEach(c => {
+        const on = c.dataset.period === filterState.period;
+        c.classList.toggle('active', on);
+        c.setAttribute('aria-pressed', String(on));
     });
-    sel.innerHTML = html;
-    sel.value = filterState.period;
+    const sel = document.getElementById('period-filter');
+    if (!sel) return;
+    const inSelect = Array.from(sel.options).some(o => o.value && o.value === filterState.period);
+    sel.value = inSelect ? filterState.period : '';
+    sel.classList.toggle('is-active', inSelect);
 }
 
 // ---- テーブル行のイベント委譲（XSS 対策: onclick に ID を埋め込まない） ----
@@ -292,21 +344,44 @@ function rebuildVotesByEvent() {
 
 // ---- 出欠投票（テーブル行内ドロップダウン） ----
 
+// 出欠に使う名前。未選択の間だけ案内（バナー）を出し、選んだ後は「〇〇さんで回答中 変更」だけにする。
+let voteNameEditing = false;
+
+function startChangeVoteMember() {
+    voteNameEditing = true;
+    populateVoteMemberSelector();
+    const sel = document.getElementById('ev-vote-member-select');
+    if (sel) sel.focus();
+}
+
 function populateVoteMemberSelector() {
     const bar = document.getElementById('ev-vote-member-bar');
     const sel = document.getElementById('ev-vote-member-select');
+    const who = document.getElementById('ev-vote-who');
+    const changeBtn = document.getElementById('ev-vote-change');
     if (!bar || !sel) return;
     const eligible = voteEligibleMembers(membersData);
     if (eligible.length === 0) { bar.classList.add('hidden'); return; }
     bar.classList.remove('hidden');
     const saved = getSavedVoteMemberId();
+    const me = eligible.find(m => m.ID === saved);
+    const unset = !me;
     const groups = groupMembersByGrade(eligible);
     sel.innerHTML = '<option value="">-- 選択 --</option>' +
         groups.map(g => `<optgroup label="${escapeAttr(g.label)}">${g.members.map(m => `<option value="${escapeAttr(m.ID)}" ${m.ID === saved ? 'selected' : ''}>${escapeHtml(m.Name)}</option>`).join('')}</optgroup>`).join('');
+    bar.classList.toggle('is-unset', unset);
+    if (who) who.textContent = unset ? '出欠を回答するには名前を選んでください' : `${me.Name}さんで回答中`;
+    if (changeBtn) changeBtn.classList.toggle('hidden', unset || voteNameEditing);
+    sel.classList.toggle('hidden', !unset && !voteNameEditing);
     sel.onchange = () => {
         setSavedVoteMemberId(sel.value);
+        voteNameEditing = false;
         renderEvents();
     };
+    // 変更中に選ばずに閉じたときは、元の表示へ戻す
+    sel.onblur = () => setTimeout(() => {
+        if (voteNameEditing) { voteNameEditing = false; populateVoteMemberSelector(); }
+    }, 250);
 }
 
 function getMyVoteForEvent(eventId) {
@@ -387,10 +462,9 @@ function onCategoryFilter(cat) {
     renderEvents();
 }
 function onPeriodFilter(period) {
+    if (!period) return; // プルダウンの「それ以前の年度」（見出し）は無視
     filterState.period = period;
-    // 期間はチップからセレクトボックスへ変更（フィルタ行の要素数を減らすため）
-    const sel = document.getElementById('period-filter');
-    if (sel && sel.value !== period) sel.value = period;
+    syncPeriodControls();
     syncFilterToUrl();
     renderEvents();
 }
@@ -464,9 +538,12 @@ function renderEvents() {
     if (filterState.period.startsWith('fy_')) {
         periodLabel = filterState.period.slice(3) + '年度の予定';
     }
+    // 絞り込みパネルを閉じていても今の条件が分かるよう、カテゴリも見出しに出す
+    const catChip = filterState.category !== 'all' ? document.querySelector(`.filter-chip[data-cat="${filterState.category}"]`) : null;
+    const catLabel = catChip ? (catChip.dataset.baseLabel || (catChip.querySelector('.chip-label') || catChip).textContent.replace(/\s*\(\d+\)$/, '').trim()) : '';
     heading.textContent = searchMeta
         ? `検索結果 (${sorted.length}件)`
-        : `${periodLabel} (${sorted.length}件)`;
+        : `${periodLabel}${catLabel ? `（${catLabel}）` : ''} (${sorted.length}件)`;
 
     // チップ件数バッジ（検索中は期間絞り込み後のヒット数をカテゴリ別に表示）と「リセット」の表示更新
     updateCategoryChipCounts(searchMeta ? applyPeriodFilter(source) : null);
