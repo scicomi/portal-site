@@ -1377,7 +1377,7 @@ async function saveDetailFeedback() {
     // 実験ごとの振り返りの保存に失敗したら、成功トーストは出さず、入力を残したままエラーを表示する
     const failures = await saveExperimentFeedbackEntries(ev);
     if (failures.length > 0) {
-        toast('イベントの振り返りは保存しましたが、実験ごとの振り返りを保存できませんでした（' + failures.join('、') + '）。入力は残してあります。', 'error', 8000);
+        toast('イベントの振り返りは保存しましたが、実験ごとの振り返りを保存できませんでした（' + failures.join('、') + '）。保存できなかった分の入力は残してあります。', 'error', 8000);
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; }
         renderFeedbackTimeline();
         renderResultsTab();
@@ -1416,7 +1416,11 @@ async function saveExperimentFeedbackEntries(eventData) {
         if (!posText && !refText) continue;
 
         const exp = experiments.find(e => e.Name === expName);
-        if (!exp) continue;
+        if (!exp) {
+            // 黙って飛ばすと、保存できたように見えて入力が消える。失敗として知らせ、入力欄は残す
+            failures.push(`${expName}: 実験ネタが見つかりません（名前が変わった可能性があります）`);
+            continue;
+        }
 
         const prevPositives = exp.Positives;
         const prevReflections = exp.Reflections;
@@ -1441,6 +1445,8 @@ async function saveExperimentFeedbackEntries(eventData) {
             const saved = await api.save('experiments', { ...exp, _baseUpdatedAt: exp.UpdatedAt || '' });
             const idx = experiments.findIndex(e => e.ID === exp.ID);
             if (idx >= 0) experiments[idx] = saved;
+            // 保存できた実験の入力欄は空にする（ほかの実験が失敗して「保存」を押し直したとき、二重に追記しないため）
+            fbCard.querySelectorAll('.exp-fb-positive, .exp-fb-reflection').forEach(t => { t.value = ''; });
         } catch (e) {
             // 失敗した分は追記前の状態に戻す（再保存で二重に追記されないように）
             exp.Positives = prevPositives;
