@@ -418,6 +418,17 @@ test('ゴミ箱: 外した項目(添付・写真・動画・振り返り・セ�
   assert.equal(JSON.parse(x.Reflections).length, 2);
   assert.equal((await xtrash()).length, 0);
 
+  // 同じ見出しのセクションが 2 つあるとき、片方を外して戻すと 2 つに戻る(「すでに戻っている」と誤判定しない)
+  const dup = [{ title: '注意', content: '一つ目' }, { title: '注意', content: '二つ目' }];
+  assert.equal((await post({ action: 'save', resource: 'experiments', token: member, item: { ID: xid, Sections: JSON.stringify(dup) } })).success, true);
+  assert.equal((await post({ action: 'save', resource: 'experiments', token: member, item: { ID: xid, Sections: JSON.stringify([dup[0]]) } })).success, true);
+  const dt = (await xtrash()).filter(t => t.field === 'Sections');
+  assert.equal(dt.length, 1);
+  assert.equal((await post({ action: 'restoreTrash', token: member, id: dt[0].id })).success, true);
+  const xs = (await post({ action: 'list', resource: 'experiments', token: member })).items.find(e => e.ID === xid);
+  assert.deepEqual(JSON.parse(xs.Sections).map(s => s.content).sort(), ['一つ目', '二つ目']);
+  assert.equal((await xtrash()).length, 0);
+
   // 競合した保存(古い版)ではゴミ箱に入れない
   const stale = x.UpdatedAt;
   assert.equal((await post({ action: 'save', resource: 'experiments', token: member, item: { ID: xid, Name: '先に更新' } })).success, true);

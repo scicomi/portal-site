@@ -121,7 +121,9 @@ export async function restoreTrash(env, id) {
   if (!parent) return { success: false, error: 'parent_missing' };
   const list = parseJsonList(parent[row.Field]);
   const key = rule.key(payload);
-  if (key && list.some(it => rule.key(it) === key)) {
+  // 同じキーの要素が親にあれば「すでに戻っている」とみなす。ただし見出しで照合する列(Sections, countOnly)は
+  // 同じ見出しの別の要素がありうるので、この判定をせず常に戻す(判定すると、ゴミ箱の行だけ消えて中身が失われる)
+  if (key && !rule.countOnly && list.some(it => rule.key(it) === key)) {
     await env.DB.prepare('DELETE FROM trash WHERE ID = ?').bind(row.ID).run();   // すでに戻っている
   } else {
     if (rule.single && list.length > 0) return { success: false, error: 'slot_occupied' };
