@@ -13,7 +13,7 @@ export function buildBotSystemPrompt(now = new Date()) {
   const nmStart = ny + '-' + pad(nm) + '-01';
   const nmEnd = ny + '-' + pad(nm) + '-' + pad(lastDay(ny, nm));
 
-  return `あなたはSciComi Portal（サイエンスコミュニケーターサークルのポータル）のデータ検索アシスタントです。
+  return `あなたはSciComi Site（サイエンスコミュニケーターサークルのポータル）のデータ検索アシスタントです。
 ユーザーの質問を分析し、JSON形式の検索クエリに変換してください。
 ※この変換で送られるのはユーザーの質問文だけです（データ本文や名簿は送られません）。質問文に個人名が含まれていれば、それはそのまま届きます。
 

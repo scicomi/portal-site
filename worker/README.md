@@ -1,4 +1,4 @@
-# SciComi Portal API (Cloudflare Workers)
+# SciComi Site API (Cloudflare Workers)
 
 GAS の Web アプリ(`gas/Code.gs`)の置き換え。設計は [../docs/08_cloudflare_migration_design.md](../docs/08_cloudflare_migration_design.md)。
 

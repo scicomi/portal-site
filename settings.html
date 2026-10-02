@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light">
-    <title>設定 | SciComi Portal</title>
+    <title>設定 | SciComi Site</title>
+    <link rel="icon" type="image/png" href="icon.png">
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
@@ -15,34 +16,6 @@
         <h1 class="page-title">設定</h1>
         <div id="settings-loading" class="loading-text">読み込み中</div>
         <div id="settings-content" style="display:none;">
-
-            <!-- 表示カスタマイズ -->
-            <div class="settings-section">
-                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
-                    <div>
-                        <h2>表示カスタマイズ</h2>
-                        <p class="settings-section-desc">ホーム画面・ヘッダーの表示をカスタマイズします。</p>
-                    </div>
-                    <span class="settings-section-chevron">&#9662;</span>
-                </div>
-                <div class="settings-card">
-                    <div class="e1-group">
-                        <label class="e1-label">ヘッダーのアイコン・タイトル</label>
-                        <p class="settings-hint">全ページ共通のヘッダーに表示される名前です。アイコンは1〜4文字（例: SC）。</p>
-                        <div class="settings-row-grid">
-                            <div style="display:flex;gap:8px;">
-                                <input type="text" id="cfg-brand-icon" class="e1-input" maxlength="4" placeholder="SC" style="width:100px;">
-                                <button class="btn btn-primary-solid" onclick="saveSettingField('brand_icon','cfg-brand-icon', this)" style="width:auto;padding:8px 20px;">保存</button>
-                            </div>
-                            <div style="display:flex;gap:8px;">
-                                <input type="text" id="cfg-brand-name" class="e1-input" maxlength="40" placeholder="SciComi Portal" style="flex:1;">
-                                <button class="btn btn-primary-solid" onclick="saveSettingField('brand_name','cfg-brand-name', this)" style="width:auto;padding:8px 20px;">保存</button>
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-            </div>
 
             <!-- 書類期限設定 -->
             <div class="settings-section collapsed">

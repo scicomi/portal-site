@@ -26,7 +26,7 @@ const RATE_LIMIT_TEST_IP = '198.51.100.' + (1 + Math.floor(Math.random() * 254))
 
 // ローカル DB に前回の作業の設定値が残っていても結果が変わらないよう、テストが前提にするキーの既定値
 const CONFIG_DEFAULTS_FOR_TEST = {
-  brand_name: 'SciComi Portal', brand_icon: 'SC', welcome_message: '',
+  welcome_message: '',
   file_max_mb: '10', deadline_kyoka: '-10', deadline_houkoku: '7'
 };
 
@@ -313,15 +313,12 @@ test('管理者: パスワード一覧の保存・取得、設定の取得(機�
   assert.equal(cfg.config.admin_password_set, true);
   assert.equal(cfg.config.password, undefined);
   assert.equal(cfg.config.gemini_api_key, undefined);
-  assert.equal(cfg.config.brand_name, 'SciComi Portal');   // 既定値へフォールバック
 
   const pub = await post({ action: 'getPublicConfig', token: member });
-  assert.equal(pub.config.brand_name, 'SciComi Portal');
   assert.equal(pub.config.password, undefined);
   assert.equal(pub.config.line_channel_access_token, undefined);
 
   assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'nope', value: 'x' })).error, 'forbidden_key');
-  assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'brand_icon', value: '12345' })).error, 'invalid_value');
   assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'password', value: ADMIN_PW })).error, 'invalid_value'); // 一般=幹部は拒否
   assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'password', value: 'short1234' })).error, 'invalid_value'); // 10 文字未満は拒否
   assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'admin_password', value: '123456789' })).error, 'invalid_value');

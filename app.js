@@ -1,5 +1,5 @@
 /**
- * SciComi Portal - 共通ロジック
+ * SciComi Site - 共通ロジック
  *
  * 全ページで読み込まれる（config.js の後に読み込む前提）:
  *   - 共通ユーティリティ（escapeHtml / 日付ヘルパー）
@@ -472,9 +472,6 @@ function renderHeader(activePage) {
   const header = document.querySelector('.app-header');
   if (!header) return;
   const isAdmin = api.isAdmin();
-  const cachedCfg = _readCachedSiteSettings();
-  const brandIcon = (cachedCfg && cachedCfg.brand_icon) || 'SC';
-  const brandName = (cachedCfg && cachedCfg.brand_name) || 'SciComi Portal';
 
   const navItems = CONFIG.NAV_ITEMS.filter(item =>
     (!item.adminOnly || isAdmin) && (!item.feature || (CONFIG.FEATURES && CONFIG.FEATURES[item.feature])));
@@ -503,8 +500,8 @@ function renderHeader(activePage) {
     <div class="header-top">
       <div class="header-brand">
         <a href="index.html" style="color:inherit;text-decoration:none;display:flex;align-items:center;gap:8px;">
-          <span class="brand-icon" id="header-brand-icon">${escapeHtml(brandIcon)}</span>
-          <span class="brand-name" id="header-brand-name">${escapeHtml(brandName)}</span>
+          <img class="brand-icon-img" src="icon.png" alt="SCS" width="28" height="28">
+          <span class="brand-name">SciComi Site</span>
         </a>
       </div>
       <div class="header-actions">
@@ -1054,15 +1051,7 @@ function _applyCfg(cfg) {
     // アップロード上限はサーバー(worker の file_max_mb)が正。取得できたらフロントの事前チェックも合わせる
     const maxMb = safeInt(cfg.file_max_mb, 0);
     if (maxMb >= 1) CONFIG.FILE_UPLOAD.maxSizeMB = maxMb;
-    // ヘッダーはキャッシュ値で先出し済みのことがあるため、取得できた最新値で上書きする
-    if (cfg.brand_icon) {
-        const el = document.getElementById('header-brand-icon');
-        if (el) el.textContent = cfg.brand_icon;
-    }
-    if (cfg.brand_name) {
-        const el = document.getElementById('header-brand-name');
-        if (el) el.textContent = cfg.brand_name;
-    }
+
 }
 
 // ====== リッチテキスト編集 ======

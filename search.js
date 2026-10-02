@@ -1,5 +1,5 @@
 /**
- * SciComi Portal - 共通検索エンジン
+ * SciComi Site - 共通検索エンジン
  *
  * リスト系ページ（events / members / experiments / event-series / experiment-detail /
  * passwords）の検索を共通化する（config.js → api.js → app.js の後、各ページ JS の前に読み込む前提）:

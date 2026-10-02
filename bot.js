@@ -1,5 +1,5 @@
 /**
- * SciComi Portal - Bot（意図解析分離型）
+ * SciComi Site - Bot（意図解析分離型）
  *
  * 構成:
  *   1. Gemini API で質問の「意図」だけを解析（この段階で送るのは質問文のみ）

@@ -1,5 +1,5 @@
 /**
- * SciComi Portal - API Client (Cloudflare Workers)
+ * SciComi Site - API Client (Cloudflare Workers)
  *
  * スキーマ駆動: CONFIG.RESOURCE_NAMES に登録されたリソース名を自動認識。
  * Optimistic UI: save はローカルキャッシュを即更新し、サーバー呼び出しは裏で実行。

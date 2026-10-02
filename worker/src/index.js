@@ -1,4 +1,4 @@
-// SciComi Portal API(Cloudflare Workers)
+// SciComi Site API(Cloudflare Workers)
 //
 // gas/Code.gs の doGet / doPost の置き換え。クライアント(api.js)との互換のため、
 // 「単一のエンドポイントに action を POST する」方式と JSON の形・エラーコードをそのまま維持する。

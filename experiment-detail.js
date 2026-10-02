@@ -113,7 +113,7 @@ function renderPage() {
     document.getElementById('exp-content').classList.remove('hidden');
 
     const e = currentExp;
-    document.title = (e.Name || '実験詳細') + ' | SciComi Portal';
+    document.title = (e.Name || '実験詳細') + ' | SciComi Site';
     document.getElementById('expd-name').textContent = e.Name || '(無題)';
 
     const cat = getExperimentCategory(e.Category);

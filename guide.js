@@ -511,7 +511,7 @@ function gdRenderCurrent() {
   if (isHome) { gdRenderHome(el); return; }
   gdBase = page ? page.UpdatedAt : '';
 
-  document.title = (page ? gdTitle(page) : '新しいページ') + ' | ガイド | SciComi Portal';
+  document.title = (page ? gdTitle(page) : '新しいページ') + ' | ガイド | SciComi Site';
   const crumbs = page ? gdPath(page.ID) : gdPath(gdDraft.parentId);
   const blocks = page ? gdParseBody(page.Body) : [];
   const kids = page ? gdKids(page.ID) : [];
@@ -564,7 +564,7 @@ function gdCardHtml(p) {
 }
 
 function gdRenderHome(el) {
-  document.title = 'ガイド | SciComi Portal';
+  document.title = 'ガイド | SciComi Site';
   el.innerHTML = `
     <div class="gd-home">
       <div class="gd-home-bar">
@@ -661,7 +661,7 @@ async function gdSaveNow(force) {
       gdDraft = null;
       try { history.replaceState(null, '', 'guide.html?p=' + encodeURIComponent(saved.ID)); } catch (_) {}
     }
-    document.title = gdTitle(saved) + ' | ガイド | SciComi Portal';
+    document.title = gdTitle(saved) + ' | ガイド | SciComi Site';
     gdRenderTree();
     gdSetStatus(gdDirty ? '編集中…' : '保存しました');
   } catch (e) {

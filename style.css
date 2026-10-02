@@ -4476,3 +4476,13 @@ mark.search-hit {
     }
     .ev-filter-scrim:not(.hidden) { display: block; position: fixed; inset: 0; z-index: 99; background: rgba(0, 0, 0, 0.35); }
 }
+
+.brand-icon-img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    border-radius: 4px;
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 800;
+}

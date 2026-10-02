@@ -29,8 +29,6 @@ export const DEFAULT_CONFIG = {
   deadline_houkoku: 7,        // イベント日の7日後
   deadline_alert_danger: 3,
   deadline_alert_warning: 7,
-  brand_icon: 'SC',
-  brand_name: 'SciComi Portal',
   experiment_recruit_url: '',
   experiment_recruit_note: '',
   pr_channels: 'Twitter,Instagram,HP',
@@ -45,7 +43,6 @@ export const DEFAULT_CONFIG = {
 export const PUBLIC_CONFIG_KEYS = [
   'welcome_message', 'deadline_kyoka', 'deadline_houkoku',
   'deadline_alert_danger', 'deadline_alert_warning',
-  'brand_icon', 'brand_name',
   'experiment_recruit_url', 'experiment_recruit_note',
   'pr_channels', 'line_add_friend_url', 'site_links',
   'file_max_mb'   // フロントのアップロード前チェックをサーバーの上限に合わせるため
@@ -159,10 +156,6 @@ export function validateConfigValue(key, value) {
     case 'password':
     case 'admin_password':
       return v.trim().length >= PASSWORD_MIN_LENGTH ? '' : 'パスワードは' + PASSWORD_MIN_LENGTH + '文字以上にしてください';
-    case 'brand_icon':
-      return v.trim().length >= 1 && v.trim().length <= 4 ? '' : 'アイコンは1〜4文字で指定してください';
-    case 'brand_name':
-      return v.trim().length >= 1 && v.trim().length <= 40 ? '' : 'タイトルは1〜40文字で指定してください';
     default:
       return '';
   }

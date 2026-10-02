@@ -65,9 +65,6 @@ async function loadSettings() {
         }
         modelSel.value = cur;
 
-        // ヘッダーのブランド表示
-        document.getElementById('cfg-brand-icon').value = cfg.brand_icon || 'SC';
-        document.getElementById('cfg-brand-name').value = cfg.brand_name || 'SciComi Portal';
 
         // 書類期限ルール（サーバーに保存されていない場合はCONFIGのデフォルト値を使用）
         const kyokaDays = cfg.deadline_kyoka != null ? Math.abs(parseInt(cfg.deadline_kyoka)) : Math.abs(CONFIG.DEADLINE_RULES.kyoka);
@@ -119,14 +116,6 @@ async function saveSettingField(key, inputId, btn) {
         try {
             await api.adminSetConfig(key, value);
             invalidateSettingsCache();
-            if (key === 'brand_icon') {
-                const el = document.getElementById('header-brand-icon');
-                if (el) el.textContent = value || 'SC';
-            }
-            if (key === 'brand_name') {
-                const el = document.getElementById('header-brand-name');
-                if (el) el.textContent = value || 'SciComi Portal';
-            }
             toast('保存しました', 'success');
         } catch (e) {
             toast('保存失敗: ' + e.message, 'error');

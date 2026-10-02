@@ -89,7 +89,7 @@ async function init() {
 
     document.getElementById(indexMode ? 'series-index' : 'series-view').classList.remove('hidden');
     if (indexMode) {
-        document.title = 'イベント別 | SciComi Portal';
+        document.title = 'イベント別 | SciComi Site';
         // 検索窓（デバウンス・サジェスト・キーボード操作は search.js が面倒を見る）
         attachSearchBox(document.getElementById('series-index-search'), {
             onSearch: () => renderSeriesIndex(),
@@ -342,7 +342,7 @@ function renderAll() {
     const title = seriesEvents[0].Title || seriesKey;
     const displayTitle = title.replace(/^第\d+回\s*/, '');
     document.getElementById('series-title').textContent = displayTitle;
-    document.title = `${displayTitle} | SciComi Portal`;
+    document.title = `${displayTitle} | SciComi Site`;
 
     // ミーティングでは不要なタブを隠す（振り返り・会場はイベント向けの機能）
     const ev0 = currentEvent();
