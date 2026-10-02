@@ -4492,4 +4492,6 @@ mark.search-hit {
     height: 40px;
     width: auto;
     display: block;
+    /* 画像の下にはみ出すフラスコの分、文字がアイコンより高くなるのを打ち消す(文字の中心をアイコンに合わせる) */
+    transform: translateY(21.7%);
 }
