@@ -77,6 +77,9 @@ const EV_STEPS_EVENT = [
     { label: '実験内容・発表者' },
     { label: '備考・書類' }
 ];
+// 検証エラーで戻すステップの番号（イベント・ミーティング共通なのは日程。実験はイベントだけ）
+const EV_STEP_SCHEDULE = 1;
+const EV_STEP_EXPERIMENT = 3;
 const EV_STEPS_MEETING = [
     { label: '基本情報' },
     { label: '日時' },
@@ -1104,15 +1107,21 @@ function validateEventWizard() {
         evWizardGoto(0);
         return null;
     }
+    // 日付が空のイベントは一覧にもシリーズ詳細にも出ず、画面から直せなくなる
+    if (!(document.getElementById('wz-ev-date')?.value || '')) {
+        toast('日付を選んでください', 'error');
+        evWizardGoto(EV_STEP_SCHEDULE);
+        return null;
+    }
     const time = readTimeRange('wz-ev-time-start', 'wz-ev-time-end');
     if (!time) {
-        evWizardGoto(1);
+        evWizardGoto(EV_STEP_SCHEDULE);
         return null;
     }
     if (!isMeeting) {
         const badExps = invalidExperimentNames();
         if (badExps.length > 0) {
-            evWizardGoto(2);
+            evWizardGoto(EV_STEP_EXPERIMENT);
             toastInvalidExperiment(badExps);
             return null;
         }
