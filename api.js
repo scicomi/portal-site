@@ -318,6 +318,21 @@ const api = {
     return true;
   },
 
+  // ---- ガイド（閲覧はメンバーも可、書き込みは管理者のみ） ----
+  // 保存には管理者トークンが要る（save は管理者トークンを送らないので、専用の関数にしてある）。
+  async saveGuide(item) {
+    const res = await this._post({
+      action: 'save', resource: 'guides',
+      token: this.getToken(), adminToken: this.getAdminToken(), item
+    });
+    if (!res.success) {
+      console.error('saveGuide failed:', res);
+      if (res.error === 'admin_required') throw new Error('ADMIN_REQUIRED');
+      throw new Error(res.error || 'save guide failed');
+    }
+    return res.item || { ...item };
+  },
+
   // ---- パスワード一覧（管理者専用リソース） ----
   // 閲覧・追加・編集・削除すべてに管理者トークンを添付する。
   async listPasswords() {

@@ -81,43 +81,74 @@
   }
 
   // ---------- Toggle ----------
+  // トグルは「見出し」だけのブロック。トグルの中身は、その下にあって、トグルよりインデント（右に下げた）されているブロック。
+  // たたむと、中身のブロックがまとめて隠れる（隠す処理は guide.js の gdApplyFold）。
+  // 中身は普通のブロックなので、画像・番号付きリスト・表などもそのまま入れられる。
   class Toggle {
     static get toolbox() { return { title: 'トグル（開閉）', icon: '<svg width="20" height="20" viewBox="0 0 20 20"><path d="M7 5l6 5-6 5z" fill="currentColor"/></svg>' }; }
     static get isReadOnlySupported() { return true; }
-    static get sanitize() { return { title: INLINE, text: INLINE }; }
+    static get enableLineBreaks() { return false; }
+    static get sanitize() { return { title: INLINE }; }
     constructor({ data, readOnly }) {
-      this.data = { title: (data && data.title) || '', text: (data && data.text) || '' };
+      this.data = { title: (data && data.title) || '' };
       this.readOnly = readOnly;
     }
     render() {
       const open = !this.readOnly;     // 閲覧時は閉じておく。編集時は開いておく
       this.wrap = el('div', 'gd-tg' + (open ? ' open' : ''));
-      const head = el('div', 'gd-tg-head');
       this.caret = el('button', 'gd-tg-caret', '▸');
       this.caret.type = 'button';
       this.caret.setAttribute('aria-expanded', String(open));
       this.titleEl = el('div', 'gd-tg-title', this.data.title);
       this.titleEl.contentEditable = this.readOnly ? 'false' : 'true';
-      this.titleEl.dataset.placeholder = 'トグルの見出し';
-      head.append(this.caret, this.titleEl);
-      this.bodyEl = el('div', 'gd-tg-body', this.data.text);
-      this.bodyEl.contentEditable = this.readOnly ? 'false' : 'true';
-      this.bodyEl.dataset.placeholder = '中に隠す内容（Enter で改行）';
+      this.titleEl.dataset.placeholder = 'トグルの見出し（中に入れたいブロックは、下に作って Tab で右へ）';
       const toggle = () => {
         const now = this.wrap.classList.toggle('open');
         this.caret.setAttribute('aria-expanded', String(now));
+        this.wrap.dispatchEvent(new CustomEvent('gd-fold', { bubbles: true }));
       };
       this.caret.addEventListener('click', toggle);
       if (this.readOnly) this.titleEl.addEventListener('click', toggle);
-      // 本文の Enter は、新しいブロックではなく改行にする
-      this.bodyEl.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); document.execCommand('insertLineBreak'); }
-      });
-      this.wrap.append(head, this.bodyEl);
+      this.wrap.append(this.caret, this.titleEl);
       return this.wrap;
     }
-    save() { return { title: this.titleEl.innerHTML, text: this.bodyEl.innerHTML }; }
+    save() { return { title: this.titleEl.innerHTML }; }
     validate(d) { return !!(d.title && d.title.replace(/<br\s*\/?>|&nbsp;|\s/g, '')); }
+  }
+
+  // ---------- IndentTune（すべてのブロックに付く「インデント」） ----------
+  // ブロックを右に下げて「入れ子」にする。トグルの中に入れる、箇条書きの下にぶら下げる、などに使う。
+  // Tab / Shift+Tab（guide.js が受けて、このブロックに gd-indent イベントを送る）か、ブロックのメニュー（⋮⋮）から。
+  const MAX_INDENT = 3;
+  class IndentTune {
+    static get isTune() { return true; }
+    constructor({ data, block }) {
+      this.block = block;
+      this.level = Math.max(0, Math.min(MAX_INDENT, parseInt(data && data.level, 10) || 0));
+    }
+    wrap(content) {
+      this.wrapper = el('div', 'gd-indent');
+      this.wrapper.dataset.level = String(this.level);
+      this.wrapper.append(content);
+      this.wrapper.addEventListener('gd-indent', e => this.set(this.level + (e.detail || 0)));
+      return this.wrapper;
+    }
+    set(n) {
+      n = Math.max(0, Math.min(MAX_INDENT, n));
+      if (n === this.level) return;
+      this.level = n;
+      this.wrapper.dataset.level = String(n);
+      if (this.block && this.block.dispatchChange) this.block.dispatchChange();
+      this.wrapper.dispatchEvent(new CustomEvent('gd-fold', { bubbles: true }));
+    }
+    render() {
+      const arrow = d => '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>';
+      return [
+        { icon: arrow('M4 10h11M11 6l4 4-4 4'), label: '中に入れる（Tab）', onActivate: () => this.set(this.level + 1) },
+        { icon: arrow('M16 10H5M9 6l-4 4 4 4'), label: '外に出す（Shift+Tab）', onActivate: () => this.set(this.level - 1) },
+      ];
+    }
+    save() { return { level: this.level }; }
   }
 
   // ---------- PageLink ----------
@@ -215,5 +246,5 @@
     validate(d) { return !!d.url; }
   }
 
-  root.GuideBlocks = { Callout, Toggle, PageLink, FileBlock, COLORS: CALLOUT_COLORS };
+  root.GuideBlocks = { Callout, Toggle, PageLink, FileBlock, IndentTune, COLORS: CALLOUT_COLORS };
 })(window);

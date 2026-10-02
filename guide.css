@@ -158,14 +158,19 @@
 .gd-editor-holder .ce-popover-item__title { font-size: 14px; }
 .gd-editor-holder .ce-toolbar__plus, .gd-editor-holder .ce-toolbar__settings-btn { width: 26px; height: 26px; position: static; box-shadow: none; border: none; background: none; }
 
-/* トグル */
-.gd-tg { margin: 4px 0; }
-.gd-tg-head { display: flex; align-items: flex-start; gap: 4px; }
+/* トグル（見出しだけ。中身は下のインデントされたブロック） */
+.gd-tg { display: flex; align-items: flex-start; gap: 4px; margin: 4px 0; }
 .gd-tg-caret { border: none; background: none; cursor: pointer; width: 26px; height: 30px; color: var(--text-secondary); transition: transform 0.15s; flex: none; }
-.gd-tg.open > .gd-tg-head .gd-tg-caret { transform: rotate(90deg); }
+.gd-tg.open > .gd-tg-caret { transform: rotate(90deg); }
 .gd-tg-title { flex: 1; min-width: 0; font-weight: 600; outline: none; padding-top: 2px; }
-.gd-tg-body { display: none; margin: 2px 0 6px 30px; padding-left: 12px; border-left: 2px solid var(--border-color); outline: none; min-height: 1.6em; }
-.gd-tg.open > .gd-tg-body { display: block; }
+.gd-readonly-view .gd-tg-title { cursor: pointer; }
+
+/* インデント（入れ子）と、たたまれて隠れたブロック */
+.gd-indent { transition: margin-left 0.1s; }
+.gd-indent[data-level="1"] { margin-left: 28px; }
+.gd-indent[data-level="2"] { margin-left: 56px; }
+.gd-indent[data-level="3"] { margin-left: 84px; }
+.ce-block.gd-folded { display: none; }
 
 /* ガイドへのリンク・ファイル */
 .gd-pagecard, .gd-file {
@@ -251,3 +256,12 @@
 .gd-content { padding-bottom: 120px; }
 .gd-page-icon:disabled { cursor: default; background: none; }
 .gd-page-title[contenteditable="false"] { cursor: default; }
+
+/* ---- 並べ替え ---- */
+.gd-menu-order { margin: 8px 0 4px; padding: 0 0 4px; border-top: 1px solid var(--border-subtle); }
+.gd-menu-order > span { display: block; margin: 8px 8px 2px; font-size: 0.78rem; color: var(--text-secondary); }
+.gd-menu-item:disabled { opacity: 0.35; cursor: default; }
+.gd-sidebar .gd-row[draggable="true"] { cursor: grab; }
+.gd-row.gd-dragging { opacity: 0.4; }
+.gd-row.gd-drop-before { box-shadow: 0 -2px 0 0 var(--primary-light); }
+.gd-row.gd-drop-after { box-shadow: 0 2px 0 0 var(--primary-light); }

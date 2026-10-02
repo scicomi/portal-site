@@ -31,10 +31,22 @@ function gdParseBody(body) {
   if (!s) return [];
   try {
     const d = JSON.parse(s);
-    if (d && Array.isArray(d.blocks)) return d.blocks;
+    if (d && Array.isArray(d.blocks)) return gdMigrateBlocks(d.blocks);
   } catch (_) {}
   // JSON でない本文（手で DB に入れた文章など）は、1 行 1 段落として扱う
   return s.split(/\n+/).map(t => ({ type: 'paragraph', data: { text: escapeHtml(t) } }));
+}
+
+// 旧形式のトグル（見出し＋本文を 1 ブロックに持つ）を、新形式（見出し＋インデントした下のブロック）に直す
+function gdMigrateBlocks(blocks) {
+  const out = [];
+  blocks.forEach(b => {
+    if (b && b.type === 'toggle' && b.data && b.data.text) {
+      out.push({ type: 'toggle', data: { title: b.data.title || '' }, tunes: b.tunes });
+      out.push({ type: 'paragraph', data: { text: b.data.text }, tunes: { indentTune: { level: Math.min(3, (((b.tunes || {}).indentTune || {}).level || 0) + 1) } } });
+    } else out.push(b);
+  });
+  return out;
 }
 
 // HTML 断片を文字だけにする（検索・カード用）。DOMParser はスクリプトを実行しない
@@ -51,7 +63,7 @@ function gdBlocksText(blocks) {
     switch (b.type) {
       case 'paragraph': case 'header': case 'quote': out.push(gdPlain(d.text)); break;
       case 'callout': out.push(gdPlain(d.text)); break;
-      case 'toggle': out.push(gdPlain(d.title), gdPlain(d.text)); break;
+      case 'toggle': out.push(gdPlain(d.title)); break;
       case 'list': items(d.items); break;
       case 'table': (d.content || []).forEach(r => r.forEach(c => out.push(gdPlain(c)))); break;
       case 'code': out.push(String(d.code || '')); break;
@@ -206,7 +218,7 @@ function gdRenderTree() {
     const kids = gdKids(p.ID);
     const isOpen = open.has(p.ID);
     return `<div class="gd-node">
-      <div class="gd-row ${p.ID === gdCurrentId ? 'active' : ''}">
+      <div class="gd-row ${p.ID === gdCurrentId ? 'active' : ''}" data-id="${escapeAttr(p.ID)}"${gdCanEdit() && !gdSearchKw ? ' draggable="true" title="ドラッグして順番を入れ替え"' : ''}>
         ${kids.length
           ? `<button type="button" class="gd-caret ${isOpen ? 'open' : ''}" data-action="gd-caret" data-id="${escapeAttr(p.ID)}" aria-label="${isOpen ? '閉じる' : '開く'}" aria-expanded="${isOpen}">▸</button>`
           : '<span class="gd-caret-space"></span>'}
@@ -331,6 +343,7 @@ function gdEditorTools() {
     },
     callout: { class: B.Callout },
     toggle: { class: B.Toggle },
+    indentTune: { class: B.IndentTune },
     pageLink: { class: B.PageLink, config: { getPages: () => gdPages } },
     file: {
       class: B.FileBlock,
@@ -357,14 +370,115 @@ function gdMount(blocks, autofocus, readOnly) {
     placeholder: '文章を書きます。「/」を入力すると、見出し・リスト・表などを選べます',
     minHeight: readOnly ? 0 : 120,
     autofocus: !!autofocus,
-    onChange: () => { if (armed) gdMarkDirty(); },
+    tunes: ['indentTune'],
+    onChange: () => { if (armed && !gdHist.busy) { gdMarkDirty(); gdHistSchedule(); } },
   });
   gdEditor = ed;
+  gdHistReset();
+  holder.addEventListener('gd-fold', gdApplyFold);
   ed.isReady.then(() => {
     if (seq !== gdMountSeq) return;
-    setTimeout(() => { armed = true; }, 300);   // 初回の描画で onChange が来ても、変更扱いにしない
+    gdApplyFold();
+    setTimeout(() => { armed = true; gdHistSnapshot(); }, 300);   // 初回の描画で onChange が来ても、変更扱いにしない
   }).catch(e => console.error('editor init failed', e));
 }
+
+// ---------- トグルの折りたたみ（インデントで入れ子を表す） ----------
+// 閉じているトグルの下にある、トグルよりインデントが深い連続したブロックを隠す。
+function gdApplyFold() {
+  const holder = document.getElementById('gd-editor');
+  if (!holder) return;
+  let hideLevel = null;
+  holder.querySelectorAll('.ce-block').forEach(b => {
+    const ind = b.querySelector('.gd-indent');
+    const lv = ind ? parseInt(ind.dataset.level, 10) || 0 : 0;
+    if (hideLevel !== null) {
+      if (lv > hideLevel) { b.classList.add('gd-folded'); return; }
+      hideLevel = null;
+    }
+    b.classList.remove('gd-folded');
+    const tg = b.querySelector('.gd-tg');
+    if (tg && !tg.classList.contains('open')) hideLevel = lv;
+  });
+}
+
+// Tab / Shift+Tab でブロックを入れ子にする（リスト・表・コードの中は、それぞれの Tab の動きを優先）
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Tab' || !gdEditor || !gdCanEdit() || e.isComposing) return;
+  const t = e.target;
+  if (!t.closest || !t.closest('#gd-editor')) return;
+  if (t.closest('.cdx-list, .tc-table, .ce-code, textarea, input, select')) return;
+  if (document.querySelector('#gd-editor .ce-popover--opened')) return;
+  const ind = t.closest('.ce-block') && t.closest('.ce-block').querySelector('.gd-indent');
+  if (!ind) return;
+  e.preventDefault();
+  e.stopPropagation();
+  ind.dispatchEvent(new CustomEvent('gd-indent', { detail: e.shiftKey ? -1 : 1 }));
+}, true);
+
+// ---------- 元に戻す（Ctrl+Z）・やり直し（Ctrl+Shift+Z / Ctrl+Y） ----------
+// Editor.js には元に戻す機能が無いため、本文の状態（ブロックの JSON）を少し待つたびに記録しておき、Ctrl+Z でその 1 つ前に戻す。
+// タイトルの入力欄は、ブラウザ標準の元に戻すに任せる。
+const gdHist = { stack: [], idx: -1, timer: null, busy: false, queued: 0 };
+const GD_HIST_MAX = 100;
+
+function gdHistReset() { clearTimeout(gdHist.timer); gdHist.stack = []; gdHist.idx = -1; gdHist.busy = false; gdHist.queued = 0; }
+
+// 比較用の文字列。ブロックの id は描画のたびに変わり得るので除く
+const gdHistKey = blocks => JSON.stringify((blocks || []).map(b => { const c = Object.assign({}, b); delete c.id; return c; }));
+
+async function gdHistSnapshot() {
+  if (!gdEditor) return;
+  let out;
+  try { out = await gdEditor.save(); } catch (_) { return; }
+  const s = gdHistKey(out.blocks);
+  if (gdHist.stack[gdHist.idx] === s) return;
+  gdHist.stack.length = gdHist.idx + 1;       // 戻った後に編集したら、やり直しの履歴は捨てる
+  gdHist.stack.push(s);
+  if (gdHist.stack.length > GD_HIST_MAX) gdHist.stack.shift();
+  gdHist.idx = gdHist.stack.length - 1;
+}
+function gdHistSchedule() { clearTimeout(gdHist.timer); gdHist.timer = setTimeout(gdHistSnapshot, 500); }
+
+async function gdUndoRedo(dir) {
+  if (!gdEditor) return;
+  if (gdHist.busy) { gdHist.queued += dir; return; }       // 描画中の押下は覚えておき、終わってからまとめて 1 回で動く
+  gdHist.busy = true;
+  try {
+    clearTimeout(gdHist.timer);
+    await gdHistSnapshot();                     // 入力途中の分も履歴に入れてから動く
+    const to = Math.max(0, Math.min(gdHist.stack.length - 1, gdHist.idx + dir));
+    if (to === gdHist.idx) { toast(dir < 0 ? 'これ以上戻れません' : 'やり直せる操作はありません', 'info', 1500); return; }
+    const from = JSON.parse(gdHist.stack[gdHist.idx]);
+    const target = JSON.parse(gdHist.stack[to]);
+    await gdEditor.blocks.render({ blocks: target });
+    gdHist.idx = to;
+    gdApplyFold();
+    await new Promise(r => setTimeout(r, 350));                       // 描画直後の onChange を待つ
+    try { gdHist.stack[to] = gdHistKey((await gdEditor.save()).blocks); } catch (_) {}   // 実際に描画された形で履歴を揃える
+    let at = 0;                                 // 変わった最初のブロックにカーソルを置く
+    while (at < target.length && at < from.length && JSON.stringify(target[at]) === JSON.stringify(from[at])) at++;
+    try { gdEditor.caret.setToBlock(Math.min(at, Math.max(0, target.length - 1)), 'end'); } catch (_) {}
+    gdMarkDirty();
+  } finally {
+    gdHist.busy = false;
+    const q = gdHist.queued;
+    gdHist.queued = 0;
+    if (q && gdEditor) gdUndoRedo(q);
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || !gdEditor || !gdCanEdit() || e.isComposing) return;
+  const t = e.target;
+  // エディタの中で押したとき。描画の途中でフォーカスが外れている間（body が対象）の連打も受け付ける。タイトル欄などは標準の動作
+  const inEditor = t.closest && t.closest('#gd-editor');
+  const lostFocus = gdHist.busy && !(t.closest && t.closest('input, textarea, select, [contenteditable="true"]'));
+  if (!inEditor && !lostFocus) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); gdUndoRedo(-1); }
+  else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); e.stopPropagation(); gdUndoRedo(1); }
+}, true);
 
 // ガイド内のリンクはページを読み直さずに切り替える。外部リンクは Ctrl/⌘ クリックで別タブ（普通のクリックは文字の編集）。
 // http(s)・mailto 以外のリンクは開かない。
@@ -537,7 +651,7 @@ async function gdSaveNow(force) {
     if (!force) item._baseUpdatedAt = gdBase;
   }
   try {
-    const saved = await api.save('guides', item);
+    const saved = await api.saveGuide(item);
     const at = gdPages.findIndex(p => p.ID === saved.ID);
     if (at >= 0) gdPages[at] = saved; else gdPages.push(saved);
     gdPages = sortGuides(gdPages);
@@ -553,7 +667,9 @@ async function gdSaveNow(force) {
   } catch (e) {
     gdDirty = true;
     if (e && e.message === 'conflict') { gdShowConflict(); }
-    else {
+    else if (e && e.message === 'ADMIN_REQUIRED') {
+      gdSetStatus('管理者の認証が切れています。右上の「管理者」から認証し直してください', true);
+    } else {
       gdSetStatus('保存できていません（通信を確認してください）', true);
       gdSaveTimer = setTimeout(gdSaveNow, 5000);   // 通信が戻れば自動で再試行
     }
@@ -595,15 +711,117 @@ function gdOpenMenu() {
     <label class="gd-menu-field">親ページ（移動）
       <select id="gd-m-parent">${'<option value="">（なし：いちばん上）</option>'}${options}</select>
     </label>
-    <label class="gd-menu-field">表示順（小さいほど上）
-      <input id="gd-m-order" type="number" step="1" value="${escapeAttr(page ? page.SortOrder : '')}" placeholder="未設定">
-    </label>
+    ${page ? (() => {
+      const sibs = gdSiblings(page);
+      const i = sibs.findIndex(x => x.ID === page.ID);
+      return `<div class="gd-menu-order"><span>順番（同じ階層の中で）</span>
+        <button type="button" class="gd-menu-item" data-action="gd-move" data-id="${escapeAttr(page.ID)}" data-dir="-1" ${i <= 0 ? 'disabled' : ''}>↑ 上へ</button>
+        <button type="button" class="gd-menu-item" data-action="gd-move" data-id="${escapeAttr(page.ID)}" data-dir="1" ${i < 0 || i >= sibs.length - 1 ? 'disabled' : ''}>↓ 下へ</button>
+      </div>`;
+    })() : ''}
     ${page && api.isAdmin() ? `<button type="button" class="gd-menu-item gd-menu-danger" data-action="gd-delete" data-id="${escapeAttr(page.ID)}">このページを削除</button>` : ''}
     ${updated ? `<div class="gd-menu-meta">最終更新: ${updated.getFullYear()}/${updated.getMonth() + 1}/${updated.getDate()}</div>` : ''}
   `;
   menu.hidden = false;
-  document.getElementById('gd-m-parent').addEventListener('change', e => gdSetPageMeta({ ParentID: e.target.value }));
-  document.getElementById('gd-m-order').addEventListener('change', e => gdSetPageMeta({ SortOrder: e.target.value.trim() }));
+  document.getElementById('gd-m-parent').addEventListener('change', e => {
+    // 別の親へ移したページは、移し先の末尾に並べる
+    const parentId = e.target.value;
+    const max = gdPages.filter(q => q.ID !== gdCurrentId && (gdById(q.ParentID) ? q.ParentID : '') === parentId)
+      .reduce((m, q) => Math.max(m, parseFloat(q.SortOrder) || 0), 0);
+    gdSetPageMeta({ ParentID: parentId, SortOrder: String(max + 10) });
+  });
+}
+
+// ---------- ページの並べ替え ----------
+// 同じ階層（同じ親の下）のページどうしで順番を入れ替える。Sort 値は 10, 20, 30… で振り直す。
+function gdSiblings(p) {
+  const key = gdById(p.ParentID) ? p.ParentID : '';
+  return gdPages.filter(q => (gdById(q.ParentID) ? q.ParentID : '') === key);
+}
+
+async function gdApplyOrder(ids) {
+  await gdLeaveSilently();                       // 開いているページの入力中の分を先に保存する
+  const changes = [];
+  ids.forEach((id, i) => {
+    const p = gdById(id), v = String((i + 1) * 10);
+    if (p && p.SortOrder !== v) changes.push([p, v]);
+  });
+  if (!changes.length) return;
+  const before = changes.map(([p]) => [p, p.SortOrder]);
+  changes.forEach(([p, v]) => { p.SortOrder = v; });      // 先に画面へ反映する
+  gdPages = sortGuides(gdPages);
+  gdRenderTree();
+  gdRenderHomeList();
+  try {
+    for (const [p, v] of changes) {
+      const saved = await api.saveGuide({ ID: p.ID, SortOrder: v, _baseUpdatedAt: p.UpdatedAt });
+      const at = gdPages.findIndex(x => x.ID === saved.ID);
+      if (at >= 0) gdPages[at] = saved;
+      if (saved.ID === gdCurrentId) gdBase = saved.UpdatedAt;
+    }
+    gdSetStatus('順番を保存しました');
+  } catch (e) {
+    before.forEach(([p, old]) => { p.SortOrder = old; });
+    toast(e && e.message === 'conflict' ? '他の人が先に更新したため、並べ替えできませんでした。最新を読み込みます' : '並べ替えを保存できませんでした: ' + (e && e.message ? e.message : e), 'error', 4500);
+    await refreshData(true);
+    gdRenderTree();
+    gdRenderHomeList();
+  }
+}
+
+function gdMoveSibling(id, dir) {
+  const p = gdById(id);
+  if (!p) return;
+  const ids = gdSiblings(p).map(x => x.ID);
+  const i = ids.indexOf(id), j = i + dir;
+  if (i < 0 || j < 0 || j >= ids.length) return;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  gdApplyOrder(ids);
+}
+
+// ツリー上のドラッグ＆ドロップ（同じ階層の中でだけ入れ替え）
+let gdDragId = '';
+function gdClearDropMarks() {
+  document.querySelectorAll('#gd-tree .gd-drop-before, #gd-tree .gd-drop-after, #gd-tree .gd-dragging').forEach(r => r.classList.remove('gd-drop-before', 'gd-drop-after', 'gd-dragging'));
+}
+function bindGuideTreeDnd() {
+  const tree = document.getElementById('gd-tree');
+  tree.addEventListener('dragstart', e => {
+    const row = e.target.closest && e.target.closest('.gd-row');
+    if (!row || !gdCanEdit()) return;
+    gdDragId = row.dataset.id;
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', gdDragId); } catch (_) {}
+    row.classList.add('gd-dragging');
+  });
+  tree.addEventListener('dragover', e => {
+    const row = e.target.closest && e.target.closest('.gd-row');
+    if (!row || !gdDragId || row.dataset.id === gdDragId) return;
+    const src = gdById(gdDragId), dst = gdById(row.dataset.id);
+    if (!src || !dst || !gdSiblings(src).some(x => x.ID === dst.ID)) return;       // 別の階層には置けない
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const r = row.getBoundingClientRect();
+    const before = e.clientY < r.top + r.height / 2;
+    tree.querySelectorAll('.gd-drop-before, .gd-drop-after').forEach(x => x.classList.remove('gd-drop-before', 'gd-drop-after'));
+    row.classList.add(before ? 'gd-drop-before' : 'gd-drop-after');
+  });
+  tree.addEventListener('drop', e => {
+    const row = e.target.closest && e.target.closest('.gd-row');
+    const src = gdById(gdDragId);
+    if (!row || !src || row.dataset.id === gdDragId) { gdClearDropMarks(); return; }
+    const dst = gdById(row.dataset.id);
+    if (!dst || !gdSiblings(src).some(x => x.ID === dst.ID)) { gdClearDropMarks(); return; }
+    e.preventDefault();
+    const r = row.getBoundingClientRect();
+    const before = e.clientY < r.top + r.height / 2;
+    const ids = gdSiblings(src).map(x => x.ID).filter(id => id !== src.ID);
+    ids.splice(ids.indexOf(dst.ID) + (before ? 0 : 1), 0, src.ID);
+    gdClearDropMarks();
+    gdDragId = '';
+    gdApplyOrder(ids);
+  });
+  tree.addEventListener('dragend', () => { gdDragId = ''; gdClearDropMarks(); });
 }
 
 // 親ページ・表示順の変更はすぐ保存する（本文は触らない）
@@ -616,7 +834,7 @@ async function gdSetPageMeta(patch) {
   if (!page) return;
   await gdLeaveSilently();
   try {
-    const saved = await api.save('guides', Object.assign({ ID: page.ID, _baseUpdatedAt: gdBase }, patch));
+    const saved = await api.saveGuide(Object.assign({ ID: page.ID, _baseUpdatedAt: gdBase }, patch));
     const at = gdPages.findIndex(p => p.ID === saved.ID);
     if (at >= 0) gdPages[at] = saved;
     gdPages = sortGuides(gdPages);
@@ -656,7 +874,9 @@ function gdDelete(id) {
 // ---------- イベント ----------
 
 function registerGuideActions() {
+  bindGuideTreeDnd();
   registerActions({
+    'gd-move': el => { document.getElementById('gd-menu').hidden = true; gdMoveSibling(el.dataset.id, parseInt(el.dataset.dir, 10)); },
     'gd-caret': el => {
       const open = gdOpenSet();
       const id = el.dataset.id;
