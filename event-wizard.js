@@ -741,7 +741,12 @@ function eventWizardStepsHtml(e, steps, catInfo) {
 function eventForWizard(editId, template) {
     if (editId) {
         const existing = _wzHost().getEvent(editId);
-        return existing ? { ...existing, Files: normalizeEventFiles(existing.Files) } : null;
+        if (!existing) return null;
+        // 配列列(資料・書類・実験など)を一覧のイベントと共有すると、キャンセルしても削除や追加が画面に残り、
+        // 次の保存で確定してしまう。ウィザード用に完全に複製する
+        const copy = JSON.parse(JSON.stringify(existing));
+        copy.Files = normalizeEventFiles(copy.Files);
+        return copy;
     }
     if (!template) return null;
     return {
