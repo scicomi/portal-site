@@ -767,12 +767,20 @@ function eventForWizard(editId, template) {
     };
 }
 
+// 保存に失敗した入力内容を、ウィザードの初期値にする（一覧のイベントと配列を共有しないよう深いコピー）
+function restoredEventForWizard(item) {
+    const e = JSON.parse(JSON.stringify(item));
+    delete e._baseUpdatedAt;   // 送信直前に付け直す
+    return e;
+}
+
 // editId のみ: 既存イベントの編集。template のみ（editId 無し）: 複製して新規作成
 // （この場合だけは、クイック作成の「枠だけ」ではなく実験・担当などの詳細もこの場で全て入力する）。
 // 真っさらな新規作成はクイック作成（openQuickCreate）に一本化した。
 // focusId: 開いた直後に、その入力欄があるステップへ移って入力欄にフォーカスする（詳細の「—」から直行する用）
-function openEventWizard(editId, template, focusId) {
-    const e = eventForWizard(editId, template);
+// restored: 保存に失敗したときの入力内容。これを初期値にして開き直す（persistEventFromWizard の「入力を開き直す」）
+function openEventWizard(editId, template, focusId, restored) {
+    const e = restored ? restoredEventForWizard(restored) : eventForWizard(editId, template);
     if (!e) return;
     const isEdit = !!editId;
     editingEventId = editId || null;
@@ -795,7 +803,7 @@ function openEventWizard(editId, template, focusId) {
         <div class="wizard-panel" role="dialog" aria-modal="true" style="max-width:560px;">
             <div class="wizard-header">
                 <h2 class="wizard-title">${isEdit ? 'イベントを編集' : '予定を複製して追加'}</h2>
-                <p class="wizard-subtitle">${isEdit ? escapeHtml(e.Title || '') : `「${escapeHtml(template.Title || '(無題)')}」の内容を引き継いで作成します`}</p>
+                <p class="wizard-subtitle">${isEdit ? escapeHtml(e.Title || '') : `「${escapeHtml((template || e).Title || '(無題)')}」の内容を引き継いで作成します`}</p>
             </div>
             <div class="wizard-progress">
                 ${steps.map((s, i) => `
@@ -1238,9 +1246,22 @@ function persistEventFromWizard(item) {
             toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', 5000);
             host.onConflict();
         } else {
-            toast('保存失敗: ' + err.message, 'error');
+            // ウィザードは閉じているので、入力した内容を開き直して編集を続けられるようにする。
+            // サーバーで保存済みの可能性があるので、アップロード済みのファイルは消さない
+            toastUndo('保存失敗: ' + err.message + '（入力した内容は開き直せます）',
+                () => reopenFailedEventWizard(item), () => {}, 20000, '入力を開き直す');
         }
     });
+}
+
+// 保存に失敗したウィザードの入力内容で、ウィザードを開き直す
+function reopenFailedEventWizard(item) {
+    if (tempNewEvent) {
+        toast('ほかの編集画面を閉じてから、もう一度押してください', 'error');
+        return;
+    }
+    const editId = _wzHost().getEvent(item.ID) ? item.ID : null;
+    openEventWizard(editId, null, null, item);
 }
 
 // 「許可願/報告書は不要」チェック時、担当者・期限入力を隠す（保存時は担当も期限も送らない）

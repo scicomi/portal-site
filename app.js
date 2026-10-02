@@ -1202,7 +1202,8 @@ function toast(message, type = 'info', duration = 3000) {
   }, duration);
 }
 
-function toastUndo(message, onUndo, onCommit, delay = 5000) {
+// buttonLabel: ボタンの文言（既定は「元に戻す」）
+function toastUndo(message, onUndo, onCommit, delay = 5000, buttonLabel = '元に戻す') {
   let container = document.getElementById('toast-container');
   if (!container) {
     container = document.createElement('div');
@@ -1215,7 +1216,7 @@ function toastUndo(message, onUndo, onCommit, delay = 5000) {
   t.className = 'toast toast-undo';
   t.innerHTML = `
     <span>${escapeHtml(message)}</span>
-    <button class="toast-undo-btn">元に戻す</button>
+    <button class="toast-undo-btn">${escapeHtml(buttonLabel)}</button>
     <div class="toast-progress"></div>
   `;
   container.appendChild(t);
