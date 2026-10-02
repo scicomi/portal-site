@@ -707,17 +707,19 @@ async function uploadDetailFiles(field, files, multiple) {
     }
     if (uploaded.length === 0) return;
     const live = allEventsData.find(e => e.ID === evId);
-    if (!live) { uploaded.forEach(f => discardUploadedFile(f.driveId)); return; }
+    if (!live) { deleteStoredFiles(uploaded.map(f => f.driveId)); return; }
     const current = Array.isArray(live[field]) ? live[field] : [];
     const next = multiple ? current.concat(uploaded) : uploaded.slice(0, 1);
-    const ok = await saveEventPatch(evId, { [field]: next }, seriesPatchOpts({
+    let conflicted = false;
+    await saveEventPatch(evId, { [field]: next }, seriesPatchOpts({
         successMessage: `${label}を保存しました`,
         onOptimistic: () => renderDetail(),
-        onRollback: () => renderDetail()
+        onRollback: (_ev, err) => { conflicted = isConflictError(err); renderDetail(); }
     }));
-    // 保存できなければ、今回アップロードしたファイル（どの記録にも載っていない）を消す。
+    // 競合で保存されなかったときだけ、今回アップロードしたファイル（どの記録にも載っていない）を消す。
+    // タイムアウトなどでは保存済みの可能性があり、消すと記録の参照先が無くなるので残す。
     // 差し替えで外れた古いファイルは、サーバーがゴミ箱へ移す（実体は期限まで残る）
-    if (!ok) uploaded.forEach(f => discardUploadedFile(f.driveId));
+    if (conflicted) deleteStoredFiles(uploaded.map(f => f.driveId));
 }
 
 function removeDetailFile(field, index) {
@@ -732,7 +734,7 @@ function removeDetailFile(field, index) {
         danger: true,
         onOk: async () => {
             const next = ev[field].filter((_, i) => i !== index);
-            const ok = await saveEventPatch(ev.ID, { [field]: next }, seriesPatchOpts({
+            await saveEventPatch(ev.ID, { [field]: next }, seriesPatchOpts({
                 successMessage: `${label}から削除しました`,
                 onOptimistic: () => renderDetail(),
                 onRollback: () => renderDetail()

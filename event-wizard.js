@@ -895,21 +895,12 @@ function closeEventWizard() {
     const overlay = document.getElementById('ev-wizard-overlay');
     if (overlay) overlay.remove();
     if (tempNewEvent && Array.isArray(tempNewEvent._sessionUploads)) {
-        tempNewEvent._sessionUploads.forEach(discardUploadedFile);
+        deleteStoredFiles(tempNewEvent._sessionUploads);
         tempNewEvent._sessionUploads = [];
     }
     editingEventId = null;
     evWizardStep = 0;
     tempNewEvent = null;
-}
-
-// アップロード済みで不要になったファイルを R2 から消す。deleteFile は管理者のみ可能なので、
-// 権限が無いなどで失敗しても握りつぶさずコンソールに残す。
-function discardUploadedFile(driveId) {
-    if (!driveId) return;
-    api.deleteFile(driveId).catch(err => {
-        console.warn('不要になったアップロード済みファイルを削除できませんでした（管理者権限が必要な場合があります）:', driveId, err && err.message);
-    });
 }
 
 function updateEvWizardUI() {
@@ -1025,7 +1016,7 @@ async function wzUploadFiles(fileList, field = 'Files', refresh = wzRefreshFileL
             const idx = target[field].indexOf(placeholder);
             if (tempNewEvent !== target || idx < 0) {
                 // ウィザードが閉じた／切り替わった、またはキャンセル済み → 一覧に戻さず、アップロード済みの実体を消す
-                discardUploadedFile(result && result.driveId);
+                deleteStoredFiles([result && result.driveId]);
                 continue;
             }
             target[field][idx] = result;
@@ -1062,7 +1053,7 @@ function removeEventFile(target, field, index, refresh) {
     const si = (file.driveId && Array.isArray(target._sessionUploads)) ? target._sessionUploads.indexOf(file.driveId) : -1;
     if (si >= 0) {
         target._sessionUploads.splice(si, 1);
-        discardUploadedFile(file.driveId);
+        deleteStoredFiles([file.driveId]);
     }
     target[field].splice(index, 1);
     refresh();
@@ -1243,9 +1234,10 @@ function persistEventFromWizard(item) {
         if (saved && saved.UpdatedAt) _ownSavedStamps.add(eventId + ':' + saved.UpdatedAt);
     }).catch(err => {
         host.rollback(snapshot);
-        if (String(err.message).includes('conflict')) {
+        if (isConflictError(err)) {
             // 競合ならサーバーは何も保存していない。今回アップロードしたファイルは参照されないので消す
-            uploadedNow.forEach(discardUploadedFile);
+            // （それ以外の失敗では保存済みの可能性があるので消さない）
+            deleteStoredFiles(uploadedNow);
             toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', 5000);
             host.onConflict();
         } else {

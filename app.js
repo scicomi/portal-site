@@ -164,18 +164,30 @@ function getPhotos(exp) {
 // 削除の確認画面に出す共通の説明（削除したものはゴミ箱に入り、期限までは誰でも戻せる）
 const TRASH_KEEP_NOTE = 'ゴミ箱に移動します。期限（初期設定は7日）までは、「ゴミ箱」から元に戻せます。';
 
-// 保存領域（R2）のファイル実体を消す。deleteFile は管理者専用。
-// 失敗（権限なし・通信断など）は握りつぶさず、トーストとコンソールに残す。全件成功なら true。
+// 保存がサーバーで競合（conflict）として拒否されたか。このときサーバーは何も保存していない。
+// タイムアウト・通信断などそれ以外の失敗では、サーバー側で保存済みの可能性が残る。
+function isConflictError(e) {
+  return String(e && e.message).includes('conflict');
+}
+
+// 保存しなかった（どの記録にも載っていない）アップロード済みファイルの実体を、保存領域（R2）から消す。
+// 記録から外したファイルには使わない（そちらはサーバーがゴミ箱へ移し、期限が来たら消す）。
+// deleteFile は管理者専用。メンバーのときはサーバーが必ず拒否するので呼ばない（実体は保存領域に残る）。
+// 管理者で失敗したときは、握りつぶさずトーストとコンソールに残す。全件削除できたら true。
 async function deleteStoredFiles(driveIds) {
   const ids = (driveIds || []).filter(Boolean);
   if (ids.length === 0) return true;
+  if (!api.isAdmin()) {
+    console.info('保存しなかったアップロード済みファイルは、管理者でないため保存領域に残ります:', ids);
+    return false;
+  }
   let failed = 0;
   await Promise.all(ids.map(id => api.deleteFile(id).catch(err => {
     failed++;
     console.warn('ファイル実体を削除できませんでした:', id, err && err.message);
   })));
   if (failed > 0) {
-    toast(`保存領域から ${failed} 件のファイルを削除できませんでした（画面上の記録からは外れています）`, 'error', 6000);
+    toast(`保存しなかったファイル ${failed} 件を保存領域から削除できませんでした`, 'error', 6000);
   }
   return failed === 0;
 }
@@ -211,7 +223,7 @@ function _cloneEventVal(v) {
 //   opts.getEvent(id)            … 画面が持つ「生の」イベントオブジェクトを返す（必須。以降は同じオブジェクトを更新する）
 //   opts.onOptimistic(ev)        … 楽観更新の直後に呼ぶ（再描画）
 //   opts.onSaved(ev, saved)      … 保存成功時
-//   opts.onRollback(ev)          … 失敗でロールバックした後（再描画）
+//   opts.onRollback(ev, err)     … 失敗でロールバックした後（再描画）。err は失敗の原因（isConflictError で判定できる）
 //   opts.onConflict()            … 競合時（再読み込み）
 //   opts.persist()               … ローカルキャッシュへの書き戻し（更新・ロールバックのたびに呼ぶ）
 //   opts.successMessage / successDuration / conflictDuration … トースト
@@ -268,8 +280,8 @@ async function _drainEventPatches(id) {
       Object.keys(all[i].prev).forEach(k => { ev[k] = all[i].prev[k]; });
     }
     if (opts.persist) opts.persist();
-    all.forEach(j => { if (j.opts.onRollback) j.opts.onRollback(ev); });
-    if (String(e && e.message).includes('conflict')) {
+    all.forEach(j => { if (j.opts.onRollback) j.opts.onRollback(ev, e); });
+    if (isConflictError(e)) {
       toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', opts.conflictDuration || 4000);
       if (opts.onConflict) opts.onConflict();
     } else {

@@ -855,7 +855,7 @@ function closeQuickCreate() {
     const overlay = document.getElementById('qc-overlay');
     if (overlay) overlay.remove();
     // 保存せずに閉じたときは、アップロード済みの関連資料を消す（保存成功時は _sessionUploads を空にしてから呼ぶ）
-    if (tempNewEvent && Array.isArray(tempNewEvent._sessionUploads)) tempNewEvent._sessionUploads.forEach(discardUploadedFile);
+    if (tempNewEvent && Array.isArray(tempNewEvent._sessionUploads)) deleteStoredFiles(tempNewEvent._sessionUploads);
     tempNewEvent = null;
 }
 

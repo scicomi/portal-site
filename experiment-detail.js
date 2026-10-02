@@ -498,8 +498,9 @@ async function handlePhotoSelect(input) {
         toast('写真を保存しました', 'success');
     } catch (e) {
         toast('保存失敗: ' + e.message, 'error');
-        // 記録に載らなかったアップロード済みファイルは孤児になるので消す
-        deleteStoredFiles(uploaded.map(p => p.driveId));
+        // 競合で保存されなかったときだけ、記録に載らなかったアップロード済みファイルを消す。
+        // タイムアウトなどでは保存済みの可能性があり、消すと記録の参照先が無くなるので残す。
+        if (isConflictError(e)) deleteStoredFiles(uploaded.map(p => p.driveId));
     }
 }
 
