@@ -623,3 +623,13 @@ test('ログイン試行制限: 一般パスワードでの成功を挟んでも
   assert.ok(limited >= 10, '成功を挟んだあとも上限(30 回)で止まること。rate_limited = ' + limited);
   assert.equal((await post({ action: 'login', password: ADMIN_PW }, asIp)).error, 'rate_limited');
 });
+
+test('設定: 日数・件数の設定は範囲外を拒否する(巨大な値で日付の計算が例外にならないように)', async () => {
+  const set = (key, value) => post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key, value });
+  for (const [key, value] of [['trash_keep_days', '366'], ['trash_keep_days', '999999999999'], ['trash_keep_days', '-1'], ['audit_keep_days', '0'], ['backup_keep_count', '0'], ['deadline_alert_danger', 'abc']]) {
+    const r = await set(key, value);
+    assert.equal(r.error, 'invalid_value', key + '=' + value);
+  }
+  assert.equal((await set('trash_keep_days', '365')).success, true);
+  assert.equal((await set('trash_keep_days', '7')).success, true);
+});

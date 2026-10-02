@@ -13,6 +13,15 @@ const PASSWORD_MIN_LENGTH = 10;
 // 書類期限の日数の範囲(settings.js の DEADLINE_DAYS_MIN/MAX と settings.html の min/max も同じ値にすること)
 const DEADLINE_DAYS_MIN = 1;
 const DEADLINE_DAYS_MAX = 90;
+// 整数の設定の範囲 [最小, 最大]。trash_keep_days の画面(settings.js)は 1〜365 だが、
+// 0(削除した瞬間に期限切れ)は結合テストが期限切れの処理を確かめるのに使うので API では受け付ける
+const INT_CONFIG_RANGES = {
+  deadline_alert_danger: [0, 365],
+  deadline_alert_warning: [0, 365],
+  backup_keep_count: [1, 365],
+  audit_keep_days: [1, 3650],
+  trash_keep_days: [0, 365]
+};
 
 export const DEFAULT_CONFIG = {
   password: '',            // 機密(ハッシュのみ保存)
@@ -149,8 +158,12 @@ export function validateConfigValue(key, value) {
     case 'deadline_alert_warning':
     case 'backup_keep_count':
     case 'audit_keep_days':
-    case 'trash_keep_days':
-      return /^\d+$/.test(v.trim()) ? '' : '0以上の整数を指定してください';
+    case 'trash_keep_days': {
+      // 上限が無いと、巨大な値で日付の計算(new Date(...).toISOString())が例外になり、削除や定期処理が全部失敗する
+      const [min, max] = INT_CONFIG_RANGES[key];
+      const n = /^\d+$/.test(v.trim()) ? parseInt(v.trim(), 10) : NaN;
+      return n >= min && n <= max ? '' : min + '〜' + max + 'の整数を指定してください';
+    }
     case 'event_notify_enabled':
       return ['true', 'false'].indexOf(v) >= 0 ? '' : 'true か false を指定してください';
     case 'password':

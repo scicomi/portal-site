@@ -7,7 +7,7 @@
 //
 // パスワードは画面に表示されず、チャットやログにも出ない(入力は伏せ字)。
 // 設定すると、そのロールの既存トークンはすべて失効する(全員が再ログインになる)。
-// 一般と幹部は必ず別の値にすること(同じだとログインした全員が管理者になる)。
+// 一般と幹部は別の値にすること(同じだとログインした全員が管理者になる。同じ値は拒否する)。
 //
 // ハッシュ形式: pbkdf2$反復回数$ソルト(hex)$ハッシュ(hex) — src/auth.js の verifyPassword と同一。
 
@@ -47,6 +47,35 @@ if (password === undefined) {
 password = password.trim();
 if (password.length < MIN_LENGTH) { console.error(`パスワードは${MIN_LENGTH}文字以上にしてください。`); process.exit(1); }
 
+function wranglerArgs(extra) {
+  const args = [join(ROOT, 'node_modules', 'wrangler', 'bin', 'wrangler.js'), 'd1', 'execute', 'scicomi-portal', target, ...extra];
+  if (target === '--local') args.push('--persist-to', '.wrangler/state');
+  return args;
+}
+
+// 一般と幹部が同じ値だと、login は幹部の判定を先に行うので、ログインした全員が管理者になる。
+// 設定画面(src/config.js の adminSetConfig)と同じく拒否する。反対側のハッシュは照合にだけ使い、表示しない
+function sameAsOtherRole(pw) {
+  const otherKey = role === 'member' ? 'admin_password' : 'password';
+  let out;
+  try {
+    out = execFileSync(process.execPath, wranglerArgs(['--json', '--command', `SELECT Value FROM secrets WHERE Key = 'pwhash_${otherKey}'`]),
+      { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch (_) {
+    return null;   // 確認できない
+  }
+  let rows;
+  try { rows = JSON.parse(out.slice(out.indexOf('['))); } catch (_) { return null; }
+  const value = rows && rows[0] && rows[0].results && rows[0].results[0] && rows[0].results[0].Value;
+  if (!value) return false;   // 反対側が未設定
+  const p = String(value).split('$');
+  if (p.length !== 4 || p[0] !== 'pbkdf2') return null;
+  return pbkdf2Sync(pw, Buffer.from(p[2], 'hex'), parseInt(p[1], 10), 32, 'sha256').toString('hex') === p[3];
+}
+const same = sameAsOtherRole(password);
+if (same === null) { console.error('もう一方のパスワードと同じでないかを確認できなかったため、中止しました(wrangler login の状態などを確認してください)。'); process.exit(1); }
+if (same) { console.error('一般パスワードと幹部パスワードは別の値にしてください。中止しました。'); process.exit(1); }
+
 const salt = randomBytes(16);
 const hash = pbkdf2Sync(password, salt, ITERATIONS, 32, 'sha256').toString('hex');
 const stored = `pbkdf2$${ITERATIONS}$${salt.toString('hex')}$${hash}`;
@@ -62,9 +91,7 @@ const dir = mkdtempSync(join(tmpdir(), 'setpw-'));
 const file = join(dir, 'set.sql');
 writeFileSync(file, sql);
 try {
-  const args = [join(ROOT, 'node_modules', 'wrangler', 'bin', 'wrangler.js'), 'd1', 'execute', 'scicomi-portal', target, '--file', file];
-  if (target === '--local') args.push('--persist-to', '.wrangler/state');
-  execFileSync(process.execPath, args, { cwd: ROOT, stdio: ['ignore', 'ignore', 'inherit'] });
+  execFileSync(process.execPath, wranglerArgs(['--file', file]), { cwd: ROOT, stdio: ['ignore', 'ignore', 'inherit'] });
   console.log(`${role === 'member' ? '一般' : '幹部'}パスワードを設定しました(${target === '--local' ? 'ローカル' : '本番'})。既存のログインは失効しました。`);
 } finally {
   rmSync(dir, { recursive: true, force: true });
