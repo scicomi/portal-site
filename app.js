@@ -579,12 +579,15 @@ function bindAccountMenu(header) {
     if (act === 'admin-off') handleAdminRelease();
     if (act === 'name') showNameChangeModal();
   });
+  // ヘッダーは再描画されることがある(ログイン直後など)ので、閉じる関数は最新のメニューのものに差し替える
+  header._accountClose = close;
   if (!header._accountCloseBound) {
     header._accountCloseBound = true;
-    document.addEventListener('click', close);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
-    window.addEventListener('resize', close);
-    window.addEventListener('scroll', close, true);
+    const closeCurrent = () => { if (header._accountClose) header._accountClose(); };
+    document.addEventListener('click', closeCurrent);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCurrent(); });
+    window.addEventListener('resize', closeCurrent);
+    window.addEventListener('scroll', closeCurrent, true);
   }
 }
 
@@ -1373,7 +1376,10 @@ function sanitizeRichHtml(html) {
 
 async function bootPage(activePage, onAuthReady) {
   renderHeader(activePage);
+  const wasLoggedIn = !!api.getToken();
   await requireAuth(async () => {
+    // 起動時にログインした場合、幹部で入るとナビや人型メニューが変わるので描き直す
+    if (!wasLoggedIn) renderHeader(activePage);
     await applySiteSettings();
     await onAuthReady();
   });
