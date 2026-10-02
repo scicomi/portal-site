@@ -454,6 +454,8 @@ function renderEvents() {
             const d = (searchMeta[b.ID] ? searchMeta[b.ID].score : 0) - (searchMeta[a.ID] ? searchMeta[a.ID].score : 0);
             if (d !== 0) return d;
         }
+        // 年度を選んだときは年度の始まり（4月1日）が上、3月が一番下になる昇順
+        if (filterState.period.startsWith('fy_')) return (a.Date || '').localeCompare(b.Date || '');
         if (filterState.period !== 'upcoming') return (b.Date || '').localeCompare(a.Date || '');
         return (a.Date || '').localeCompare(b.Date || '');
     });

@@ -74,7 +74,7 @@ const EV_STEPS_EVENT = [
     { label: 'イベント' },
     { label: '日程' },
     { label: '荷物運搬' },
-    { label: '内容・メンバー' },
+    { label: '実験内容・発表者' },
     { label: '備考・書類' }
 ];
 const EV_STEPS_MEETING = [

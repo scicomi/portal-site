@@ -766,11 +766,11 @@ function renderDetail() {
     // 実験・発表者
     const parts = normalizeParts(ev.PartsList).filter(p => p.name || (p.presenters && p.presenters.length));
     const expHtml = parts.length > 0
-        ? parts.map(p => {
+        ? `<ul class="detail-exp-list">${parts.map(p => {
             const nameHtml = p.name ? expLinkHtml(p.name) : '(未定)';
             const presenters = (p.presenters && p.presenters.length) ? p.presenters.map(escapeHtml).join(', ') : '未定';
-            return `<span class="tag tag-exp">${nameHtml} <span class="tag-presenter">(${presenters})</span></span>`;
-        }).join('')
+            return `<li><span class="tag tag-exp">${nameHtml} <span class="tag-presenter">(${presenters})</span></span></li>`;
+        }).join('')}</ul>`
         : emptyCell('wz-ev-exp-container');
 
     // 関連ファイル（備考の一番下に添付する）
@@ -849,18 +849,18 @@ function renderDetail() {
             <tr><th>運転者</th><td>${personChipsHtml(ev.TransportDriver) || emptyCell('wz-ev-driver')}</td></tr>
             <tr><th>同乗者</th><td>${personChipsHtml(ev.TransportPassengers) || emptyCell('wz-ev-passenger')}</td></tr>` : ''}
             ${!isMeeting ? `
-            <tr class="series-detail-group" data-g="content"><th colspan="2">内容・メンバー</th></tr>
-            <tr><th>実験・発表者</th><td>${expHtml}</td></tr>` : ''}
+            <tr class="series-detail-group" data-g="content"><th colspan="2">実験内容・発表者</th></tr>
+            <tr><td colspan="2">${expHtml}</td></tr>` : ''}
             <tr class="series-detail-group" data-g="notes"><th colspan="2">${isMeeting ? '議題・資料' : '備考'}</th></tr>
             <tr><td colspan="2">${notesHtml || emptyCell('wz-ev-remarks')}</td></tr>
             ${isMeeting ? `<tr><th>関連資料</th><td>${detailFilesHtml(ev, 'MeetingDocs', true)}</td></tr>
             <tr><th>議事録</th><td>${detailFilesHtml(ev, 'Minutes', false)}</td></tr>` : ''}
             ${!isMeeting ? `<tr class="series-detail-group" data-g="docs"><th colspan="2">書類</th></tr>
             <tr><td colspan="2">${docsHtml}${docFilesHtml}</td></tr>
-            <tr class="series-detail-group" data-g="after"><th colspan="2">イベント後に記入</th></tr>
-            <tr><th>来場者数</th><td><input type="number" min="0" class="e1-input post-event-input" data-pe-field="VisitorCount"
+            <tr class="series-detail-group" data-g="after"><th colspan="2">イベント後に対応</th></tr>
+            <tr class="detail-lv1"><th>来場者</th><td><input type="number" min="0" class="e1-input post-event-input" data-pe-field="VisitorCount"
                 value="${escapeAttr(ev.VisitorCount || '')}" placeholder="未記入" title="この回の来場者数"></td></tr>
-            <tr><th>参加メンバー数</th><td><input type="number" min="0" class="e1-input post-event-input" data-pe-field="ParticipantCount"
+            <tr class="detail-lv1"><th>参加メンバー</th><td><input type="number" min="0" class="e1-input post-event-input" data-pe-field="ParticipantCount"
                 value="${escapeAttr(ev.ParticipantCount || '')}" placeholder="未記入" title="この回に参加したメンバーの人数"></td></tr>
             ${prRowsHtml(ev)}` : ''}
         </table>
@@ -922,8 +922,9 @@ function prRowsHtml(ev) {
         `;
     };
 
-    return channels.map(ch => `<tr>
-            <th>広報担当（${escapeHtml(ch)}）</th>
+    const head = '<tr class="detail-lv1"><th colspan="2">広報担当</th></tr>';
+    return head + channels.map(ch => `<tr class="detail-lv2">
+            <th>${escapeHtml(ch)}</th>
             <td><select class="e1-input pr-input" data-pr-channel="${escapeAttr(ch)}">${optionsHtml(assignments[ch] || '')}</select></td>
         </tr>`).join('');
 }

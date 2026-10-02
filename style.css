@@ -3993,6 +3993,16 @@ button.person-chip.is-link:focus-visible { outline: 2px solid var(--primary-colo
 .attendance-table th:nth-child(3) { width: 22%; }
 .attendance-table th:nth-child(4) { width: 30%; }
 .attendance-table td { overflow-wrap: anywhere; }
+/* スマホでは窮屈になるので、表の最小幅を確保して横スクロールさせる */
+@media (max-width: 600px) {
+    .attendance-table { table-layout: auto; min-width: 560px; }
+    .attendance-table th, .attendance-table td { white-space: nowrap; overflow-wrap: normal; }
+}
+/* 詳細タブ: 実験の縦並びリストと、イベント後に対応の入れ子（親＞子＞孫） */
+.detail-exp-list { list-style: disc; margin: 0; padding-left: 1.3em; }
+.detail-exp-list li { margin: 4px 0; }
+.series-detail-table tr.detail-lv1 > th:first-child { padding-left: 28px; }
+.series-detail-table tr.detail-lv2 > th:first-child { padding-left: 52px; font-weight: 500; }
 @media (max-width: 600px) {
     .series-detail-table tr.series-detail-group th { padding: 6px 10px; border-bottom: 1px solid var(--border-color); background: var(--primary-subtle); }
     .series-detail-table tr.series-detail-group + tr th { padding-top: 10px; }
