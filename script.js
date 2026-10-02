@@ -25,7 +25,7 @@ document.addEventListener('keydown', (e) => {
     // ウィザード・確認ダイアログ・認証モーダル表示中や修飾キー付きでは
     // ページ用ショートカット（n）を発動しない。/ と ? は search.js が全ページ共通で扱う。
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (document.querySelector('.wizard-overlay, .confirm-dialog-overlay, #admin-auth-modal, #pw-modal')) return;
+    if (document.querySelector('.wizard-overlay, .modal-overlay, .confirm-dialog-overlay, #admin-auth-modal, #pw-modal')) return;
     if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openNewEventModal(); }
 });
 
@@ -69,7 +69,8 @@ function restoreFilterFromUrl() {
         const input = document.getElementById('event-search');
         if (input) input.value = q;
     }
-    if (cat) {
+    // 共有リンクの値は、既知のものだけを受け付ける(セレクタや見出しに入るため)
+    if (cat && (cat === 'all' || Object.prototype.hasOwnProperty.call(CONFIG.EVENT_CATEGORIES, cat))) {
         filterState.category = cat;
         document.querySelectorAll('.filter-chip[data-cat]').forEach(c => {
             const isActive = c.dataset.cat === cat;
@@ -77,7 +78,7 @@ function restoreFilterFromUrl() {
             c.setAttribute('aria-pressed', String(isActive));
         });
     }
-    if (period) filterState.period = period;
+    if (period && /^(upcoming|fy_\d{4})$/.test(period)) filterState.period = period;
 }
 
 // 「絞り込み」ボタンのバッジ（期間・カテゴリが初期値以外の数）と、パネル内「条件をクリア」の表示更新

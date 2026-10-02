@@ -395,7 +395,8 @@ function initTagInput(container, selectedValues, placeholder, filterFn, opts) {
     input.addEventListener('input', showDropdown);
     input.addEventListener('blur', () => setTimeout(hideDropdown, 200));
     input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); if (input.value.trim()) addValue(input.value); }
+        // IME の変換を確定する Enter は、タグの追加として扱わない
+        if (e.key === 'Enter') { e.preventDefault(); if (!e.isComposing && e.keyCode !== 229 && input.value.trim()) addValue(input.value); }
         if (e.key === 'Backspace' && !input.value && values.length > 0) { values.pop(); renderTags(); notifyChange(); showDropdown(); }
     });
     dropdown.addEventListener('mousedown', (e) => {
@@ -1366,7 +1367,7 @@ function updateDeadlines(dateInput) {
             qcNote.innerHTML = '';
         } else {
             qcNote.innerHTML = `書類期限（自動計算）: 許可願 <strong class="${kyokaPast ? 'deadline-past' : ''}">${escapeHtml(calc.kyoka)}</strong> ／ 報告書 ${escapeHtml(calc.houkoku)}`
-                + (kyokaPast ? '<br><span class="deadline-past">開催日まで10日を切っています。許可願を至急提出してください。</span>' : '');
+                + (kyokaPast ? `<br><span class="deadline-past">開催日まで${Math.abs(CONFIG.DEADLINE_RULES.kyoka)}日を切っています。許可願を至急提出してください。</span>` : '');
         }
     }
 }
