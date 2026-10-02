@@ -183,21 +183,19 @@ body {
 }
 .account-menu-item:hover { background: #f0f2f5; }
 .account-menu-danger { color: #c0392b; }
-.account-menu-who {
+/* 先頭の名前行。名前 + 鉛筆アイコンで「タップすると変更できる」ことを示す */
+.account-menu-name {
     display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 8px 14px 6px;
-    max-width: 260px;
-}
-.account-menu-who-label { font-size: 0.72rem; color: #888; }
-.account-menu-who-name {
-    font-size: 0.95rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
     font-weight: 700;
     color: #222;
-    overflow-wrap: anywhere;
+    max-width: 260px;
 }
-.account-menu-who-name.is-unset { font-weight: 500; color: #888; }
+.account-menu-name.is-unset { font-weight: 500; color: #4a4b78; }
+.account-menu-edit { width: 14px; height: 14px; flex: none; color: #888; }
+.account-menu-name.is-unset .account-menu-edit { display: none; }
 .account-menu-sep { height: 1px; background: #e5e7eb; margin: 4px 6px; }
 
 .app-nav {

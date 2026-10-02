@@ -515,11 +515,12 @@ function renderHeader(activePage) {
             </svg>
             <span class="nav-caret" aria-hidden="true">&#9662;</span>          </button>
           <div class="account-menu hidden" role="menu">
-            <div class="account-menu-who">
-              <span class="account-menu-who-label">あなたの名前</span>
-              <span class="account-menu-who-name" id="account-who-name">…</span>
-            </div>
-            <button type="button" class="account-menu-item" role="menuitem" data-account="name" id="account-name-btn">名前を変更</button>
+            <button type="button" class="account-menu-item account-menu-name" role="menuitem" data-account="name" id="account-name-btn" aria-label="名前を変更">
+              <span id="account-who-name">…</span>
+              <svg class="account-menu-edit" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 20l1-4L16.5 4.5l3 3L8 19z M14.5 6.5l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+              </svg>
+            </button>
             <div class="account-menu-sep" role="separator"></div>
             ${isAdmin
               ? `<button type="button" class="account-menu-item" role="menuitem" data-account="admin-off">管理者モードを解除</button>`
@@ -632,20 +633,23 @@ async function refreshAccountName() {
   const nameEl = document.getElementById('account-who-name');
   const btnEl = document.getElementById('account-name-btn');
   if (!nameEl) return;
+  // 名前があるときは「名前 ✎」（タップで変更）、未設定のときは「名前を設定」だけを出す
   const set = (text, hasName) => {
     nameEl.textContent = text;
-    nameEl.classList.toggle('is-unset', !hasName);
-    if (btnEl) btnEl.textContent = hasName ? '名前を変更' : '名前を設定';
+    if (btnEl) {
+      btnEl.classList.toggle('is-unset', !hasName);
+      btnEl.setAttribute('aria-label', hasName ? `名前を変更（現在: ${text}）` : '名前を設定');
+    }
   };
   const id = getSavedVoteMemberId();
-  if (!id) { set('未設定', false); return; }
+  if (!id) { set('名前を設定', false); return; }
   try {
     const members = await loadMembersForName();
     const me = members.find(m => m.ID === id);
     // 一覧に居ない（年度コピーで ID が変わった等）なら、未設定として選び直してもらう
-    set(me ? me.Name : '未設定', !!me);
+    set(me ? me.Name : '名前を設定', !!me);
   } catch (_) {
-    set('（読み込めません）', true);
+    set('名前を設定', false);
   }
 }
 
