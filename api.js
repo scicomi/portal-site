@@ -13,18 +13,23 @@
  */
 
 // 接続先 API。通常は config.js の API_URL。
-// 切り替え前の試験運用用に、URL に ?api=https://xxx.workers.dev を付けて開くと、そのブラウザだけ接続先を切り替えられる
-// (localStorage に保存。?api=reset で解除)。フィッシング対策として、workers.dev と localhost 以外は受け付けない。
+// ローカル開発用に、localhost で開いたページに限り、URL に ?api=http://127.0.0.1:8787 を付けて接続先を切り替えられる
+// (localStorage に保存。?api=reset で解除)。公開サイト(GitHub Pages)では、第三者のリンクで接続先を
+// 差し替えられてパスワードを奪われないよう、この切り替えは一切受け付けず、保存済みの値も消す。
 const API_URL_OVERRIDE_KEY = 'scicomi_api_url_override';
 function resolveApiUrl() {
   const base = (typeof CONFIG !== 'undefined' && CONFIG.API_URL) || '';
-  const OK = /^(https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.workers\.dev|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/;
+  const LOCAL_API = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
   try {
+    if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+      localStorage.removeItem(API_URL_OVERRIDE_KEY);
+      return base;
+    }
     const q = new URLSearchParams(location.search).get('api');
     if (q === 'reset') localStorage.removeItem(API_URL_OVERRIDE_KEY);
-    else if (q && OK.test(q.replace(/\/$/, ''))) localStorage.setItem(API_URL_OVERRIDE_KEY, q.replace(/\/$/, ''));
+    else if (q && LOCAL_API.test(q.replace(/\/$/, ''))) localStorage.setItem(API_URL_OVERRIDE_KEY, q.replace(/\/$/, ''));
     const saved = localStorage.getItem(API_URL_OVERRIDE_KEY);
-    if (saved && OK.test(saved)) { console.info('[api] 接続先を切り替えています: ' + saved); return saved; }
+    if (saved && LOCAL_API.test(saved)) { console.info('[api] 接続先を切り替えています: ' + saved); return saved; }
   } catch (_) {}
   return base;
 }

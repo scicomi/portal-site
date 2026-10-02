@@ -109,7 +109,7 @@ npx wrangler whoami     # ログインできているか確認（AI が実行し
 2. ローカルで確認する
    - フロント: `npx http-server . -p 8080 -c-1` → `http://localhost:8080`
    - API: `cd worker && npm run dev` と `npm test`（別ターミナル）
-   - ローカルの API に画面をつなぐ: `index.html?api=http://127.0.0.1:8787`（解除は `?api=reset`）
+   - ローカルの API に画面をつなぐ: `index.html?api=http://127.0.0.1:8787`（解除は `?api=reset`。ページ自体を localhost で開いたときだけ有効）
 3. 変更内容を人に説明し、了承を得る
 4. 本番反映（§3 の表）
 5. 反映後の確認: API が応答するか。画面でログイン・保存ができるか
