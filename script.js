@@ -666,11 +666,6 @@ function startNewEventBlank() {
     trapFocus(overlay.querySelector('.modal-content'));
 }
 
-// 同じイベントの各回をまとめるキー（event-series.js の seriesKeyNormalize と同じ規則）
-function seriesKeyOf(ev) {
-    return ((ev.SeriesKey && String(ev.SeriesKey).trim()) || ev.Title || '').replace(/\s+/g, '').replace(/^第\d+回/, '');
-}
-
 // 「既存イベント」: 複製元のイベントを選ぶ（同じイベントの各回は最新の1件にまとめる）。選んだら複製ウィザードへ。
 function openExistingEventPicker() {
     const latest = new Map();

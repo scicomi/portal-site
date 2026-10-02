@@ -399,6 +399,13 @@ function siteLinkHost(url) {
   try { return new URL(url).hostname.replace(/^www\./i, ''); } catch (_) { return ''; }
 }
 
+// 同じイベントの各回をまとめるキー（イベント別ページのシリーズ、「既存イベントから複製」の選択肢）。
+// SeriesKey があればそれを、無ければタイトルを使い、空白と先頭の「第N回」を除く。
+function seriesKeyOf(ev) {
+  const k = (ev && ev.SeriesKey && String(ev.SeriesKey).trim()) || (ev && ev.Title) || '';
+  return k.replace(/\s+/g, '').replace(/^第\d+回/, '');
+}
+
 // PartsList を新旧どちらの形式でも {name, presenters:[]} の配列に正規化する（読み取り専用用途）。
 //   旧形式: [{partName:"一部", items:[{name, presenter}]}]
 //   新形式: [{name, presenters:[]}]

@@ -38,9 +38,13 @@ configureEventWizard({
     rerender() {
         // 削除などで選択中のイベントが無くなったら選択を外す（renderAll が先頭の回を選ぶ）
         if (currentEventId && !allEventsData.some(e => e.ID === currentEventId)) currentEventId = '';
-        // タイトル変更でシリーズキーが変わることがあるため、選択中イベントから再導出する
+        // タイトル変更でシリーズキーが変わることがあるため、選択中イベントから再導出する。
+        // URL の key も合わせる（古い key のままだと、再読み込みや競合後の init() で別のシリーズを開いてしまう）
         const ev = allEventsData.find(e => e.ID === currentEventId);
-        if (ev) seriesKey = seriesKeyNormalize(ev);
+        if (ev && seriesKeyOf(ev) !== seriesKey) {
+            seriesKey = seriesKeyOf(ev);
+            syncSeriesUrl();
+        }
         filterSeries();
         if (seriesEvents.length > 0) renderAll();
     },
@@ -60,11 +64,6 @@ function seriesPatchOpts(extra) {
         persist: () => api.saveCache('events', allEventsData),
         onConflict: () => init()
     }, extra);
-}
-
-function seriesKeyNormalize(e) {
-    const k = (e.SeriesKey && String(e.SeriesKey).trim()) || (e.Title || '');
-    return k.replace(/\s+/g, '').replace(/^第\d+回/, '');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -184,7 +183,7 @@ function onDataReady(isFresh) {
             if (isFresh) document.getElementById('series-loading').textContent = 'イベントが見つかりません';
             return;
         }
-        seriesKey = seriesKeyNormalize(ev);
+        seriesKey = seriesKeyOf(ev);
     }
 
     filterSeries();
@@ -197,7 +196,7 @@ function onDataReady(isFresh) {
 
 function filterSeries() {
     seriesEvents = allEventsData
-        .filter(ev => seriesKeyNormalize(ev) === seriesKey && ev.Date)
+        .filter(ev => seriesKeyOf(ev) === seriesKey && ev.Date)
         .sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
 }
 
@@ -222,7 +221,7 @@ function buildSeriesIndex() {
     const map = {};
     allEventsData.forEach(ev => {
         if (!ev.Date) return;
-        const key = seriesKeyNormalize(ev);
+        const key = seriesKeyOf(ev);
         if (!key) return;
         (map[key] || (map[key] = [])).push(ev);
     });
@@ -444,10 +443,15 @@ function renderScopeContext() {
         ${span ? `<span class="scope-ctx-sub">${escapeHtml(span)}</span>` : ''}`;
 }
 
+// 表示中のシリーズと開催回を URL に書く（履歴は増やさない）
+function syncSeriesUrl() {
+    history.replaceState(null, '', `event-series.html?key=${encodeURIComponent(seriesKey)}&event=${encodeURIComponent(currentEventId)}`);
+}
+
 function selectOccurrence(id) {
     if (!seriesEvents.some(e => e.ID === id)) return;
     currentEventId = id;
-    history.replaceState(null, '', `event-series.html?key=${encodeURIComponent(seriesKey)}&event=${encodeURIComponent(id)}`);
+    syncSeriesUrl();
     renderHeaderActions();
     renderSafetyInfo();
     renderScopeContext();

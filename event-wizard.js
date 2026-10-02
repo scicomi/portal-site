@@ -37,6 +37,7 @@ function _wzHost() {
     const list = () => c.list();
     const persist = () => api.saveCache('events', list());
     return {
+        list,
         getEvent(id) { return list().find(x => x.ID === id) || null; },
         // 1 件を画面へ先に反映し、その 1 件だけを戻す rollback() を返す（app.js の applyOptimisticItem）
         applyOptimistic(item) {
@@ -1097,7 +1098,25 @@ function saveEventFromWizard() {
     if (!tempNewEvent) return;
     const checked = validateEventWizard();
     if (!checked) return;
-    persistEventFromWizard(buildEventFromWizard(checked.time));
+    const item = buildEventFromWizard(checked.time);
+    keepSeriesOnRename(item);
+    persistEventFromWizard(item);
+}
+
+// 編集でタイトルを変えると、シリーズ（同じイベントの各回のまとまり）のキーが変わり、その回だけ別のイベントになる。
+// ほかの回が残るシリーズからは外さないよう、変更前のキーを SeriesKey に残す（誤字の修正などで外れないように）。
+// SeriesKey が既に入っている回は、タイトルを変えてもまとまりが変わらないので何もしない。
+function keepSeriesOnRename(item) {
+    if (!editingEventId || String(item.SeriesKey || '').trim()) return;
+    const host = _wzHost();
+    const before = host.getEvent(item.ID);
+    if (!before) return;
+    const oldKey = seriesKeyOf(before);
+    if (!oldKey || oldKey === seriesKeyOf(item)) return;
+    const hasSiblings = host.list().some(e => e.ID !== item.ID && seriesKeyOf(e) === oldKey);
+    if (!hasSiblings) return;
+    item.SeriesKey = oldKey;
+    toast('タイトルを変えましたが、これまでと同じイベントの回としてまとめたままにします', 'info', 5000);
 }
 
 // 入力を検証する。問題があれば該当ステップへ移ってエラーを表示し、null を返す。
