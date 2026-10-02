@@ -342,11 +342,3 @@ async function saveSiteLinks(btn) {
         }
     });
 }
-
-// --- 管理者解除 ---
-
-function doAdminLogoutFromSettings() {
-    api.adminLogout();
-    toast('管理者モードを解除しました', 'info');
-    setTimeout(() => { location.href = 'index.html'; }, 1000);
-}

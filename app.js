@@ -506,11 +506,22 @@ function renderHeader(activePage) {
       </div>
       <div class="header-actions">
         <div id="sync-status" class="sync-status" title="クリックで再読込" onclick="if(window.refreshData)refreshData(true)"></div>
-        ${isAdmin
-          ? `<span class="admin-badge">管理者</span>`
-          : `<button class="btn btn-text-light" onclick="showAdminAuthModal()">管理者</button>`
-        }
-        <button class="btn btn-text-light" id="logout-btn" onclick="handleLogout(this)">ログアウト</button>
+        <div class="account-group">
+          <button type="button" class="account-btn ${isAdmin ? 'is-admin' : ''}" aria-haspopup="true" aria-expanded="false"
+                  aria-label="アカウントメニュー${isAdmin ? '（管理者モード中）' : ''}" title="${isAdmin ? '管理者モード中' : 'アカウントメニュー'}">
+            <svg class="account-icon" viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+              <path fill="currentColor" d="M305.895,307.693c-15.71,5.222-32.45,8.157-49.895,8.157s-34.186-2.935-49.894-8.157C92.029,326.416,32.331,410.25,32.331,512h223.668h223.67C479.669,410.25,419.981,326.416,305.895,307.693z"/>
+              <path fill="currentColor" d="M255.999,279.581c67.621,0,122.424-54.813,122.424-122.423v-34.735C378.423,54.814,323.621,0,255.999,0c-67.62,0-122.423,54.814-122.423,122.423v34.735C133.577,224.768,188.379,279.581,255.999,279.581z"/>
+            </svg>
+            <span class="nav-caret" aria-hidden="true">&#9662;</span>          </button>
+          <div class="account-menu hidden" role="menu">
+            ${isAdmin
+              ? `<button type="button" class="account-menu-item" role="menuitem" data-account="admin-off">管理者モードを解除</button>`
+              : `<button type="button" class="account-menu-item" role="menuitem" data-account="admin-on">管理者モードにする</button>`
+            }
+            <button type="button" class="account-menu-item account-menu-danger" role="menuitem" data-account="logout">ログアウト</button>
+          </div>
+        </div>
       </div>
     </div>
     <nav class="app-nav">
@@ -519,6 +530,59 @@ function renderHeader(activePage) {
   `;
   syncHeaderHeightVar();
   bindNavGroups(header);
+  bindAccountMenu(header);
+}
+
+// 右上のアカウントメニュー（管理者モードの切替 / ログアウト）。
+// メニューは .app-header の stacking に埋もれないよう fixed で出し、外側クリック・Esc・スクロール・リサイズで閉じる。
+function bindAccountMenu(header) {
+  const group = header.querySelector('.account-group');
+  if (!group) return;
+  const btn = group.querySelector('.account-btn');
+  const menu = group.querySelector('.account-menu');
+  const close = () => {
+    menu.classList.add('hidden');
+    btn.setAttribute('aria-expanded', 'false');
+    // 開き直したときにログアウトの確認状態が残らないよう戻す
+    const lo = menu.querySelector('[data-account="logout"]');
+    if (lo && lo.dataset.confirming) {
+      delete lo.dataset.confirming;
+      lo.textContent = 'ログアウト';
+      lo.style.color = '';
+    }
+  };
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!menu.classList.contains('hidden')) { close(); return; }
+    const r = btn.getBoundingClientRect();
+    menu.classList.remove('hidden');
+    menu.style.top = r.bottom + 4 + 'px';
+    menu.style.left = Math.max(8, Math.min(r.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8)) + 'px';
+    btn.setAttribute('aria-expanded', 'true');
+  });
+  menu.addEventListener('click', e => {
+    e.stopPropagation();
+    const item = e.target.closest('[data-account]');
+    if (!item) return;
+    const act = item.dataset.account;
+    if (act === 'logout') { handleLogout(item); return; }   // 2回押しで実行。確認中はメニューを開いたままにする
+    close();
+    if (act === 'admin-on') showAdminAuthModal();
+    if (act === 'admin-off') handleAdminRelease();
+  });
+  if (!header._accountCloseBound) {
+    header._accountCloseBound = true;
+    document.addEventListener('click', close);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+  }
+}
+
+// 管理者モードだけを解除する（一般のログインは維持）。管理者向けの表示が残らないよう再読込する。
+function handleAdminRelease() {
+  api.adminLogout();
+  location.reload();
 }
 
 // ナビのドロップダウン。.app-nav は横スクロール(overflow)のため、メニューは fixed で
