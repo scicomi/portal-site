@@ -27,11 +27,14 @@ const RATE_LIMIT_TEST_IP = '198.51.100.' + (1 + Math.floor(Math.random() * 254))
 // ローカル DB に前回の作業の設定値が残っていても結果が変わらないよう、テストが前提にするキーの既定値
 const CONFIG_DEFAULTS_FOR_TEST = {
   welcome_message: '',
-  file_max_mb: '10', deadline_kyoka: '-10', deadline_houkoku: '7'
+  file_max_mb: '10', deadline_kyoka: '-10', deadline_houkoku: '7',
+  trash_keep_days: '7'
 };
 
 let member = '', admin = '', adminMember = '';
 const evId = 'ev_test_' + Date.now();
+// 投票テストは evId を「締切前(未来)」のイベントとして使う。実行日に追い越されないよう遠い未来に固定する
+const FUTURE_DATE = '2099-01-01';
 
 test('version は認証なしで取得できる', async () => {
   const r = await post({ action: 'version' });
@@ -97,7 +100,7 @@ test('メンバートークンでは管理者操作(削除・管理者設定・�
 });
 
 test('save(新規): イベントを保存し、一覧・listAll に反映される', async () => {
-  const item = { ID: evId, Title: 'テストイベント', Date: '2026-10-01', Category: 'normal', PartsList: [{ name: '実験', presenters: ['A'] }], Files: [] };
+  const item = { ID: evId, Title: 'テストイベント', Date: FUTURE_DATE, Category: 'normal', PartsList: [{ name: '実験', presenters: ['A'] }], Files: [] };
   const r = await post({ action: 'save', resource: 'events', token: member, item });
   assert.equal(r.success, true);
   assert.equal(r.item.ID, evId);
@@ -146,13 +149,13 @@ test('save(更新): CreatedAt を保持し、_baseUpdatedAt が古ければ conf
   const before = (await post({ action: 'list', resource: 'events', token: member })).items.find(e => e.ID === evId);
   await new Promise(r => setTimeout(r, 5));
   const upd = await post({ action: 'save', resource: 'events', token: member,
-    item: { ID: evId, Title: '更新後', Date: '2026-10-01', _baseUpdatedAt: before.UpdatedAt } });
+    item: { ID: evId, Title: '更新後', Date: FUTURE_DATE, _baseUpdatedAt: before.UpdatedAt } });
   assert.equal(upd.success, true);
   assert.equal(upd.item.CreatedAt, before.CreatedAt);
   assert.notEqual(upd.item.UpdatedAt, before.UpdatedAt);
 
   const stale = await post({ action: 'save', resource: 'events', token: member,
-    item: { ID: evId, Title: '古い版から', Date: '2026-10-01', _baseUpdatedAt: before.UpdatedAt } });
+    item: { ID: evId, Title: '古い版から', Date: FUTURE_DATE, _baseUpdatedAt: before.UpdatedAt } });
   assert.equal(stale.success, false);
   assert.equal(stale.error, 'conflict');
   const now = (await post({ action: 'list', resource: 'events', token: member })).items.find(e => e.ID === evId);
@@ -492,16 +495,21 @@ test('ゴミ箱: 期限が来たものは完全に削除され、R2 のファイ
   assert.equal((await post({ action: 'delete', resource: 'events', id, token: member })).success, true);
   assert.equal((await fetch(fileUrl)).status, 200);
 
-  // 保管日数を 0 にしてもう 1 つ削除 → 一覧を開くと(定期実行を待たずに)期限切れが完全に削除される
-  assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'trash_keep_days', value: '0' })).success, true);
-  const id2 = 'ev_test_expire2_' + Date.now();
-  assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id2, Title: '期限切れ2', Date: '2099-01-03', Category: 'normal' } })).success, true);
-  assert.equal((await post({ action: 'delete', resource: 'events', id: id2, token: member })).success, true);
-  await new Promise(r => setTimeout(r, 20));
-  const left = (await post({ action: 'listTrash', token: member })).items;
-  assert.equal(left.some(t => t.recordId === id2), false);   // 期限切れは消えた
-  assert.equal(left.some(t => t.recordId === id), true);     // 7 日(既定)のほうは残る
-  assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'trash_keep_days', value: '7' })).success, true);
+  // 保管日数を 0 にしてもう 1 つ削除 → 一覧を開くと(定期実行を待たずに)期限切れが完全に削除される。
+  // 途中で失敗しても 0 のまま残さない(残ると以後の実行でゴミ箱のテストが連鎖して失敗する)
+  let left;
+  try {
+    assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'trash_keep_days', value: '0' })).success, true);
+    const id2 = 'ev_test_expire2_' + Date.now();
+    assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id2, Title: '期限切れ2', Date: '2099-01-03', Category: 'normal' } })).success, true);
+    assert.equal((await post({ action: 'delete', resource: 'events', id: id2, token: member })).success, true);
+    await new Promise(r => setTimeout(r, 20));
+    left = (await post({ action: 'listTrash', token: member })).items;
+    assert.equal(left.some(t => t.recordId === id2), false);   // 期限切れは消えた
+    assert.equal(left.some(t => t.recordId === id), true);     // 7 日(既定)のほうは残る
+  } finally {
+    assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'trash_keep_days', value: '7' })).success, true);
+  }
 
   // 完全に削除すると、ファイル実体も消える
   const mine = left.find(t => t.recordId === id);
