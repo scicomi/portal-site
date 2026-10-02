@@ -501,7 +501,7 @@ function renderHeader(activePage) {
       <div class="header-brand">
         <a href="index.html" style="color:inherit;text-decoration:none;display:flex;align-items:center;gap:8px;">
           <img class="brand-icon-img" src="icon.png" alt="SCS" width="28" height="28">
-          <span class="brand-name">SciComi Site</span>
+          <img class="brand-title-img" src="title.png" alt="SciComi Site">
         </a>
       </div>
       <div class="header-actions">

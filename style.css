@@ -1777,6 +1777,7 @@ textarea:focus {
 /* さらに狭い端末（480px以下） */
 @media (max-width: 480px) {
     .header-brand .brand-name { font-size: 0.95rem; }
+    .header-brand .brand-title-img { height: 32px; }
     .dash-stats { grid-template-columns: repeat(3, 1fr); gap: 10px; }
     .stat-num { font-size: 1.5rem; }
     .welcome-hero { padding: 20px; }
@@ -4485,4 +4486,10 @@ mark.search-hit {
     display: block;
     font-size: 0.75rem;
     font-weight: 800;
+}
+
+.brand-title-img {
+    height: 40px;
+    width: auto;
+    display: block;
 }
