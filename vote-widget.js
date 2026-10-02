@@ -13,19 +13,11 @@
  * 操作は全ページ共通で「タップ即送信（楽観的更新）＋失敗時ロールバック」。確認ダイアログは挟まない。
  */
 
-const VOTE_MEMBER_KEY = 'scicomi_vote_member';
 const VOTE_STATUS_LABELS = { attend: '参加', absent: '不参加', undecided: '未定' };
 
 // ====== 名前の端末記憶 ======
-
-function getSavedVoteMemberId() {
-  return localStorage.getItem(VOTE_MEMBER_KEY) || '';
-}
-
-function setSavedVoteMemberId(id) {
-  if (id) localStorage.setItem(VOTE_MEMBER_KEY, id);
-  else localStorage.removeItem(VOTE_MEMBER_KEY);
-}
+// 保存・取得（getSavedVoteMemberId / setSavedVoteMemberId）と対象者判定（isVoteEligibleMember /
+// voteEligibleMembers）は、ヘッダーのアカウントメニューでも使うため app.js にある。
 
 // 記憶した名前が現在のメンバー一覧に存在しなければ（年度コピーで ID が変わった等）記憶を破棄して '' を返す。
 // members が未取得（空）のときは判定できないので、そのまま返す。
@@ -39,26 +31,8 @@ function getValidSavedVoteMemberId(members) {
 
 // ====== 対象者算出（旧 vote.js / home.js / event-series.js の3重実装を統合） ======
 
-// 出欠の回答・集計はコーディネーター・アドバイザーを対象外にする
-function isVoteEligibleMember(m) {
-  const r = memberRoleOf(m);
-  return r !== 'アドバイザー' && r !== 'コーディネーター';
-}
-
 function voteStaffIds(members) {
   return new Set((members || []).filter(m => !isVoteEligibleMember(m)).map(m => m.ID));
-}
-
-// イベント年度に在籍する出欠対象メンバー。ev 省略時は今年度。
-function voteEligibleMembers(members, ev) {
-  const fyTarget = (ev && getFiscalYear(ev.Date)) || currentFiscalYear();
-  return (members || []).filter(m => {
-    if (!m.Name) return false;
-    if (m.Active === 'false') return false;
-    if (!isVoteEligibleMember(m)) return false;
-    const fy = m.FiscalYear ? parseInt(m.FiscalYear) : currentFiscalYear();
-    return fy === fyTarget;
-  });
 }
 
 // ====== 締切 ======

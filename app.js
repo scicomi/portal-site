@@ -515,6 +515,12 @@ function renderHeader(activePage) {
             </svg>
             <span class="nav-caret" aria-hidden="true">&#9662;</span>          </button>
           <div class="account-menu hidden" role="menu">
+            <div class="account-menu-who">
+              <span class="account-menu-who-label">あなたの名前</span>
+              <span class="account-menu-who-name" id="account-who-name">…</span>
+            </div>
+            <button type="button" class="account-menu-item" role="menuitem" data-account="name" id="account-name-btn">名前を変更</button>
+            <div class="account-menu-sep" role="separator"></div>
             ${isAdmin
               ? `<button type="button" class="account-menu-item" role="menuitem" data-account="admin-off">管理者モードを解除</button>`
               : `<button type="button" class="account-menu-item" role="menuitem" data-account="admin-on">管理者モードにする</button>`
@@ -559,6 +565,7 @@ function bindAccountMenu(header) {
     menu.style.top = r.bottom + 4 + 'px';
     menu.style.left = Math.max(8, Math.min(r.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8)) + 'px';
     btn.setAttribute('aria-expanded', 'true');
+    refreshAccountName();
   });
   menu.addEventListener('click', e => {
     e.stopPropagation();
@@ -569,6 +576,7 @@ function bindAccountMenu(header) {
     close();
     if (act === 'admin-on') showAdminAuthModal();
     if (act === 'admin-off') handleAdminRelease();
+    if (act === 'name') showNameChangeModal();
   });
   if (!header._accountCloseBound) {
     header._accountCloseBound = true;
@@ -577,6 +585,130 @@ function bindAccountMenu(header) {
     window.addEventListener('resize', close);
     window.addEventListener('scroll', close, true);
   }
+}
+
+// ====== 「あなたの名前」（出欠回答に使う。端末に記憶する） ======
+
+const VOTE_MEMBER_KEY = 'scicomi_vote_member';
+
+function getSavedVoteMemberId() {
+  return localStorage.getItem(VOTE_MEMBER_KEY) || '';
+}
+
+function setSavedVoteMemberId(id) {
+  if (id) localStorage.setItem(VOTE_MEMBER_KEY, id);
+  else localStorage.removeItem(VOTE_MEMBER_KEY);
+}
+
+// 出欠の回答・集計はコーディネーター・アドバイザーを対象外にする
+function isVoteEligibleMember(m) {
+  const r = memberRoleOf(m);
+  return r !== 'アドバイザー' && r !== 'コーディネーター';
+}
+
+// イベント年度に在籍する出欠対象メンバー。ev 省略時は今年度。
+function voteEligibleMembers(members, ev) {
+  const fyTarget = (ev && getFiscalYear(ev.Date)) || currentFiscalYear();
+  return (members || []).filter(m => {
+    if (!m.Name) return false;
+    if (m.Active === 'false') return false;
+    if (!isVoteEligibleMember(m)) return false;
+    const fy = m.FiscalYear ? parseInt(m.FiscalYear) : currentFiscalYear();
+    return fy === fyTarget;
+  });
+}
+
+// メンバー一覧。端末のキャッシュがあればそれを、無ければサーバーから取る（ガイド等はメンバーを読み込まないため）。
+async function loadMembersForName() {
+  const cached = api.loadCache('members');
+  if (cached && cached.items && cached.items.length) return cached.items;
+  const items = await api.list('members');
+  api.saveCache('members', items);
+  return items;
+}
+
+// メニュー最上段の名前表示を更新する。名前は端末の記憶（ID）からメンバー一覧を引いて出す。
+async function refreshAccountName() {
+  const nameEl = document.getElementById('account-who-name');
+  const btnEl = document.getElementById('account-name-btn');
+  if (!nameEl) return;
+  const set = (text, hasName) => {
+    nameEl.textContent = text;
+    nameEl.classList.toggle('is-unset', !hasName);
+    if (btnEl) btnEl.textContent = hasName ? '名前を変更' : '名前を設定';
+  };
+  const id = getSavedVoteMemberId();
+  if (!id) { set('未設定', false); return; }
+  try {
+    const members = await loadMembersForName();
+    const me = members.find(m => m.ID === id);
+    // 一覧に居ない（年度コピーで ID が変わった等）なら、未設定として選び直してもらう
+    set(me ? me.Name : '未設定', !!me);
+  } catch (_) {
+    set('（読み込めません）', true);
+  }
+}
+
+function showNameChangeModal() {
+  const existing = document.getElementById('name-change-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'name-change-modal';
+  modal.innerHTML = `
+    <div class="pw-overlay">
+      <div class="pw-box" role="dialog" aria-modal="true" aria-labelledby="name-change-title">
+        <h2 id="name-change-title">名前の変更</h2>
+        <p>出欠の回答に使う、あなたの名前を選んでください（この端末に記憶されます）。</p>
+        <select id="name-change-select" class="e1-input" aria-label="あなたの名前を選択" disabled>
+          <option value="">読み込み中...</option>
+        </select>
+        <div id="name-change-error" class="pw-error" role="alert"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+          <button type="button" id="name-change-cancel" class="btn btn-secondary" style="white-space:nowrap;flex:none;">キャンセル</button>
+          <button type="button" id="name-change-save" class="btn btn-primary-solid" disabled>保存</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const sel = modal.querySelector('#name-change-select');
+  const errEl = modal.querySelector('#name-change-error');
+  const saveBtn = modal.querySelector('#name-change-save');
+  trapFocus(modal.querySelector('.pw-box'));
+  bindModalEscape(modal, () => modal.remove());
+  modal.querySelector('#name-change-cancel').addEventListener('click', () => modal.remove());
+
+  const save = () => {
+    if (!sel.value) return;
+    setSavedVoteMemberId(sel.value);
+    // 出欠の表示・ホームのバナーなど、名前に依存する表示を揃えるため再読込する
+    location.reload();
+  };
+  saveBtn.addEventListener('click', save);
+  sel.addEventListener('change', () => { saveBtn.disabled = !sel.value; });
+  sel.addEventListener('keydown', e => { if (e.key === 'Enter' && sel.value) { e.preventDefault(); save(); } });
+
+  loadMembersForName().then(members => {
+    const eligible = voteEligibleMembers(members);
+    if (!eligible.length) {
+      sel.innerHTML = '<option value="">選べるメンバーがいません</option>';
+      return;
+    }
+    const current = getSavedVoteMemberId();
+    sel.innerHTML = '<option value="">-- 名前を選択 --</option>' +
+      groupMembersByGrade(eligible).map(g =>
+        `<optgroup label="${escapeAttr(g.label)}">${g.members.map(m =>
+          `<option value="${escapeAttr(m.ID)}">${escapeHtml(m.Name)}</option>`).join('')}</optgroup>`).join('');
+    if (current && eligible.some(m => m.ID === current)) sel.value = current;
+    sel.disabled = false;
+    saveBtn.disabled = !sel.value;
+    sel.focus();
+  }).catch(e => {
+    sel.innerHTML = '<option value="">読み込めませんでした</option>';
+    errEl.textContent = typeof humanizeApiError === 'function' ? humanizeApiError(e) : '読み込めませんでした';
+  });
 }
 
 // 管理者モードだけを解除する（一般のログインは維持）。管理者向けの表示が残らないよう再読込する。

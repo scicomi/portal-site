@@ -40,9 +40,12 @@ async function init() {
 }
 
 async function refreshTrash() {
+    updateSyncStatus(trashItems.length ? 'syncing' : 'initial-loading');
     try {
         trashItems = await api.listTrash();
+        updateSyncStatus('fresh', Date.now());
     } catch (e) {
+        if (!e.handled) updateSyncStatus('error', null, e.message);
         document.getElementById('trash-tbody').innerHTML =
             `<tr><td colspan="5" class="loading-text">読み込みに失敗しました: ${escapeHtml(e.message)}</td></tr>`;
         return;

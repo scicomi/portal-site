@@ -183,6 +183,22 @@ body {
 }
 .account-menu-item:hover { background: #f0f2f5; }
 .account-menu-danger { color: #c0392b; }
+.account-menu-who {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 14px 6px;
+    max-width: 260px;
+}
+.account-menu-who-label { font-size: 0.72rem; color: #888; }
+.account-menu-who-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #222;
+    overflow-wrap: anywhere;
+}
+.account-menu-who-name.is-unset { font-weight: 500; color: #888; }
+.account-menu-sep { height: 1px; background: #e5e7eb; margin: 4px 6px; }
 
 .app-nav {
     max-width: 1200px;

@@ -105,8 +105,10 @@ async function gdInit() {
 
 // ヘッダーの同期表示（クリックで再読込）から呼ばれる。入力中のページは上書きしない
 async function refreshData(initial) {
+  updateSyncStatus(initial === true && !gdPages.length ? 'initial-loading' : 'syncing');
   try {
     const items = await api.list('guides');
+    updateSyncStatus('fresh', Date.now());
     const mine = gdCurrentId ? gdById(gdCurrentId) : null;
     gdPages = sortGuides(items);
     gdRenderTree();
@@ -117,6 +119,8 @@ async function refreshData(initial) {
     }
   } catch (e) {
     console.error(e);
+    if (e && e.handled) return;
+    updateSyncStatus('error', null, e && e.message);
     document.getElementById('gd-content').innerHTML = '<p class="loading-text">読み込めませんでした。しばらくしてから再読込してください。</p>';
   }
 }

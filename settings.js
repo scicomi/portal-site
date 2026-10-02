@@ -47,8 +47,10 @@ async function init() {
 async function loadSettings() {
     const loading = document.getElementById('settings-loading');
     const content = document.getElementById('settings-content');
+    updateSyncStatus('initial-loading');
     try {
         const cfg = await api.adminGetConfig();
+        updateSyncStatus('fresh', Date.now());
 
         // 機密値はサーバーから返らない（設定済みかどうかだけ表示し、変更時のみ入力させる）
         document.getElementById('cfg-password-current').textContent = secretStatus(cfg.password_set);
@@ -89,6 +91,7 @@ async function loadSettings() {
         content.style.display = 'block';
     } catch (e) {
         if (e.handled) return;
+        updateSyncStatus('error', null, e.message);
         loading.classList.remove('loading-text');
         loading.innerHTML = `<div class="empty-state">
             <div class="empty-text">設定を読み込めませんでした</div>
