@@ -210,6 +210,8 @@ Gemini の API キーと LINE のチャネルアクセストークンは、設�
 - 世代数は設定の `backup_keep_count`（既定14）。古いものは自動で削除される。
 - パスワードのハッシュ・API キーはバックアップに**含まれない**。
 - R2 のファイル本体（アップロードされた画像・資料）はバックアップの対象外。R2 側に残っていればそのまま使える。
+- 毎日の結果は監査ログに残る。成功は `backup_ok`（保存先と世代数）、定期処理のどれかの失敗は `maintenance_fail`。D1 Console で次を実行し、最新の `backup_ok` が今日（または昨日）の日付なら正常:
+  `SELECT Timestamp, Action, Detail FROM audit_log WHERE Action IN ('backup_ok', 'maintenance_fail') ORDER BY Id DESC LIMIT 10;`
 
 **復元する手順**（現在のデータは上書きされる）：
 

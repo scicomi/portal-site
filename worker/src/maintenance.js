@@ -1,12 +1,14 @@
 // 定期実行(Cron Trigger: 毎日 03:00 JST)
 //   1) D1 の全データを JSON にして R2 の backups/ に保存し、古い世代を削除
 //   2) 監査ログ・ログイン失敗記録・一時キャッシュの整理
+//   結果は監査ログ(audit_log)に残す。バックアップの成功は backup_ok、各処理の失敗は maintenance_fail
+//   (本番の console 出力は残らないため。確認方法は README の「バックアップと復元」)。
 //
 // バックアップに含めないもの: secrets(パスワードのハッシュ・API キー)、auth_fail、kv_cache。
 // R2 の backups/ 配下は /files/ からは配信されない(キーに '/' を含むため)。
 
 import { getConfigInt } from './config.js';
-import { trimAuditLog } from './data.js';
+import { trimAuditLog, appendAuditLog } from './data.js';
 import { purgeExpiredTrash } from './trash.js';
 import { purgeOldAuthFail } from './auth.js';
 import { purgeExpiredCache } from './gemini.js';
@@ -33,7 +35,10 @@ export async function backupToR2(env) {
 
 export async function runMaintenance(env) {
   const steps = [
-    ['backup', () => backupToR2(env)],
+    ['backup', async () => {
+      const r = await backupToR2(env);
+      await appendAuditLog(env, 'backup_ok', r.key + ' (保持 ' + r.kept + ' 件、削除 ' + r.deleted + ' 件)', '', 'system');
+    }],
     ['trimAuditLog', async () => trimAuditLog(env, await getConfigInt(env, 'audit_keep_days', 365))],
     ['purgeTrash', () => purgeExpiredTrash(env)],
     ['purgeAuthFail', () => purgeOldAuthFail(env)],
@@ -41,6 +46,11 @@ export async function runMaintenance(env) {
   ];
   // 個々の処理が失敗しても他に影響しないよう個別に try/catch する
   for (const [name, fn] of steps) {
-    try { await fn(); } catch (e) { console.error('maintenance ' + name + ' failed: ' + e); }
+    try {
+      await fn();
+    } catch (e) {
+      console.error('maintenance ' + name + ' failed: ' + e);
+      await appendAuditLog(env, 'maintenance_fail', name + ': ' + String((e && e.message) || e).slice(0, 300), '', 'system');
+    }
   }
 }
