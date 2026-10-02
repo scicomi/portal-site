@@ -121,15 +121,17 @@ export function clientIp(request) {
 
 // パスワードを検証する「前」に試行を 1 件記録する。上限に達していれば記録せず { allowed:false } を返す。
 // 件数の判定と記録を 1 つの SQL 文で行うので、並列に大量のリクエストを送っても上限を超えて検証まで進めない。
-// 成功したら resetAuthFail で消す(残った記録 = 失敗した試行)。
+// 成功したら、返した id を clearAuthAttempt に渡してその 1 件だけ消す(残った記録 = 失敗した試行)。
+// 同じ IP の失敗記録をまとめて消さないのは、login が幹部と一般を同じ 'member' スコープで判定するため。
+// まとめて消すと、一般パスワードでの成功を挟むだけで幹部パスワードを上限なしに試せてしまう。
 export async function beginAuthAttempt(env, scope, ip) {
   const now = Math.floor(Date.now() / 1000);
   const since = now - FAIL_WINDOW_S;
-  const r = await env.DB.prepare(
+  const row = await env.DB.prepare(
     'INSERT INTO auth_fail (Scope, Ip, Ts) SELECT ?1, ?2, ?3 ' +
-    'WHERE (SELECT COUNT(*) FROM auth_fail WHERE Scope = ?1 AND Ip = ?2 AND Ts > ?4) < ?5'
-  ).bind(scope, ip, now, since, FAIL_LOCK_COUNT).run();
-  return { allowed: !!(r.meta && r.meta.changes > 0) };
+    'WHERE (SELECT COUNT(*) FROM auth_fail WHERE Scope = ?1 AND Ip = ?2 AND Ts > ?4) < ?5 RETURNING Id'
+  ).bind(scope, ip, now, since, FAIL_LOCK_COUNT).first();
+  return { allowed: !!row, id: row ? row.Id : null };
 }
 
 // 失敗した試行の後に呼ぶ。失敗を重ねるほど最大 4 秒まで応答を遅らせる(記録は beginAuthAttempt で済んでいる)
@@ -139,8 +141,10 @@ export async function delayAfterAuthFail(env, scope, ip) {
   await sleep(Math.min(((row && row.n) || 1) * 300, 4000));
 }
 
-export async function resetAuthFail(env, scope, ip) {
-  await env.DB.prepare('DELETE FROM auth_fail WHERE Scope = ? AND Ip = ?').bind(scope, ip).run();
+// 成功した試行の記録を消す(失敗の件数に数えない)。それ以前の失敗は、窓(10 分)が過ぎるまで残す
+export async function clearAuthAttempt(env, attempt) {
+  if (!attempt || attempt.id == null) return;
+  await env.DB.prepare('DELETE FROM auth_fail WHERE Id = ?').bind(attempt.id).run();
 }
 
 export async function purgeOldAuthFail(env) {

@@ -7,7 +7,7 @@ import { CODE_VERSION, corsHeaders, jsonResponse, jstDate, ApiError } from './ut
 import { getResource } from './tables.js';
 import {
   checkAuth, checkAdmin, generateToken, verifyPassword,
-  clientIp, beginAuthAttempt, delayAfterAuthFail, resetAuthFail
+  clientIp, beginAuthAttempt, delayAfterAuthFail, clearAuthAttempt
 } from './auth.js';
 import { publicConfig, adminConfig, adminSetConfig, GEMINI_DAILY_LIMIT } from './config.js';
 import {
@@ -64,13 +64,14 @@ async function handlePost(env, ctx, request, body) {
 
     // --- 認証(パスワード) ---
     if (action === 'auth') {
-      if (!(await beginAuthAttempt(env, 'member', ip)).allowed) return { success: false, error: 'rate_limited' };
+      const attempt = await beginAuthAttempt(env, 'member', ip);
+      if (!attempt.allowed) return { success: false, error: 'rate_limited' };
       if (!(await verifyPassword(env, 'password', body.password))) {
         await appendAuditLog(env, 'auth_fail', '', token);
         await delayAfterAuthFail(env, 'member', ip);
         return { success: false };
       }
-      await resetAuthFail(env, 'member', ip);
+      await clearAuthAttempt(env, attempt);
       const newToken = await generateToken(env, 'member');
       await appendAuditLog(env, 'auth_success', '', newToken, 'member');
       return { success: true, token: newToken };
@@ -78,11 +79,12 @@ async function handlePost(env, ctx, request, body) {
 
     // --- 管理者認証 ---
     if (action === 'adminAuth') {
-      if (!(await beginAuthAttempt(env, 'admin', ip)).allowed) return { success: false, error: 'rate_limited' };
+      const attempt = await beginAuthAttempt(env, 'admin', ip);
+      if (!attempt.allowed) return { success: false, error: 'rate_limited' };
       const ok = await verifyPassword(env, 'admin_password', body.admin_password);
       await appendAuditLog(env, ok ? 'adminAuth_success' : 'adminAuth_fail', '', token);
       if (!ok) { await delayAfterAuthFail(env, 'admin', ip); return { success: false }; }
-      await resetAuthFail(env, 'admin', ip);
+      await clearAuthAttempt(env, attempt);
       return { success: true, adminToken: await generateToken(env, 'admin') };
     }
 
@@ -90,7 +92,8 @@ async function handlePost(env, ctx, request, body) {
     // 幹部パスワードと一致すれば管理者トークンも同時に発行(幹部はメンバーを兼ねる)。一般パスワードならメンバーのみ。
     if (action === 'login') {
       const inputPw = String(body.password || '').trim();
-      if (!(await beginAuthAttempt(env, 'member', ip)).allowed) return { success: false, error: 'rate_limited' };
+      const attempt = await beginAuthAttempt(env, 'member', ip);
+      if (!attempt.allowed) return { success: false, error: 'rate_limited' };
       if (inputPw === '') {
         await appendAuditLog(env, 'login_fail', '', '');
         await delayAfterAuthFail(env, 'member', ip);
@@ -98,14 +101,14 @@ async function handlePost(env, ctx, request, body) {
       }
       // 幹部パスワードを先に判定(一般と同一に設定された場合でも挙動を確定させる)
       if (await verifyPassword(env, 'admin_password', inputPw)) {
-        await resetAuthFail(env, 'member', ip);
+        await clearAuthAttempt(env, attempt);
         const adminMemberToken = await generateToken(env, 'member');
         const adminToken = await generateToken(env, 'admin');
         await appendAuditLog(env, 'login_admin', '', adminToken, 'admin');
         return { success: true, role: 'admin', token: adminMemberToken, adminToken };
       }
       if (await verifyPassword(env, 'password', inputPw)) {
-        await resetAuthFail(env, 'member', ip);
+        await clearAuthAttempt(env, attempt);
         const memberToken = await generateToken(env, 'member');
         await appendAuditLog(env, 'login_member', '', memberToken, 'member');
         return { success: true, role: 'member', token: memberToken };

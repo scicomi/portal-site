@@ -598,3 +598,17 @@ test('ログイン試行制限: 並列に大量の誤パスワードを送って
   const real = await post({ action: 'adminAuth', admin_password: ADMIN_PW });
   assert.equal(real.success, true, 'テスト用 IP 以外がロックされた: ' + JSON.stringify(real));
 });
+
+// login は幹部と一般を同じ 'member' スコープで数える。一般パスワードでの成功を挟んでも、
+// それまでの失敗が消えず、幹部パスワードの推測を上限なしに続けられないこと。
+test('ログイン試行制限: 一般パスワードでの成功を挟んでも、失敗の記録は消えない(幹部パスワードの推測を続けられない)', async () => {
+  const asIp = { 'CF-Connecting-IP': '203.0.113.' + (1 + Math.floor(Math.random() * 254)) + '-' + Date.now() };
+  const wrong = () => post({ action: 'login', password: 'wrong-admin-guess-x' }, asIp);
+  const first = await Promise.all(Array.from({ length: 20 }, wrong));
+  first.forEach(r => assert.equal(r.success, false));
+  assert.equal((await post({ action: 'login', password: MEMBER_PW }, asIp)).success, true);
+  const second = await Promise.all(Array.from({ length: 20 }, wrong));
+  const limited = second.filter(r => r.error === 'rate_limited').length;
+  assert.ok(limited >= 10, '成功を挟んだあとも上限(30 回)で止まること。rate_limited = ' + limited);
+  assert.equal((await post({ action: 'login', password: ADMIN_PW }, asIp)).error, 'rate_limited');
+});
