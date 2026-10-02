@@ -481,7 +481,6 @@ async function saveExp() {
     if (!name) { toast('実験名を入力してください', 'error'); return; }
 
     const existing = editingExpId ? expData.find(x => x.ID === editingExpId) : null;
-    const isNew = !editingExpId;
     const item = {
         ID: editingExpId || genId('ex_'),
         Name: name,
@@ -501,14 +500,8 @@ async function saveExp() {
 
     if (editingExpId && existing) item._baseUpdatedAt = existing.UpdatedAt || '';
 
-    const snapshot = JSON.parse(JSON.stringify(expData));
-
-    if (isNew) {
-        expData.push({ ...item });
-    } else {
-        const idx = expData.findIndex(x => x.ID === editingExpId);
-        if (idx >= 0) expData[idx] = { ...expData[idx], ...item };
-    }
+    // 失敗したら、この 1 件だけを保存前へ戻す（その間の別の保存や再読込の結果は消さない）
+    const optimistic = applyOptimisticItem(() => expData, { ...(existing || {}), ...item });
     api.saveCache('experiments', expData);
     render();
     closeExpWizard();
@@ -519,10 +512,11 @@ async function saveExp() {
         if (idx >= 0) expData[idx] = saved;
         api.saveCache('experiments', expData);
     }).catch(e => {
-        expData.splice(0, expData.length, ...snapshot);
-        api.saveCache('experiments', expData);
-        render();
-        if (String(e.message).includes('conflict')) {
+        if (optimistic.rollback()) {
+            api.saveCache('experiments', expData);
+            render();
+        }
+        if (isConflictError(e)) {
             toast('他の人がこの実験を編集しました。最新を読み込みます。', 'error', 5000);
             refreshData();
         } else {

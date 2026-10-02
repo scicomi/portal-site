@@ -192,6 +192,30 @@ async function deleteStoredFiles(driveIds) {
   return failed === 0;
 }
 
+// ---- 一覧の 1 件を楽観更新し、失敗したらその 1 件だけを戻す ----
+// getList() が返す配列で item と同じ ID の要素を item に差し替える（無ければ追加。opts.prepend なら先頭）。
+// 戻り値の rollback() は、その 1 件だけを保存前のオブジェクトへ戻す（新規なら取り除く）。
+// 一覧全体を保存前のコピーで置き換えないのは、その間に成功した別の保存や再読込の結果まで消さないため。
+// 戻す時点で、その要素が再読込や後続の保存で別のオブジェクトに置き換わっていたら、そちら（より新しい状態）を残して false を返す。
+// getList は関数で受け取る（再読込で配列ごと差し替わるページがあるため）。
+function applyOptimisticItem(getList, item, opts) {
+  const list = getList();
+  const idx = list.findIndex(x => x.ID === item.ID);
+  const before = idx >= 0 ? list[idx] : null;
+  if (idx >= 0) list[idx] = item;
+  else if (opts && opts.prepend) list.unshift(item);
+  else list.push(item);
+  return {
+    rollback() {
+      const cur = getList();
+      const i = cur.indexOf(item);
+      if (i < 0) return false;
+      if (before) cur[i] = before; else cur.splice(i, 1);
+      return true;
+    }
+  };
+}
+
 // ---- イベント保存の直列化 ----
 // 同じイベントに対する保存は、前の保存が終わってから最新の UpdatedAt で次を送る。
 // 応答前に次を送ると古い UpdatedAt で conflict になり、「他の人が編集しました」と誤表示されるため。

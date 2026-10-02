@@ -555,7 +555,6 @@ async function saveMember() {
     }
 
     const existing = editingMemberId ? membersData.find(m => m.ID === editingMemberId) : null;
-    const isNew = !editingMemberId;
     // 役職・メール・内線・緊急連絡先は編集画面に出さないため、既存の値をそのまま引き継ぐ
     const role = existing ? memberRoleOf(existing) : '';
     const item = {
@@ -582,14 +581,8 @@ async function saveMember() {
         toast('学籍番号が数字で始まっていません。学年の絞り込み・並び順に反映されない場合があります', 'info', 5000);
     }
 
-    const snapshot = JSON.parse(JSON.stringify(membersData));
-
-    if (isNew) {
-        membersData.push({ ...item });
-    } else {
-        const idx = membersData.findIndex(m => m.ID === editingMemberId);
-        if (idx >= 0) membersData[idx] = { ...membersData[idx], ...item };
-    }
+    // 失敗したら、この 1 件だけを保存前へ戻す（その間の別の保存や再読込の結果は消さない）
+    const optimistic = applyOptimisticItem(() => membersData, { ...(existing || {}), ...item });
     api.saveCache('members', membersData);
     buildFiscalYearSelect();
     renderMembers();
@@ -601,11 +594,12 @@ async function saveMember() {
         if (idx >= 0) membersData[idx] = saved;
         api.saveCache('members', membersData);
     }).catch(e => {
-        membersData.splice(0, membersData.length, ...snapshot);
-        api.saveCache('members', membersData);
-        buildFiscalYearSelect();
-        renderMembers();
-        if (String(e.message).includes('conflict')) {
+        if (optimistic.rollback()) {
+            api.saveCache('members', membersData);
+            buildFiscalYearSelect();
+            renderMembers();
+        }
+        if (isConflictError(e)) {
             toast('他の人がこのメンバーを編集しました。最新を読み込みます。', 'error', 5000);
             refreshData();
         } else {

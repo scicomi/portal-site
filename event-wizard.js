@@ -38,13 +38,12 @@ function _wzHost() {
     const persist = () => api.saveCache('events', list());
     return {
         getEvent(id) { return list().find(x => x.ID === id) || null; },
-        snapshot() { return JSON.parse(JSON.stringify(list())); },
+        // 1 件を画面へ先に反映し、その 1 件だけを戻す rollback() を返す（app.js の applyOptimisticItem）
         applyOptimistic(item) {
-            const arr = list();
-            const idx = arr.findIndex(x => x.ID === item.ID);
-            if (idx > -1) arr[idx] = item; else arr.unshift(item);
+            const handle = applyOptimisticItem(list, item, { prepend: true });
             persist();
             c.rerender();
+            return handle;
         },
         commitSaved(saved) {
             const arr = list();
@@ -54,9 +53,8 @@ function _wzHost() {
             persist();
             c.rerender();
         },
-        rollback(snap) {
-            const arr = list();
-            arr.splice(0, arr.length, ...snap);
+        rollback(handle) {
+            if (!handle.rollback()) return;
             persist();
             c.rerender();
         },
@@ -1213,8 +1211,7 @@ function persistEventFromWizard(item) {
     const uploadedNow = Array.isArray(tempNewEvent._sessionUploads) ? tempNewEvent._sessionUploads.slice() : [];
     tempNewEvent._sessionUploads = []; // closeEventWizard がアップロード済みファイルを消さないようにする
 
-    const snapshot = host.snapshot();
-    host.applyOptimistic({ ...item });
+    const optimistic = host.applyOptimistic({ ...item });
     closeEventWizard();
     toast('保存しました', 'success');
     warnKyokaOverdue(item);
@@ -1233,7 +1230,7 @@ function persistEventFromWizard(item) {
         host.commitSaved(saved);
         if (saved && saved.UpdatedAt) _ownSavedStamps.add(eventId + ':' + saved.UpdatedAt);
     }).catch(err => {
-        host.rollback(snapshot);
+        host.rollback(optimistic);
         if (isConflictError(err)) {
             // 競合ならサーバーは何も保存していない。今回アップロードしたファイルは参照されないので消す
             // （それ以外の失敗では保存済みの可能性があるので消さない）
