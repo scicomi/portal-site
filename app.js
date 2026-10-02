@@ -1006,6 +1006,7 @@ function showAdminAuthModal(onSuccess) {
   setTimeout(() => input.focus(), 50);
 
   const tryAdminLogin = async () => {
+    if (submitBtn.disabled) return;   // 送信中の Enter 連打で二重に試行しない
     errEl.textContent = '';
     submitBtn.disabled = true;
     submitBtn.textContent = '認証中...';
@@ -1080,6 +1081,7 @@ function showPasswordModal(onSuccess) {
   setTimeout(() => input.focus(), 50);
 
   const tryLogin = async () => {
+    if (submitBtn.disabled) return;   // 送信中の Enter 連打で二重に試行しない
     errEl.textContent = '';
     submitBtn.disabled = true;
     submitBtn.textContent = '認証中...';
@@ -1090,7 +1092,7 @@ function showPasswordModal(onSuccess) {
         toast(result.role === 'admin' ? '管理者としてログインしました' : 'ログインしました', 'success');
         await onSuccess();
       } else {
-        errEl.textContent = 'パスワードが違います';
+        errEl.textContent = result.error ? humanizeApiError({ code: result.error, message: result.error }) : 'パスワードが違います';
         submitBtn.disabled = false;
         submitBtn.textContent = 'ログイン';
         input.select();

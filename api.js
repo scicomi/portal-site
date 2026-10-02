@@ -81,7 +81,7 @@ const api = {
 
   // 統合ログイン: 入力パスワードからロールを判別。
   // 幹部パスワードなら管理者トークンも受け取り、自動で管理者モードになる。
-  // 戻り値: { ok: boolean, role: 'admin' | 'member' | null }
+  // 戻り値: { ok: boolean, role: 'admin' | 'member' | null, error?: string }(error はサーバーが返したコード。rate_limited など)
   async login(password) {
     const res = await this._post({ action: 'login', password });
     if (res.success && res.token) {
@@ -91,7 +91,7 @@ const api = {
       else this.clearAdminToken();
       return { ok: true, role: res.role || 'member' };
     }
-    return { ok: false, role: null };
+    return { ok: false, role: null, error: res.error || '' };
   },
 
   // ---- 管理者認証 ----
@@ -118,6 +118,11 @@ const api = {
     if (res.success && res.adminToken) {
       this.setAdminToken(res.adminToken);
       return true;
+    }
+    if (res.error === 'rate_limited') {
+      const err = new Error('rate_limited');
+      err.code = 'rate_limited';
+      throw err;
     }
     return false;
   },
@@ -567,6 +572,8 @@ function humanizeApiError(e) {
       return 'ネットワークに接続できません。通信環境を確認してください。';
     case 'unauthorized':
       return 'セッションの有効期限が切れました。再ログインしてください。';
+    case 'rate_limited':
+      return 'ログインの失敗が続いたため、しばらくログインできません。10分ほど待ってから、もう一度お試しください。';
     case 'BAD_RESPONSE':
       return 'サーバーからの応答を解釈できませんでした。' + (e.detail ? '（' + e.detail + '…）' : '');
     default:
