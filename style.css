@@ -178,6 +178,38 @@ body {
 .nav-link:hover { color: white; background: rgba(255,255,255,0.08); border-radius: 6px 6px 0 0; }
 .nav-link.active { color: white; border-bottom-color: #ffe37d; font-weight: 600; }
 
+/* ドロップダウン（その他 / 管理） */
+.nav-group-btn {
+    background: none;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    font-family: inherit;
+    cursor: pointer;
+}
+.nav-caret { font-size: 0.7em; opacity: 0.8; }
+.nav-menu {
+    position: fixed;
+    z-index: 1000;
+    min-width: 140px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+}
+.nav-menu.hidden { display: none; }
+.nav-menu-item {
+    padding: 10px 14px;
+    color: #333;
+    text-decoration: none;
+    font-size: 0.9rem;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+.nav-menu-item:hover { background: #f0f2f5; }
+.nav-menu-item.active { font-weight: 700; background: #eef2ff; }
+
 /* Admin menu separator */
 .nav-separator {
     width: 1px;
@@ -3301,25 +3333,6 @@ textarea:focus {
     -ms-overflow-style: none;
 }
 .scope-tab-bar::-webkit-scrollbar { display: none; }
-.scope-zone { display: flex; align-items: stretch; flex-shrink: 0; }
-.scope-zone-label {
-    align-self: center;
-    font-size: 0.68rem;
-    letter-spacing: 0.12em;
-    font-weight: 700;
-    color: var(--text-tertiary);
-    padding: 0 10px 0 6px;
-    white-space: nowrap;
-    transition: color 0.15s;
-}
-.scope-zone--occ.active .scope-zone-label { color: var(--scope-occ); }
-.scope-zone--series.active .scope-zone-label { color: var(--scope-series); }
-.scope-sep {
-    width: 1px;
-    background: var(--border-color);
-    margin: 12px 10px;
-    flex-shrink: 0;
-}
 .scope-tab {
     display: flex;
     align-items: center;
@@ -3338,15 +3351,15 @@ textarea:focus {
     transition: color 0.15s;
 }
 .scope-tab:hover:not(.active) { color: var(--text-color); }
-.scope-zone--occ .scope-tab.active {
+.scope-tab.active {
     color: var(--scope-occ);
     border-bottom-color: var(--scope-occ);
     font-weight: 700;
 }
-.scope-zone--series .scope-tab.active {
+/* 会場タブ（全開催回が対象）は色を変える */
+.scope-tab[data-zone="series"].active {
     color: var(--scope-series);
     border-bottom-color: var(--scope-series);
-    font-weight: 700;
 }
 /* 未処理件数（概要=未提出の書類 / 出欠=未回答者） */
 .scope-badge {
@@ -3412,8 +3425,6 @@ textarea:focus {
 
 @media (max-width: 600px) {
     .scope-tab { padding: 11px 13px; font-size: 0.85rem; }
-    .scope-zone-label { font-size: 0.62rem; padding: 0 6px 0 4px; }
-    .scope-sep { margin: 12px 5px; }
 }
 
 .att-st-attend { background: var(--success-bg); color: var(--success-text); }

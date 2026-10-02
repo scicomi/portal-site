@@ -4,7 +4,7 @@
  * 1ページで2モードを持つ:
  *   - 一覧モード   … ?key も ?event も無い。全シリーズ（同名イベントのまとまり）をカードで一覧。
  *   - 詳細モード   … ?key=<シリーズキー> または ?event=<イベントID>。
- *                     タブ = イベント詳細 / 振り返り / 統計・開催履歴。
+ *                     タブ = 概要 / 出欠 / 振り返り / 会場。
  *
  * イベント詳細タブがこのサイトの「イベント1件の正規ページ」。
  * 旧・詳細モーダル（events.html）と投票サマリー・書類ステータスをここに統合した。
@@ -344,17 +344,14 @@ function renderAll() {
     document.getElementById('series-title').textContent = displayTitle;
     document.title = `${displayTitle} | SciComi Portal`;
 
-    // ミーティングでは不要なタブを隠す（振り返り・会場・履歴統計はイベント向けの機能）
+    // ミーティングでは不要なタブを隠す（振り返り・会場はイベント向けの機能）
     const ev0 = currentEvent();
     const isMtg = ev0 && isMeetingCategory(ev0.Category);
-    document.querySelectorAll('.scope-tab[data-tab="reflection"], .scope-tab[data-tab="venue"], .scope-tab[data-tab="history"]').forEach(t => {
+    document.querySelectorAll('.scope-tab[data-tab="reflection"], .scope-tab[data-tab="venue"]').forEach(t => {
         t.style.display = isMtg ? 'none' : '';
     });
-    // ゾーン全体が空になるなら見出しと区切りも隠す
-    document.querySelector('.scope-zone--series')?.style.setProperty('display', isMtg ? 'none' : '');
-    document.querySelector('.scope-sep')?.style.setProperty('display', isMtg ? 'none' : '');
     // 隠したタブが選択されたままにならないよう、概要へ戻す
-    if (isMtg && document.querySelector('.scope-tab.active')?.dataset.zone !== 'occ') {
+    if (isMtg && ['reflection', 'venue'].includes(document.querySelector('.scope-tab.active')?.dataset.tab)) {
         activateSeriesTab('summary');
     }
 
@@ -365,8 +362,6 @@ function renderAll() {
     updateScopeBadges();
     if (!isMtg) {
         renderFeedbackTimeline();
-        renderStats();
-        renderOverview();
     }
 
     if (autoEditEventId) {
@@ -1383,8 +1378,6 @@ async function saveDetailFeedback() {
         toast('イベントの振り返りは保存しましたが、実験ごとの振り返りを保存できませんでした（' + failures.join('、') + '）。入力は残してあります。', 'error', 8000);
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; }
         renderFeedbackTimeline();
-        renderStats();
-        renderOverview();
         renderResultsTab();
         return;
     }
@@ -1393,8 +1386,6 @@ async function saveDetailFeedback() {
     renderDetail();
     renderReflectionTab();
     renderFeedbackTimeline();
-    renderStats();
-    renderOverview();
     // 記入欄と表示は同じ「振り返り」タブに並んでいるので、その場で表示側を描き直す
     renderResultsTab();
 }
@@ -1595,139 +1586,14 @@ function filterSeriesFb(type) {
     renderFeedbackTimeline();
 }
 
-// ---- 統計・開催履歴タブ ----
-
-function renderStats() {
-    const container = document.getElementById('series-stats');
-
-    const expCount = {};
-    const locations = [];
-    let totalPos = 0;
-    let totalRef = 0;
-
-    seriesEvents.forEach(ev => {
-        if (ev.Location) locations.push({ fy: getFiscalYear(ev.Date), loc: ev.Location });
-
-        if (ev.Positives && ev.Positives.trim()) totalPos++;
-        if (ev.Reflections && ev.Reflections.trim()) totalRef++;
-
-        normalizeParts(ev.PartsList).forEach(it => {
-            if (it.name) expCount[it.name] = (expCount[it.name] || 0) + 1;
-        });
-    });
-
-    const topExps = Object.entries(expCount)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
-
-    const locHistory = locations
-        .sort((a, b) => (a.fy || 0) - (b.fy || 0))
-        .map(l => `${l.fy || '?'}年度: ${l.loc}`);
-
-    let html = '<div class="series-stats-grid">';
-
-    html += `<div class="stats-card">
-        <h3 class="stats-card-title">開催回数</h3>
-        <div class="stats-big-number">${seriesEvents.length}<span class="stats-unit">回</span></div>
-        <p class="stats-detail" style="font-size:0.75rem; color:#888;">※ 2023年度以降の集計</p>
-    </div>`;
-
-    html += `<div class="stats-card">
-        <h3 class="stats-card-title">振り返り記入率</h3>
-        <div class="stats-big-number">${seriesEvents.length > 0 ? Math.round(((totalPos + totalRef) / (seriesEvents.length * 2)) * 100) : 0}<span class="stats-unit">%</span></div>
-        <p class="stats-detail">良かった点: ${totalPos}件 / 改善点: ${totalRef}件</p>
-    </div>`;
-
-    if (topExps.length > 0) {
-        html += `<div class="stats-card stats-card-wide">
-            <h3 class="stats-card-title">よく使われた実験</h3>
-            <div class="stats-bar-chart">
-                ${topExps.map(([name, count]) => {
-                    const pct = Math.round((count / seriesEvents.length) * 100);
-                    return `<div class="stats-bar-row">
-                        <span class="stats-bar-label">${escapeHtml(name)}</span>
-                        <div class="stats-bar-track"><div class="stats-bar-fill" style="width:${pct}%;"></div></div>
-                        <span class="stats-bar-value">${count}回</span>
-                    </div>`;
-                }).join('')}
-            </div>
-        </div>`;
-    }
-
-    if (locHistory.length > 1) {
-        html += `<div class="stats-card stats-card-wide">
-            <h3 class="stats-card-title">場所の変遷</h3>
-            <div class="stats-location-timeline">
-                ${locHistory.map(l => `<span class="stats-loc-chip">${escapeHtml(l)}</span>`).join('<span class="stats-loc-arrow">&rarr;</span>')}
-            </div>
-        </div>`;
-    }
-
-    html += '</div>';
-    container.innerHTML = html;
-}
-
-// 開催履歴（旧「概要」タブのカード。統計タブへ統合）
-function renderOverview() {
-    const container = document.getElementById('series-overview-list');
-
-    container.innerHTML = seriesEvents.map((ev, idx) => {
-        const fy = getFiscalYear(ev.Date);
-        const fyLabel = fy ? `${fy}年度` : '';
-        const isLatest = idx === 0;
-        const cat = getEventCategory(ev.Category || 'normal');
-
-        const expNames = [...new Set(normalizeParts(ev.PartsList).map(it => it.name).filter(Boolean))];
-        const pos = (ev.Positives || '').trim();
-        const ref = (ev.Reflections || '').trim();
-
-        return `<div class="series-card ${isLatest ? 'series-card-latest' : ''}">
-            <button type="button" class="series-card-header" aria-expanded="${isLatest ? 'true' : 'false'}" onclick="toggleSeriesCard(this)">
-                <span class="series-fy-label"><strong>${escapeHtml(shortDate(ev.Date))}</strong><br>${escapeHtml(fyLabel)}${isLatest ? ' <span class="series-latest-tag">最新</span>' : ''}</span>
-                <span class="series-card-header-right">
-                    <span class="cat-dot" style="color:${cat.bg};" title="${cat.short}">&#9679;</span>
-                    <span class="detail-toggle-icon" aria-hidden="true">${isLatest ? '&#9660;' : '&#9654;'}</span>
-                </span>
-            </button>
-            <div class="series-card-body${isLatest ? '' : ' hidden'}">
-                <div class="series-card-meta">
-                    ${ev.DateEnd && ev.DateEnd !== ev.Date ? `<div>〜 ${escapeHtml(ev.DateEnd)}</div>` : ''}
-                    ${ev.Location ? `<div>場所: ${escapeHtml(ev.Location)}</div>` : ''}
-                    ${ev.GatherTime ? `<div>集合: ${escapeHtml(ev.GatherTime)}${ev.DismissTime ? ` / 解散: ${escapeHtml(ev.DismissTime)}` : ''}</div>` : ''}
-                    ${expNames.length > 0 ? `<div>実験: ${expNames.map(n => escapeHtml(n)).join(', ')}</div>` : ''}
-                </div>
-                ${pos || ref ? `<div class="series-card-feedback">
-                    ${pos ? `<div class="sfb-entry sfb-positive"><span class="sfb-icon">&#9675;</span><span class="sfb-label">良</span><span class="sfb-text">${escapeHtml(pos)}</span></div>` : ''}
-                    ${ref ? `<div class="sfb-entry sfb-reflection"><span class="sfb-icon">&#9651;</span><span class="sfb-label">改</span><span class="sfb-text">${escapeHtml(ref)}</span></div>` : ''}
-                </div>` : ''}
-                <button type="button" class="sfb-detail-link" data-action="es-open-occ" data-id="${escapeAttr(ev.ID)}">この回の詳細を見る &rarr;</button>
-            </div>
-        </div>`;
-    }).join('');
-}
-
-function toggleSeriesCard(btn) {
-    const card = btn.closest('.series-card');
-    const body = card?.querySelector('.series-card-body');
-    if (!body) return;
-    const open = body.classList.toggle('hidden') === false;
-    btn.setAttribute('aria-expanded', String(open));
-    const icon = btn.querySelector('.detail-toggle-icon');
-    if (icon) icon.innerHTML = open ? '&#9660;' : '&#9654;';
-}
-
 // ---- タブ切り替え ----
 
-// 1段フラットタブの切り替え。旧・大タブ/子タブ/孫タブの3階層をここに統合している。
-// 「この回」ゾーン（概要・出欠・振り返り）は選択中の開催回、
-// 「シリーズ全体」ゾーン（会場・履歴統計）は全開催回が対象。対象範囲バーで明示する。
+// 1段フラットタブの切り替え。概要・出欠・振り返りは選択中の開催回、
+// 会場は全開催回が対象（data-zone="series"）。会場のときだけ対象範囲バーを出す。
 function switchSeriesTab(btn) {
     document.querySelectorAll('.scope-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
     btn.classList.add('active');
     btn.setAttribute('aria-selected', 'true');
-
-    const zone = btn.dataset.zone;
-    document.querySelectorAll('.scope-zone').forEach(z => z.classList.toggle('active', z.dataset.zone === zone));
 
     const target = btn.dataset.tab;
     document.querySelectorAll('.scope-pane').forEach(p => {

@@ -478,10 +478,25 @@ function renderHeader(activePage) {
 
   const navItems = CONFIG.NAV_ITEMS.filter(item =>
     (!item.adminOnly || isAdmin) && (!item.feature || (CONFIG.FEATURES && CONFIG.FEATURES[item.feature])));
+  const link = (item, cls) =>
+    `<a href="${item.href}" class="${cls} ${item.page === activePage ? 'active' : ''}">${item.label}</a>`;
+  const groups = CONFIG.NAV_GROUPS || {};
+  const doneGroups = {};
   let navHtml = '';
   navItems.forEach(item => {
-    if (item.adminFirst) navHtml += '<span class="nav-separator"></span>';
-    navHtml += `<a href="${item.href}" class="nav-link ${item.page === activePage ? 'active' : ''}">${item.label}</a>`;
+    if (!item.group || !groups[item.group]) {
+      navHtml += link(item, 'nav-link');
+      return;
+    }
+    if (doneGroups[item.group]) return;
+    doneGroups[item.group] = true;
+    const members = navItems.filter(i => i.group === item.group);
+    if (groups[item.group].adminFirst) navHtml += '<span class="nav-separator"></span>';
+    navHtml += `
+      <div class="nav-group">
+        <button type="button" class="nav-link nav-group-btn ${members.some(i => i.page === activePage) ? 'active' : ''}" aria-haspopup="true" aria-expanded="false">${escapeHtml(groups[item.group].label)} <span class="nav-caret" aria-hidden="true">&#9662;</span></button>
+        <div class="nav-menu hidden" role="menu">${members.map(i => link(i, 'nav-menu-item')).join('')}</div>
+      </div>`;
   });
 
   header.innerHTML = `
@@ -506,6 +521,38 @@ function renderHeader(activePage) {
     </nav>
   `;
   syncHeaderHeightVar();
+  bindNavGroups(header);
+}
+
+// ナビのドロップダウン。.app-nav は横スクロール(overflow)のため、メニューは fixed で
+// ボタンの真下に置く（absolute だと切り取られる）。外側クリック・Esc・スクロールで閉じる。
+function bindNavGroups(header) {
+  const closeAll = () => header.querySelectorAll('.nav-group').forEach(g => {
+    g.querySelector('.nav-menu').classList.add('hidden');
+    g.querySelector('.nav-group-btn').setAttribute('aria-expanded', 'false');
+  });
+  header.querySelectorAll('.nav-group').forEach(g => {
+    const btn = g.querySelector('.nav-group-btn');
+    const menu = g.querySelector('.nav-menu');
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const open = menu.classList.contains('hidden');
+      closeAll();
+      if (!open) return;
+      const r = btn.getBoundingClientRect();
+      menu.classList.remove('hidden');
+      menu.style.top = r.bottom + 'px';
+      menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
+      btn.setAttribute('aria-expanded', 'true');
+    });
+  });
+  if (!header._navCloseBound) {
+    header._navCloseBound = true;
+    document.addEventListener('click', closeAll);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
+    window.addEventListener('resize', closeAll);
+  }
+  header.querySelector('.app-nav').addEventListener('scroll', closeAll);
 }
 
 // ヘッダーは折り返しや管理者バッジの有無で実際の高さが変わる。AI検索ページ（bot.html）は

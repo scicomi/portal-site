@@ -110,13 +110,20 @@ const CONFIG = {
     { href: 'event-series.html', label: 'イベント別',   page: 'series' },
     { href: 'members.html',      label: 'メンバー',     page: 'members' },
     { href: 'experiments.html', label: '実験ネタ',   page: 'experiments' },
-    { href: 'guide.html',       label: 'ガイド',     page: 'guide' },
     { href: 'bot.html',         label: 'AI検索',     page: 'bot', feature: 'BOT' },
-    { href: 'trash.html',       label: 'ゴミ箱',     page: 'trash' },
+    // group を持つ項目は、NAV_GROUPS の見出しのドロップダウンにまとまる（位置は最初の項目の場所）
+    { href: 'guide.html',       label: 'ガイド',     page: 'guide', group: 'more' },
+    { href: 'trash.html',       label: 'ゴミ箱',     page: 'trash', group: 'more' },
     // 管理者ログイン時のみ表示（セパレーター付き）
-    { href: 'passwords.html',   label: 'パスワード', page: 'passwords', adminOnly: true, adminFirst: true },
-    { href: 'settings.html',    label: '設定',       page: 'settings',  adminOnly: true }
+    { href: 'passwords.html',   label: 'パスワード', page: 'passwords', adminOnly: true, group: 'admin' },
+    { href: 'settings.html',    label: '設定',       page: 'settings',  adminOnly: true, group: 'admin' }
   ],
+
+  // ナビのドロップダウン見出し。adminFirst は手前に区切り線を入れる
+  NAV_GROUPS: {
+    more:  { label: 'その他' },
+    admin: { label: '管理', adminFirst: true }
+  },
 
   // ===== イベントカテゴリ =====
   EVENT_CATEGORIES: {

@@ -35,8 +35,7 @@
             <div class="expd-tab-bar" role="tablist" aria-label="実験詳細の表示切り替え">
                 <button class="expd-tab active" role="tab" aria-selected="true" data-tab="info" onclick="switchExpTab(this)">実験情報</button>
                 <button class="expd-tab" role="tab" aria-selected="false" data-tab="feedback" onclick="switchExpTab(this)">振り返り</button>
-                <button class="expd-tab" role="tab" aria-selected="false" data-tab="photos" onclick="switchExpTab(this)">写真</button>
-                <button class="expd-tab" role="tab" aria-selected="false" data-tab="videos" onclick="switchExpTab(this)">動画</button>
+                <button class="expd-tab" role="tab" aria-selected="false" data-tab="media" onclick="switchExpTab(this)">メディア</button>
             </div>
 
             <!-- Tab: Info（使用物品・事前準備・発表の流れ・注意事項をここで表示） -->
@@ -70,8 +69,8 @@
                 </div>
             </div>
 
-            <!-- Tab: Photos -->
-            <div class="expd-tab-pane hidden" role="tabpanel" tabindex="0" data-tab-pane="photos">
+            <!-- Tab: Media（写真と動画） -->
+            <div class="expd-tab-pane hidden" role="tabpanel" tabindex="0" data-tab-pane="media">
                 <div class="expd-section">
                     <div class="expd-section-header">
                         <h2 class="expd-section-title">写真</h2>
@@ -83,10 +82,8 @@
                     </div>
                     <input type="file" id="photo-file-input" accept="image/*" multiple style="display:none;" onchange="handlePhotoSelect(this)">
                 </div>
-            </div>
 
-            <!-- Tab: Videos（YouTubeリンクを登録し、実験ショーの様子を見返せるようにする） -->
-            <div class="expd-tab-pane hidden" role="tabpanel" tabindex="0" data-tab-pane="videos">
+                <!-- 動画（YouTubeリンクを登録し、実験ショーの様子を見返せるようにする） -->
                 <div class="expd-section">
                     <div class="expd-section-header">
                         <h2 class="expd-section-title">動画</h2>

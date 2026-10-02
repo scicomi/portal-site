@@ -79,45 +79,34 @@
                     <div id="series-occ-picker" class="series-occ-picker"></div>
                 </div>
 
-                <!--
-                  1段フラットタブ。入れ子は作らず、「この回（選択中の開催回）」と
-                  「シリーズ全体（全開催回が対象）」の2ゾーンに色分けして区別する。
-                -->
+                <!-- 1段フラットタブ。会場だけは全開催回が対象（data-zone="series"）で、下の対象範囲バーに期間を出す -->
                 <div class="scope-tab-bar" id="series-tab-bar" role="tablist" aria-label="イベント情報の切り替え">
-                    <div class="scope-zone scope-zone--occ active" data-zone="occ">
-                        <span class="scope-zone-label">この回</span>
-                        <button class="scope-tab active" role="tab" aria-selected="true" data-tab="summary" data-zone="occ" onclick="switchSeriesTab(this)">概要<span class="scope-badge hidden" id="scope-badge-summary"></span></button>
-                        <button class="scope-tab" role="tab" aria-selected="false" data-tab="attendance" data-zone="occ" onclick="switchSeriesTab(this)">出欠<span class="scope-badge hidden" id="scope-badge-attendance"></span></button>
-                        <button class="scope-tab" role="tab" aria-selected="false" data-tab="reflection" data-zone="occ" onclick="switchSeriesTab(this)">振り返り</button>
-                    </div>
-                    <span class="scope-sep" aria-hidden="true"></span>
-                    <div class="scope-zone scope-zone--series" data-zone="series">
-                        <span class="scope-zone-label">シリーズ全体</span>
-                        <button class="scope-tab" role="tab" aria-selected="false" data-tab="venue" data-zone="series" onclick="switchSeriesTab(this)">会場</button>
-                        <button class="scope-tab" role="tab" aria-selected="false" data-tab="history" data-zone="series" onclick="switchSeriesTab(this)">履歴・統計</button>
-                    </div>
+                    <button class="scope-tab active" role="tab" aria-selected="true" data-tab="summary" data-zone="occ" onclick="switchSeriesTab(this)">概要<span class="scope-badge hidden" id="scope-badge-summary"></span></button>
+                    <button class="scope-tab" role="tab" aria-selected="false" data-tab="attendance" data-zone="occ" onclick="switchSeriesTab(this)">出欠<span class="scope-badge hidden" id="scope-badge-attendance"></span></button>
+                    <button class="scope-tab" role="tab" aria-selected="false" data-tab="reflection" data-zone="occ" onclick="switchSeriesTab(this)">振り返り</button>
+                    <button class="scope-tab" role="tab" aria-selected="false" data-tab="venue" data-zone="series" onclick="switchSeriesTab(this)">会場</button>
                 </div>
 
-                <!-- 対象範囲バー: 「シリーズ全体」のときだけ対象期間を出す（開催回の選択はヘッダーカード内） -->
+                <!-- 対象範囲バー: 「会場」のときだけ対象期間を出す（開催回の選択はヘッダーカード内） -->
                 <div class="scope-ctx" id="series-scope-ctx"></div>
 
-                <!-- この回: 概要 -->
+                <!-- 概要 -->
                 <div class="scope-pane" role="tabpanel" tabindex="0" data-pane="summary">
                     <div id="series-detail"></div>
                 </div>
 
-                <!-- この回: 出欠 -->
+                <!-- 出欠 -->
                 <div class="scope-pane hidden" role="tabpanel" tabindex="0" data-pane="attendance">
                     <div id="series-attendance-detail"></div>
                 </div>
 
-                <!-- この回: 振り返り（記入と表示を1か所に統合） -->
+                <!-- 振り返り（記入と表示を1か所に統合） -->
                 <div class="scope-pane hidden" role="tabpanel" tabindex="0" data-pane="reflection">
                     <div id="series-reflection-entry"></div>
                     <div id="series-results-view"></div>
                 </div>
 
-                <!-- シリーズ全体: 会場 -->
+                <!-- 会場（全開催回が対象） -->
                 <div class="scope-pane hidden" role="tabpanel" tabindex="0" data-pane="venue">
                     <div id="series-safety-card" class="series-safety-card hidden">
                         <div class="series-safety-header">
@@ -133,13 +122,6 @@
                         <button class="filter-chip" data-fb="reflection" aria-pressed="false" onclick="filterSeriesFb('reflection')">改善点</button>
                     </div>
                     <div id="series-feedback-timeline"></div>
-                </div>
-
-                <!-- シリーズ全体: 履歴・統計 -->
-                <div class="scope-pane hidden" role="tabpanel" tabindex="0" data-pane="history">
-                    <div id="series-stats"></div>
-                    <h3 class="series-history-heading">開催履歴</h3>
-                    <div id="series-overview-list"></div>
                 </div>
             </div>
         </div>
