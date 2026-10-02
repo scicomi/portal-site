@@ -1048,7 +1048,7 @@ async function renderSeriesVoteWidget() {
         event: ev,
         members: membersCache,
         votes,
-        onChange: (v) => { votesCache[ev.ID] = v; renderAttendanceList(ev); }
+        onChange: (v) => { votesCache[ev.ID] = v; cacheEventVotes(ev.ID, v); renderAttendanceList(ev); }
     });
 }
 

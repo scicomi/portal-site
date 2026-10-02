@@ -410,7 +410,7 @@ function onInlineVoteChange(selectEl, eventId) {
         },
         onChange: (updatedVotes) => {
             allVotesData = (allVotesData || []).filter(v => v.eventId !== eventId).concat(updatedVotes);
-            api.saveCache('votes', allVotesData);
+            cacheEventVotes(eventId, updatedVotes);
             rebuildVotesByEvent();
         }
     });

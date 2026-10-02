@@ -29,6 +29,16 @@ function getValidSavedVoteMemberId(members) {
   return '';
 }
 
+// ====== 投票キャッシュ ======
+
+// 1 イベント分の投票を、端末の投票キャッシュ（全イベント分。ホームの未回答バナーなどが読む）へ書き戻す。
+// 全件のキャッシュがまだ無ければ書かない（1 イベント分だけを全件として保存すると、ほかの回答が消えて見えるため。次の一括取得に任せる）。
+function cacheEventVotes(eventId, eventVotes) {
+  const cached = api.loadCache('votes');
+  if (!cached || !Array.isArray(cached.items)) return;
+  api.saveCache('votes', cached.items.filter(v => v.eventId !== eventId).concat(eventVotes || []));
+}
+
 // ====== 対象者算出（旧 vote.js / home.js / event-series.js の3重実装を統合） ======
 
 function voteStaffIds(members) {

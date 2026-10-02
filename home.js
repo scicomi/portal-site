@@ -321,6 +321,20 @@ function refreshHomeCalendar() {
     else initHomeCalendar();
 }
 
+// 中身が前回と同じなら DOM を作り直さない。裏の再読込のたびに作り直すと、開いているセレクトが閉じたり、
+// 選びかけの値が消えたりするため。作り直したら true。
+function setHtmlIfChanged(el, html) {
+    if (el._lastHtml === html) return false;
+    el._lastHtml = html;
+    el.innerHTML = html;
+    return true;
+}
+
+// 「対応が必要」の件数バッジに出す総数（一覧は先頭の数件だけ表示するので、表示件数とは別に持つ）
+function setActionTotal(container, total) {
+    container.dataset.total = String(total);
+}
+
 function renderKyokaCard(events) {
     const container = document.getElementById('upcoming-kyoka');
     if (!container) return;
@@ -339,13 +353,9 @@ function renderKyokaCard(events) {
         items.push({ id: e.ID, date: deadline, event: e.Title, admin: e.AdminKyoka || '', status: e.KyokaStatus || '' });
     });
     items.sort((a, b) => a.date.localeCompare(b.date));
+    setActionTotal(container, items.length);
 
-    if (items.length === 0) {
-        container.innerHTML = '';
-        return;
-    }
-
-    container.innerHTML = items.slice(0, 8).map(r => {
+    const html = items.slice(0, 8).map(r => {
         const overdue = r.date < today;
         const options = Object.keys(KYOKA_STATUS).map(v =>
             `<option value="${v}" ${v === r.status ? 'selected' : ''}>${KYOKA_STATUS[v].label}</option>`
@@ -363,6 +373,7 @@ function renderKyokaCard(events) {
         </li>`;
     }).join('');
 
+    if (!setHtmlIfChanged(container, html)) return;
     container.querySelectorAll('.report-status-select[data-event-id]').forEach(sel => {
         sel.addEventListener('change', () => setDocStatus(sel.dataset.eventId, 'KyokaStatus', sel.value));
     });
@@ -386,13 +397,9 @@ function renderReportsCard(events) {
         reports.push({ id: e.ID, date: deadline, event: e.Title, admin: e.AdminHoukoku || '', status });
     });
     reports.sort((a, b) => a.date.localeCompare(b.date));
+    setActionTotal(container, reports.length);
 
-    if (reports.length === 0) {
-        container.innerHTML = '';
-        return;
-    }
-
-    container.innerHTML = reports.slice(0, 8).map(r => {
+    const html = reports.slice(0, 8).map(r => {
         const overdue = r.date < today;
         const options = Object.keys(REPORT_STATUS).map(v =>
             `<option value="${v}" ${v === r.status ? 'selected' : ''}>${REPORT_STATUS[v].label}</option>`
@@ -410,6 +417,7 @@ function renderReportsCard(events) {
         </li>`;
     }).join('');
 
+    if (!setHtmlIfChanged(container, html)) return;
     container.querySelectorAll('.report-status-select[data-event-id]').forEach(sel => {
         sel.addEventListener('change', () => setDocStatus(sel.dataset.eventId, 'ReportStatus', sel.value));
     });
@@ -449,14 +457,10 @@ function renderFeedbackPending(events) {
             if (!endDate || endDate >= today || endDate < cutoff) return false;
             return !(e.Positives || '').trim() && !(e.Reflections || '').trim();
         })
-        .sort((a, b) => (b.Date || '').localeCompare(a.Date || ''))
-        .slice(0, 5);
+        .sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
+    setActionTotal(container, pending.length);
 
-    if (pending.length === 0) {
-        container.innerHTML = '';
-        return;
-    }
-    container.innerHTML = pending.map(e => {
+    container.innerHTML = pending.slice(0, 5).map(e => {
         const url = `event-series.html?event=${encodeURIComponent(e.ID)}&tab=feedback`;
         return `<li data-action="home-goto" data-href="${escapeAttr(url)}" style="cursor:pointer;">
             <span class="dl-date">${shortDate(e.Date)}</span>
@@ -502,14 +506,18 @@ function renderNameSelectBanner(members) {
     if (eligible.length === 0) { banner.classList.add('hidden'); return; }
 
     const groups = groupMembersByGrade(eligible);
-    sel.innerHTML = '<option value="">-- 名前を選択 --</option>' +
-        groups.map(g => `<optgroup label="${escapeAttr(g.label)}">${g.members.map(m => `<option value="${escapeAttr(m.ID)}">${escapeHtml(m.Name)}</option>`).join('')}</optgroup>`).join('');
-    btn.disabled = true;
+    // 裏の再読込でも、選びかけの名前を消さない（選択肢が同じなら作り直さず、変わっても選んだ値を戻す）
+    const picked = sel.value;
+    const changed = setHtmlIfChanged(sel, '<option value="">-- 名前を選択 --</option>' +
+        groups.map(g => `<optgroup label="${escapeAttr(g.label)}">${g.members.map(m => `<option value="${escapeAttr(m.ID)}">${escapeHtml(m.Name)}</option>`).join('')}</optgroup>`).join(''));
+    if (changed && picked && eligible.some(m => m.ID === picked)) sel.value = picked;
+    btn.disabled = !sel.value;
     sel.onchange = () => { btn.disabled = !sel.value; };
     const applyName = () => {
         if (!sel.value) return;
         const chosen = eligible.find(m => m.ID === sel.value);
         setSavedVoteMemberId(sel.value);
+        sel.value = '';   // 後で名前を外してバナーが再び出たとき、前の選択を残さない
         toast(`「${chosen ? chosen.Name : '名前'}」を設定しました`, 'success', 2500);
         renderIdentityBanners(latestEvents, allMembersData, latestVotes);
     };
@@ -563,7 +571,8 @@ function updateActionNeeded() {
         const list = document.getElementById(id);
         if (!list) return;
         const card = list.closest('.dash-card');
-        const count = list.children.length;
+        // 一覧は先頭の数件だけなので、件数は描画時に記録した総数を使う
+        const count = list.dataset.total !== undefined ? Number(list.dataset.total) : list.children.length;
         const has = count > 0;
         // 畳んでいても残件数が分かるよう、見出し右の件数バッジを更新する
         const countEl = document.getElementById('count-' + id);
