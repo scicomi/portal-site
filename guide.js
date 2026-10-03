@@ -99,11 +99,11 @@ async function gdInit() {
   document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (gdDirty) gdSaveNow(); }
   });
-  await refreshData(true);
+  if (!(await refreshData(true))) return;   // 読み込めなければ、エラーの案内を残す（ホームで上書きしない）
   gdOpenFromUrl();
 }
 
-// ヘッダーの同期表示（クリックで再読込）から呼ばれる。入力中のページは上書きしない
+// ヘッダーの同期表示（クリックで再読込）から呼ばれる。入力中のページは上書きしない。読み込めたら true
 async function refreshData(initial) {
   updateSyncStatus(initial === true && !gdPages.length ? 'initial-loading' : 'syncing');
   try {
@@ -112,16 +112,23 @@ async function refreshData(initial) {
     const mine = gdCurrentId ? gdById(gdCurrentId) : null;
     gdPages = sortGuides(items);
     gdRenderTree();
-    if (initial) return;
+    if (initial) return true;
     if (!gdDirty && !gdSavePromise && !gdConflict) {
       const fresh = gdCurrentId ? gdById(gdCurrentId) : null;
       if (!gdDraft && (!mine || !fresh || mine.UpdatedAt !== fresh.UpdatedAt)) gdRenderCurrent();
     }
+    return true;
   } catch (e) {
     console.error(e);
-    if (e && e.handled) return;
+    if (e && e.handled) return false;
     updateSyncStatus('error', null, e && e.message);
-    document.getElementById('gd-content').innerHTML = '<p class="loading-text">読み込めませんでした。しばらくしてから再読込してください。</p>';
+    // すでにページや一覧を表示しているときは、その画面（入力中の本文を含む）を残し、知らせるだけにする
+    if (gdPages.length || gdCurrentId || gdDraft) {
+      toast('最新の状態を読み込めませんでした。表示中の内容はそのままです', 'error');
+    } else {
+      document.getElementById('gd-content').innerHTML = '<p class="loading-text">読み込めませんでした。しばらくしてから再読込してください。</p>';
+    }
+    return false;
   }
 }
 
