@@ -18,12 +18,38 @@ document.addEventListener('DOMContentLoaded', () => {
 // mutator(draft) は currentExp の浅いコピー draft を書き換える（false を返すと「変更なし」として保存せず null を返す）。
 // 保存に成功してから currentExp / allExperiments / キャッシュへ反映するので、失敗時（例外）は currentExp は変わらない。
 // 呼び出しは直列化され、mutator は常に直前の保存結果（最新の UpdatedAt）に対して実行される。
+// 競合（他の人が先に更新）で保存できなかったら、サーバーの最新で currentExp を差し替える状態にする。
+// 差し替えないと、再読込するまで何度保存しても同じ競合で失敗し続ける。入力欄や画面の表示はここでは触らない
+// （開いている編集欄の入力を消さないため）。差し替えられたら true、取れなかったら false。
+async function refreshCurrentExpAfterConflict() {
+    try {
+        const list = await api.list('experiments');
+        const fresh = list.find(x => x.ID === currentExp.ID);
+        if (!fresh) return false;
+        Object.assign(currentExp, fresh);
+        const idx = list.findIndex(x => x.ID === currentExp.ID);
+        list[idx] = currentExp;
+        allExperiments = list;
+        api.saveCache('experiments', allExperiments);
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
 let _expPersistChain = Promise.resolve();
 function persistCurrentExp(mutator) {
     const run = async () => {
         const draft = { ...currentExp };
         if (mutator(draft) === false) return null;
-        const saved = await api.save('experiments', { ...draft, _baseUpdatedAt: currentExp.UpdatedAt || '' });
+        let saved;
+        try {
+            saved = await api.save('experiments', { ...draft, _baseUpdatedAt: currentExp.UpdatedAt || '' });
+        } catch (e) {
+            // 失敗は呼び出し元に伝える。競合なら最新を取り込んだことを印にして（文言が変わる）、もう一度保存できるようにする
+            if (isConflictError(e)) e.refreshed = await refreshCurrentExpAfterConflict();
+            throw e;
+        }
         Object.assign(currentExp, saved);
         const idx = allExperiments.findIndex(e => e.ID === currentExp.ID);
         if (idx >= 0) allExperiments[idx] = currentExp;

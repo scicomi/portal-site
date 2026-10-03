@@ -576,7 +576,10 @@ function humanizeApiError(e) {
     case 'rate_limited':
       return 'ログインの失敗が続いたため、しばらくログインできません。10分ほど待ってから、もう一度お試しください。';
     case 'conflict':
-      return '他の人が先に更新しました。ページを再読み込みしてから、もう一度お試しください。';
+      // refreshed: 画面側がすでに最新を読み込み直したとき（experiment-detail.js の persistCurrentExp）
+      return e.refreshed
+        ? '他の人が先に更新したため、最新の内容を読み込みました。もう一度保存してください。'
+        : '他の人が先に更新しました。ページを再読み込みしてから、もう一度お試しください。';
     case 'too_large':
       return '内容が長すぎるため保存できません。文章を短くするか、分けて保存してください。' + (e.detail ? '（項目: ' + e.detail + '）' : '');
     case 'BAD_RESPONSE':
