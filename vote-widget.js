@@ -196,6 +196,8 @@ function isVoteBusy(eventId, memberId) {
 
 // 楽観的更新つきの投票送信（votes 配列を直接書き換える）
 // 同じ人・同じイベントの送信中に押された操作は、応答が返ってから順番に送る（応答順の逆転を防ぐ）。
+// 呼び出し側との約束: votes を書き換えるたびに、先に onChange(votes) を呼び、そのあとで rerender() を呼ぶ。
+// 呼び出し側が votes のコピーを持っていても（onChange で自分のデータへ反映する）、rerender は必ず最新の値で描画できる。
 async function submitVoteOptimistic(args) {
   const { event: ev, votes, memberId, status, note, rerender, onChange, deferRender } = args;
   if (!memberId) { toast('先に名前を選択してください', 'info'); return; }
@@ -213,8 +215,8 @@ async function submitVoteOptimistic(args) {
   if (before && before.status === optimistic.status && (before.note || '') === (optimistic.note || '')) return;
   _voteBusy.set(key, null);
   if (idx >= 0) votes[idx] = optimistic; else votes.push(optimistic);
-  if (rerender && !deferRender) rerender();
   if (onChange) onChange(votes);
+  if (rerender && !deferRender) rerender();
 
   let saved = null, error = null;
   try {
@@ -232,8 +234,8 @@ async function submitVoteOptimistic(args) {
   } else if (j >= 0) {
     votes[j] = saved;
   }
-  if (rerender) rerender();
   if (onChange) onChange(votes);
+  if (rerender) rerender();
   if (error) toast(voteErrorMessage(error), 'error');
   else toast(`「${VOTE_STATUS_LABELS[status]}」で回答しました`, 'success', 2000);
 
