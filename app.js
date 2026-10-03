@@ -553,9 +553,28 @@ function _readCachedSiteSettings() {
   } catch (_) { return null; }
 }
 
+// スキップリンク: キーボードの利用者が、毎ページ約 10 回 Tab を押してナビを通らなくても、本文へ移れるようにする。
+// href="#..." のままだとページ側のハッシュ処理(ガイドの popstate など)に触れるので、クリックは自前で処理する
+function ensureSkipLink() {
+  const main = document.querySelector('main');
+  if (!main || document.querySelector('.skip-link')) return;
+  if (!main.id) main.id = 'main-content';
+  const a = document.createElement('a');
+  a.className = 'skip-link';
+  a.href = '#' + main.id;
+  a.textContent = '本文へ移動';
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    main.setAttribute('tabindex', '-1');
+    main.focus();
+  });
+  document.body.insertBefore(a, document.body.firstChild);
+}
+
 function renderHeader(activePage) {
   const header = document.querySelector('.app-header');
   if (!header) return;
+  ensureSkipLink();
   const isAdmin = api.isAdmin();
 
   const navItems = CONFIG.NAV_ITEMS.filter(item =>

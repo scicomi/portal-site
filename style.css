@@ -220,6 +220,22 @@ body {
     cursor: pointer;
 }
 .nav-caret { font-size: 0.7em; }
+
+/* スキップリンク(app.js の ensureSkipLink)。普段は画面の外に置き、キーボードのフォーカスが来たときだけ見せる */
+.skip-link {
+    position: fixed;
+    left: 8px;
+    top: -60px;
+    z-index: 2000;
+    padding: 10px 16px;
+    background: var(--primary-color);
+    color: white;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+}
+.skip-link:focus { top: 8px; }
+main:focus { outline: none; }
 .nav-menu {
     position: fixed;
     z-index: 1000;
