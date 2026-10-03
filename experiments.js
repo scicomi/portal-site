@@ -410,7 +410,7 @@ function openExpWizard(editId) {
         ev.preventDefault();
         wizardNext();
     });
-    setTimeout(() => document.getElementById('wz-ex-name').focus(), 80);
+    setTimeout(() => document.getElementById('wz-ex-name')?.focus(), 80);
 }
 
 function closeExpWizard() {

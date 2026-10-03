@@ -323,7 +323,7 @@ function openAddFeedback() {
     // Tab がモーダル外へ抜けないよう閉じ込める。静的モーダル（再利用）なので
     // リスナーの多重登録を避けて一度だけ束縛する（要素構成は開くたびに不変）。
     if (!modal._trapBound) { trapFocus(modal.querySelector('.modal-content')); modal._trapBound = true; }
-    setTimeout(() => document.getElementById('fb-text').focus(), 50);
+    setTimeout(() => document.getElementById('fb-text')?.focus(), 50);
 }
 
 function closeFeedbackModal() {
@@ -640,7 +640,7 @@ function openAddVideoModal() {
     modal.classList.remove('hidden');
     bindModalEscape(modal, closeVideoModal);
     if (!modal._trapBound) { trapFocus(modal.querySelector('.modal-content')); modal._trapBound = true; }
-    setTimeout(() => document.getElementById('video-url').focus(), 50);
+    setTimeout(() => document.getElementById('video-url')?.focus(), 50);
 }
 
 function closeVideoModal() {

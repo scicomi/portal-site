@@ -429,7 +429,7 @@ function openPwModal() {
     bindModalEscape(modal, closePwModal);
     // Tab がモーダル外へ抜けないよう閉じ込める（静的モーダルなので一度だけ束縛）
     if (!modal._trapBound) { trapFocus(modal.querySelector('.wizard-panel')); modal._trapBound = true; }
-    setTimeout(() => document.getElementById('pw-f-name').focus(), 50);
+    setTimeout(() => document.getElementById('pw-f-name')?.focus(), 50);
 }
 
 function editPwEntry(id) {
@@ -457,7 +457,7 @@ function editPwEntry(id) {
     bindModalEscape(modal, closePwModal);
     // 編集時はこれまでフォーカスがモーダル外に残っていたので、内側へ移し Tab も閉じ込める
     if (!modal._trapBound) { trapFocus(modal.querySelector('.wizard-panel')); modal._trapBound = true; }
-    setTimeout(() => document.getElementById('pw-f-name').focus(), 50);
+    setTimeout(() => document.getElementById('pw-f-name')?.focus(), 50);
 }
 
 // 保存せずに閉じたときは、このモーダルでアップロードした未保存の写真を R2 から消す（保存成功時は空になっている）。

@@ -474,7 +474,7 @@ function openMemberWizard(editId) {
         ev.preventDefault();
         mbWizardNext();
     });
-    setTimeout(() => document.getElementById('wz-mb-student-id').focus(), 80);
+    setTimeout(() => document.getElementById('wz-mb-student-id')?.focus(), 80);
 }
 
 function closeMemberWizard() {
