@@ -272,6 +272,10 @@ body {
 .sync-dot.cached { background: var(--warning-color); }
 .sync-dot.error { background: var(--danger-color); }
 .sync-dot.loading { background: rgba(255,255,255,0.5); animation: pulse 1s ease-in-out infinite; }
+/* 同期エラー: 赤い地に白文字。気づかれないまま古い表示（0件など）を信じてしまわないように */
+.sync-status.has-error { background: var(--danger-color); color: #fff; font-weight: 600; }
+.sync-status.has-error:hover { background: var(--danger-color); filter: brightness(0.92); }
+.sync-status.has-error .sync-dot.error { background: #fff; }
 
 @keyframes pulse {
     0%, 100% { opacity: 0.3; transform: scale(0.8); }
@@ -285,6 +289,7 @@ body {
     /* 丸ポチはスマホでも常に表示。文字（「同期中...」等）は幅を取るので隠し、丸だけにする
        （.sync-dot は px 指定なので font-size:0 の影響を受けない。詳細は title で確認できる） */
     .sync-status { font-size: 0; gap: 0; padding: 4px 8px; }
+    .sync-status.has-error { font-size: 0.75rem; gap: 6px; padding: 4px 10px; }   /* エラーのときだけ文字も出す */
     .header-actions { gap: 6px; }
 }
 

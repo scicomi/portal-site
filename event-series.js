@@ -706,7 +706,7 @@ async function uploadDetailFiles(field, files, multiple) {
         try {
             uploaded.push(await api.uploadFile(file));
         } catch (err) {
-            toast(`「${file.name}」のアップロード失敗: ${err.message}`, 'error');
+            toast(`「${file.name}」のアップロード失敗: ${humanizeApiError(err)}`, 'error');
         }
     }
     if (uploaded.length === 0) return;

@@ -1151,7 +1151,8 @@ async function runAfterLogin(onSuccess) {
   }
 }
 
-function showPasswordModal(onSuccess) {
+// notice: ダイアログを開いた理由（例: セッション切れ）。最初からエラー欄に出す
+function showPasswordModal(onSuccess, notice) {
   // 複数の API 呼び出しが同時に unauthorized を返すと多重に開くため、既存があれば作り直す
   const existing = document.getElementById('pw-modal');
   if (existing) existing.remove();
@@ -1176,6 +1177,7 @@ function showPasswordModal(onSuccess) {
   const input = modal.querySelector('#pw-input');
   const errEl = modal.querySelector('#pw-error');
   const submitBtn = modal.querySelector('#pw-submit');
+  if (notice) errEl.textContent = notice;
   trapFocus(box);
   setTimeout(() => input.focus(), 50);
 
@@ -1230,11 +1232,12 @@ function updateSyncStatus(state, timestamp, errMsg) {
     'error':           `<span class="sync-dot error"></span>同期エラー`
   };
   el.innerHTML = labels[state] || '';
+  el.classList.toggle('has-error', state === 'error');   // エラーのときだけ目立たせる（スマホ幅でも文字を出す）
   if (state === 'fresh') {
     el.title = `${fmtTime(timestamp)} 同期済 — クリックで再読込`;
   } else if (state === 'error') {
     // エラー詳細（ツールチップ）は既知のコードを日本語へ変換して表示する
-    el.title = errMsg ? humanizeApiError({ code: errMsg, message: errMsg }) : '';
+    el.title = (errMsg ? humanizeApiError({ code: errMsg, message: errMsg }) + ' — ' : '') + 'クリックで再読込';
   } else {
     el.title = 'クリックで再読込';
   }

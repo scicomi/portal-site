@@ -121,7 +121,7 @@ async function saveSettingField(key, inputId, btn) {
             invalidateSettingsCache();
             toast('保存しました', 'success');
         } catch (e) {
-            toast('保存失敗: ' + e.message, 'error');
+            toast('保存失敗: ' + humanizeApiError(e), 'error');
         }
     });
 }
@@ -135,7 +135,7 @@ async function saveSettingDirect(key, inputId, btn) {
             invalidateSettingsCache();
             toast('保存しました', 'success');
         } catch (e) {
-            toast('保存失敗: ' + e.message, 'error');
+            toast('保存失敗: ' + humanizeApiError(e), 'error');
         }
     });
 }
@@ -167,7 +167,7 @@ async function saveSecret(key, inputId, btn) {
             el.placeholder = '設定済み（変更する場合のみ入力）';
             toast('保存しました', 'success');
         } catch (e) {
-            toast('保存失敗: ' + e.message, 'error');
+            toast('保存失敗: ' + humanizeApiError(e), 'error');
         }
     });
 }
@@ -201,7 +201,7 @@ async function savePassword(key, btn) {
             setTimeout(() => location.reload(), 2000);
         }
     } catch (e) {
-        toast('変更失敗: ' + e.message, 'error');
+        toast('変更失敗: ' + humanizeApiError(e), 'error');
     }
     });
 }
@@ -231,7 +231,7 @@ async function saveDeadlineRules(btn) {
         try {
             await api.adminSetConfig('deadline_kyoka', String(-kyoka));
         } catch (e) {
-            toast('保存失敗(何も変更していません): ' + e.message, 'error');
+            toast('保存失敗(何も変更していません): ' + humanizeApiError(e), 'error');
             return;
         }
         try {
@@ -242,10 +242,10 @@ async function saveDeadlineRules(btn) {
             try { await api.adminSetConfig('deadline_kyoka', String(prevKyoka)); rolledBack = true; } catch (_) {}
             invalidateSettingsCache();
             if (rolledBack) {
-                toast('報告書の期限を保存できなかったため、許可願の期限も元に戻しました: ' + e.message, 'error');
+                toast('報告書の期限を保存できなかったため、許可願の期限も元に戻しました: ' + humanizeApiError(e), 'error');
             } else {
                 CONFIG.DEADLINE_RULES.kyoka = -kyoka;
-                toast(`許可願の期限(${kyoka}日前)だけ保存され、報告書の期限は保存できませんでした。もう一度保存してください: ` + e.message, 'error', 8000);
+                toast(`許可願の期限(${kyoka}日前)だけ保存され、報告書の期限は保存できませんでした。もう一度保存してください: ` + humanizeApiError(e), 'error', 8000);
             }
             return;
         }
@@ -270,7 +270,7 @@ async function saveTrashKeepDays(btn) {
             await api.adminSetConfig('trash_keep_days', String(n));
             toast('保管日数を保存しました', 'success');
         } catch (e) {
-            toast('保存失敗: ' + e.message, 'error');
+            toast('保存失敗: ' + humanizeApiError(e), 'error');
         }
     });
 }
@@ -341,7 +341,7 @@ async function saveSiteLinks(btn) {
             invalidateSettingsCache();
             toast('リンク集を保存しました', 'success');
         } catch (e) {
-            toast('保存失敗: ' + e.message, 'error');
+            toast('保存失敗: ' + humanizeApiError(e), 'error');
         }
     });
 }

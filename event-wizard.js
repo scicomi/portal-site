@@ -1023,7 +1023,7 @@ async function wzUploadFiles(fileList, field = 'Files', refresh = wzRefreshFileL
             if (tempNewEvent !== target) return;
             const idx = target[field].indexOf(placeholder);
             if (idx < 0) continue; // キャンセル済み。失敗を表示しない
-            toast(`「${file.name}」のアップロード失敗: ${err.message}`, 'error');
+            toast(`「${file.name}」のアップロード失敗: ${humanizeApiError(err)}`, 'error');
             target[field][idx] = { name: file.name, size: file.size, _failed: true };
         }
         refresh();
@@ -1300,7 +1300,7 @@ function persistEventFromWizard(item) {
         } else {
             // ウィザードは閉じているので、入力した内容を開き直して編集を続けられるようにする。
             // サーバーで保存済みの可能性があるので、アップロード済みのファイルは消さない
-            toastUndo('保存失敗: ' + err.message + '（入力した内容は開き直せます）',
+            toastUndo('保存失敗: ' + humanizeApiError(err) + '（入力した内容は開き直せます）',
                 () => reopenFailedEventWizard(item), () => {}, 20000, '入力を開き直す');
         }
     });
@@ -1384,7 +1384,7 @@ async function deleteEventWithUndo(id) {
         trashId = await api.delete('events', id);
     } catch (err) {
         putBack(backup);
-        toast('削除失敗: ' + err.message, 'error');
+        toast('削除失敗: ' + humanizeApiError(err), 'error');
         return;
     }
     if (c.onDeleted && c.onDeleted(id) === false) return;
@@ -1397,7 +1397,7 @@ async function deleteEventWithUndo(id) {
                 putBack(r.item || backup);
                 toast('元に戻しました', 'success', 2000);
             } catch (err) {
-                toast('復元に失敗しました（ゴミ箱から戻せます）: ' + err.message, 'error');
+                toast('復元に失敗しました（ゴミ箱から戻せます）: ' + humanizeApiError(err), 'error');
             }
         },
         () => {},

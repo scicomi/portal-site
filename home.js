@@ -142,7 +142,7 @@ async function saveWelcomeMessage() {
         cancelWelcomeEdit();
         renderWelcome();
     } catch (e) {
-        toast('保存失敗: ' + e.message, 'error');
+        toast('保存失敗: ' + humanizeApiError(e), 'error');
     }
 }
 

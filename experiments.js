@@ -592,7 +592,7 @@ async function deleteExp(id) {
         expData.splice(idx, 0, backup);
         api.saveCache('experiments', expData);
         render();
-        toast('削除失敗: ' + e.message, 'error');
+        toast('削除失敗: ' + humanizeApiError(e), 'error');
         return;
     }
 
@@ -606,7 +606,7 @@ async function deleteExp(id) {
                 render();
                 toast('元に戻しました', 'success', 2000);
             } catch (e) {
-                toast('復元に失敗しました: ' + e.message, 'error');
+                toast('復元に失敗しました: ' + humanizeApiError(e), 'error');
             }
         },
         // 写真の実体（R2）は、ゴミ箱の期限が来るまでサーバーに残る

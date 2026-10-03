@@ -679,7 +679,7 @@ async function deleteMember(id) {
         membersData.splice(idx, 0, backup);
         api.saveCache('members', membersData);
         renderMembers();
-        toast('削除失敗: ' + e.message, 'error');
+        toast('削除失敗: ' + humanizeApiError(e), 'error');
         return;
     }
 
@@ -694,7 +694,7 @@ async function deleteMember(id) {
                 renderMembers();
                 toast('元に戻しました', 'success', 2000);
             } catch (e) {
-                toast('復元に失敗しました: ' + e.message, 'error');
+                toast('復元に失敗しました: ' + humanizeApiError(e), 'error');
             }
         },
         () => {},

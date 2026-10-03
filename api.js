@@ -530,7 +530,7 @@ const api = {
         this.clearAdminToken();   // メンバーとして失効したなら管理者モードも引き継がない
         this.clearAllCache();
         if (typeof showPasswordModal === 'function') {
-          showPasswordModal(() => location.reload());
+          showPasswordModal(() => location.reload(), humanizeApiError({ code: 'unauthorized' }));
         } else {
           location.reload();
         }
@@ -586,6 +586,9 @@ function humanizeApiError(e) {
       return '幹部の認証が必要です。右上のメニューから管理者モードにしてください。';
     case 'rate_limited':
       return 'ログインの失敗が続いたため、しばらくログインできません。10分ほど待ってから、もう一度お試しください。';
+    case 'internal_error':
+      // サーバー内部のエラー。Cloudflare の無料枠（1 日の上限）を超えたときも、この形で返る
+      return 'サーバーでエラーが起きました。しばらく待ってから、もう一度お試しください。続く場合は、無料枠の上限を超えている可能性があるので、管理者に連絡してください。';
     case 'conflict':
       // refreshed: 画面側がすでに最新を読み込み直したとき（experiment-detail.js の persistCurrentExp）
       return e.refreshed

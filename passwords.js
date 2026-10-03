@@ -390,7 +390,7 @@ async function handlePwPhotoSelect(input) {
         if (result.driveId) pwSessionUploads.push(result.driveId);
         renderPwPhotoPreview();
     } catch (e) {
-        if (session === pwModalSession) toast('アップロード失敗: ' + e.message, 'error');
+        if (session === pwModalSession) toast('アップロード失敗: ' + humanizeApiError(e), 'error');
     }
 }
 
@@ -517,7 +517,7 @@ async function savePwEntry() {
             await refreshData();
             return;
         }
-        toast('保存失敗: ' + msg, 'error');
+        toast('保存失敗: ' + humanizeApiError(e), 'error');
     } finally {
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; }
     }
@@ -570,6 +570,6 @@ async function executeDeletePwEntry(id) {
             showAdminAuthModal(() => location.reload());
             return;
         }
-        toast('削除失敗: ' + msg, 'error');
+        toast('削除失敗: ' + humanizeApiError(e), 'error');
     }
 }
