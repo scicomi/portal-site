@@ -1096,27 +1096,62 @@ function wzRefreshFileList() {
 // ---- ウィザードから保存（検証 → 組み立て → 保存） ----
 function saveEventFromWizard() {
     if (!tempNewEvent) return;
+    if (document.getElementById('series-rename-overlay')) return;   // シリーズの確認を表示中（Ctrl+S の連打など）
     const checked = validateEventWizard();
     if (!checked) return;
     const item = buildEventFromWizard(checked.time);
-    keepSeriesOnRename(item);
-    persistEventFromWizard(item);
+    const rename = seriesRenameInfo(item);
+    if (!rename) { persistEventFromWizard(item); return; }
+    // タイトル変更でシリーズから外れるときは、誤字直し（まとめたまま）か別のイベントかを本人に選んでもらう
+    askSeriesOnRename(item, rename, keep => {
+        if (!tempNewEvent) return;   // 確認中にウィザードが閉じられていたら保存しない
+        if (keep) item.SeriesKey = rename.oldKey;
+        persistEventFromWizard(item);
+    });
 }
 
 // 編集でタイトルを変えると、シリーズ（同じイベントの各回のまとまり）のキーが変わり、その回だけ別のイベントになる。
-// ほかの回が残るシリーズからは外さないよう、変更前のキーを SeriesKey に残す（誤字の修正などで外れないように）。
-// SeriesKey が既に入っている回は、タイトルを変えてもまとまりが変わらないので何もしない。
-function keepSeriesOnRename(item) {
-    if (!editingEventId || String(item.SeriesKey || '').trim()) return;
+// ほかの回が残るシリーズから外れる場合だけ { oldKey, oldTitle, others } を返す（それ以外は null）。
+// SeriesKey が既に入っている回は、タイトルを変えてもまとまりが変わらないので対象外。
+function seriesRenameInfo(item) {
+    if (!editingEventId || String(item.SeriesKey || '').trim()) return null;
     const host = _wzHost();
     const before = host.getEvent(item.ID);
-    if (!before) return;
+    if (!before) return null;
     const oldKey = seriesKeyOf(before);
-    if (!oldKey || oldKey === seriesKeyOf(item)) return;
-    const hasSiblings = host.list().some(e => e.ID !== item.ID && seriesKeyOf(e) === oldKey);
-    if (!hasSiblings) return;
-    item.SeriesKey = oldKey;
-    toast('タイトルを変えましたが、これまでと同じイベントの回としてまとめたままにします', 'info', 5000);
+    if (!oldKey || oldKey === seriesKeyOf(item)) return null;
+    const siblings = host.list().filter(e => e.ID !== item.ID && seriesKeyOf(e) === oldKey);
+    if (siblings.length === 0) return null;
+    return { oldKey, oldTitle: before.Title || oldKey, others: siblings.length };
+}
+
+// 「まとめたままにする / 別のイベントにする / 戻る」を選ぶ確認。onChoose(true) でまとめたまま、onChoose(false) で分ける。
+// 戻る（Esc・背景クリックを含む）なら何もせず、ウィザードの編集を続けられる。
+function askSeriesOnRename(item, rename, onChoose) {
+    const ov = document.createElement('div');
+    ov.id = 'series-rename-overlay';
+    ov.className = 'confirm-dialog-overlay';
+    ov.innerHTML = `
+        <div class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="series-rename-title">
+            <h3 id="series-rename-title">同じイベントの回としてまとめますか？</h3>
+            <p>タイトルを「${escapeHtml(item.Title || '')}」に変えると、「${escapeHtml(rename.oldTitle)}」（ほか ${rename.others} 回）とは別のイベントとして扱われます。</p>
+            <p>誤字の修正などで同じイベントのままにするなら「まとめたままにする」、別の内容のイベントなら「別のイベントにする」を選んでください。</p>
+            <div class="confirm-dialog-actions" style="flex-wrap:wrap;">
+                <button type="button" class="btn btn-text" data-back>戻る</button>
+                <button type="button" class="btn btn-secondary" data-split>別のイベントにする</button>
+                <button type="button" class="btn btn-primary-solid" data-keep>まとめたままにする</button>
+            </div>
+        </div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    const choose = keep => { close(); onChoose(keep); };
+    ov.querySelector('[data-back]').addEventListener('click', close);
+    ov.querySelector('[data-split]').addEventListener('click', () => choose(false));
+    ov.querySelector('[data-keep]').addEventListener('click', () => choose(true));
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+    bindModalEscape(ov, close);
+    trapFocus(ov.querySelector('.confirm-dialog'));
+    setTimeout(() => ov.querySelector('[data-keep]').focus(), 30);
 }
 
 // 入力を検証する。問題があれば該当ステップへ移ってエラーを表示し、null を返す。
