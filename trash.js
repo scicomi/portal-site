@@ -46,8 +46,13 @@ async function refreshTrash() {
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
         if (!e.handled) updateSyncStatus('error', null, e.message);
-        document.getElementById('trash-tbody').innerHTML =
-            `<tr><td colspan="5" class="loading-text">読み込みに失敗しました: ${escapeHtml(e.message)}</td></tr>`;
+        if (trashItems.length) {
+            // すでに一覧を表示しているときは、それを残して知らせるだけにする(再読込の失敗で、操作できる一覧まで消さない)
+            if (!e.handled) toast('ゴミ箱を最新にできませんでした: ' + humanizeApiError(e), 'error', 5000);
+        } else {
+            document.getElementById('trash-tbody').innerHTML =
+                `<tr><td colspan="5" class="loading-text">読み込みに失敗しました: ${escapeHtml(humanizeApiError(e))}</td></tr>`;
+        }
         return;
     }
     renderTrash();
@@ -116,9 +121,14 @@ function trashErrorMessage(e) {
     return TRASH_ERRORS[code] || code;
 }
 
+// 復元・完全削除の通信中に、同じ項目をもう一度押しても、2 回目を送らない(2 回目は not_found の失敗トーストになるため)
+const _trashBusy = new Set();
+
 async function restoreTrashEntry(id) {
     const t = trashItems.find(x => x.id === id);
-    if (!t) return;
+    if (!t || _trashBusy.has(id)) return;
+    _trashBusy.add(id);
+    setTrashRowBusy(id, true);
     try {
         await api.restoreTrash(id);
         trashItems = trashItems.filter(x => x.id !== id);
@@ -127,7 +137,14 @@ async function restoreTrashEntry(id) {
     } catch (e) {
         toast('復元できませんでした: ' + trashErrorMessage(e), 'error', 6000);
         if (String(e.message) === 'not_found') refreshTrash();
+    } finally {
+        _trashBusy.delete(id);
+        setTrashRowBusy(id, false);
     }
+}
+
+function setTrashRowBusy(id, busy) {
+    document.querySelectorAll(`#trash-tbody tr[data-id="${CSS.escape(id)}"] button`).forEach(b => { b.disabled = busy; });
 }
 
 function confirmPurgeTrashEntry(id) {
@@ -139,6 +156,9 @@ function confirmPurgeTrashEntry(id) {
         okLabel: '完全に削除する',
         danger: true,
         onOk: async () => {
+            if (_trashBusy.has(id)) return;
+            _trashBusy.add(id);
+            setTrashRowBusy(id, true);
             try {
                 await api.purgeTrash(id);
                 trashItems = trashItems.filter(x => x.id !== id);
@@ -147,6 +167,9 @@ function confirmPurgeTrashEntry(id) {
             } catch (e) {
                 toast('削除できませんでした: ' + trashErrorMessage(e), 'error', 6000);
                 if (String(e.message) === 'not_found') refreshTrash();
+            } finally {
+                _trashBusy.delete(id);
+                setTrashRowBusy(id, false);
             }
         }
     });

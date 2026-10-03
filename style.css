@@ -2162,6 +2162,7 @@ textarea:focus {
 
 /* ========== Admin UI ========== */
 .admin-only { display: none; }
+.admin-only.is-visible { display: inline-block; }
 
 /* ========== 設定ページ（各セクションはトグルで開閉できるアコーディオン） ========== */
 .settings-section {

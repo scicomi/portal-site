@@ -192,6 +192,8 @@ function buildGradeChips(fyMembers) {
         return a.localeCompare(b);
     });
     if (hasGrad) list.push('院生');
+    // 絞り込み中の学年の最後の 1 人を削除する・年度を切り替えるなどで、その学年が無くなったら、絞り込みを解除する(解除用のチップも消えるため)
+    if (gradeFilter && list.indexOf(gradeFilter) < 0) gradeFilter = null;
     if (list.length === 0) {
         row.style.display = 'none';
         wrap.innerHTML = '';
@@ -317,9 +319,7 @@ function renderMembers() {
     const isStaffTab = roleFilter === 'staff';
     const colCount = isStaffTab ? 5 : 4;
 
-    document.querySelectorAll('.admin-only').forEach(el => {
-        el.style.display = isAdmin ? 'inline-block' : 'none';
-    });
+    document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('is-visible', isAdmin));
 
     if (thead) {
         thead.innerHTML = isStaffTab
@@ -581,6 +581,26 @@ async function saveMember() {
         toast('学籍番号が数字で始まっていません。学年の絞り込み・並び順に反映されない場合があります', 'info', 5000);
     }
 
+    // 同じ年度に、同じ学籍番号・同じ名前の人がすでにいたら、確認してから保存する(同じ人を重ねて登録すると、出欠・検索・本人判定がぶれる)。
+    // 年度の一括登録は重複を「登録済み」として外すので、ここは手動で追加・編集するときの確認
+    const changed = !existing || existing.StudentID !== item.StudentID || existing.Name !== item.Name;
+    const year = parseInt(item.FiscalYear, 10);
+    const dup = changed ? membersData.find(m => m.ID !== item.ID && getMemberFiscalYear(m) === year
+        && ((item.StudentID && m.StudentID === item.StudentID) || m.Name === item.Name)) : null;
+    if (dup) {
+        showConfirmDialog({
+            title: 'すでに登録されている可能性があります',
+            message: `${year}年度に、「${dup.Name}」（${dup.StudentID || '番号なし'}）がすでに登録されています。同じ人を重ねて${existing ? '保存' : '追加'}しますか？`,
+            okLabel: existing ? '保存する' : '追加する',
+            cancelLabel: '戻って確認する',
+            onOk: () => { commitMemberSave(item, existing); }
+        });
+        return;
+    }
+    commitMemberSave(item, existing);
+}
+
+function commitMemberSave(item, existing) {
     // 失敗したら、この 1 件だけを保存前へ戻す（その間の別の保存や再読込の結果は消さない）
     const optimistic = applyOptimisticItem(() => membersData, { ...(existing || {}), ...item });
     api.saveCache('members', membersData);
