@@ -963,6 +963,19 @@ textarea:focus {
     background-color: var(--hover-bg);
 }
 
+/* Modal Scroll Adjustments */
+.modal-content.large-modal {
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-content.large-modal .modal-body {
+    overflow-y: auto;
+    flex: 1;
+    padding-right: 15px;
+}
+
 @media (max-width: 768px) {
     /* 詳細ビュー等の長い .large-modal だけを全画面にする。それ以外の短い確認・詳細
        ポップアップは全画面にすると画面上部に間延びして見えるため、中央にコンパクト表示する。 */
@@ -1036,19 +1049,6 @@ textarea:focus {
 
 .mt-2 {
     margin-top: 1rem;
-}
-
-/* Modal Scroll Adjustments */
-.modal-content.large-modal {
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-}
-
-.modal-content.large-modal .modal-body {
-    overflow-y: auto;
-    flex: 1;
-    padding-right: 15px;
 }
 
 /* ========== Login Modal (app.js) ========== */
@@ -1696,41 +1696,6 @@ textarea:focus {
 
 .tbl-link { color: var(--primary-light); text-decoration: none; }
 .tbl-link:hover { text-decoration: underline; }
-
-/* ============================================================
-   ラベル/値テーブル（d1-table系）のスマホ表示
-   狭い幅でラベル列を圧縮するより、ラベルを上・値を下に積んだ方が読みやすい。
-   ============================================================ */
-@media (max-width: 600px) {
-    .d1-table, .series-detail-table, .series-safety-table,
-    .d1-table tbody, .series-detail-table tbody, .series-safety-table tbody,
-    .d1-table tr, .series-detail-table tr, .series-safety-table tr {
-        display: block;
-        width: 100%;
-    }
-    .d1-table th, .d1-table td,
-    .series-detail-table th, .series-detail-table td,
-    .series-safety-table th, .series-safety-table td {
-        display: block;
-        width: 100% !important;
-        white-space: normal;
-        word-break: break-word;
-        box-sizing: border-box;
-    }
-    .d1-table th, .series-detail-table th, .series-safety-table th {
-        padding: 10px 2px 2px;
-        border-bottom: none;
-        background: none;
-    }
-    .d1-table td, .series-detail-table td, .series-safety-table td {
-        padding: 0 2px 10px;
-    }
-    .d1-table tr:last-child td,
-    .series-detail-table tr:last-child td,
-    .series-safety-table tr:last-child td {
-        padding-bottom: 2px;
-    }
-}
 
 /* ============================================================
    スマホ最適化（768px以下）
@@ -3031,15 +2996,8 @@ textarea:focus {
 }
 .expd-tab-pane[data-tab-pane="local-info"] { border-top-color: var(--info-color); }
 .expd-tab-pane[data-tab-pane="stats"] { border-top-color: #0d9488; }
-.expd-tab-pane.hidden {
-    display: none !important;
-}
 
 /* ========== Furigana Display ========== */
-
-.scope-pane.hidden {
-    display: none !important;
-}
 
 /* --- 振り返りタブ内の対象切り替え（会場・運営 / 実験名ごと） --- */
 .grandchild-tab-bar {
@@ -4289,4 +4247,40 @@ mark.search-hit {
     display: block;
     /* 画像の下にはみ出すフラスコの分、文字がアイコンより高くなるのを打ち消す(文字の中心をアイコンに合わせる) */
     transform: translateY(21.7%);
+}
+
+/* ============================================================
+   ラベル/値テーブル（d1-table系）のスマホ表示
+   狭い幅でラベル列を圧縮するより、ラベルを上・値を下に積んだ方が読みやすい。
+   上の基本定義より後ろに置かないと、padding / 下線 / 背景 / nowrap が基本値に負けるので、必ずファイル末尾に置くこと。
+   ============================================================ */
+@media (max-width: 600px) {
+    .d1-table, .series-detail-table, .series-safety-table,
+    .d1-table tbody, .series-detail-table tbody, .series-safety-table tbody,
+    .d1-table tr, .series-detail-table tr, .series-safety-table tr {
+        display: block;
+        width: 100%;
+    }
+    .d1-table th, .d1-table td,
+    .series-detail-table th, .series-detail-table td,
+    .series-safety-table th, .series-safety-table td {
+        display: block;
+        width: 100% !important;
+        white-space: normal;
+        word-break: break-word;
+        box-sizing: border-box;
+    }
+    .d1-table th, .series-detail-table th, .series-safety-table th {
+        padding: 10px 2px 2px;
+        border-bottom: none;
+        background: none;
+    }
+    .d1-table td, .series-detail-table td, .series-safety-table td {
+        padding: 0 2px 10px;
+    }
+    .d1-table tr:last-child td,
+    .series-detail-table tr:last-child td,
+    .series-safety-table tr:last-child td {
+        padding-bottom: 2px;
+    }
 }

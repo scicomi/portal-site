@@ -42,14 +42,14 @@
 .gd-side-new:hover { background: rgba(55, 53, 47, 0.06); }
 .gd-hit { display: block; padding: 8px; border-radius: 6px; color: var(--text-color); text-decoration: none; }
 .gd-hit:hover { background: rgba(55, 53, 47, 0.06); }
-.gd-hit-title { display: block; font-size: 0.9rem; font-weight: 600; }
+.gd-hit-title { font-size: 0.9rem; font-weight: 600; }
 .gd-hit-snippet { display: block; font-size: 0.78rem; color: var(--text-tertiary); margin-top: 2px; }
 
 .gd-side-toggle { display: none; margin-bottom: 8px; width: auto; }
 
 /* ---- 本体 ---- */
 .gd-main { min-width: 0; }
-.gd-content { padding: 14px 56px 80px; min-height: 480px; max-width: 900px; margin: 0 auto; box-sizing: border-box; }
+.gd-content { padding: 14px 56px 120px; min-height: 480px; max-width: 900px; margin: 0 auto; box-sizing: border-box; }
 
 .gd-topbar { display: flex; align-items: center; gap: 12px; min-height: 36px; margin: 0 -8px 20px; }
 .gd-crumbs { flex: 1; min-width: 0; font-size: 0.85rem; color: var(--text-tertiary); display: flex; flex-wrap: wrap; gap: 6px; }
@@ -82,16 +82,17 @@
 .gd-page-head { margin-bottom: 18px; }
 .gd-icon-wrap { position: relative; display: inline-block; }
 .gd-page-icon {
-    display: block; border: none; background: none; padding: 2px 6px; margin-left: -6px; border-radius: 8px;
-    font-size: 4rem; line-height: 1.15; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; width: 36px; height: 36px;
+    border: none; background: none; padding: 0; margin: 14px 0 0; border-radius: 8px;
+    font-size: 1rem; line-height: 1.15; cursor: pointer;
 }
 .gd-page-icon:hover { background: rgba(55, 53, 47, 0.08); }
 
 .gd-icon-menu {
-    position: absolute; top: 100%; left: 0; z-index: var(--z-dropdown, 50); width: 300px; padding: 8px; display: flex; flex-wrap: wrap; gap: 2px;
+    position: absolute; top: 100%; left: 0; z-index: var(--z-dropdown, 50); padding: 6px; display: flex; flex-wrap: nowrap; gap: 4px;
     background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-lg);
 }
-.gd-icon-menu button { border: none; background: none; font-size: 1.5rem; width: 44px; height: 44px; border-radius: 6px; cursor: pointer; }
+.gd-icon-menu button { border: none; background: none; font-size: 1.5rem; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 6px; cursor: pointer; }
 .gd-icon-menu button:hover { background: var(--hover-bg); }
 
 .gd-page-title {
@@ -110,7 +111,7 @@
 .gd-editor-holder .codex-editor { font-family: inherit; }
 .gd-editor-holder .ce-block__content, .gd-editor-holder .ce-toolbar__content { max-width: none; margin: 0; }
 .gd-editor-holder .ce-toolbar__actions { right: 100%; left: auto; padding-right: 8px; }
-.gd-editor-holder .codex-editor__redactor { padding-bottom: 160px !important; margin-right: 0 !important; }
+.gd-editor-holder .codex-editor__redactor { margin-right: 0 !important; }
 .gd-editor-holder .ce-header { padding: 0.7em 0 0.2em; line-height: 1.4; }
 .gd-editor-holder h1.ce-header { font-size: 1.85rem; }
 .gd-editor-holder h2.ce-header { font-size: 1.45rem; }
@@ -199,9 +200,8 @@
     .gd-sidebar { display: none; position: static; max-height: 60vh; margin-bottom: 12px; border: 1px solid var(--border-color); border-radius: 10px; }
     .gd-sidebar.open { display: block; }
     .gd-side-toggle { display: inline-flex; }
-    .gd-content { padding: 12px 14px 60px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; }
+    .gd-content { padding: 12px 14px 120px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; }
     .gd-page-title { font-size: 1.8rem; }
-    .gd-page-icon { font-size: 3rem; }
     .gd-editor-holder .ce-toolbar__actions { right: auto; left: 0; }
     .gd-menu { width: min(280px, calc(100vw - 48px)); }
     .gd-row-add { opacity: 1; }
@@ -220,9 +220,6 @@
 .gd-hit-title { display: flex; align-items: center; gap: 8px; }
 .gd-page-head { display: flex; align-items: flex-start; gap: 10px; }
 .gd-page-head .gd-page-title { flex: 1; min-width: 0; }
-.gd-page-icon { font-size: 1rem !important; padding: 0 !important; margin: 14px 0 0 !important; width: 36px; height: 36px; display: flex !important; align-items: center; justify-content: center; border-radius: 8px; }
-.gd-icon-menu { width: auto; flex-wrap: nowrap; gap: 4px; padding: 6px; }
-.gd-icon-menu button { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; }
 
 /* ---- 別のガイドへのリンク: 「〇〇ページへ ↗」 ---- */
 .gd-pagelink { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; font-weight: 600; color: var(--primary-light) !important; text-decoration: none; }
@@ -246,7 +243,6 @@
 /* ---- 「/」メニュー・ブロックのメニュー: 下端でも項目が隠れない ---- */
 .gd-editor-holder .ce-popover .ce-popover__container { --max-height: min(320px, 50vh); }
 .gd-editor-holder .codex-editor__redactor { padding-bottom: 360px !important; }   /* 最後のブロックの下にも、メニューが収まる余白を残す */
-.gd-content { padding-bottom: 120px; }
 .gd-page-icon:disabled { cursor: default; background: none; }
 .gd-page-title[contenteditable="false"] { cursor: default; }
 
