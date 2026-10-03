@@ -567,6 +567,8 @@ function humanizeApiError(e) {
       return '幹部の認証が必要です。右上のメニューから管理者モードにしてください。';
     case 'rate_limited':
       return 'ログインの失敗が続いたため、しばらくログインできません。10分ほど待ってから、もう一度お試しください。';
+    case 'conflict':
+      return '他の人が先に更新しました。ページを再読み込みしてから、もう一度お試しください。';
     case 'BAD_RESPONSE':
       return 'サーバーからの応答を解釈できませんでした。' + (e.detail ? '（' + e.detail + '…）' : '');
     default:

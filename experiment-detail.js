@@ -363,11 +363,7 @@ async function saveFeedback() {
         renderFeedback();
         toast('振り返りを保存しました', 'success');
     } catch (e) {
-        if (String(e.message).includes('conflict')) {
-            toast('他の人が編集しました。ページを再読み込みしてください。', 'error', 5000);
-        } else {
-            toast('保存失敗: ' + e.message, 'error');
-        }
+        toast('保存失敗: ' + humanizeApiError(e), 'error', 5000);
     } finally {
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; }
     }
@@ -411,7 +407,7 @@ async function executeDeleteFeedbackEntry(fbId, type) {
         renderFeedback();
         toast('ゴミ箱に移動しました', 'success');
     } catch (e) {
-        toast('削除失敗: ' + e.message, 'error');
+        toast('削除失敗: ' + humanizeApiError(e), 'error');
     }
 }
 
@@ -485,19 +481,28 @@ async function handlePhotoSelect(input) {
             const result = await api.uploadFile(file);  // api.uploadFile は引数1つ（第2引数は無効だったため削除）
             uploaded.push({ name: file.name, url: result.url, driveId: result.driveId, size: file.size });
         } catch (e) {
-            toast('アップロード失敗: ' + e.message, 'error');
+            toast('アップロード失敗: ' + humanizeApiError(e), 'error');
         }
     }
     if (uploaded.length === 0) return;
 
     try {
+        // 枚数の上限は、保存の直前の最新の記録に対して判定する(アップロード中・保存中に続けて選ばれても、上限を超えない)
+        let accepted = [];
         await persistCurrentExp(draft => {
-            draft.Photos = JSON.stringify(getPhotos(draft).concat(uploaded));
+            const room = PHOTO_LIMIT - getPhotos(draft).length;
+            accepted = uploaded.slice(0, Math.max(0, room));
+            if (accepted.length === 0) return false;
+            draft.Photos = JSON.stringify(getPhotos(draft).concat(accepted));
         });
+        // 上限を超えた分は記録に載せていない(保存の成否が確定している)ので、アップロード済みの実体を消す
+        const rejected = uploaded.filter(p => accepted.indexOf(p) < 0);
+        if (rejected.length) deleteStoredFiles(rejected.map(p => p.driveId));
+        if (accepted.length === 0) { toast(`写真は最大${PHOTO_LIMIT}枚までです`, 'error'); return; }
         renderPhotos();
-        toast('写真を保存しました', 'success');
+        toast(rejected.length ? `写真は最大${PHOTO_LIMIT}枚までのため、${accepted.length}枚だけ保存しました` : '写真を保存しました', rejected.length ? 'info' : 'success');
     } catch (e) {
-        toast('保存失敗: ' + e.message, 'error');
+        toast('保存失敗: ' + humanizeApiError(e), 'error');
         // 競合で保存されなかったときだけ、記録に載らなかったアップロード済みファイルを消す。
         // タイムアウトなどでは保存済みの可能性があり、消すと記録の参照先が無くなるので残す。
         if (isConflictError(e)) deleteStoredFiles(uploaded.map(p => p.driveId));
@@ -538,7 +543,7 @@ async function executeDeletePhoto(photo) {
         toast('写真をゴミ箱に移動しました', 'success');   // 実体（R2）はゴミ箱の期限まで残る
     } catch (e) {
         // showConfirmDialog は onOk が例外を投げると別トーストで再通知するため、ここでは投げずに独自通知のみ行う
-        toast('削除失敗: ' + e.message, 'error');
+        toast('削除失敗: ' + humanizeApiError(e), 'error');
     }
 }
 
@@ -679,7 +684,7 @@ async function saveVideo() {
         toast('動画を追加しました', 'success');
         closeVideoModal();
     } catch (e) {
-        toast('保存失敗: ' + e.message, 'error');
+        toast('保存失敗: ' + humanizeApiError(e), 'error');
     } finally {
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; }
     }
@@ -712,7 +717,7 @@ async function executeDeleteVideo(videoId) {
         renderVideos();
         toast('動画をゴミ箱に移動しました', 'success');
     } catch (e) {
-        toast('削除失敗: ' + e.message, 'error');
+        toast('削除失敗: ' + humanizeApiError(e), 'error');
     }
 }
 
@@ -773,7 +778,48 @@ function renderInfoSections() {
     });
 }
 
-function enterEditMode(sectionEl, type, keyOrIndex) {
+// 他のセクションを編集中のとき、保存・削除でセクション一覧を描き直しても、その入力が消えないようにする。
+// 描き直す前に、編集中の欄(exceptId 以外)の入力を控え、描き直した後に編集欄を開き直して入力を戻す。
+function captureOpenEdits(exceptId) {
+    return Array.from(document.querySelectorAll('#expd-info-body .expd-info-section.editing'))
+        .filter(el => el.id !== exceptId)
+        .map(el => {
+            const m = el.id.match(/^section-(fixed|custom)-(.+)$/);
+            if (!m) return null;
+            const titleEl = el.querySelector('.expd-edit-title');
+            return {
+                type: m[1],
+                key: m[1] === 'custom' ? parseInt(m[2], 10) : m[2],
+                title: titleEl ? titleEl.value : null,
+                content: (el.querySelector('.expd-edit-content') || {}).value || ''
+            };
+        })
+        .filter(Boolean);
+}
+
+// deletedIndex: 追加のセクションを削除したとき、それより後ろのセクションの番号が 1 つ前にずれる
+function restoreOpenEdits(list, deletedIndex) {
+    const body = document.getElementById('expd-info-body');
+    list.forEach(c => {
+        let key = c.key;
+        if (c.type === 'custom' && deletedIndex !== undefined && key > deletedIndex) key -= 1;
+        const id = c.type === 'fixed' ? `section-fixed-${key}` : `section-custom-${key}`;
+        let el = document.getElementById(id);
+        if (!el && c.type === 'custom') {      // まだ保存していない新規セクション
+            el = document.createElement('div');
+            el.className = 'expd-info-section';
+            el.id = id;
+            body.insertBefore(el, body.querySelector('.expd-add-section-btn'));
+        }
+        if (!el) return;
+        enterEditMode(el, c.type, key, true);
+        const titleEl = el.querySelector('.expd-edit-title');
+        if (titleEl && c.title !== null) titleEl.value = c.title;
+        el.querySelector('.expd-edit-content').value = c.content;
+    });
+}
+
+function enterEditMode(sectionEl, type, keyOrIndex, noFocus) {
     const isFixed = type === 'fixed';
     let title, content;
     if (isFixed) {
@@ -808,12 +854,17 @@ function enterEditMode(sectionEl, type, keyOrIndex) {
     const delBtn = sectionEl.querySelector('[data-delete]');
     if (delBtn) delBtn.addEventListener('click', () => deleteSection(keyOrIndex));
 
+    if (noFocus) return;
     const textarea = sectionEl.querySelector('.expd-edit-content');
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 }
 
+// 保存・削除の通信中に、同じ操作が重ならないようにする
+let _sectionBusy = false;
+
 async function saveSection(sectionEl, type, keyOrIndex) {
+    if (_sectionBusy) return;
     const isFixed = type === 'fixed';
     const contentEl = sectionEl.querySelector('.expd-edit-content');
     const content = contentEl.value;
@@ -825,6 +876,9 @@ async function saveSection(sectionEl, type, keyOrIndex) {
         if (!title) { toast('見出しを入力してください', 'error'); if (titleEl) titleEl.focus(); return; }
     }
 
+    _sectionBusy = true;
+    const actionBtns = sectionEl.querySelectorAll('.expd-edit-actions button');
+    actionBtns.forEach(b => { b.disabled = true; });
     try {
         await persistCurrentExp(draft => {
             if (isFixed) {
@@ -832,28 +886,37 @@ async function saveSection(sectionEl, type, keyOrIndex) {
             } else {
                 // 追加中の新規セクションは、保存で初めて Sections に加わる（index が末尾なら追加になる）
                 const customs = getCustomSections(draft);
-                customs[keyOrIndex] = { title, content };
+                // 件数より後ろの番号なら末尾に追加する(別の操作で件数が減っていても、空の要素を作らない)
+                if (keyOrIndex >= customs.length) customs.push({ title, content }); else customs[keyOrIndex] = { title, content };
                 draft.Sections = JSON.stringify(customs);
             }
         });
+        const others = captureOpenEdits(sectionEl.id);
         renderInfoSections();
+        restoreOpenEdits(others);
         toast('保存しました', 'success');
     } catch (e) {
-        if (String(e.message).includes('conflict')) {
-            toast('他の人が編集しました。ページを再読み込みしてください。', 'error', 5000);
-        } else {
-            toast('保存失敗: ' + e.message, 'error');
-        }
+        actionBtns.forEach(b => { b.disabled = false; });
+        toast('保存失敗: ' + humanizeApiError(e), 'error', 5000);
+    } finally {
+        _sectionBusy = false;
     }
 }
 
 async function deleteSection(index) {
+    if (_sectionBusy) return;
+    const deletedId = `section-custom-${index}`;
     if (index < 0 || index >= getCustomSections().length) {
         // 追加途中の（まだ保存していない）セクション。サーバーには無いので画面から外すだけ
+        const others = captureOpenEdits(deletedId);
         renderInfoSections();
+        restoreOpenEdits(others);
         return;
     }
 
+    _sectionBusy = true;
+    const actionBtns = document.querySelectorAll('#expd-info-body .expd-edit-actions button');
+    actionBtns.forEach(b => { b.disabled = true; });
     try {
         await persistCurrentExp(draft => {
             const customs = getCustomSections(draft);
@@ -861,10 +924,15 @@ async function deleteSection(index) {
             customs.splice(index, 1);
             draft.Sections = JSON.stringify(customs);
         });
+        const others = captureOpenEdits(deletedId);
         renderInfoSections();
+        restoreOpenEdits(others, index);
         toast('セクションをゴミ箱に移動しました', 'success');
     } catch (e) {
-        toast('削除失敗: ' + e.message, 'error');
+        actionBtns.forEach(b => { b.disabled = false; });
+        toast('削除失敗: ' + humanizeApiError(e), 'error');
+    } finally {
+        _sectionBusy = false;
     }
 }
 
