@@ -334,12 +334,14 @@ function countFeedback(e) {
 
 // ---- ウィザード形式の新規作成・編集 ----
 
-function openExpWizard(editId) {
+// restored: 保存に失敗したときの入力内容。これを初期値にして開き直す(saveExp の「入力を開き直す」)
+function openExpWizard(editId, restored) {
     editingExpId = editId || null;
     wizardStep = 0;
 
-    const e = editingExpId ? expData.find(x => x.ID === editingExpId) : null;
-    const isEdit = !!e;
+    const base = editingExpId ? expData.find(x => x.ID === editingExpId) : null;
+    const e = restored || base;
+    const isEdit = !!base;
 
     const overlay = document.createElement('div');
     overlay.id = 'exp-wizard-overlay';
@@ -536,9 +538,21 @@ async function saveExp() {
             toast('他の人がこの実験を編集しました。最新を読み込みます。', 'error', 5000);
             refreshData();
         } else {
-            toast('保存失敗: ' + e.message, 'error');
+            // ウィザードは閉じているので、入力した内容を開き直して続けられるようにする
+            toastUndo('保存失敗: ' + humanizeApiError(e) + '（入力した内容は開き直せます）',
+                () => reopenFailedExpWizard(item), () => {}, 20000, '入力を開き直す');
         }
     });
+}
+
+// 保存に失敗したウィザードの入力内容で、ウィザードを開き直す
+function reopenFailedExpWizard(item) {
+    if (document.getElementById('exp-wizard-overlay')) {
+        toast('ほかの編集画面を閉じてから、もう一度押してください', 'error');
+        return;
+    }
+    const editId = expData.find(x => x.ID === item.ID) ? item.ID : null;
+    openExpWizard(editId, item);
 }
 
 // ---- 削除（ウィザード内から） ----

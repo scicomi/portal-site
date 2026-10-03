@@ -386,14 +386,16 @@ function renderMembers() {
 
 // ---- ウィザード形式の新規作成・編集 ----
 
-function openMemberWizard(editId) {
+// restored: 保存に失敗したときの入力内容。これを初期値にして開き直す(commitMemberSave の「入力を開き直す」)
+function openMemberWizard(editId, restored) {
     editingMemberId = editId || null;
     mbWizardStep = 0;
 
-    const m = editingMemberId ? membersData.find(x => x.ID === editingMemberId) : null;
-    const isEdit = !!m;
+    const base = editingMemberId ? membersData.find(x => x.ID === editingMemberId) : null;
+    const m = restored || base;
+    const isEdit = !!base;
     const isAdmin = api.isAdmin();
-    const isSelf = isMyMember(m);
+    const isSelf = isMyMember(base);
 
     // 編集は管理者か、自分の名前として選択中の本人のみ（削除は誰でも可でゴミ箱へ入る。新規追加は誰でも可）
     if (isEdit && !isAdmin && !isSelf) {
@@ -623,9 +625,21 @@ function commitMemberSave(item, existing) {
             toast('他の人がこのメンバーを編集しました。最新を読み込みます。', 'error', 5000);
             refreshData();
         } else {
-            toast('保存失敗: ' + e.message, 'error');
+            // ウィザードは閉じているので、入力した内容を開き直して続けられるようにする
+            toastUndo('保存失敗: ' + humanizeApiError(e) + '（入力した内容は開き直せます）',
+                () => reopenFailedMemberWizard(item), () => {}, 20000, '入力を開き直す');
         }
     });
+}
+
+// 保存に失敗したウィザードの入力内容で、ウィザードを開き直す
+function reopenFailedMemberWizard(item) {
+    if (document.getElementById('mb-wizard-overlay')) {
+        toast('ほかの編集画面を閉じてから、もう一度押してください', 'error');
+        return;
+    }
+    const editId = membersData.find(x => x.ID === item.ID) ? item.ID : null;
+    openMemberWizard(editId, item);
 }
 
 // ---- 削除 ----
