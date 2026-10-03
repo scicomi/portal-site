@@ -233,7 +233,7 @@ function renderEventsList() {
         return `<a href="event-series.html?event=${encodeURIComponent(ev.ID)}" class="expd-event-chip" title="${escapeAttr(ev.Title)}">
             <span class="expd-event-date">${escapeHtml(ev.Date || '')}</span>
             <span class="expd-event-title">${escapeHtml(ev.Title || '(無題)')}</span>
-            <span class="cat-dot" style="color:${cat.bg};" title="${cat.short}">&#9679;</span>
+            <span class="cat-dot" style="color:${cat.bg};" role="img" aria-label="${cat.short}" title="${cat.short}">&#9679;</span>
         </a>`;
     }).join('');
 }

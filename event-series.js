@@ -305,7 +305,7 @@ function renderSeriesIndex() {
         const cat = getEventCategory(s.category);
         return `
             <tr class="clickable-row${s.next ? ' row-has-next' : ''}" data-key="${escapeAttr(s.key)}" data-latest-id="${escapeAttr(s.latestId)}" title="タップで詳細ページへ">
-                <td><span class="cat-dot" style="color:${cat.bg};" title="${cat.short}">&#9679;</span></td>
+                <td><span class="cat-dot" style="color:${cat.bg};" role="img" aria-label="${cat.short}" title="${cat.short}">&#9679;</span></td>
                 <td class="cell-name">${hl(s.title)}</td>
                 <td style="white-space:nowrap;"><span class="count-chip">${s.count}回</span></td>
                 <td style="white-space:nowrap;">${s.next

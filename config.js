@@ -133,16 +133,16 @@ const CONFIG = {
 
   // ===== 実験カテゴリ（タブ） =====
   EXPERIMENT_CATEGORIES: {
-    workshop: { label: '工作',       color: '#10b981' },
-    show:     { label: '実験ショー', color: '#f59e0b' },
-    other:    { label: 'その他',     color: '#8b5cf6' }
+    workshop: { label: '工作',       color: '#047857' },
+    show:     { label: '実験ショー', color: '#b45309' },
+    other:    { label: 'その他',     color: '#6d28d9' }
   },
 
   // ===== メンバー役職（統合表示） =====
   MEMBER_ROLES: [
-    { value: 'アドバイザー',       color: '#f59e0b', category: 'adviser',     order: 0 },
-    { value: 'コーディネーター',   color: '#10b981', category: 'coordinator', order: 1 },
-    { value: 'プロジェクトリーダー', color: '#8b5cf6', category: 'member',    order: 2 },
+    { value: 'アドバイザー',       color: '#b45309', category: 'adviser',     order: 0 },
+    { value: 'コーディネーター',   color: '#047857', category: 'coordinator', order: 1 },
+    { value: 'プロジェクトリーダー', color: '#6d28d9', category: 'member',    order: 2 },
   ]
 };
 

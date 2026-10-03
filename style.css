@@ -8,7 +8,7 @@
     --card-bg: #ffffff;
     --text-color: #1a1a1a;
     --text-secondary: #605e5c;
-    --text-tertiary: #8a8886;
+    --text-tertiary: #6e6c6a;   /* 白・薄い灰色の地で 4.5:1 以上 */
     --border-color: #e1dfdd;
     --border-subtle: #f0f0f0;
     /* 別名（一部のルールが使っている名前。値は上のトークンに合わせる） */
@@ -22,13 +22,13 @@
     --warning-color: #f59e0b; /* 自己参照になっていて無効値だったのを修正 */
     --warning-hover: #d97706;
     --info-color: #60a5fa;
-    --text-muted: #888;
-    --text-hint: #999;
+    --text-muted: #6b6b6b;   /* 白・薄い灰色の地で 4.5:1 以上(#888 は 3.5:1 だった) */
+    --text-hint: #6f6f6f;
     --text-body: #555;
     --text-label: #666;
     --border-light: #eee;
-    --border-input: #ddd;
-    --border-field: #ced4da;
+    --border-input: #8c8c8c;   /* 入力欄・ボタンの枠は地に対して 3:1 以上 */
+    --border-field: #8c8c8c;
     --bg-subtle: #f8f9fa;
     --bg-muted: #f5f5f5;
     --bg-interactive: #e8e6f0;
@@ -219,7 +219,7 @@ body {
     font-family: inherit;
     cursor: pointer;
 }
-.nav-caret { font-size: 0.7em; opacity: 0.8; }
+.nav-caret { font-size: 0.7em; }
 .nav-menu {
     position: fixed;
     z-index: 1000;
@@ -888,13 +888,16 @@ textarea:focus {
 
 .fc .fc-day-sun .fc-col-header-cell-cushion,
 .fc .fc-day-sun .fc-daygrid-day-number {
-    color: #e57373;
+    color: #c62828;
 }
 
 .fc .fc-day-sat .fc-col-header-cell-cushion,
 .fc .fc-day-sat .fc-daygrid-day-number {
-    color: #64b5f6;
+    color: #1565c0;
 }
+
+/* 月外の日付: FullCalendar 既定の opacity 0.3 では読めない(1.6〜1.9:1)ので、薄くしつつ読める濃さにする */
+.fc .fc-day-other .fc-daygrid-day-top { opacity: 0.8; }
 
 /* Holiday styles (FullCalendar) */
 .fc .fc-day.holiday {
@@ -902,7 +905,7 @@ textarea:focus {
 }
 
 .fc .fc-day.holiday .fc-daygrid-day-number {
-    color: #e57373 !important;
+    color: #c62828 !important;
 }
 
 /* --- Modal Overlay --- */
@@ -2518,7 +2521,7 @@ textarea:focus {
     order: 0;
     background: none; border: none; cursor: pointer;
     color: var(--text-tertiary); font-size: 0.85rem; padding: 3px 5px;
-    border-radius: var(--radius-sm); opacity: 0.5; transition: opacity 0.15s, color 0.15s;
+    border-radius: var(--radius-sm); transition: opacity 0.15s, color 0.15s;
     flex-shrink: 0;
 }
 .expd-section-edit-btn:hover { opacity: 1; color: var(--primary-color); background: var(--primary-bg); }
@@ -2712,7 +2715,7 @@ textarea:focus {
 
 /* Feedback Entries */
 .fb-entry {
-    border-left: 3px solid var(--border-input);
+    border-left: 3px solid var(--border-color);
     padding: 10px 14px;
     margin-bottom: 8px;
     border-radius: 0 6px 6px 0;
@@ -3732,7 +3735,7 @@ a.vote-count-badge:hover { color: var(--primary-color); text-decoration: underli
 /* --- 詳細タブ: 未入力の「—」（薄い灰色。押すと編集ウィザードの該当の入力欄へ） --- */
 .empty-cell {
     border: none; background: none; padding: 0 6px; margin-left: -6px;
-    font: inherit; color: #b9bdc5; cursor: pointer; border-radius: var(--radius-sm);
+    font: inherit; color: var(--text-muted); cursor: pointer; border-radius: var(--radius-sm);
     min-width: 28px; min-height: 24px;
 }
 .empty-cell:hover { color: var(--primary-color); background: var(--primary-subtle); }

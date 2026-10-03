@@ -624,7 +624,7 @@ function renderEvents() {
                     ${ev.DateEnd && ev.DateEnd !== ev.Date ? '<br><span class="text-muted" style="font-size:0.8rem;">〜 ' + escapeHtml(ev.DateEnd) + '</span>' : ''}
                 </td>
                 <td class="ev-title-cell">
-                    <span class="cat-dot" style="color:${cat.bg};" title="${cat.short}">&#9679;</span>
+                    <span class="cat-dot" style="color:${cat.bg};" role="img" aria-label="${cat.short}" title="${cat.short}">&#9679;</span>
                     <a href="event-series.html?event=${encodeURIComponent(ev.ID)}" data-action="open" style="font-weight:600;color:inherit;text-decoration:none;">${titleHtml}</a>${matchBadge}
                 </td>
                 <td class="ev-vote-cell" data-action="stoprow">${voteCell}</td>
