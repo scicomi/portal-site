@@ -1359,9 +1359,7 @@ function createRichEditor(container, initialHtml, options = {}) {
   container.appendChild(wrapper);
 
   const editorApi = {
-    getHtml: () => sanitizeRichHtml(content.innerHTML),
-    setHtml: (html) => { content.innerHTML = sanitizeRichHtml(html); },
-    focus: () => content.focus()
+    getHtml: () => sanitizeRichHtml(content.innerHTML)
   };
   container._richEditor = editorApi;
   return editorApi;

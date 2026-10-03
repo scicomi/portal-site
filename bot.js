@@ -86,8 +86,6 @@ const queryEngine = {
       case 'member_activity':  return this.memberActivity(params);
       case 'upcoming':         return this.findEvents({ date_from: todayISO(), ...params });
       case 'count':            return this.countItems(params);
-      case 'general':          return { html: '' };
-      case 'unknown':          return { html: '' };
       default:                 return { html: '' };
     }
   },

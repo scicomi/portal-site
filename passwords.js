@@ -321,7 +321,6 @@ let pwWizardStep = 0;
 let pwEditingPhotos = []; // [{name,url,driveId}] 最大1枚
 // R2 の孤児を残さないための管理（モーダルを開くたびに初期化）
 let pwSessionUploads = [];  // このモーダルでアップロードして、まだ保存していないファイルの driveId
-let pwPhotosToDelete = [];  // 保存済みの写真を外した分。保存に成功してから R2 の実体を消す
 let pwModalSession = 0;     // モーダルを開いた回数。アップロード中に閉じられたかの判定用
 
 function pwWizardSetStep(step) {
@@ -403,10 +402,8 @@ function removePwPhoto() {
             // このモーダルでアップロードしたばかりの写真は、その場で実体も消す
             pwSessionUploads.splice(si, 1);
             deleteStoredFiles([p.driveId]);
-        } else {
-            // 保存済みの写真は、保存に成功してから実体を消す（キャンセルすれば元に戻るため）
-            pwPhotosToDelete.push(p.driveId);
         }
+        // 保存済みの写真は、ここでは実体を消さない(キャンセルすれば元に戻る。保存すると、外した写真はサーバーがゴミ箱へ移す)
     });
     pwEditingPhotos = [];
     renderPwPhotoPreview();
@@ -416,7 +413,6 @@ function openPwModal() {
     editingPwId = null;
     pwEditingPhotos = [];
     pwSessionUploads = [];
-    pwPhotosToDelete = [];
     pwModalSession++;
     document.getElementById('pw-modal-title').textContent = 'パスワードを追加';
     document.getElementById('pw-f-category').value = 'other';
@@ -442,7 +438,6 @@ function editPwEntry(id) {
     editingPwId = id;
     pwEditingPhotos = parseJsonArray(p.Photos);
     pwSessionUploads = [];
-    pwPhotosToDelete = [];
     pwModalSession++;
     document.getElementById('pw-modal-title').textContent = 'パスワードを編集';
     document.getElementById('pw-f-category').value = p.Category || 'other';
@@ -470,7 +465,6 @@ function closePwModal() {
     document.getElementById('pw-modal-edit').classList.add('hidden');
     if (pwSessionUploads.length > 0) deleteStoredFiles(pwSessionUploads);
     pwSessionUploads = [];
-    pwPhotosToDelete = [];
 }
 
 async function savePwEntry() {

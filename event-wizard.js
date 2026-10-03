@@ -157,7 +157,7 @@ function initDateRangePicker(card) {
         startInput.value = state.start;
         endInput.value = (state.end && state.end !== state.start) ? state.end : '';
         // 開始日が変わると書類期限の表示も更新する
-        if (typeof updateDeadlines === 'function') updateDeadlines(startInput);
+        updateDeadlines(startInput);
     }
 
     function renderCal() {
@@ -861,7 +861,7 @@ function initEventWizardInputs(overlay, e, isMeeting) {
     setVal('wz-ev-time-end', e.TimeEnd);
     initDateRangePicker(overlay);
     if (isMeeting) {
-        initFileField('wz-ev-meeting-docs', 'MeetingDocs', true);
+        initFileField('wz-ev-meeting-docs', 'MeetingDocs');
         return;
     }
 
@@ -995,16 +995,12 @@ function addWzEvExpRow() {
 }
 
 // ---- ウィザード内ファイルアップロード ----
-// field: イベントの列名（既定は関連ファイル）。single: true なら 1 ファイルだけ持つ（選び直すと差し替える）。
-async function wzUploadFiles(fileList, field = 'Files', refresh = wzRefreshFileList, single = false) {
+// field: イベントの列名（既定は関連ファイル）。
+async function wzUploadFiles(fileList, field = 'Files', refresh = wzRefreshFileList) {
     // 開始時の対象を握る。完了時に tempNewEvent が別物（閉じた・別イベントに切替）なら結果を捨てる。
     const target = tempNewEvent;
     if (!target) return;
     const maxSizeMB = getFileMaxMB();
-    if (single) {
-        fileList = fileList.slice(0, 1);
-        if (fileList.length) removeEventFile(target, field, 0, refresh);   // 選び直しは差し替え
-    }
     for (const file of fileList) {
         if (tempNewEvent !== target) return;
         if (file.size > maxSizeMB * 1024 * 1024) {

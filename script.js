@@ -824,7 +824,7 @@ function openQuickCreate(category) {
     trapFocus(overlay.querySelector('.wizard-panel'));
     initDateRangePicker(overlay);
 
-    if (isMeeting) initFileField('qc-meeting-docs', 'MeetingDocs', true);
+    if (isMeeting) initFileField('qc-meeting-docs', 'MeetingDocs');
     else initTagInput(document.getElementById('qc-planleader'), [], '企画担当者を検索...', isRegularMember);
 
     const tsEl = document.getElementById('qc-time-start');

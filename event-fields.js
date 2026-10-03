@@ -78,12 +78,12 @@ function initTransportInputs(e, splitNames) {
 // 選ぶとすぐアップロードし、tempNewEvent[field] に入れる（保存はダイアログの保存ボタン）。
 // アップロード・取り消しの後始末は wzUploadFiles / removeEventFile / closeEventWizard が面倒を見る。
 
-function initFileField(containerId, field, multiple) {
+function initFileField(containerId, field) {
     const box = document.getElementById(containerId);
     if (!box) return;
     box.innerHTML = `
-        <button type="button" class="btn btn-secondary btn-sm" data-ef-pick>${multiple ? 'ファイルを追加' : 'ファイルを選ぶ（1ファイル）'}</button>
-        <input type="file" style="display:none;"${multiple ? ' multiple' : ''}>
+        <button type="button" class="btn btn-secondary btn-sm" data-ef-pick>ファイルを追加</button>
+        <input type="file" style="display:none;" multiple>
         <div class="file-list-edit" style="margin-top:6px;"></div>`;
     const input = box.querySelector('input[type="file"]');
     const list = box.querySelector('.file-list-edit');
@@ -108,7 +108,7 @@ function initFileField(containerId, field, multiple) {
 
     box.querySelector('[data-ef-pick]').addEventListener('click', () => input.click());
     input.addEventListener('change', () => {
-        wzUploadFiles(Array.from(input.files), field, refresh, !multiple);
+        wzUploadFiles(Array.from(input.files), field, refresh);
         input.value = '';
     });
     list.addEventListener('click', (e) => {

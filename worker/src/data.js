@@ -50,7 +50,7 @@ export function genId(prefix) {
   return prefix + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
 }
 
-function cellValue(res, col, val) {
+function cellValue(val) {
   if (val === undefined || val === null) return '';
   if (typeof val === 'object') return JSON.stringify(val);      // 配列・オブジェクトは JSON 文字列で保存
   return String(val);                                            // 数値・真偽値も文字列(一覧の返却形式と揃える)
@@ -178,7 +178,7 @@ export async function saveResource(env, name, item) {
   if (isNewRow) {
     // 新規は全列を書く(無い列は '')。削除 UNDO の再作成など、元の作成日時が来ていればそれを尊重する
     if (hasCreatedAt && (item.CreatedAt === undefined || item.CreatedAt === null || item.CreatedAt === '')) item.CreatedAt = now;
-    const values = res.columns.map(c => cellValue(res, c, item[c]));
+    const values = res.columns.map(c => cellValue(item[c]));
     // SELECT から INSERT までの間に同じ ID が作られていたら、PK 違反の例外ではなく競合として返す
     const sql = 'INSERT INTO ' + res.table + ' (' + res.columns.map(q).join(', ') + ') VALUES (' +
       res.columns.map(() => '?').join(', ') + ') ON CONFLICT(ID) DO NOTHING';
@@ -188,7 +188,7 @@ export async function saveResource(env, name, item) {
     // 更新は item にキーがある列だけ。ID・CreatedAt はクライアントの値で書き換えさせない。UpdatedAt は必ず更新する
     const cols = res.columns.filter(c => c !== 'ID' && c !== 'CreatedAt' && (c === 'UpdatedAt' || item[c] !== undefined));
     if (cols.length > 0) {
-      const binds = cols.map(c => cellValue(res, c, item[c]));
+      const binds = cols.map(c => cellValue(item[c]));
       let sql = 'UPDATE ' + res.table + ' SET ' + cols.map(c => q(c) + ' = ?').join(', ') + ' WHERE ID = ?';
       binds.push(item.ID);
       if (hasBase) { sql += ' AND UpdatedAt = ?'; binds.push(String(item._baseUpdatedAt)); }
@@ -206,17 +206,13 @@ export async function saveResource(env, name, item) {
   return { item: rowToObj(res, row), created: isNewRow };
 }
 
-// 出欠投票(event_votes)が参照する resource。削除時に同じ batch(=1 トランザクション)で該当行を消し、孤児を残さない。
-const VOTE_OWNER_COLUMN = { events: 'EventID', members: 'MemberID' };
-
+// 完全に削除する(ゴミ箱を通さない)。使うのは、ゴミ箱の対象外のガイドだけ。
+// イベント・メンバーの削除は、出欠投票の連鎖削除を含めて trash.js の moveRecordToTrash が行う。
 export async function deleteResource(env, name, id) {
   const res = getResource(name);
-  if (!res || !id) return false;
-  const stmts = [env.DB.prepare('DELETE FROM ' + res.table + ' WHERE ID = ?').bind(String(id))];
-  const voteCol = VOTE_OWNER_COLUMN[name];
-  if (voteCol) stmts.push(env.DB.prepare('DELETE FROM event_votes WHERE ' + voteCol + ' = ?').bind(String(id)));
-  const out = await env.DB.batch(stmts);
-  return !!(out[0].meta && out[0].meta.changes > 0);
+  if (name !== 'guides' || !res || !id) return false;
+  const out = await env.DB.prepare('DELETE FROM ' + res.table + ' WHERE ID = ?').bind(String(id)).run();
+  return !!(out.meta && out.meta.changes > 0);
 }
 
 // ---- 出欠投票 ----

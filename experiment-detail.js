@@ -548,7 +548,6 @@ async function executeDeletePhoto(photo) {
 const VIDEO_PAGE_SIZE = 12;
 let videoVisibleCount = VIDEO_PAGE_SIZE;
 
-// youtube.com/watch?v=, youtu.be/, /embed/, /shorts/ のいずれの形式からも動画IDを取り出す。取れなければ空文字。
 // 描画した data-action の受け口(onclick 属性に id・index を埋め込まない。app.js の registerActions 参照)
 registerActions({
     'expd-del-feedback': el => deleteFeedbackEntry(el.dataset.id, el.dataset.type),
@@ -557,6 +556,7 @@ registerActions({
     'expd-play-video': el => playVideo(el, el.dataset.id)
 });
 
+// youtube.com/watch?v=, youtu.be/, /embed/, /shorts/ のいずれの形式からも動画IDを取り出す。取れなければ空文字。
 function extractYoutubeId(url) {
     if (!url) return '';
     const s = String(url).trim();
@@ -746,7 +746,7 @@ function renderInfoSections() {
     const body = document.getElementById('expd-info-body');
     const sections = getAllSections();
 
-    body.innerHTML = sections.map((s, i) => {
+    body.innerHTML = sections.map(s => {
         const items = s.content.split('\n').map(l => l.trim()).filter(Boolean);
         const id = s.type === 'fixed' ? `section-fixed-${s.key}` : `section-custom-${s.index}`;
         const editAttr = s.type === 'fixed'
