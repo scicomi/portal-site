@@ -7,9 +7,9 @@
     "deploy": "wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply scicomi-portal --local --persist-to .wrangler/state",
     "db:migrate:remote": "wrangler d1 migrations apply scicomi-portal --remote",
-    "test": "node --test test/"
+    "test": "node --test"
   },
   "devDependencies": {
-    "wrangler": "4.86.0"
+    "wrangler": "4.147.0"
   }
 }

@@ -68,9 +68,9 @@ D1（データ・SQLite） ／ R2（ファイル・毎日のバックアップ�
 - `worker/.wrangler/` → ローカル実行時に自動で作られる
 - `worker/.dev.vars` → ローカルテスト用の仮の秘密値。必要なときだけ作る（`worker/.dev.vars.example` を参照）
 
-手順（Node.js 20.3 以上が必要。`node -v` で確認）:
+手順（Node.js 22 以上が必要。`node -v` で確認。動作確認は Node 24）:
 
-> wrangler は Node 20 で動く最後の版 4.86.0 に固定している（`worker/package.json`）。これより新しい wrangler には Node.js 22 以上が必要。Node を 22 に上げたら、wrangler も更新してよい（更新後は `npm test` と `npm run deploy` の前に、ローカルで動作を確認する）。
+> wrangler は `worker/package.json` で版を固定している（現在 4.147.0。Node.js 22 以上が必要）。更新するときは、`npm install --save-dev --save-exact wrangler@latest` → `npm run db:migrate:local` → `npm run dev` → `npm test` でローカルの動作を確認してから、`npx wrangler deploy --dry-run`、`npm run deploy` の順で進める。
 
 ```bash
 cd worker
