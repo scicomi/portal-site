@@ -20,10 +20,14 @@ function safeExt(name) {
 
 export async function uploadFile(env, request, fileData) {
   if (!fileData || !fileData.base64 || !fileData.name) throw new ApiError('invalid_file', 'ファイルデータが不正です');
-  let bytes;
-  try { bytes = decodeBase64(String(fileData.base64)); } catch (_) { throw new ApiError('invalid_file', 'ファイルデータが不正です'); }
   const maxMB = Math.min(await getConfigInt(env, 'file_max_mb', 10), FILE_MAX_MB_LIMIT);   // 上限より大きい値が保存されていても抑える
-  if (bytes.length / (1024 * 1024) > maxMB) throw new ApiError('file_too_large', 'ファイルサイズが上限(' + maxMB + 'MB)を超えています');
+  const tooLarge = () => new ApiError('file_too_large', 'ファイルサイズが上限(' + maxMB + 'MB)を超えています');
+  // デコードの前に、base64 の長さ(元の大きさの約 4/3)で見積もって断る(大きなファイルを丸ごと展開してから断らないため)
+  const b64 = String(fileData.base64);
+  if (Math.floor(b64.length * 3 / 4) - 2 > maxMB * 1024 * 1024) throw tooLarge();
+  let bytes;
+  try { bytes = decodeBase64(b64); } catch (_) { throw new ApiError('invalid_file', 'ファイルデータが不正です'); }
+  if (bytes.length / (1024 * 1024) > maxMB) throw tooLarge();
 
   const key = crypto.randomUUID().replace(/-/g, '') + safeExt(fileData.name);
   // 種類は「type/subtype」の形だけ受け付ける(改行などを含む値は、配信のときにヘッダーに入れられず 500 になる)

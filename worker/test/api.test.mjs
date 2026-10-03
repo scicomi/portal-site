@@ -277,29 +277,37 @@ test('save: 削除済み ID に _baseUpdatedAt 付きで保存すると conflict
 });
 
 test('投票: upsert、note の保持、締切後は管理者のみ', async () => {
+  // 投票するメンバー(実在しないメンバーの投票は member_not_found)
+  const voter = 'mb_test_voter_' + Date.now();
+  assert.equal((await post({ action: 'save', resource: 'members', token: member, item: { ID: voter, Name: '投票テスト' } })).success, true);
+  assert.equal((await post({ action: 'submitVote', token: member, vote: { eventId: evId, memberId: 'mb_test_nobody_' + Date.now(), status: 'attend' } })).error, 'member_not_found');
   // 未来の日付のイベントで投票
-  let r = await post({ action: 'submitVote', token: member, vote: { eventId: evId, memberId: 'mb_1', status: 'attend', note: '遅れます' } });
+  let r = await post({ action: 'submitVote', token: member, vote: { eventId: evId, memberId: voter, status: 'attend', note: '遅れます' } });
   assert.equal(r.success, true);
   assert.equal(r.vote.note, '遅れます');
-  r = await post({ action: 'submitVote', token: member, vote: { eventId: evId, memberId: 'mb_1', status: 'absent' } });
+  r = await post({ action: 'submitVote', token: member, vote: { eventId: evId, memberId: voter, status: 'absent' } });
   assert.equal(r.vote.status, 'absent');
   assert.equal(r.vote.note, '遅れます');     // note 未指定なら既存メモを保持
 
   const ev = await post({ action: 'getEventVotes', token: member, eventId: evId });
   assert.equal(ev.votes.length, 1);
   const all = await post({ action: 'listAll', token: member });
-  assert.ok(all.votes.find(v => v.eventId === evId && v.memberId === 'mb_1'));
+  assert.ok(all.votes.find(v => v.eventId === evId && v.memberId === voter));
 
-  assert.equal((await post({ action: 'submitVote', token: member, vote: { eventId: evId, memberId: 'mb_1', status: 'bogus' } })).error, 'invalid status');
-  assert.equal((await post({ action: 'submitVote', token: member, vote: { eventId: 'nope', memberId: 'mb_1', status: 'attend' } })).error, 'event not found');
+  assert.equal((await post({ action: 'submitVote', token: member, vote: { eventId: evId, memberId: voter, status: 'bogus' } })).error, 'invalid status');
+  assert.equal((await post({ action: 'submitVote', token: member, vote: { eventId: 'nope', memberId: voter, status: 'attend' } })).error, 'event not found');
 
   // 過去のイベントは締切後
   const pastId = 'ev_past_' + Date.now();
   await post({ action: 'save', resource: 'events', token: member, item: { ID: pastId, Title: '過去', Date: '2020-01-01' } });
-  assert.equal((await post({ action: 'submitVote', token: member, vote: { eventId: pastId, memberId: 'mb_1', status: 'attend' } })).error, 'vote_closed');
-  const adm = await post({ action: 'submitVote', token: adminMember, adminToken: admin, vote: { eventId: pastId, memberId: 'mb_1', status: 'attend' } });
+  assert.equal((await post({ action: 'submitVote', token: member, vote: { eventId: pastId, memberId: voter, status: 'attend' } })).error, 'vote_closed');
+  const adm = await post({ action: 'submitVote', token: adminMember, adminToken: admin, vote: { eventId: pastId, memberId: voter, status: 'attend' } });
   assert.equal(adm.success, true);
   await post({ action: 'delete', resource: 'events', token: adminMember, adminToken: admin, id: pastId });
+  // 後始末(作ったメンバーは、投票ごとゴミ箱に入れてから完全に削除する)
+  await post({ action: 'delete', resource: 'members', id: voter, token: member });
+  const tv = (await post({ action: 'listTrash', token: member })).items.find(x => x.recordId === voter);
+  if (tv) await post({ action: 'purgeTrash', token: member, id: tv.id });
 });
 
 test('管理者: パスワード一覧の保存・取得、設定の取得(機密値は返さない)・更新', async () => {
@@ -496,6 +504,34 @@ test('ゴミ箱: 削除したレコードは(出欠投票ごと)ゴミ箱に入�
   assert.equal((await post({ action: 'listTrash' })).error, 'unauthorized');
 });
 
+test('ゴミ箱: 復元しても、相手(イベント・メンバー)が削除済みの出欠投票は戻さない', async () => {
+  const t = Date.now();
+  const ev = 'ev_test_orphan_' + t, mb = 'mb_test_orphan_' + t;
+  try {
+    assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: ev, Title: '孤児', Date: '2099-01-06', Category: 'normal' } })).success, true);
+    assert.equal((await post({ action: 'save', resource: 'members', token: member, item: { ID: mb, Name: '孤児テスト' } })).success, true);
+    assert.equal((await post({ action: 'submitVote', token: member, vote: { eventId: ev, memberId: mb, status: 'attend' } })).success, true);
+    // メンバーを削除(投票はメンバーのゴミ箱の行へ)→ イベントを削除 → メンバーを復元
+    assert.equal((await post({ action: 'delete', resource: 'members', id: mb, token: member })).success, true);
+    assert.equal((await post({ action: 'delete', resource: 'events', id: ev, token: member })).success, true);
+    const tm = (await post({ action: 'listTrash', token: member })).items.find(x => x.recordId === mb);
+    assert.equal((await post({ action: 'restoreTrash', token: member, id: tm.id })).success, true);
+    // イベントが無いので、投票は戻らない
+    let all = await post({ action: 'listAll', token: member });
+    assert.equal(all.votes.some(v => v.eventId === ev), false);
+    // イベントを戻しても、イベントの削除時には投票は無かったので、戻る投票は無い
+    const te = (await post({ action: 'listTrash', token: member })).items.find(x => x.recordId === ev);
+    assert.equal((await post({ action: 'restoreTrash', token: member, id: te.id })).success, true);
+    all = await post({ action: 'listAll', token: member });
+    assert.equal(all.votes.some(v => v.eventId === ev), false);
+  } finally {
+    await post({ action: 'delete', resource: 'events', id: ev, token: member });
+    await post({ action: 'delete', resource: 'members', id: mb, token: member });
+    const left = (await post({ action: 'listTrash', token: member })).items.filter(x => x.recordId === ev || x.recordId === mb);
+    for (const x of left) await post({ action: 'purgeTrash', token: member, id: x.id });
+  }
+});
+
 test('ゴミ箱: 期限が来たものは完全に削除され、R2 のファイル実体も消える', async () => {
   const up = await post({ action: 'uploadFile', token: member, file: { name: 'ごみ.txt', mimeType: 'text/plain', base64: Buffer.from('trash me').toString('base64') } });
   const fileUrl = up.file.url.replace(/^https?:\/\/[^/]+/, BASE);
@@ -572,6 +608,17 @@ test('入力の検証: 設定値は文字列だけ・アップロード上限は
   up = await upload('image/pngx');
   got = await fetch(up.file.url.replace(/^https?:\/\/[^/]+/, BASE));
   assert.match(got.headers.get('content-disposition'), /^attachment/);
+  // 上限(1MB にして試す)を超えるファイルは file_too_large
+  assert.equal((await set('file_max_mb', '1')).success, true);
+  try {
+    const big = await post({ action: 'uploadFile', token: member, file: { name: 'big.bin', mimeType: 'application/octet-stream', base64: Buffer.alloc(1024 * 1024 + 10).toString('base64') } });
+    assert.equal(big.success, false);
+    assert.equal(big.error, 'file_too_large');
+    const ok = await post({ action: 'uploadFile', token: member, file: { name: 'ok.bin', mimeType: 'application/octet-stream', base64: Buffer.alloc(1024 * 1024).toString('base64') } });
+    assert.equal(ok.success, true);   // ちょうど上限は通る
+  } finally {
+    assert.equal((await set('file_max_mb', '10')).success, true);
+  }
   // 正しい種類は従来どおり inline
   up = await upload('image/png');
   got = await fetch(up.file.url.replace(/^https?:\/\/[^/]+/, BASE));

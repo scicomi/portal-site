@@ -264,15 +264,19 @@ export async function voteDeadlinePassed(env, eventId) {
 }
 
 // 投票の upsert。note 未指定(旧クライアント・ホームの一括回答)なら既存メモを保持する。
+// メンバーとイベントが実在するときだけ書く(無ければ null)。実在しない ID の行は、削除の連鎖でも消えずに残るため。
+// 判定と書き込みを 1 文で行うので、判定の直後に削除されても孤児の行はできない。
 export async function upsertVote(env, v) {
   const now = new Date().toISOString();
   const note = (v.note === undefined || v.note === null) ? null : String(v.note).slice(0, 100);
   const eventId = String(v.eventId), memberId = String(v.memberId);
-  await env.DB.prepare(
-    'INSERT INTO event_votes (EventID, MemberID, Status, UpdatedAt, Note) VALUES (?1, ?2, ?3, ?4, COALESCE(?5, \'\')) ' +
+  const out = await env.DB.prepare(
+    'INSERT INTO event_votes (EventID, MemberID, Status, UpdatedAt, Note) SELECT ?1, ?2, ?3, ?4, COALESCE(?5, \'\') ' +
+    'WHERE EXISTS (SELECT 1 FROM events WHERE ID = ?1) AND EXISTS (SELECT 1 FROM members WHERE ID = ?2) ' +
     'ON CONFLICT(EventID, MemberID) DO UPDATE SET Status = excluded.Status, UpdatedAt = excluded.UpdatedAt, ' +
     'Note = CASE WHEN ?5 IS NULL THEN Note ELSE excluded.Note END'
   ).bind(eventId, memberId, String(v.status), now, note).run();
+  if (!(out.meta && out.meta.changes > 0)) return null;
   const row = await env.DB.prepare('SELECT Note FROM event_votes WHERE EventID = ? AND MemberID = ?').bind(eventId, memberId).first();
   return { eventId, memberId, status: String(v.status), updatedAt: now, note: row ? str(row.Note) : '' };
 }

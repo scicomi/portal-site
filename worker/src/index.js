@@ -249,7 +249,7 @@ async function handlePost(env, ctx, request, body) {
     if (action === 'submitVote') {
       const v = body.vote || {};
       if (!v.eventId || !v.memberId || !v.status) return { success: false, error: 'missing fields' };
-      // ID の形式を検証する(実在しない memberId の行がメンバー削除の連鎖でも消えず残るのを防ぐ入口の検査)
+      // ID の形式を検証する(実在するかは upsertVote が書き込みと同じ文で確かめる)
       if (!ID_PATTERN.test(String(v.eventId)) || !ID_PATTERN.test(String(v.memberId))) return { success: false, error: 'invalid_id' };
       if (['attend', 'absent', 'undecided'].indexOf(v.status) < 0) return { success: false, error: 'invalid status' };
       // 出欠締切(VoteDeadline、未設定ならイベント最終日)を過ぎたら管理者のみ変更可
@@ -257,6 +257,7 @@ async function handlePost(env, ctx, request, body) {
       if (passed === null) return { success: false, error: 'event not found' };
       if (passed && !(await checkAdmin(env, body.adminToken))) return { success: false, error: 'vote_closed' };
       const result = await upsertVote(env, v);
+      if (!result) return { success: false, error: 'member_not_found' };   // イベントは上で確認済み。判定後に消えた場合もここ
       await appendAuditLog(env, 'vote', v.eventId + ':' + v.memberId + ':' + v.status, token, 'member');
       return { success: true, vote: result };
     }

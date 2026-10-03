@@ -75,8 +75,15 @@ function groupVotesByStatus(votes, members) {
 
 // 送信エラーを人向けの文言に変換する（vote_closed はサーバー側の締切ガード）
 function voteErrorMessage(e) {
-  if (String(e && e.message) === 'vote_closed') {
+  const code = String(e && e.message);
+  if (code === 'vote_closed') {
     return '出欠の締切を過ぎているため変更できません（変更が必要な場合は管理者に連絡してください）';
+  }
+  if (code === 'member_not_found') {
+    return '選んでいる名前がメンバー一覧にありません（削除された可能性があります）。名前を選び直してください';
+  }
+  if (code === 'event not found') {
+    return 'このイベントは削除されています。ページを再読み込みしてください';
   }
   return '回答に失敗しました: ' + humanizeApiError(e);
 }

@@ -103,10 +103,13 @@ export async function restoreTrash(env, id) {
     ];
     let votes = [];
     try { votes = JSON.parse(row.Votes || '[]'); } catch (_) { votes = []; }
+    // 投票は、相手のイベント・メンバーが今もあるものだけ戻す(片方が削除済みなら、戻すと孤児の行になる)。
+    // 戻すレコード自身は、同じ batch(1 トランザクション)の先頭の INSERT で戻っているので EXISTS に入る
     votes.forEach(v => {
       stmts.push(env.DB.prepare(
-        'INSERT OR IGNORE INTO event_votes (' + VOTE_COLUMNS.map(q).join(', ') + ') VALUES (' + VOTE_COLUMNS.map(() => '?').join(', ') + ')'
-      ).bind(...VOTE_COLUMNS.map(c => str(v[c]))));
+        'INSERT OR IGNORE INTO event_votes (' + VOTE_COLUMNS.map(q).join(', ') + ') SELECT ' + VOTE_COLUMNS.map(() => '?').join(', ') +
+        ' WHERE EXISTS (SELECT 1 FROM events WHERE ID = ?) AND EXISTS (SELECT 1 FROM members WHERE ID = ?)'
+      ).bind(...VOTE_COLUMNS.map(c => str(v[c])), str(v.EventID), str(v.MemberID)));
     });
     const out = await env.DB.batch(stmts);
     if (!(out[0].meta && out[0].meta.changes > 0)) return { success: false, error: 'already_exists' };
