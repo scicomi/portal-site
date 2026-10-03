@@ -553,9 +553,9 @@ function dateRangePickerHtml(date, dateEnd, idPrefix) {
 function timeRangeSelectHtml(startId, endId) {
     return `
                     <div class="time-select-group">
-                        <select class="e1-input" id="${startId}">${genTimeOpts(7, 21, true)}</select>
+                        <select class="e1-input" id="${startId}" aria-label="開始時間">${genTimeOpts(7, 21, true)}</select>
                         <span>〜</span>
-                        <select class="e1-input" id="${endId}">${genTimeOpts(7, 21, true)}</select>
+                        <select class="e1-input" id="${endId}" aria-label="終了時間">${genTimeOpts(7, 21, true)}</select>
                     </div>`;
 }
 

@@ -598,7 +598,7 @@ function renderEvents() {
             const eligibleCount = membersData.length > 0 ? voteEligibleMembers(membersData, ev).length : 0;
             const label = eligibleCount > 0 ? `${vc.attend} / ${eligibleCount}` : `${vc.attend}`;
             const noanswer = Math.max(0, eligibleCount - (vc.attend + vc.absent + vc.undecided));
-            voteBadge = `<a class="vote-count-badge" href="event-series.html?event=${encodeURIComponent(ev.ID)}&vote=1" data-action="vote" title="参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}${eligibleCount > 0 ? `・未回答${noanswer}` : ''} — タップで出欠を回答">${label}</a>`;
+            voteBadge = `<a class="vote-count-badge" href="event-series.html?event=${encodeURIComponent(ev.ID)}&vote=1" data-action="vote" aria-label="「${escapeAttr(displayTitle)}」の出欠状況: 参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}${eligibleCount > 0 ? `・未回答${noanswer}` : ''}" title="参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}${eligibleCount > 0 ? `・未回答${noanswer}` : ''} — タップで出欠を回答">${label}</a>`;
         }
         // 出欠ドロップダウン（今後の予定のみ、幹部会は対象外）
         let voteCell = '';
@@ -631,9 +631,9 @@ function renderEvents() {
                 <td>${voteBadge}</td>
                 <td data-action-cell>
                     <div class="inline-actions">
-                        <button class="inline-action-btn" data-action="duplicate" title="この予定を複製して新規作成">複製</button>
-                        <button class="inline-action-btn" data-action="edit" title="この予定を編集">編集</button>
-                        <button class="inline-action-btn danger" data-action="delete" title="この予定を削除">削除</button>
+                        <button class="inline-action-btn" data-action="duplicate" aria-label="「${escapeAttr(displayTitle)}」を複製" title="この予定を複製して新規作成">複製</button>
+                        <button class="inline-action-btn" data-action="edit" aria-label="「${escapeAttr(displayTitle)}」を編集" title="この予定を編集">編集</button>
+                        <button class="inline-action-btn danger" data-action="delete" aria-label="「${escapeAttr(displayTitle)}」を削除" title="この予定を削除">削除</button>
                     </div>
                 </td>
             </tr>

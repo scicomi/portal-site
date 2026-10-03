@@ -313,8 +313,8 @@ function render() {
                 <td class="hide-mobile">${safeSlides ? `<a href="${escapeAttr(safeSlides)}" target="_blank" rel="noopener" data-action="slides" class="tbl-link">資料を開く</a>` : '-'}</td>
                 <td data-action-cell>
                     <div class="inline-actions">
-                        <button class="inline-action-btn" data-action="edit" title="この実験を編集">編集</button>
-                        <button class="inline-action-btn danger" data-action="delete" title="この実験を削除">削除</button>
+                        <button class="inline-action-btn" data-action="edit" aria-label="「${escapeAttr(e.Name || '(無題)')}」を編集" title="この実験を編集">編集</button>
+                        <button class="inline-action-btn danger" data-action="delete" aria-label="「${escapeAttr(e.Name || '(無題)')}」を削除" title="この実験を削除">削除</button>
                     </div>
                 </td>
             </tr>

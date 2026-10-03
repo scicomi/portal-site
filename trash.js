@@ -108,8 +108,8 @@ function renderTrash() {
                 <td>${escapeHtml(trashRemainingLabel(t.expiresAt))}</td>
                 <td data-action-cell>
                     <div class="inline-actions">
-                        <button class="inline-action-btn" data-action="trash-restore" data-id="${escapeAttr(t.id)}" title="元の場所に戻す">復元</button>
-                        <button class="inline-action-btn danger" data-action="trash-purge" data-id="${escapeAttr(t.id)}" title="完全に削除する（元に戻せません）">完全に削除</button>
+                        <button class="inline-action-btn" data-action="trash-restore" data-id="${escapeAttr(t.id)}" aria-label="「${escapeAttr(t.label || '(名前なし)')}」を復元" title="元の場所に戻す">復元</button>
+                        <button class="inline-action-btn danger" data-action="trash-purge" data-id="${escapeAttr(t.id)}" aria-label="「${escapeAttr(t.label || '(名前なし)')}」を完全に削除" title="完全に削除する（元に戻せません）">完全に削除</button>
                     </div>
                 </td>
             </tr>`;

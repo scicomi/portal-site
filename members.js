@@ -323,8 +323,8 @@ function renderMembers() {
 
     if (thead) {
         thead.innerHTML = isStaffTab
-            ? `<tr><th>教職員番号</th><th>名前</th><th>役職</th><th>メールアドレス</th><th style="width:1px;"></th></tr>`
-            : `<tr><th>学籍番号</th><th>名前</th><th>役職</th><th style="width:1px;"></th></tr>`;
+            ? `<tr><th>教職員番号</th><th>名前</th><th>役職</th><th>メールアドレス</th><th style="width:1px;"><span class="sr-only">操作</span></th></tr>`
+            : `<tr><th>学籍番号</th><th>名前</th><th>役職</th><th style="width:1px;"><span class="sr-only">操作</span></th></tr>`;
     }
 
     if (sorted.length === 0) {
@@ -356,8 +356,8 @@ function renderMembers() {
             const actionCell = `
                 <td data-action-cell>
                     <div class="inline-actions">
-                        ${canEdit ? '<button class="inline-action-btn" data-action="edit" title="このメンバーを編集">編集</button>' : ''}
-                        <button class="inline-action-btn danger" data-action="delete" title="このメンバーを削除">削除</button>
+                        ${canEdit ? `<button class="inline-action-btn" data-action="edit" aria-label="${escapeAttr(m.Name || 'メンバー')}を編集" title="このメンバーを編集">編集</button>` : ''}
+                        <button class="inline-action-btn danger" data-action="delete" aria-label="${escapeAttr(m.Name || 'メンバー')}を削除" title="このメンバーを削除">削除</button>
                     </div>
                 </td>`;
 

@@ -801,7 +801,7 @@ function renderDetail() {
                 ? '<span class="doc-status-info text-muted">不要</span>'
                 : `<span class="doc-status-info">期限 <span class="tag-deadline ${kyokaOverdue ? 'deadline-past' : ''}">${escapeHtml(ev.KyokaDeadline || '---')}</span>
                 ／ 担当 ${personChipsHtml(ev.AdminKyoka) || emptyCell('wz-ev-admin-kyoka', '未定')}</span>
-            <select class="report-status-select status-${docStatusClass(KYOKA_STATUS, ev.KyokaStatus || '')}" data-doc="KyokaStatus" title="許可願の提出ステータスを変更">
+            <select class="report-status-select status-${docStatusClass(KYOKA_STATUS, ev.KyokaStatus || '')}" data-doc="KyokaStatus" aria-label="許可願の提出ステータス" title="許可願の提出ステータスを変更">
                 ${Object.keys(KYOKA_STATUS).map(v => `<option value="${v}" ${v === (ev.KyokaStatus || '') ? 'selected' : ''}>${KYOKA_STATUS[v].label}</option>`).join('')}
             </select>`}
         </div>
@@ -811,7 +811,7 @@ function renderDetail() {
                 ? '<span class="doc-status-info text-muted">不要</span>'
                 : `<span class="doc-status-info">期限 <span class="tag-deadline ${houkokuOverdue ? 'deadline-past' : ''}">${escapeHtml(ev.HoukokuDeadline || '---')}</span>
                 ／ 担当 ${personChipsHtml(ev.AdminHoukoku) || emptyCell('wz-ev-admin-houkoku', '未定')}</span>
-            <select class="report-status-select status-${docStatusClass(REPORT_STATUS, ev.ReportStatus || '')}" data-doc="ReportStatus" title="報告書の提出ステータスを変更">
+            <select class="report-status-select status-${docStatusClass(REPORT_STATUS, ev.ReportStatus || '')}" data-doc="ReportStatus" aria-label="報告書の提出ステータス" title="報告書の提出ステータスを変更">
                 ${Object.keys(REPORT_STATUS).map(v => `<option value="${v}" ${v === (ev.ReportStatus || '') ? 'selected' : ''}>${REPORT_STATUS[v].label}</option>`).join('')}
             </select>`}
         </div>`;
@@ -860,9 +860,9 @@ function renderDetail() {
             <tr><td colspan="2">${docsHtml}${docFilesHtml}</td></tr>
             <tr class="series-detail-group" data-g="after"><th colspan="2">イベント後に対応</th></tr>
             <tr class="detail-lv1"><th>来場者</th><td><input type="number" min="0" class="e1-input post-event-input" data-pe-field="VisitorCount"
-                value="${escapeAttr(ev.VisitorCount || '')}" placeholder="未記入" title="この回の来場者数"></td></tr>
+                value="${escapeAttr(ev.VisitorCount || '')}" placeholder="未記入" aria-label="来場者数" title="この回の来場者数"></td></tr>
             <tr class="detail-lv1"><th>参加メンバー</th><td><input type="number" min="0" class="e1-input post-event-input" data-pe-field="ParticipantCount"
-                value="${escapeAttr(ev.ParticipantCount || '')}" placeholder="未記入" title="この回に参加したメンバーの人数"></td></tr>
+                value="${escapeAttr(ev.ParticipantCount || '')}" placeholder="未記入" aria-label="参加メンバーの人数" title="この回に参加したメンバーの人数"></td></tr>
             ${prRowsHtml(ev)}` : ''}
         </table>
     `;
@@ -926,7 +926,7 @@ function prRowsHtml(ev) {
     const head = '<tr class="detail-lv1"><th colspan="2">広報担当</th></tr>';
     return head + channels.map(ch => `<tr class="detail-lv2">
             <th>${escapeHtml(ch)}</th>
-            <td><select class="e1-input pr-input" data-pr-channel="${escapeAttr(ch)}">${optionsHtml(assignments[ch] || '')}</select></td>
+            <td><select class="e1-input pr-input" data-pr-channel="${escapeAttr(ch)}" aria-label="広報担当: ${escapeAttr(ch)}">${optionsHtml(assignments[ch] || '')}</select></td>
         </tr>`).join('');
 }
 

@@ -571,6 +571,41 @@ function ensureSkipLink() {
   document.body.insertBefore(a, document.body.firstChild);
 }
 
+// <label> と入力欄を結び付ける(for / id が無いと、スクリーンリーダーは placeholder しか読めず、ラベルを押しても入力欄に移らない)。
+// ラベルは「同じ .e1-group(なければ親要素)の中の最初の入力欄」の名前にする。ラベル文字の末尾が「*」なら必須(aria-required)にする。
+// ラジオ・チェックボックスのグループは、ラベルを押すと選択が変わってしまうので for は使わず、グループ全体の名前(aria-labelledby)にする。
+// ウィザードなど動的に作られる画面にも効くよう、body への追加を MutationObserver で監視して呼ぶ(下の initAutoLabel)。
+let _autoLabelSeq = 0;
+function autoLabelControls(root) {
+  (root || document).querySelectorAll('label:not([for])').forEach(label => {
+    if (label.querySelector('input, select, textarea')) return;   // 入力欄を内包するラベルは、そのまま名前になる
+    const group = label.closest('.e1-group') || label.parentElement;
+    if (!group) return;
+    const ctrls = Array.from(group.querySelectorAll('input:not([type=hidden]), select, textarea'));
+    const ctrl = ctrls.find(c => !c.closest('label') && !c.hasAttribute('aria-label') && !c.hasAttribute('aria-labelledby'));
+    if (!ctrl) {
+      // 入力欄が全部ラベルの中にある(ラジオ・チェックボックスの並び)ときは、グループの名前にする
+      if (ctrls.some(c => c.type === 'radio' || c.type === 'checkbox') && !group.hasAttribute('role')) {
+        if (!label.id) label.id = 'auto-lbl-' + (++_autoLabelSeq);
+        group.setAttribute('role', 'group');
+        group.setAttribute('aria-labelledby', label.id);
+      }
+      return;
+    }
+    if (!ctrl.id) ctrl.id = 'auto-ctl-' + (++_autoLabelSeq);
+    label.htmlFor = ctrl.id;
+    if (/\*\s*$/.test(label.textContent.trim())) ctrl.setAttribute('aria-required', 'true');
+  });
+}
+function initAutoLabel() {
+  autoLabelControls(document);
+  new MutationObserver(records => {
+    records.forEach(r => r.addedNodes.forEach(n => { if (n.nodeType === 1) autoLabelControls(n); }));
+  }).observe(document.body, { childList: true, subtree: true });
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAutoLabel);
+else initAutoLabel();
+
 function renderHeader(activePage) {
   const header = document.querySelector('.app-header');
   if (!header) return;
@@ -1101,7 +1136,7 @@ function showAdminAuthModal(onSuccess) {
       <div class="pw-box" role="dialog" aria-modal="true" aria-labelledby="admin-auth-title">
         <h2 id="admin-auth-title">管理者認証</h2>
         <p>管理者モードのパスワードを入力してください。</p>
-        <input id="admin-pw-input" type="password" placeholder="管理者モードのパスワード" autofocus>
+        <input id="admin-pw-input" type="password" placeholder="管理者モードのパスワード" aria-label="管理者モードのパスワード" autofocus>
         <div id="admin-pw-error" class="pw-error" role="alert"></div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
           <button id="admin-pw-cancel" class="btn btn-secondary">キャンセル</button>
@@ -1195,7 +1230,7 @@ function showPasswordModal(onSuccess, notice) {
         <p>パスワードを入力してください。<br>
           <span class="text-muted" style="font-size:0.8rem;">管理者モードのパスワードを入力すると、自動的に管理者モードでログインします。</span>
         </p>
-        <input id="pw-input" type="password" placeholder="パスワード" autofocus>
+        <input id="pw-input" type="password" placeholder="パスワード" aria-label="パスワード" autofocus>
         <div id="pw-error" class="pw-error" role="alert"></div>
         <button id="pw-submit" class="btn btn-primary-solid">ログイン</button>
       </div>
