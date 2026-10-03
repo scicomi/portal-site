@@ -1191,7 +1191,7 @@ function renderReflectionTab() {
             ${!isMeeting && parts.filter(p => p.name).length > 0 ? `
             <div id="series-exp-feedback">
                 ${parts.filter(p => p.name).map(p => `
-                    <div class="exp-fb-card" data-exp-name="${escapeAttr(p.name)}">
+                    <div class="exp-fb-card" data-exp-name="${escapeAttr(p.name)}" data-exp-id="${escapeAttr((experimentsCache.find(x => x.Name === p.name) || {}).ID || '')}">
                         <button type="button" class="detail-toggle-header" aria-expanded="false" onclick="toggleExpFbCard(this)">
                             <span class="exp-fb-card-title">${escapeHtml(p.name)} について</span>
                             <span class="detail-toggle-icon" aria-hidden="true">&#9654;</span>
@@ -1419,7 +1419,10 @@ async function saveExperimentFeedbackEntries(eventData) {
         const refText = (fbCard.querySelector('.exp-fb-reflection')?.value || '').trim();
         if (!posText && !refText) continue;
 
-        const exp = experiments.find(e => e.Name === expName);
+        // 記入欄を表示した時点で引いた実験の ID で探す（そのあと実験名が変わっても、同じ実験に書ける）。
+        // ID が無い（表示時に見つからなかった）ときだけ、名前で探す
+        const expId = fbCard.dataset.expId || '';
+        const exp = (expId && experiments.find(e => e.ID === expId)) || experiments.find(e => e.Name === expName);
         if (!exp) {
             // 黙って飛ばすと、保存できたように見えて入力が消える。失敗として知らせ、入力欄は残す
             failures.push(`${expName}: 実験ネタが見つかりません（名前が変わった可能性があります）`);
