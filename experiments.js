@@ -304,7 +304,7 @@ function render() {
             matchBadge = `<span class="match-badge" title="${escapeAttr(meta.match.label + 'に一致: ' + meta.match.value)}">${escapeHtml(meta.match.label)}: ${highlightText(val, hlTerms)}</span>`;
         }
         return `
-            <tr class="clickable-row" data-id="${escapeAttr(e.ID)}" title="タップで概要を表示">
+            <tr class="clickable-row" data-id="${escapeAttr(e.ID)}" title="タップで詳細を表示">
                 <td class="cell-name">
                     <a href="experiment-detail.html?id=${encodeURIComponent(e.ID)}" data-action="open" style="color:inherit;text-decoration:none;">${nameHtml}</a>
                     ${fbCount > 0 ? `<span class="badge-fb-count" title="振り返り ${fbCount}件">${fbCount}件</span>` : ''}${matchBadge}
