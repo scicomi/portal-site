@@ -12,7 +12,7 @@ import {
 import { publicConfig, adminConfig, adminSetConfig, GEMINI_DAILY_LIMIT } from './config.js';
 import {
   listResource, listAllData, saveResource, deleteResource, ConflictError,
-  listEventVotes, voteDeadlinePassed, upsertVote, appendAuditLog
+  listEventVotes, voteDeadlinePassed, upsertVote, appendAuditLog, ID_PATTERN
 } from './data.js';
 import { handleGeminiProxy, handleGeminiGenerate, geminiUsageGet } from './gemini.js';
 import { notifyNewEvent } from './line.js';
@@ -54,7 +54,7 @@ const versionInfo = () => ({ success: true, version: CODE_VERSION, serverTime: n
 async function handlePost(env, ctx, request, body) {
   const token = body.token || '';
   const action = body.action || '';
-  const resource = body.resource || 'events';
+  const resource = body.resource || '';   // 省略時に events を対象にしない(list/save/delete は getResource が unknown resource を返す)
   const ip = clientIp(request);
 
   try {
@@ -241,6 +241,8 @@ async function handlePost(env, ctx, request, body) {
     if (action === 'submitVote') {
       const v = body.vote || {};
       if (!v.eventId || !v.memberId || !v.status) return { success: false, error: 'missing fields' };
+      // ID の形式を検証する(実在しない memberId の行がメンバー削除の連鎖でも消えず残るのを防ぐ入口の検査)
+      if (!ID_PATTERN.test(String(v.eventId)) || !ID_PATTERN.test(String(v.memberId))) return { success: false, error: 'invalid_id' };
       if (['attend', 'absent', 'undecided'].indexOf(v.status) < 0) return { success: false, error: 'invalid status' };
       // 出欠締切(VoteDeadline、未設定ならイベント最終日)を過ぎたら管理者のみ変更可
       const passed = await voteDeadlinePassed(env, v.eventId);

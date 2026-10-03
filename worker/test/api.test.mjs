@@ -592,6 +592,17 @@ test('不明な action / resource', async () => {
   assert.match((await post({ action: 'list', resource: 'bogus', token: member })).error, /unknown resource/);
 });
 
+test('resource を省略した list / save / delete は events を対象にせず拒否する', async () => {
+  assert.match((await post({ action: 'list', token: member })).error, /unknown resource/);
+  assert.match((await post({ action: 'save', token: member, item: { ID: 'ev_noresource_' + Date.now(), Title: 'x', Date: '2099-01-01' } })).error, /unknown resource/);
+  assert.match((await post({ action: 'delete', token: member, id: evId })).error, /unknown resource/);
+});
+
+test('投票: eventId / memberId の形式が不正なら invalid_id', async () => {
+  assert.equal((await post({ action: 'submitVote', token: member, vote: { eventId: evId, memberId: "mb_1'; DROP", status: 'attend' } })).error, 'invalid_id');
+  assert.equal((await post({ action: 'submitVote', token: member, vote: { eventId: 'x'.repeat(65), memberId: 'mb_1', status: 'attend' } })).error, 'invalid_id');
+});
+
 // テスト専用の IP(RATE_LIMIT_TEST_IP)だけをロックする。実際の接続元(127.0.0.1)の admin スコープはロックしないので、
 // 続けて npm test を再実行したり、画面から幹部ログインしたりできる。
 test('ログイン試行制限: 並列に大量の誤パスワードを送っても、検証まで進めるのは上限(30 回)まで', async () => {
