@@ -1241,6 +1241,7 @@ function toastUndo(message, onUndo, onCommit, delay = 5000, buttonLabel = '元�
   let undone = false;
   const undoBtn = t.querySelector('.toast-undo-btn');
   undoBtn.addEventListener('click', () => {
+    if (undone) return;   // 消えるまでの間に 2 回押しても、元に戻す処理は 1 回だけ
     undone = true;
     t.classList.remove('show');
     setTimeout(() => t.remove(), 300);
