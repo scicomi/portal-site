@@ -1415,8 +1415,9 @@ function createRichEditor(container, initialHtml, options = {}) {
   return editorApi;
 }
 
-// リッチテキスト(ホームの挨拶文・実験ネタ募集の案内文)の無害化。許可リスト方式。
+// リッチテキスト(ホームの挨拶文・実験ネタ募集の案内文・ガイド本文の各ブロック)の無害化。許可リスト方式。
 // DOMParser で作る文書は画面に属さず、スクリプトも画像も読み込まれない(img onerror が発火しない)。
+// 残すタグ・クラス・style は policy で切り替える(既定は挨拶文・案内文用。ガイド用は guide.js の GD_INLINE_POLICY)。
 const RICH_ALLOWED_TAGS = new Set(['B', 'I', 'U', 'A', 'BR', 'DIV', 'P', 'SPAN', 'UL', 'OL', 'LI']);
 // 中身ごと捨てるタグ(許可外でも中の文字は残す「その他のタグ」と区別する)
 const RICH_DROP_TAGS = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'FORM', 'TEMPLATE', 'NOSCRIPT',
@@ -1424,8 +1425,10 @@ const RICH_DROP_TAGS = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 
   'BUTTON', 'LINK', 'META', 'BASE', 'TITLE', 'HEAD', 'FRAME', 'FRAMESET']);
 // 許可する style のプロパティ(execCommand の太字・斜体・下線が span の style で出る場合がある)
 const RICH_ALLOWED_STYLES = ['font-weight', 'font-style', 'text-decoration', 'text-decoration-line'];
+// tags: 残すタグ / classes: タグごとに残してよいクラス名(1 つ) / styles: 残す style のプロパティ
+const RICH_POLICY = { tags: RICH_ALLOWED_TAGS, classes: {}, styles: RICH_ALLOWED_STYLES };
 
-function sanitizeRichHtml(html) {
+function sanitizeRichHtml(html, policy = RICH_POLICY) {
   if (!html) return '';
   const doc = new DOMParser().parseFromString('<body>' + String(html) + '</body>', 'text/html');
   const clean = (parent) => {
@@ -1435,7 +1438,7 @@ function sanitizeRichHtml(html) {
       const tag = node.tagName.toUpperCase();
       if (RICH_DROP_TAGS.has(tag)) { node.remove(); continue; }
       clean(node);
-      if (!RICH_ALLOWED_TAGS.has(tag)) {
+      if (!policy.tags.has(tag)) {
         // 許可外のタグ(h1, strong 等)はタグだけ外して中身の文字は残す
         node.replaceWith(...node.childNodes);
         continue;
@@ -1443,8 +1446,9 @@ function sanitizeRichHtml(html) {
       const href = tag === 'A' ? safeHttpUrl(node.getAttribute('href')) : '';
       const style = node.style;
       const kept = [];
+      const keepClass = policy.classes[tag] && node.classList.contains(policy.classes[tag]) ? policy.classes[tag] : '';
       if (style) {
-        RICH_ALLOWED_STYLES.forEach(p => {
+        policy.styles.forEach(p => {
           const v = style.getPropertyValue(p);
           // 値に url( や expression を含むものは入れない(許可したプロパティでも念のため)
           if (v && !/url\s*\(|expression|javascript:/i.test(v)) kept.push(p + ':' + v);
@@ -1452,6 +1456,7 @@ function sanitizeRichHtml(html) {
       }
       for (const attr of [...node.attributes]) node.removeAttribute(attr.name);
       if (kept.length) node.setAttribute('style', kept.join(';'));
+      if (keepClass) node.className = keepClass;
       if (tag === 'A') {
         if (!href) { node.replaceWith(...node.childNodes); continue; }   // 危険・不正な URL はリンクを外す
         node.setAttribute('href', href);

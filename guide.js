@@ -33,10 +33,45 @@ function gdParseBody(body) {
   if (!s) return [];
   try {
     const d = JSON.parse(s);
-    if (d && Array.isArray(d.blocks)) return gdMigrateBlocks(d.blocks);
+    if (d && Array.isArray(d.blocks)) return gdSanitizeBlocks(gdMigrateBlocks(d.blocks));
   } catch (_) {}
   // JSON でない本文（手で DB に入れた文章など）は、1 行 1 段落として扱う
   return s.split(/\n+/).map(t => ({ type: 'paragraph', data: { text: escapeHtml(t) } }));
+}
+
+// ガイドで使うインライン書式（guide-blocks.js の INLINE と、太字・斜体・下線・マーカー・インラインコード・リンク）
+const GD_INLINE_POLICY = {
+  tags: new Set(['B', 'I', 'U', 'MARK', 'CODE', 'A', 'BR']),
+  classes: { U: 'cdx-underline', MARK: 'cdx-marker', CODE: 'inline-code' },
+  styles: []
+};
+
+// 保存済みの本文を、描画する前に無害化する。Editor.js の sanitize は保存時と貼り付け時にしか効かず、
+// 読み込んだ HTML は各ブロック（Callout・Toggle・段落・表など）がそのまま innerHTML に入れるため。
+// code ブロックの本文は HTML ではなく文字として描かれるので触らない。知らない種類のブロックは、
+// Editor.js が中身を描かずに保持する（スタブ）ので、そのまま残す（次の保存で消えないように）。
+function gdSanitizeBlocks(blocks) {
+  const clean = h => sanitizeRichHtml(h, GD_INLINE_POLICY);
+  const listItems = list => (Array.isArray(list) ? list : []).map(it => {
+    if (typeof it === 'string') return clean(it);   // 旧形式のリスト（文字列の配列）
+    if (!it || typeof it !== 'object') return it;
+    return Object.assign({}, it, { content: clean(it.content), items: listItems(it.items) });
+  });
+  return blocks.filter(b => b && typeof b === 'object').map(b => {
+    const d = Object.assign({}, b.data || {});
+    switch (b.type) {
+      case 'paragraph': case 'header': case 'callout': d.text = clean(d.text); break;
+      case 'quote': d.text = clean(d.text); d.caption = clean(d.caption); break;
+      case 'toggle': d.title = clean(d.title); break;
+      case 'list': d.items = listItems(d.items); break;
+      case 'table': d.content = (Array.isArray(d.content) ? d.content : []).map(r => (Array.isArray(r) ? r : []).map(clean)); break;
+      case 'image':
+        d.caption = clean(d.caption);
+        if (d.file && typeof d.file === 'object') d.file = Object.assign({}, d.file, { url: safeHttpUrl(d.file.url) });
+        break;
+    }
+    return Object.assign({}, b, { data: d });
+  });
 }
 
 // 旧形式のトグル（見出し＋本文を 1 ブロックに持つ）を、新形式（見出し＋インデントした下のブロック）に直す
