@@ -45,7 +45,7 @@ async function init() {
     initHomeCalendar();
     api.loadHolidaysCached().then(data => {
         holidaysData = data || {};
-        refreshHomeCalendar();
+        applyHolidaysToCalendar();
     });
 
     await refreshData(false);
@@ -182,12 +182,24 @@ function renderEventsCard(events) {
 
 let homeCalendar = null;
 
-function initHomeCalendar(attempt = 0) {
+// 日付セルに付けるクラス（祝日）。祝日データは遅れて届くので、届いたら applyHolidaysToCalendar で付け直す
+function holidayClassNames(arg) {
+    return holidaysData[toISODate(arg.date)] ? ['holiday'] : [];
+}
+
+// 祝日データが届いたあとに、表示中のセルへ祝日のクラスを反映する。
+// refetchEvents では日付セルが描き直されないので、オプションを差し替えて再評価させる。
+function applyHolidaysToCalendar() {
+    if (homeCalendar) homeCalendar.setOption('dayCellClassNames', arg => holidayClassNames(arg));
+}
+
+function initHomeCalendar() {
     const el = document.getElementById('home-calendar');
-    if (!el) return;
+    if (!el || homeCalendar || el.dataset.loadFailed) return;   // 作成済み・読み込み失敗の案内済みなら何もしない
+    // FullCalendar は <script defer> なので、DOMContentLoaded の時点で未定義なら読み込みに失敗している（待っても来ない）
     if (typeof FullCalendar === 'undefined') {
-        if (attempt > 100) return;
-        setTimeout(() => initHomeCalendar(attempt + 1), 50);
+        el.dataset.loadFailed = '1';
+        el.innerHTML = '<div class="text-hint" style="padding:16px; text-align:center;">カレンダーを読み込めませんでした。通信環境を確認して、ページを再読み込みしてください。</div>';
         return;
     }
     homeCalendar = new FullCalendar.Calendar(el, {
@@ -195,14 +207,10 @@ function initHomeCalendar(attempt = 0) {
         locale: 'ja',
         height: 'auto',
         dayMaxEvents: 2,
-        selectable: false,
         headerToolbar: { left: 'prev', center: 'title', right: 'today next' },
         buttonText: { today: '今日' },
         now: jstNowAsLocalDate,   // 「今日」の強調と「今日」ボタンは、端末のタイムゾーンではなく日本時間で数える
-        dayCellClassNames: function (arg) {
-            const dateStr = toISODate(arg.date);
-            return holidaysData[dateStr] ? ['holiday'] : [];
-        },
+        dayCellClassNames: holidayClassNames,
         events: function (fetchInfo, successCallback) {
             const fcEvents = (latestEvents || []).map(e => {
                 const cat = getEventCategory(e.Category);
