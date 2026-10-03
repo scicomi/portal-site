@@ -405,8 +405,15 @@ function onInlineVoteChange(selectEl, eventId) {
     submitVoteOptimistic({
         event: ev, votes, memberId, status,
         rerender: () => {
+            // 表を作り直すとフォーカスが body に落ちる(キーボード・スクリーンリーダーの利用者が現在地を見失う)ので、同じ行の出欠セレクトに戻す
+            const active = document.activeElement;
+            const hadFocus = !!(active && active.dataset && active.dataset.voteEvent === eventId);
             rebuildVotesByEvent();
             renderEvents();
+            if (hadFocus) {
+                const sel = Array.from(document.querySelectorAll('select[data-vote-event]')).find(s => s.dataset.voteEvent === eventId);
+                if (sel) sel.focus();
+            }
         },
         onChange: (updatedVotes) => {
             allVotesData = (allVotesData || []).filter(v => v.eventId !== eventId).concat(updatedVotes);
