@@ -91,7 +91,7 @@ async function refreshData(isManual = false) {
         expData = await api.list('experiments');
         api.saveCache('experiments', expData);
         render();
-        focusFromUrl();
+        focusFromUrl(true);
         updateSyncStatus('fresh', Date.now());
     } catch (e) {
         if (e.handled) return;
@@ -136,7 +136,7 @@ function renderExpRecruit() {
     body.innerHTML = (url || note)
         ? `
             ${note ? `<div class="exp-recruit-note">${sanitizeRichHtml(note)}</div>` : ''}
-            ${url ? `<a class="btn-recruit-link" href="${escapeAttr(safeHttpUrl(url))}" target="_blank" rel="noopener">応募フォームを開く</a>` : ''}
+            ${safeHttpUrl(url) ? `<a class="btn-recruit-link" href="${escapeAttr(safeHttpUrl(url))}" target="_blank" rel="noopener">応募フォームを開く</a>` : ''}
         `
         : `<p class="text-muted" style="font-size:0.85rem;">募集中の案内はまだ登録されていません。&#9998;から追加できます</p>`;
 }
@@ -169,21 +169,37 @@ function editExpRecruit() {
 async function saveExpRecruit() {
     const editor = document.getElementById('exp-recruit-note-editor')?._richEditor;
     const note = editor ? editor.getHtml().trim() : '';
-    const url = document.getElementById('exp-recruit-url-input')?.value.trim() || '';
+    const rawUrl = document.getElementById('exp-recruit-url-input')?.value.trim() || '';
+    // http(s) 以外(javascript: や相対パス)は保存しない。スキームが無ければ https を補う
+    const url = safeHttpUrl(rawUrl);
+    if (rawUrl && !url) {
+        toast('応募フォームの URL が正しくありません（https:// から始まる URL を入力してください）', 'error', 5000);
+        return;
+    }
+    const prev = _expRecruitCfg();
     try {
         await api.adminSetConfig('experiment_recruit_note', note);
-        await api.adminSetConfig('experiment_recruit_url', url);
+        try {
+            await api.adminSetConfig('experiment_recruit_url', url);
+        } catch (e) {
+            // 2 つの設定は別々に保存される。後の保存だけ失敗して案内文だけ新しくならないよう、先に保存した案内文を元に戻す(戻せなくても、保存失敗として知らせる)
+            try { await api.adminSetConfig('experiment_recruit_note', prev.experiment_recruit_note || ''); } catch (_) {}
+            invalidateSettingsCache();
+            throw e;
+        }
         invalidateSettingsCache();
         expRecruitLocal = { experiment_recruit_note: note, experiment_recruit_url: url };
         toast('募集案内を保存しました', 'success');
         renderExpRecruit();
     } catch (e) {
-        toast('保存失敗: ' + e.message, 'error');
+        toast('保存失敗: ' + humanizeApiError(e), 'error');
     }
 }
 
 let focusHandled = false;
-function focusFromUrl() {
+// fresh: サーバーから取得した最新のデータで呼ばれたとき true。キャッシュ(古い可能性がある。追加した直後の実験が無いなど)だけを見て
+// 「見つかりません」と決めつけないよう、一致しなかったときの通知は最新のデータが来てから行う
+function focusFromUrl(fresh) {
     if (focusHandled) return;
     const params = new URLSearchParams(location.search);
 
@@ -207,7 +223,7 @@ function focusFromUrl() {
         focusHandled = true;
         // 詳細の閲覧は実験詳細ページへ一本化（行クリックと同じ導線）
         goToDetail(match.ID);
-    } else {
+    } else if (fresh) {
         const searchEl = document.getElementById('exp-search');
         if (searchEl) {
             searchEl.value = focusName;
