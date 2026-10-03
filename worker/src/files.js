@@ -2,7 +2,7 @@
 //
 // クライアントとの互換のため、返すフィールド名は Drive 時代のまま(driveId = R2 のオブジェクトキー)。
 
-import { getConfigInt } from './config.js';
+import { getConfigInt, FILE_MAX_MB_LIMIT } from './config.js';
 import { corsHeaders, ApiError } from './util.js';
 
 function decodeBase64(b64) {
@@ -22,11 +22,13 @@ export async function uploadFile(env, request, fileData) {
   if (!fileData || !fileData.base64 || !fileData.name) throw new ApiError('invalid_file', 'ファイルデータが不正です');
   let bytes;
   try { bytes = decodeBase64(String(fileData.base64)); } catch (_) { throw new ApiError('invalid_file', 'ファイルデータが不正です'); }
-  const maxMB = await getConfigInt(env, 'file_max_mb', 10);
+  const maxMB = Math.min(await getConfigInt(env, 'file_max_mb', 10), FILE_MAX_MB_LIMIT);   // 上限より大きい値が保存されていても抑える
   if (bytes.length / (1024 * 1024) > maxMB) throw new ApiError('file_too_large', 'ファイルサイズが上限(' + maxMB + 'MB)を超えています');
 
   const key = crypto.randomUUID().replace(/-/g, '') + safeExt(fileData.name);
-  const mimeType = fileData.mimeType || 'application/octet-stream';
+  // 種類は「type/subtype」の形だけ受け付ける(改行などを含む値は、配信のときにヘッダーに入れられず 500 になる)
+  const rawType = String(fileData.mimeType || '').trim().toLowerCase();
+  const mimeType = /^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/.test(rawType) ? rawType : 'application/octet-stream';
   await env.FILES.put(key, bytes, {
     httpMetadata: { contentType: mimeType },
     customMetadata: { name: encodeURIComponent(String(fileData.name)).slice(0, 500) }
@@ -58,7 +60,8 @@ export async function serveFile(env, request) {
   // 画像・PDF・動画・音声・テキストだけをブラウザ内表示にする。HTML/SVG など、スクリプトを含み得る形式は
   // 必ずダウンロード扱いにして、アップロードされたファイルがこのオリジン上で実行されないようにする。
   const type = ((obj.httpMetadata && obj.httpMetadata.contentType) || 'application/octet-stream').toLowerCase();
-  const inlineSafe = /^(image\/(png|jpe?g|gif|webp|avif|bmp)|application\/pdf|video\/|audio\/|text\/plain)/.test(type);
+  // 種類の名前は最後まで一致させる(image/pngx などを inline にしない)。以前に保存された不正な値(改行など)は octet-stream で返す
+  const inlineSafe = /^(image\/(png|jpe?g|gif|webp|avif|bmp)|application\/pdf|video\/[a-z0-9.+-]+|audio\/[a-z0-9.+-]+|text\/plain)(;[\x20-\x7e]*)?$/.test(type);
   const headers = new Headers(cors);
   headers.set('Content-Type', inlineSafe ? type : 'application/octet-stream');
   headers.set('Content-Length', String(obj.size));

@@ -550,6 +550,35 @@ test('保存: 長すぎる値は too_large で拒否する(上限内の長い文
   assert.equal((await res.json()).error, 'too_large');
 });
 
+test('入力の検証: 設定値は文字列だけ・アップロード上限は 20MB まで・ファイルの種類は type/subtype の形だけ', async () => {
+  const set = (key, value) => post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key, value });
+  let r = await set('password', {});
+  assert.equal(r.success, false);
+  assert.equal(r.error, 'invalid_value');
+  assert.equal((await set('welcome_message', ['a'])).error, 'invalid_value');
+  assert.equal((await set('file_max_mb', '21')).error, 'invalid_value');
+  assert.equal((await set('file_max_mb', '20')).success, true);
+  assert.equal((await set('file_max_mb', '10')).success, true);
+
+  const upload = mimeType => post({ action: 'uploadFile', token: member, file: { name: 'a.png', mimeType, base64: Buffer.from('x').toString('base64') } });
+  // 改行入りの種類でも保存でき、配信は 500 にならずダウンロード扱い
+  let up = await upload('image/png\r\nX-Injected: 1');
+  assert.equal(up.success, true);
+  let got = await fetch(up.file.url.replace(/^https?:\/\/[^/]+/, BASE));
+  assert.equal(got.status, 200);
+  assert.equal(got.headers.get('content-type'), 'application/octet-stream');
+  assert.equal(got.headers.get('x-injected'), null);
+  // 名前の途中までしか合わない種類(image/pngx)は inline にしない
+  up = await upload('image/pngx');
+  got = await fetch(up.file.url.replace(/^https?:\/\/[^/]+/, BASE));
+  assert.match(got.headers.get('content-disposition'), /^attachment/);
+  // 正しい種類は従来どおり inline
+  up = await upload('image/png');
+  got = await fetch(up.file.url.replace(/^https?:\/\/[^/]+/, BASE));
+  assert.equal(got.headers.get('content-type'), 'image/png');
+  assert.match(got.headers.get('content-disposition'), /^inline/);
+});
+
 test('ゴミ箱: 完全に削除しても、ほかのレコードやゴミ箱の行が使っているファイルは消さない', async () => {
   const up = await post({ action: 'uploadFile', token: member, file: { name: '共有.txt', mimeType: 'text/plain', base64: Buffer.from('shared').toString('base64') } });
   const fileUrl = up.file.url.replace(/^https?:\/\/[^/]+/, BASE);

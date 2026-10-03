@@ -15,6 +15,9 @@ const DEADLINE_DAYS_MIN = 1;
 const DEADLINE_DAYS_MAX = 90;
 // 整数の設定の範囲 [最小, 最大]。trash_keep_days の画面(settings.js)は 1〜365 だが、
 // 0(削除した瞬間に期限切れ)は結合テストが期限切れの処理を確かめるのに使うので API では受け付ける
+// アップロードの上限(MB)の最大値。base64 で約 1.34 倍になっても、index.js の MAX_REQUEST_BYTES(28MB)に収まる値
+export const FILE_MAX_MB_LIMIT = 20;
+
 const INT_CONFIG_RANGES = {
   deadline_alert_danger: [0, 365],
   deadline_alert_warning: [0, 365],
@@ -152,8 +155,10 @@ export function validateConfigValue(key, value) {
       const days = Math.abs(parseInt(v.trim(), 10));
       return days >= DEADLINE_DAYS_MIN && days <= DEADLINE_DAYS_MAX ? '' : '日数は' + DEADLINE_DAYS_MIN + '〜' + DEADLINE_DAYS_MAX + 'で指定してください';
     }
-    case 'file_max_mb':         // 0 にすると全アップロードが拒否されるため 1 以上
-      return /^\d+$/.test(v.trim()) && parseInt(v.trim(), 10) >= 1 ? '' : '1以上の整数を指定してください';
+    case 'file_max_mb': {       // 0 にすると全アップロードが拒否されるため 1 以上。上限は index.js のリクエスト本文の上限に収まる値
+      const n = /^\d+$/.test(v.trim()) ? parseInt(v.trim(), 10) : NaN;
+      return n >= 1 && n <= FILE_MAX_MB_LIMIT ? '' : '1〜' + FILE_MAX_MB_LIMIT + 'の整数を指定してください';
+    }
     case 'deadline_alert_danger':
     case 'deadline_alert_warning':
     case 'backup_keep_count':
@@ -177,6 +182,8 @@ export function validateConfigValue(key, value) {
 // adminSetConfig の本体。{ success, error?, detail? } を返す。
 export async function adminSetConfig(env, key, value) {
   if (Object.keys(DEFAULT_CONFIG).indexOf(key) < 0) return { success: false, error: 'forbidden_key' };
+  // 値は文字列だけ(オブジェクトや配列が来ると '[object Object]' などの文字列で保存されてしまう。パスワードも同じ)
+  if (value !== undefined && value !== null && typeof value !== 'string') return { success: false, error: 'invalid_value', detail: '文字列で指定してください' };
   const vErr = validateConfigValue(key, value);
   if (vErr) return { success: false, error: 'invalid_value', detail: vErr };
   // 一般と幹部が同じだと、ログインした全員が管理者になるため拒否する
