@@ -162,35 +162,43 @@ const api = {
   },
 
   saveCache(resource, items) {
+    const key = CACHE_KEY_PREFIX + resource;
+    let body;
     try {
-      localStorage.setItem(CACHE_KEY_PREFIX + resource, JSON.stringify({
-        items,
-        timestamp: Date.now(),
-        schema: CACHE_SCHEMA
-      }));
+      body = JSON.stringify({ items, timestamp: Date.now(), schema: CACHE_SCHEMA });
+      localStorage.setItem(key, body);
+      return;
     } catch (e) {
-      if (e.name === 'QuotaExceededError') {
-        this._evictOldestCache();
-        try {
-          localStorage.setItem(CACHE_KEY_PREFIX + resource, JSON.stringify({
-            items, timestamp: Date.now(), schema: CACHE_SCHEMA
-          }));
-        } catch (_) {}
-      }
+      if (!body || e.name !== 'QuotaExceededError') return;
+    }
+    // 容量超過: 他のキャッシュを古いものから 1 つずつ消して、入るまで繰り返す（入らなければ保存を諦める）
+    while (this._evictOldestCache(key)) {
+      try {
+        localStorage.setItem(key, body);
+        return;
+      } catch (_) {}
     }
   },
 
-  _evictOldestCache() {
-    let oldest = null;
+  // CACHE_KEY_PREFIX で始まるキャッシュのうち、exceptKey 以外で最も古いものを 1 つ消す。消せたら true。
+  // votes など RESOURCE_NAMES 以外や、形式の版が古くて読めないキャッシュも対象（読めないものが最優先で消える）
+  _evictOldestCache(exceptKey) {
+    let oldestKey = null;
     let oldestTs = Infinity;
-    RESOURCE_NAMES.forEach(r => {
-      const cached = this.loadCache(r);
-      if (cached && cached.timestamp < oldestTs) {
-        oldestTs = cached.timestamp;
-        oldest = r;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || k.indexOf(CACHE_KEY_PREFIX) !== 0 || k === exceptKey) continue;
+        let ts = 0;
+        try { ts = Number(JSON.parse(localStorage.getItem(k)).timestamp) || 0; } catch (_) {}
+        if (ts < oldestTs) { oldestTs = ts; oldestKey = k; }
       }
-    });
-    if (oldest) localStorage.removeItem(CACHE_KEY_PREFIX + oldest);
+      if (!oldestKey) return false;
+      localStorage.removeItem(oldestKey);
+      return true;
+    } catch (_) {
+      return false;
+    }
   },
 
   // CACHE_KEY_PREFIX で始まるキャッシュをすべて消す（RESOURCE_NAMES 以外の votes なども含む）。
@@ -214,12 +222,16 @@ const api = {
         if (Date.now() - obj.timestamp < HOLIDAYS_CACHE_TTL_MS) return obj.data;
       }
     } catch (_) {}
+    let data;
     try {
       const res = await fetch('https://holidays-jp.github.io/api/v1/date.json');
-      const data = await res.json();
-      localStorage.setItem(HOLIDAYS_CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
-      return data;
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      data = await res.json();
+      if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('形式が正しくありません');
     } catch (e) { console.warn('祝日データを取得できませんでした:', e && e.message); return {}; }
+    // 端末に保存できなくても（容量超過・保存禁止）、取得できた祝日はこの表示に使う
+    try { localStorage.setItem(HOLIDAYS_CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() })); } catch (_) {}
+    return data;
   },
 
   // ---- CRUD ----

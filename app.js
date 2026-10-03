@@ -1096,26 +1096,28 @@ function showAdminAuthModal(onSuccess) {
     errEl.textContent = '';
     submitBtn.disabled = true;
     submitBtn.textContent = '認証中...';
+    let ok;
     try {
-      const ok = await api.adminAuth(input.value);
-      if (ok) {
-        modal.remove();
-        toast('管理者モードに切り替えました', 'success');
-        if (onSuccess) {
-          await onSuccess();
-        } else {
-          location.reload();
-        }
-      } else {
-        errEl.textContent = 'パスワードが違います';
-        submitBtn.disabled = false;
-        submitBtn.textContent = '認証';
-        input.select();
-      }
+      ok = await api.adminAuth(input.value);
     } catch (e) {
       errEl.textContent = humanizeApiError(e);
       submitBtn.disabled = false;
       submitBtn.textContent = '認証';
+      return;
+    }
+    if (!ok) {
+      errEl.textContent = 'パスワードが違います';
+      submitBtn.disabled = false;
+      submitBtn.textContent = '認証';
+      input.select();
+      return;
+    }
+    modal.remove();
+    toast('管理者モードに切り替えました', 'success');
+    if (onSuccess) {
+      await runAfterLogin(onSuccess);
+    } else {
+      location.reload();
     }
   };
 
@@ -1136,6 +1138,17 @@ async function requireAuth(onReady) {
     return;
   }
   await onReady();
+}
+
+// ログイン成功後の処理（ページの初期化など）を実行する。ログインのダイアログは、この時点ではもう閉じている。
+// 失敗したら、ダイアログのエラー欄ではなくトーストで知らせる（消えたダイアログに書いても、利用者には何も見えない）。
+async function runAfterLogin(onSuccess) {
+  try {
+    await onSuccess();
+  } catch (e) {
+    console.error('ログイン後の処理に失敗しました:', e);
+    toast('ログイン後の読み込みに失敗しました。ページを再読み込みしてください（' + humanizeApiError(e) + '）', 'error', 8000);
+  }
 }
 
 function showPasswordModal(onSuccess) {
@@ -1171,23 +1184,25 @@ function showPasswordModal(onSuccess) {
     errEl.textContent = '';
     submitBtn.disabled = true;
     submitBtn.textContent = '認証中...';
+    let result;
     try {
-      const result = await api.login(input.value);
-      if (result.ok) {
-        modal.remove();
-        toast(result.role === 'admin' ? '管理者としてログインしました' : 'ログインしました', 'success');
-        await onSuccess();
-      } else {
-        errEl.textContent = result.error ? humanizeApiError({ code: result.error, message: result.error }) : 'パスワードが違います';
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'ログイン';
-        input.select();
-      }
+      result = await api.login(input.value);
     } catch (e) {
       errEl.textContent = humanizeApiError(e);
       submitBtn.disabled = false;
       submitBtn.textContent = 'ログイン';
+      return;
     }
+    if (!result.ok) {
+      errEl.textContent = result.error ? humanizeApiError({ code: result.error, message: result.error }) : 'パスワードが違います';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'ログイン';
+      input.select();
+      return;
+    }
+    modal.remove();
+    toast(result.role === 'admin' ? '管理者としてログインしました' : 'ログインしました', 'success');
+    await runAfterLogin(onSuccess);
   };
 
   submitBtn.addEventListener('click', tryLogin);
