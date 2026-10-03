@@ -59,7 +59,8 @@ function _wzHost() {
             persist();
             c.rerender();
         },
-        onConflict() { c.onConflict(); }
+        // 再読込の完了を待てるよう、ページ側の戻り値（Promise）をそのまま返す
+        onConflict() { return c.onConflict(); }
     };
 }
 
@@ -1269,6 +1270,9 @@ function persistEventFromWizard(item) {
     const uploadedNow = Array.isArray(tempNewEvent._sessionUploads) ? tempNewEvent._sessionUploads.slice() : [];
     tempNewEvent._sessionUploads = []; // closeEventWizard がアップロード済みファイルを消さないようにする
 
+    // 競合したとき、入力のうち「自分が変えた項目」だけを最新の上に重ねて開き直せるよう、開いた時点の内容を控える
+    const openedSnapshot = isExisting ? JSON.parse(JSON.stringify(host.getEvent(eventId))) : null;
+
     const optimistic = host.applyOptimistic({ ...item });
     closeEventWizard();
     toast('保存しました', 'success');
@@ -1290,11 +1294,16 @@ function persistEventFromWizard(item) {
     }).catch(err => {
         host.rollback(optimistic);
         if (isConflictError(err)) {
-            // 競合ならサーバーは何も保存していない。今回アップロードしたファイルは参照されないので消す
+            // 競合ならサーバーは何も保存していない。最新を読み込んだうえで、入力した内容（自分が変えた項目だけ）を
+            // 最新の上に重ねて開き直せるようにする。開き直さなかったら、今回アップロードしたファイルは参照されないので消す
             // （それ以外の失敗では保存済みの可能性があるので消さない）
-            deleteStoredFiles(uploadedNow);
             toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', 5000);
-            host.onConflict();
+            Promise.resolve(host.onConflict()).catch(() => {}).then(() => {
+                const rebased = rebaseEventInput(openedSnapshot, item, host.getEvent(eventId));
+                toastUndo('最新の内容に、あなたが変えた項目を重ねて開き直せます',
+                    () => reopenFailedEventWizard(rebased, uploadedNow),
+                    () => deleteStoredFiles(uploadedNow), 20000, '入力を開き直す');
+            });
         } else {
             // ウィザードは閉じているので、入力した内容を開き直して編集を続けられるようにする。
             // サーバーで保存済みの可能性があるので、アップロード済みのファイルは消さない
@@ -1304,14 +1313,29 @@ function persistEventFromWizard(item) {
     });
 }
 
-// 保存に失敗したウィザードの入力内容で、ウィザードを開き直す
-function reopenFailedEventWizard(item) {
+// 競合のあとの開き直し用: 最新のイベントに、入力のうち「開いた時点から変わっている項目」だけを重ねる。
+// 最新が取れない（相手が削除した等）か、開いた時点の控えが無い（新規作成）ときは、入力をそのまま使う
+function rebaseEventInput(opened, item, latest) {
+    if (!opened || !latest) return item;
+    const out = JSON.parse(JSON.stringify(latest));
+    Object.keys(item).forEach(k => {
+        if (k.charAt(0) === '_' || k === 'UpdatedAt') return;
+        if (JSON.stringify(item[k]) !== JSON.stringify(opened[k])) out[k] = item[k];
+    });
+    return out;
+}
+
+// 保存に失敗したウィザードの入力内容で、ウィザードを開き直す。
+// 他のウィザードが開いていて開けないときは false を返す（toastUndo がボタンを残すので、閉じてからもう一度押せる）。
+// keepUploads: 開き直すウィザードが引き継ぐ、アップロード済みファイル（保存せずに閉じたら消す対象）
+function reopenFailedEventWizard(item, keepUploads) {
     if (tempNewEvent) {
         toast('ほかの編集画面を閉じてから、もう一度押してください', 'error');
-        return;
+        return false;
     }
     const editId = _wzHost().getEvent(item.ID) ? item.ID : null;
     openEventWizard(editId, null, null, item);
+    if (tempNewEvent && Array.isArray(keepUploads)) tempNewEvent._sessionUploads = keepUploads.slice();
 }
 
 // 「許可願/報告書は不要」チェック時、担当者・期限入力を隠す（保存時は担当も期限も送らない）

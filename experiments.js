@@ -549,7 +549,7 @@ async function saveExp() {
 function reopenFailedExpWizard(item) {
     if (document.getElementById('exp-wizard-overlay')) {
         toast('ほかの編集画面を閉じてから、もう一度押してください', 'error');
-        return;
+        return false;   // toastUndo がボタンを残すので、閉じてからもう一度押せる
     }
     const editId = expData.find(x => x.ID === item.ID) ? item.ID : null;
     openExpWizard(editId, item);

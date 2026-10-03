@@ -1250,6 +1250,7 @@ function toast(message, type = 'info', duration = 3000) {
 }
 
 // buttonLabel: ボタンの文言（既定は「元に戻す」）
+// onUndo が false を返したら「今は実行できなかった」とみなして、トーストとボタンを残す（あとでもう一度押せる）。
 function toastUndo(message, onUndo, onCommit, delay = 5000, buttonLabel = '元に戻す') {
   let container = document.getElementById('toast-container');
   if (!container) {
@@ -1274,9 +1275,17 @@ function toastUndo(message, onUndo, onCommit, delay = 5000, buttonLabel = '元�
   undoBtn.addEventListener('click', () => {
     if (undone) return;   // 消えるまでの間に 2 回押しても、元に戻す処理は 1 回だけ
     undone = true;
-    t.classList.remove('show');
-    setTimeout(() => t.remove(), 300);
-    onUndo();
+    let keep = false;
+    try {
+      keep = onUndo() === false;
+    } finally {
+      if (keep) {
+        undone = false;   // 実行できなかったので、トーストを残してもう一度押せるようにする
+      } else {
+        t.classList.remove('show');
+        setTimeout(() => t.remove(), 300);
+      }
+    }
   });
 
   const progress = t.querySelector('.toast-progress');
