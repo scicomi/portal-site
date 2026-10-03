@@ -14,8 +14,8 @@ let gdCurrentId = '';      // 表示中のページ ID（'' = ガイドのトッ
 let gdDraft = null;        // 新規ページ（まだ保存していない） { parentId } / null
 let gdBase = '';           // 開いているページの UpdatedAt（競合検知の基準。保存のたびに更新）
 let gdDirty = false;       // 未保存の変更があるか
-let gdSaving = false;
-let gdSaveAgain = false;   // 保存中にさらに変更が入った
+let gdSavePromise = null;  // 進行中の保存（gdSaveNow）。null = 保存していない
+let gdSaveAgain = false;   // 保存中にさらに保存を頼まれた
 let gdSaveTimer = null;
 let gdConflict = false;    // 他の人が先に更新した（自動保存を止めている）
 let gdSearchKw = '';
@@ -113,7 +113,7 @@ async function refreshData(initial) {
     gdPages = sortGuides(items);
     gdRenderTree();
     if (initial) return;
-    if (!gdDirty && !gdSaving && !gdConflict) {
+    if (!gdDirty && !gdSavePromise && !gdConflict) {
       const fresh = gdCurrentId ? gdById(gdCurrentId) : null;
       if (!gdDraft && (!mine || !fresh || mine.UpdatedAt !== fresh.UpdatedAt)) gdRenderCurrent();
     }
@@ -161,14 +161,13 @@ function gdOpenFromUrl() {
   gdShow(id && gdById(id) ? id : '', false);
 }
 
-// 離れる前に、未保存の変更があれば保存してから proceed を実行する
+// 離れる前に、保存中のものは終わるまで待ち、未保存の変更があれば保存してから proceed を実行する
 async function gdLeave(proceed) {
-  clearTimeout(gdSaveTimer);
+  await gdFlushSave();
   if (gdConflict) {
     showDiscardConfirm(() => { gdConflict = false; gdDirty = false; proceed(); });
     return;
   }
-  if (gdDirty || gdSaving) await gdSaveNow();
   if (gdDirty) { showDiscardConfirm(() => { gdDirty = false; proceed(); }); return; }   // 保存に失敗したままのとき
   proceed();
 }
@@ -627,48 +626,89 @@ function gdTitleText() {
   return t ? t.innerText.replace(/\s+/g, ' ').trim() : '';
 }
 
-async function gdSaveNow(force) {
+// 保存は同時に 1 本だけ。保存中に呼ばれたら、終わった後にもう一度保存する（gdSaveAgain）。
+// 進行中の保存の Promise を返すので、呼び出し側は await で終わりまで待てる。
+function gdSaveNow(force) {
   clearTimeout(gdSaveTimer);
-  if (!gdDirty || gdConflict || !gdEditor) return;
-  if (gdSaving) { gdSaveAgain = true; return; }
-  const isNew = !gdCurrentId;
-  const title = gdTitleText();
-  let out;
-  try { out = await gdEditor.save(); } catch (e) { console.error(e); return; }
-  const blocks = out.blocks || [];
-  const page = isNew ? null : gdById(gdCurrentId);
-  const icon = document.getElementById('gd-icon').dataset.val || '';
-  if (isNew && !title && !blocks.length) { gdDirty = false; gdSetStatus(''); return; }   // 何も書いていない新規ページは作らない
+  if (gdSavePromise) { gdSaveAgain = true; return gdSavePromise; }
+  if (!gdDirty || gdConflict || !gdEditor) return Promise.resolve();
+  gdSavePromise = gdSaveRun(force).catch(e => {
+    // 想定外の例外でも「未保存」に戻し、待っている側（gdLeave など）を止めない
+    console.error('guide save failed', e);
+    gdDirty = true;
+    gdSetStatus('保存できていません', true);
+  }).finally(() => {
+    gdSavePromise = null;
+    if (gdSaveAgain) { gdSaveAgain = false; if (gdDirty) gdSaveNow(); }
+  });
+  return gdSavePromise;
+}
 
-  gdSaving = true;
+// 進行中の保存（と、その間に入った変更の追加保存）が終わるまで待つ。保存中でなく未保存の変更があれば保存する
+async function gdFlushSave() {
+  clearTimeout(gdSaveTimer);
+  if (!gdSavePromise && gdDirty && !gdConflict) gdSaveNow();
+  while (gdSavePromise) await gdSavePromise;
+}
+
+async function gdSaveRun(force) {
+  // 保存を始めた時点のページ。完了までに別のページへ移っていたら、画面の状態（gdBase・URL など）は触らない
+  const pageId = gdCurrentId;
+  const draft = gdDraft;
+  const isNew = !pageId;
+  const base = gdBase;
+  const title = gdTitleText();
+  const icon = document.getElementById('gd-icon').dataset.val || '';
+  const stillHere = () => isNew ? (!gdCurrentId && gdDraft === draft) : gdCurrentId === pageId;
+
+  // 先に「保存済み」にしておく。本文の読み出し・送信の間に入った編集は、gdMarkDirty が立て直して次の保存に回る
   gdDirty = false;
   gdSetStatus('保存中…');
+  const editor = gdEditor;
+  let blocks;
+  try {
+    await editor.isReady;              // 開いた直後は、準備ができるまで save が使えない
+    blocks = (await editor.save()).blocks || [];
+  } catch (e) {
+    console.error(e);
+    if (stillHere()) { gdDirty = true; gdSetStatus('保存できていません', true); }
+    return;
+  }
+  if (isNew && !title && !blocks.length) { gdSetStatus(''); return; }   // 何も書いていない新規ページは作らない
+
   const item = {
     Title: title,
     Icon: icon,
     Body: blocks.length ? JSON.stringify({ blocks }) : '',
   };
   if (isNew) {
-    item.ParentID = gdDraft ? gdDraft.parentId : '';
+    item.ParentID = draft ? draft.parentId : '';
   } else {
-    item.ID = page.ID;
-    if (!force) item._baseUpdatedAt = gdBase;
+    // 一覧から消えていても（別の管理者が削除した等）ID と基準の版で送る。サーバーが conflict を返し、競合の案内になる
+    item.ID = pageId;
+    if (!force) item._baseUpdatedAt = base;
   }
   try {
     const saved = await api.saveGuide(item);
     const at = gdPages.findIndex(p => p.ID === saved.ID);
     if (at >= 0) gdPages[at] = saved; else gdPages.push(saved);
     gdPages = sortGuides(gdPages);
-    gdBase = saved.UpdatedAt;
-    if (isNew) {
-      gdCurrentId = saved.ID;
-      gdDraft = null;
-      try { history.replaceState(null, '', 'guide.html?p=' + encodeURIComponent(saved.ID)); } catch (_) {}
+    if (stillHere()) {
+      gdBase = saved.UpdatedAt;
+      if (isNew) {
+        gdCurrentId = saved.ID;
+        gdDraft = null;
+        try { history.replaceState(null, '', 'guide.html?p=' + encodeURIComponent(saved.ID)); } catch (_) {}
+      }
+      document.title = gdTitle(saved) + ' | ガイド | SciComi Site';
+      gdSetStatus(gdDirty ? '編集中…' : '保存しました');
     }
-    document.title = gdTitle(saved) + ' | ガイド | SciComi Site';
     gdRenderTree();
-    gdSetStatus(gdDirty ? '編集中…' : '保存しました');
   } catch (e) {
+    if (!stillHere()) {
+      toast('「' + (title || '無題') + '」を保存できませんでした: ' + (e && e.message ? e.message : e), 'error', 6000);
+      return;
+    }
     gdDirty = true;
     if (e && e.message === 'conflict') { gdShowConflict(); }
     else if (e && e.message === 'ADMIN_REQUIRED') {
@@ -677,9 +717,6 @@ async function gdSaveNow(force) {
       gdSetStatus('保存できていません（通信を確認してください）', true);
       gdSaveTimer = setTimeout(gdSaveNow, 5000);   // 通信が戻れば自動で再試行
     }
-  } finally {
-    gdSaving = false;
-    if (gdSaveAgain) { gdSaveAgain = false; if (gdDirty) gdSaveNow(); }
   }
 }
 
@@ -744,7 +781,7 @@ function gdSiblings(p) {
 }
 
 async function gdApplyOrder(ids) {
-  await gdLeaveSilently();                       // 開いているページの入力中の分を先に保存する
+  await gdFlushSave();                       // 開いているページの入力中の分を先に保存する
   const changes = [];
   ids.forEach((id, i) => {
     const p = gdById(id), v = String((i + 1) * 10);
@@ -836,7 +873,7 @@ async function gdSetPageMeta(patch) {
   }
   const page = gdById(gdCurrentId);
   if (!page) return;
-  await gdLeaveSilently();
+  await gdFlushSave();
   try {
     const saved = await api.saveGuide(Object.assign({ ID: page.ID, _baseUpdatedAt: gdBase }, patch));
     const at = gdPages.findIndex(p => p.ID === saved.ID);
@@ -850,7 +887,6 @@ async function gdSetPageMeta(patch) {
     else toast('保存できませんでした: ' + (e && e.message ? e.message : e), 'error');
   }
 }
-async function gdLeaveSilently() { clearTimeout(gdSaveTimer); if (gdDirty || gdSaving) await gdSaveNow(); }
 
 function gdDelete(id) {
   const page = gdById(id);
