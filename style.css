@@ -3104,6 +3104,10 @@ textarea:focus {
 .photo-item:hover .photo-delete {
     display: flex;
 }
+/* ホバーのないタッチ端末では、✕ が出せないので常に表示する */
+@media (hover: none) {
+    .photo-delete { display: flex; }
+}
 
 /* --- 動画ギャラリー（YouTube）: 何十件でも軽く保つため、埋め込みはクリックした分だけ生成する --- */
 .video-gallery {
@@ -3183,6 +3187,9 @@ textarea:focus {
     align-items: center; justify-content: center;
 }
 .video-item:hover .video-delete { display: flex; }
+@media (hover: none) {
+    .video-delete { display: flex; }
+}
 
 @media (max-width: 600px) {
     .photo-gallery {
