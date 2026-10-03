@@ -439,7 +439,8 @@ async function executeDeleteFeedbackEntry(fbId, type) {
 
 // ---- Tab switching ----
 
-function switchExpTab(btn) {
+// 実験詳細のタブ切り替え（experiments.js の switchExpTab は一覧のカテゴリ切り替えで、引数の型が違う。名前を分けてある）
+function switchExpdTab(btn) {
     document.querySelectorAll('.expd-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
     btn.classList.add('active');
     btn.setAttribute('aria-selected', 'true');
