@@ -36,12 +36,6 @@ const CONFIG = {
     houkoku: +7   // 報告書: イベント日の7日後
   },
 
-  // 期限が「近い」と判定する日数（色分け用）
-  DEADLINE_ALERT: {
-    danger: 3,   // 3日前以内 → 赤
-    warning: 7   // 7日前以内 → 黄
-  },
-
   // ===== 書類（許可願・報告書）の提出ステータス =====
   // home / event-series で共用（以前は両ページに重複定義があり、片方だけ直すとズレていた）。
   // cssClass は style.css の .report-status-select.status-* に対応する色分けクラス。

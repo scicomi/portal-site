@@ -284,7 +284,6 @@ const queryEngine = {
         const d = e.Date ? shortDate(e.Date) : '未定';
         const catCfg = getEventCategory(e.Category);
         const cat = catCfg.short;
-        const loc = e.Location ? ` | ${escapeHtml(e.Location)}` : '';
         const admin = [];
         if (e.AdminKyoka) admin.push(`許可願: ${escapeHtml(e.AdminKyoka)}`);
         if (e.AdminHoukoku) admin.push(`報告書: ${escapeHtml(e.AdminHoukoku)}`);
@@ -324,9 +323,8 @@ const queryEngine = {
 function buildExpDetailBody(e) {
   const section = (title, content, isList) => {
     if (!content || !String(content).trim()) return '';
-    const lines = String(content).split('\n').map(s => s.trim()).filter(Boolean);
     const inner = isList
-      ? `<ul>${lines.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
+      ? `<ul>${String(content).split('\n').map(s => s.trim()).filter(Boolean).map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
       : `<div class="exp-text">${escapeHtml(content)}</div>`;
     return `<div class="exp-detail-section"><h3>${title}</h3>${inner}</div>`;
   };

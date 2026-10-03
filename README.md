@@ -130,7 +130,6 @@ portal-site/
 | 実験タブを増やす | `EXPERIMENT_CATEGORIES` に1行 |
 | メンバー区分を増やす | `MEMBER_CATEGORIES` に1行 |
 | 書類期限の日数を変える | `DEADLINE_RULES`（設定ページからも変更可） |
-| 期限警告の色しきい値 | `DEADLINE_ALERT` |
 
 ---
 

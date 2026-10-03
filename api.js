@@ -504,7 +504,6 @@ const api = {
     try {
       res = await fetch(API_URL, {
         method: 'POST',
-        redirect: 'follow',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload),
         signal: controller.signal

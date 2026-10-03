@@ -393,7 +393,6 @@ function formatFileSize(bytes) {
 
 // リンク href に使える URL だけを返す（javascript: 等の危険スキームは空にして無害化）。
 // escapeAttr は引用符しかエスケープせずスキームを検証しないため、URL は必ずこれを通す。
-// 後方互換: スキーム省略の既存データ（例 "docs.google.com/.."）は https:// を補ってリンク可能に保つ。
 // アップロード 1 ファイルの上限(MB)。サーバー設定 file_max_mb を applySiteSettings が反映する。
 // 取得できていなければ config.js の既定値。
 function getFileMaxMB() {
@@ -401,6 +400,7 @@ function getFileMaxMB() {
   return n >= 1 ? n : 10;
 }
 
+// 後方互換: スキーム省略の既存データ（例 "docs.google.com/.."）は https:// を補ってリンク可能に保つ。
 function safeHttpUrl(u) {
   u = String(u === null || u === undefined ? '' : u).trim();
   if (!u) return '';
@@ -788,7 +788,7 @@ function showNameChangeModal() {
     sel.focus();
   }).catch(e => {
     sel.innerHTML = '<option value="">読み込めませんでした</option>';
-    errEl.textContent = typeof humanizeApiError === 'function' ? humanizeApiError(e) : '読み込めませんでした';
+    errEl.textContent = humanizeApiError(e);
   });
 }
 
@@ -1234,9 +1234,7 @@ function updateSyncStatus(state, timestamp, errMsg) {
     el.title = `${fmtTime(timestamp)} 同期済 — クリックで再読込`;
   } else if (state === 'error') {
     // エラー詳細（ツールチップ）は既知のコードを日本語へ変換して表示する
-    el.title = errMsg
-      ? (typeof humanizeApiError === 'function' ? humanizeApiError({ code: errMsg, message: errMsg }) : errMsg)
-      : '';
+    el.title = errMsg ? humanizeApiError({ code: errMsg, message: errMsg }) : '';
   } else {
     el.title = 'クリックで再読込';
   }
@@ -1357,8 +1355,6 @@ function _applyCfg(cfg) {
     const safeInt = (v, fallback) => { const n = parseInt(v, 10); return isNaN(n) ? fallback : n; };
     if (cfg.deadline_kyoka != null && cfg.deadline_kyoka !== '') CONFIG.DEADLINE_RULES.kyoka = safeInt(cfg.deadline_kyoka, CONFIG.DEADLINE_RULES.kyoka);
     if (cfg.deadline_houkoku != null && cfg.deadline_houkoku !== '') CONFIG.DEADLINE_RULES.houkoku = safeInt(cfg.deadline_houkoku, CONFIG.DEADLINE_RULES.houkoku);
-    if (cfg.deadline_alert_danger != null && cfg.deadline_alert_danger !== '') CONFIG.DEADLINE_ALERT.danger = safeInt(cfg.deadline_alert_danger, CONFIG.DEADLINE_ALERT.danger);
-    if (cfg.deadline_alert_warning != null && cfg.deadline_alert_warning !== '') CONFIG.DEADLINE_ALERT.warning = safeInt(cfg.deadline_alert_warning, CONFIG.DEADLINE_ALERT.warning);
     // ホームのメッセージは空なら削除（管理者がクリアしたら既定文へ戻す）
     if (cfg.welcome_message !== undefined) {
         if (cfg.welcome_message) localStorage.setItem(CONFIG.WELCOME_MESSAGE_KEY, cfg.welcome_message);

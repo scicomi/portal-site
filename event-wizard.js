@@ -87,33 +87,26 @@ const EV_STEPS_MEETING = [
 ];
 
 /**
- * 担当者(members)・実験名(experiments)のdatalist候補を構築。
+ * 実験名(experiments)のdatalist候補を構築し、実験マスタ(experimentsList)を更新する。
  * イベントページは events だけを同期するので、members/experiments はキャッシュを使う。
  * キャッシュが無ければ裏で1回だけ取得する。
+ * members は、担当者のタグ入力（event-fields.js の getActiveMembers）がキャッシュから候補を読むので、
+ * 無ければここで取得してキャッシュを作っておく。
  */
 async function populateDatalists() {
-    const memberDl = document.getElementById('member-datalist');
     const expDl = document.getElementById('experiment-datalist');
 
-    let members = (api.loadCache('members') || {}).items;
     let experiments = (api.loadCache('experiments') || {}).items;
 
     // キャッシュが無ければ裏で取得（失敗しても致命的でない）
-    if (!members) {
-        try { members = await api.list('members'); api.saveCache('members', members); } catch (_) { members = []; }
+    if (!(api.loadCache('members') || {}).items) {
+        try { api.saveCache('members', await api.list('members')); } catch (_) {}
     }
     if (!experiments) {
         try { experiments = await api.list('experiments'); api.saveCache('experiments', experiments); } catch (_) { experiments = []; }
     }
     experimentsList = experiments || []; // 実験名の実在チェックに使う
 
-    if (memberDl && members) {
-        const curFY = currentFiscalYear();
-        memberDl.innerHTML = members
-            .filter(m => parseInt(m.FiscalYear || curFY) === curFY && m.Name)
-            .map(m => `<option value="${escapeAttr(m.Name)}">${escapeAttr(memberRoleOf(m) || 'メンバー')}</option>`)
-            .join('');
-    }
     if (expDl && experiments) {
         expDl.innerHTML = experiments
             .filter(e => e.Name)
