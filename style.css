@@ -1064,8 +1064,15 @@ textarea:focus {
 }
 .pw-box {
     background: white; padding: 30px 40px;
-    border-radius: 8px; min-width: 320px;
+    border-radius: 8px;
+    box-sizing: border-box;
+    min-width: min(400px, calc(100vw - 24px));   /* 狭い画面では画面幅に収める(固定幅だと 375px でもはみ出す) */
+    max-width: calc(100vw - 24px);
     box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+}
+.pw-box .btn { white-space: nowrap; }
+@media (max-width: 480px) {
+    .pw-box { padding: 24px 20px; }
 }
 .pw-box h2 { margin-top: 0; color: var(--primary-color); }
 .pw-box p { color: var(--text-label); font-size: 0.9rem; }
@@ -1482,7 +1489,7 @@ textarea:focus {
     display: flex; align-items: flex-start; gap: 8px;
     margin-bottom: 12px;
 }
-.welcome-msg-wrapper #welcome-msg { opacity: 0.92; font-size: 0.95rem; line-height: 1.7; }
+.welcome-msg-wrapper #welcome-msg { opacity: 0.92; font-size: 0.95rem; line-height: 1.7; min-width: 0; overflow-wrap: anywhere; }
 .welcome-msg-wrapper .expd-section-edit-btn {
     color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.12);
     border: 1px solid rgba(255,255,255,0.2);
@@ -1653,6 +1660,8 @@ textarea:focus {
 .data-table tbody tr.clickable-row:active { background: var(--bg-interactive); }
 
 .cell-name { font-weight: 600; white-space: nowrap; color: var(--text-color); }
+/* 予定表のタイトル列: 空白のない長いタイトルで表が横に伸び、右の操作ボタンが画面外に消えないよう、長さを抑えて省略する */
+.ev-title-cell { white-space: nowrap; max-width: min(32em, 55vw); overflow: hidden; text-overflow: ellipsis; }
 .cell-role { white-space: nowrap; }
 .cell-snippet {
     max-width: 200px;

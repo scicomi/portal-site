@@ -616,7 +616,7 @@ function renderEvents() {
                     ${dateCellHtml(ev.Date)} <span class="text-muted">(${dayOfWeekJP(ev.Date)})</span>
                     ${ev.DateEnd && ev.DateEnd !== ev.Date ? '<br><span class="text-muted" style="font-size:0.8rem;">〜 ' + escapeHtml(ev.DateEnd) + '</span>' : ''}
                 </td>
-                <td style="white-space:nowrap;">
+                <td class="ev-title-cell">
                     <span class="cat-dot" style="color:${cat.bg};" title="${cat.short}">&#9679;</span>
                     <a href="event-series.html?event=${encodeURIComponent(ev.ID)}" data-action="open" style="font-weight:600;color:inherit;text-decoration:none;">${titleHtml}</a>${matchBadge}
                 </td>
