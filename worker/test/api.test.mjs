@@ -236,7 +236,7 @@ test('delete: イベント・メンバーを削除すると、その出欠投票
   }
   const vote = (eventId, memberId) => post({ action: 'submitVote', token: member, vote: { eventId, memberId, status: 'attend' } });
   for (const [e, m] of [[evA, mbA], [evA, mbB], [evB, mbA], [evB, mbB]]) assert.equal((await vote(e, m)).success, true);
-  const votesOf = async () => (await post({ action: 'listVotes', token: member })).votes.filter(v => [evA, evB].includes(v.eventId));
+  const votesOf = async () => (await post({ action: 'listAll', token: member })).votes.filter(v => [evA, evB].includes(v.eventId));
 
   assert.equal((await votesOf()).length, 4);
 
@@ -287,7 +287,7 @@ test('投票: upsert、note の保持、締切後は管理者のみ', async () =
 
   const ev = await post({ action: 'getEventVotes', token: member, eventId: evId });
   assert.equal(ev.votes.length, 1);
-  const all = await post({ action: 'listVotes', token: member });
+  const all = await post({ action: 'listAll', token: member });
   assert.ok(all.votes.find(v => v.eventId === evId && v.memberId === 'mb_1'));
 
   assert.equal((await post({ action: 'submitVote', token: member, vote: { eventId: evId, memberId: 'mb_1', status: 'bogus' } })).error, 'invalid status');
@@ -453,7 +453,7 @@ test('ゴミ箱: 削除したレコードは(出欠投票ごと)ゴミ箱に入�
   assert.equal(d.success, true);
   assert.ok(d.trashId);
   assert.equal((await post({ action: 'list', resource: 'events', token: member })).items.some(e => e.ID === evId2), false);
-  assert.equal((await post({ action: 'listVotes', token: member })).votes.some(v => v.eventId === evId2), false);
+  assert.equal((await post({ action: 'listAll', token: member })).votes.some(v => v.eventId === evId2), false);
   assert.equal((await post({ action: 'delete', resource: 'events', id: evId2, token: member })).success, false);   // 二重削除
 
   const list = (await post({ action: 'listTrash', token: member })).items;
@@ -467,7 +467,7 @@ test('ゴミ箱: 削除したレコードは(出欠投票ごと)ゴミ箱に入�
   assert.equal(r.success, true);
   assert.equal(r.item.Title, 'ゴミ箱テスト');
   assert.equal((await post({ action: 'list', resource: 'events', token: member })).items.some(e => e.ID === evId2), true);
-  assert.equal((await post({ action: 'listVotes', token: member })).votes.some(v => v.eventId === evId2 && v.memberId === mbId), true);
+  assert.equal((await post({ action: 'listAll', token: member })).votes.some(v => v.eventId === evId2 && v.memberId === mbId), true);
   assert.equal((await post({ action: 'restoreTrash', token: member, id: d.trashId })).error, 'not_found');
 
   // 同じ ID が既にあれば戻せない(already_exists)

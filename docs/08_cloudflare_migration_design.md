@@ -40,7 +40,7 @@
 | 機能 | 現在 | 移行後 | 備考 |
 |---|---|---|---|
 | データ CRUD(list/listAll/save/delete) | GAS+スプレッドシート | Workers+D1 | 競合検知(`_baseUpdatedAt`)も再現 |
-| 投票(getEventVotes/listVotes/submitVote) | 同上 | Workers+D1 | 締切後は管理者のみ変更可、を維持 |
+| 投票(getEventVotes/submitVote。全件は listAll の votes) | 同上 | Workers+D1 | 締切後は管理者のみ変更可、を維持 |
 | ログイン(login/auth/adminAuth) | GAS | Workers | 3 章の認証設計を参照 |
 | 設定(getPublicConfig/adminGetConfig/adminSetConfig) | Config シート+Script Properties | D1 の config テーブル+Workers Secrets | 機密値は返さない仕様を維持 |
 | 監査ログ | AuditLog シート | D1 の audit_log | 保持日数の間引きは Cron |

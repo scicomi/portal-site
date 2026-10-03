@@ -432,16 +432,6 @@ const api = {
     return res.votes || [];
   },
 
-  // 全イベントの投票を一括取得（ホームの出欠一括回答・イベント一覧の参加人数バッジ用）。
-  async listVotes() {
-    const res = await this._post({
-      action: 'listVotes',
-      token: this.getToken()
-    });
-    if (!res.success) throw new Error(res.error || 'listVotes failed');
-    return res.votes || [];
-  },
-
   async submitVote(vote) {
     const payload = {
       action: 'submitVote',
@@ -459,7 +449,7 @@ const api = {
   // 読み取り系のみ、一時的な障害（通信断・サーバーの HTML エラーページ・不正応答）を自動リトライする。
   // 書き込み系は二重実行や conflict 誤判定を避けるためリトライしない。
   async _post(payload) {
-    const retryable = ['list', 'listAll', 'listVotes', 'getEventVotes', 'getPublicConfig'].indexOf(payload && payload.action) >= 0;
+    const retryable = ['list', 'listAll', 'getEventVotes', 'getPublicConfig'].indexOf(payload && payload.action) >= 0;
     const maxAttempts = retryable ? 3 : 1;
     for (let attempt = 1; ; attempt++) {
       try {

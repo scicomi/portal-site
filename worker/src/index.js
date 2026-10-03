@@ -12,7 +12,7 @@ import {
 import { publicConfig, adminConfig, adminSetConfig, GEMINI_DAILY_LIMIT } from './config.js';
 import {
   listResource, listAllData, saveResource, deleteResource, ConflictError,
-  listAllVotes, listEventVotes, voteDeadlinePassed, upsertVote, appendAuditLog
+  listEventVotes, voteDeadlinePassed, upsertVote, appendAuditLog
 } from './data.js';
 import { handleGeminiProxy, handleGeminiGenerate, geminiUsageGet } from './gemini.js';
 import { notifyNewEvent } from './line.js';
@@ -130,7 +130,7 @@ async function handlePost(env, ctx, request, body) {
       return { success: true, items: await listResource(env, resource) };
     }
     if (action === 'listAll') {
-      // votes も同梱して、フロントの listVotes / getEventVotes の追加往復を無くす
+      // votes も同梱して、getEventVotes の追加往復を無くす(全イベントの投票は listAll の votes から取る)
       return Object.assign({ success: true }, await listAllData(env));
     }
 
@@ -238,7 +238,6 @@ async function handlePost(env, ctx, request, body) {
       if (!eventId) return { success: false, error: 'missing eventId' };
       return { success: true, votes: await listEventVotes(env, eventId) };
     }
-    if (action === 'listVotes') return { success: true, votes: await listAllVotes(env) };
     if (action === 'submitVote') {
       const v = body.vote || {};
       if (!v.eventId || !v.memberId || !v.status) return { success: false, error: 'missing fields' };

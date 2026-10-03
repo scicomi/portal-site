@@ -227,11 +227,6 @@ function voteRowToObj(r) {
   return { eventId: str(r.EventID), memberId: str(r.MemberID), status: str(r.Status), updatedAt: str(r.UpdatedAt), note: str(r.Note) };
 }
 
-export async function listAllVotes(env) {
-  const { results } = await env.DB.prepare(VOTES_SELECT).all();
-  return (results || []).map(voteRowToObj);
-}
-
 export async function listEventVotes(env, eventId) {
   const { results } = await env.DB.prepare(
     'SELECT EventID, MemberID, Status, UpdatedAt, Note FROM event_votes WHERE EventID = ? ORDER BY rowid'
