@@ -92,6 +92,17 @@ document.addEventListener('error', e => {
   img.src = img.dataset.fallback;
 }, true);
 
+// 年度ごとの折りたたみ見出し（<button class="fy-header" data-action="fy-toggle">）の開閉。
+// 直後の兄弟要素（.fy-body）の表示を切り替える。experiment-detail.js の振り返りと event-series.js の振り返りで共用。
+function toggleFyGroup(btn) {
+  const open = btn.classList.toggle('open');
+  btn.setAttribute('aria-expanded', String(open));
+  btn.nextElementSibling.classList.toggle('hidden');
+  const caret = btn.querySelector('.fy-toggle');
+  if (caret) caret.innerHTML = open ? '&#9660;' : '&#9654;';
+}
+registerActions({ 'fy-toggle': el => toggleFyGroup(el) });
+
 function toISODate(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');

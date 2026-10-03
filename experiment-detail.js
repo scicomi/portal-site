@@ -131,7 +131,12 @@ async function init() {
         api.saveCache('events', allEvents);
         renderEventsSection();
         populateEventDropdown();
-    } catch (_) {}
+    } catch (e) {
+        if (e.handled) return;
+        // 実施イベントの欄は、端末に残っている一覧（取得できていれば）のまま表示する。同期エラーとして知らせる
+        console.warn('イベント一覧を取得できませんでした:', e);
+        updateSyncStatus('error', null, e.message);
+    }
 }
 
 function renderPage() {
@@ -289,7 +294,7 @@ function renderFeedback() {
         const open = isCurrentFy || fy === '日付なし';
         return `
             <div class="fy-group">
-                <button type="button" class="fy-header ${open ? 'open' : ''}" aria-expanded="${open}" onclick="this.classList.toggle('open'); this.setAttribute('aria-expanded', this.classList.contains('open')); this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.fy-toggle').innerHTML = this.classList.contains('open') ? '&#9660;' : '&#9654;';">
+                <button type="button" class="fy-header ${open ? 'open' : ''}" aria-expanded="${open}" data-action="fy-toggle">
                     <span class="fy-toggle">${open ? '&#9660;' : '&#9654;'}</span>
                     <span class="fy-label">${escapeHtml(fy)}</span>
                     <span class="fy-count">${entries.length}件</span>

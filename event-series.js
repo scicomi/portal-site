@@ -1571,7 +1571,7 @@ function renderFeedbackTimeline() {
         if (entries.length === 0) return '';
 
         return `<div class="fy-group">
-            <button type="button" class="fy-header ${isRecent ? 'open' : ''}" aria-expanded="${isRecent}" onclick="this.classList.toggle('open'); this.setAttribute('aria-expanded', this.classList.contains('open')); this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.fy-toggle').innerHTML = this.classList.contains('open') ? '&#9660;' : '&#9654;';">
+            <button type="button" class="fy-header ${isRecent ? 'open' : ''}" aria-expanded="${isRecent}" data-action="fy-toggle">
                 <span class="fy-toggle">${isRecent ? '&#9660;' : '&#9654;'}</span>
                 <span class="fy-label">${escapeHtml(fy)}</span>
                 <span class="fy-count">${entries.length}件</span>
