@@ -113,20 +113,8 @@ async function _withBusyBtn(btn, fn) {
 
 // --- 個別保存ヘルパー ---
 
+// 入力欄(テキスト・セレクト)の値を設定として保存する。テキストは前後の空白を除く（セレクトの値はそのまま）。
 async function saveSettingField(key, inputId, btn) {
-    const value = document.getElementById(inputId).value.trim();
-    await _withBusyBtn(btn, async () => {
-        try {
-            await api.adminSetConfig(key, value);
-            invalidateSettingsCache();
-            toast('保存しました', 'success');
-        } catch (e) {
-            toast('保存失敗: ' + humanizeApiError(e), 'error');
-        }
-    });
-}
-
-async function saveSettingDirect(key, inputId, btn) {
     const el = document.getElementById(inputId);
     const value = el.tagName === 'SELECT' ? el.value : el.value.trim();
     await _withBusyBtn(btn, async () => {
