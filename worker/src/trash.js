@@ -6,7 +6,7 @@
 // ガイド(guides)は対象外(従来どおり管理者だけが完全に削除する)。
 // パスワード(passwords)は、削除・一覧・復元・完全削除のすべてで管理者トークンを必須にする(index.js 側で判定)。
 
-import { getResource } from './tables.js';
+import { getResource, RESOURCES } from './tables.js';
 import { str } from './util.js';
 import { getConfigInt } from './config.js';
 import { deleteFile } from './files.js';
@@ -155,9 +155,26 @@ function driveIdsOf(row) {
   return ids;
 }
 
+// R2 のファイルが、まだどこかから参照されているか(全リソースの列と、ゴミ箱の他の行)。
+// キーは推測されにくいランダムな値なので、文字列に含まれるかで判定する(ガイド本文の画像 URL なども拾える)。
+// 完全削除で、他のレコードが使っているファイルを消さないため(イベントを複製して同じファイルを持つ場合や、
+// 他人のファイルのキーを書き込んだレコードを作って完全削除する場合。deleteFile は管理者専用だが、完全削除はメンバーもできる)。
+async function isFileReferenced(env, key, exceptTrashId) {
+  for (const res of Object.values(RESOURCES)) {
+    // ?1 で同じ値を全列に使う(列ごとに値を渡すと、列が増えたとき D1 の 1 文あたりの上限 100 個に近づくため)
+    const where = res.columns.map(c => 'instr(' + q(c) + ', ?1) > 0').join(' OR ');
+    const hit = await env.DB.prepare('SELECT 1 FROM ' + res.table + ' WHERE ' + where + ' LIMIT 1').bind(key).first();
+    if (hit) return true;
+  }
+  return !!(await env.DB.prepare('SELECT 1 FROM trash WHERE ID <> ? AND instr(Payload, ?) > 0 LIMIT 1').bind(exceptTrashId, key).first());
+}
+
 async function purgeRow(env, row) {
   for (const key of driveIdsOf(row)) {
-    try { await deleteFile(env, key); } catch (e) { console.error('trash purge: file delete failed ' + key + ': ' + e); }
+    try {
+      if (await isFileReferenced(env, key, row.ID)) continue;
+      await deleteFile(env, key);
+    } catch (e) { console.error('trash purge: file delete failed ' + key + ': ' + e); }
   }
   await env.DB.prepare('DELETE FROM trash WHERE ID = ?').bind(row.ID).run();
 }

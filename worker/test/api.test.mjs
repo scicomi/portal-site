@@ -528,6 +528,43 @@ test('ゴミ箱: 期限が来たものは完全に削除され、R2 のファイ
   assert.equal((await fetch(fileUrl)).status, 404);
 });
 
+test('ゴミ箱: 完全に削除しても、ほかのレコードやゴミ箱の行が使っているファイルは消さない', async () => {
+  const up = await post({ action: 'uploadFile', token: member, file: { name: '共有.txt', mimeType: 'text/plain', base64: Buffer.from('shared').toString('base64') } });
+  const fileUrl = up.file.url.replace(/^https?:\/\/[^/]+/, BASE);
+  const owner = 'ev_test_owner_' + Date.now();
+  const other = 'ev_test_other_' + Date.now();
+  const ids = [owner, other];
+  try {
+    // 持ち主のイベントと、同じファイル(キー)を書き込んだ別のイベント(複製、または他人のキーの書き込み)
+    for (const id of ids) {
+      assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Title: '共有ファイル', Date: '2099-01-04', Category: 'normal', Files: [up.file] } })).success, true);
+    }
+    // 別のイベントを削除して完全削除しても、持ち主が使っているのでファイルは残る
+    assert.equal((await post({ action: 'delete', resource: 'events', id: other, token: member })).success, true);
+    let t = (await post({ action: 'listTrash', token: member })).items.find(x => x.recordId === other);
+    assert.equal((await post({ action: 'purgeTrash', token: member, id: t.id })).success, true);
+    assert.equal((await fetch(fileUrl)).status, 200);
+
+    // 持ち主を削除 → まだゴミ箱にある(戻せる)間に、同じキーの別の行を完全削除してもファイルは残る
+    assert.equal((await post({ action: 'save', resource: 'events', token: member, item: { ID: other, Title: '共有ファイル', Date: '2099-01-04', Category: 'normal', Files: [up.file] } })).success, true);
+    assert.equal((await post({ action: 'delete', resource: 'events', id: owner, token: member })).success, true);
+    assert.equal((await post({ action: 'delete', resource: 'events', id: other, token: member })).success, true);
+    const trash = (await post({ action: 'listTrash', token: member })).items;
+    t = trash.find(x => x.recordId === other);
+    assert.equal((await post({ action: 'purgeTrash', token: member, id: t.id })).success, true);
+    assert.equal((await fetch(fileUrl)).status, 200);
+
+    // 最後の参照(持ち主のゴミ箱の行)を完全削除すると、ファイルも消える
+    t = trash.find(x => x.recordId === owner);
+    assert.equal((await post({ action: 'purgeTrash', token: member, id: t.id })).success, true);
+    assert.equal((await fetch(fileUrl)).status, 404);
+  } finally {
+    for (const id of ids) await post({ action: 'delete', resource: 'events', id, token: member });
+    const left = (await post({ action: 'listTrash', token: member })).items.filter(x => ids.indexOf(x.recordId) >= 0);
+    for (const t of left) await post({ action: 'purgeTrash', token: member, id: t.id });
+  }
+});
+
 test('ファイル: アップロード → 公開 URL で取得(ログイン不要) → 管理者が削除', async () => {
   const bytes = Buffer.from('hello r2');
   const up = await post({ action: 'uploadFile', token: member, file: { name: 'メモ.txt', mimeType: 'text/plain', base64: bytes.toString('base64') } });
