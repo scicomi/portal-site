@@ -13,7 +13,6 @@
     --border-subtle: #f0f0f0;
     /* 別名（一部のルールが使っている名前。値は上のトークンに合わせる） */
     --primary-bg: var(--primary-subtle);
-    --surface: var(--card-bg);
     --text-primary: var(--text-color);
     --hover-bg: #f8f8f8;
     --danger-color: #d13438;
@@ -119,15 +118,6 @@ body {
     font-size: 1.1rem;
     font-weight: 700;
     white-space: nowrap; /* 狭い幅でブランド名が2行に折れないように */
-}
-
-.brand-icon {
-    font-size: 0.75rem;
-    font-weight: 800;
-    background: rgba(255,255,255,0.2);
-    padding: 4px 7px;
-    border-radius: 4px;
-    letter-spacing: 1px;
 }
 
 .header-actions {
@@ -702,7 +692,6 @@ textarea {
     font-size: 0.9rem;
     margin-top: 5px;
 }
-
 
 /* --- Form Fields --- */
 /* ウィザード等の .e1-input は上の .e1-input の見た目（タグ入力と同じ枠・角丸）を使うので、ここでは対象外にする */
@@ -1585,20 +1574,7 @@ textarea:focus {
     margin-bottom: var(--space-md); flex-wrap: wrap; gap: var(--space-sm);
 }
 .page-header .page-title { margin: 0; }
-/* 見出しの右隣に「今後 / 年度」の切替を置き、年度別に見られることを一目で分かるようにする */
-.page-title-group { display: flex; align-items: center; gap: var(--space-sm); flex: 1; flex-wrap: wrap; }
-.period-select {
-    font-family: inherit; font-size: 0.95rem; font-weight: 600;
-    color: var(--primary-color);
-    padding: 6px 30px 6px 14px; min-height: 36px;
-    border: 1px solid var(--primary-light); border-radius: var(--radius-full);
-    background-color: var(--primary-subtle); cursor: pointer;
-    appearance: none; -webkit-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%234a4a7a'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 12px center;
-}
-.period-select:hover { background-color: white; }
-.period-select:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+
 .page-filters {
     display: flex; gap: var(--space-sm); align-items: center;
     flex-wrap: wrap;
@@ -1823,7 +1799,6 @@ textarea:focus {
 
 /* さらに狭い端末（480px以下） */
 @media (max-width: 480px) {
-    .header-brand .brand-name { font-size: 0.95rem; }
     .header-brand .brand-title-img { height: 32px; }
     .dash-stats { grid-template-columns: repeat(3, 1fr); gap: 10px; }
     .stat-num { font-size: 1.5rem; }
@@ -3332,15 +3307,6 @@ textarea:focus {
     word-break: break-word;
 }
 
-.sfb-detail-link {
-    display: inline-block;
-    margin-top: 8px;
-    font-size: 0.78rem;
-    color: var(--primary-color);
-    text-decoration: none;
-}
-.sfb-detail-link:hover { text-decoration: underline; }
-
 .sfb-event-link {
     margin-left: auto;
     font-size: 0.75rem;
@@ -3502,67 +3468,6 @@ textarea:focus {
 }
 .series-header-actions .btn { text-decoration: none; }
 
-/* Series overview cards */
-.series-card {
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    margin-bottom: 12px;
-    overflow: hidden;
-}
-.series-card-latest {
-    border-color: var(--primary-light);
-    box-shadow: 0 0 0 1px var(--primary-light);
-}
-.series-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: 10px 16px;
-    background: var(--bg-subtle);
-    border: none;
-    border-bottom: 1px solid var(--border-light);
-    cursor: pointer;
-    font: inherit;
-    text-align: left;
-}
-.series-card-header:hover .series-fy-label { text-decoration: underline; }
-.series-fy-label {
-    font-weight: 600;
-    font-size: 0.92rem;
-    color: var(--text-color);
-}
-.series-card-header-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-}
-.series-latest-tag {
-    display: inline-block;
-    margin-left: 8px;
-    padding: 1px 8px;
-    border-radius: 8px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #fff;
-    background: var(--primary-color);
-}
-.series-card-body {
-    padding: 14px 16px;
-}
-.series-card-meta {
-    font-size: 0.88rem;
-    color: var(--text-body);
-    line-height: 1.7;
-}
-.series-card-feedback {
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid var(--border-light);
-}
-
 /* Safety / Emergency info card (event-series) */
 .series-safety-card {
     background: #fdf2f2;
@@ -3643,115 +3548,14 @@ textarea:focus {
     text-decoration: underline;
 }
 
-/* Stats */
-.series-stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 14px;
-}
-.stats-card {
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 20px;
-}
-.stats-card-wide {
-    grid-column: 1 / -1;
-}
-.stats-card-title {
-    font-size: 0.88rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin: 0 0 12px;
-}
-.stats-big-number {
-    font-size: 2.2rem;
-    font-weight: 700;
-    color: var(--primary-color);
-    line-height: 1;
-}
-.stats-unit {
-    font-size: 1rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-    margin-left: 2px;
-}
-.stats-detail {
-    margin: 8px 0 0;
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-}
-
-/* Stats bar chart */
-.stats-bar-chart { display: flex; flex-direction: column; gap: 8px; }
-.stats-bar-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-.stats-bar-label {
-    width: 120px;
-    font-size: 0.85rem;
-    color: var(--text-color);
-    text-align: right;
-    flex-shrink: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.stats-bar-track {
-    flex: 1;
-    height: 18px;
-    background: var(--border-subtle);
-    border-radius: 4px;
-    overflow: hidden;
-}
-.stats-bar-fill {
-    height: 100%;
-    background: var(--primary-light);
-    border-radius: 4px;
-    min-width: 4px;
-    transition: width 0.3s;
-}
-.stats-bar-value {
-    width: 40px;
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-    flex-shrink: 0;
-}
-
-/* Stats location timeline */
-.stats-location-timeline {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px;
-}
-.stats-loc-chip {
-    display: inline-block;
-    padding: 4px 10px;
-    border-radius: 14px;
-    font-size: 0.82rem;
-    background: var(--primary-subtle);
-    color: var(--primary-color);
-    white-space: nowrap;
-}
-.stats-loc-arrow {
-    color: var(--text-muted);
-    font-size: 0.8rem;
-}
-
 /* Mobile */
 @media (max-width: 600px) {
     .series-header-card { padding: 16px; }
     .series-title { font-size: 1.25rem; }
-    .stats-bar-label { width: 80px; font-size: 0.78rem; }
-    .series-stats-grid { grid-template-columns: 1fr; }
 }
 
 /* ========== 出欠回答（vote-widget.js 共通） ========== */
-/* vote.html は 2026-07 に廃止。インラインウィジェット（renderVoteWidget）のスタイルを残す。
-   （.vote-detail-* は旧・回答一覧モーダル用。モーダル削除後は参照なし＝次回の整理候補） */
+/* vote.html は 2026-07 に廃止。インラインウィジェット（renderVoteWidget）のスタイルを残す。 */
 
 /* --- 参加/不参加/未定 ボタン --- */
 .bv-btn {
@@ -3815,50 +3619,6 @@ textarea:focus {
 .vw-deadline-passed {
     color: var(--danger-text);
     font-weight: 600;
-}
-
-.vote-detail-label {
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-bold);
-    margin: var(--space-md) 0 var(--space-xs);
-    padding-left: 4px;
-}
-
-.vote-detail-label-attend { color: #2e7d32; }
-.vote-detail-label-absent { color: #c62828; }
-.vote-detail-label-undecided { color: #f57f17; }
-.vote-detail-label-noanswer { color: var(--text-tertiary); }
-
-.vote-detail-names {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-xs);
-}
-
-.vote-detail-names li {
-    padding: 4px 12px;
-    background: var(--bg-subtle);
-    border-radius: var(--radius-full);
-    font-size: var(--font-size-sm);
-}
-
-.vote-detail-time {
-    font-size: var(--font-size-xs);
-    color: var(--text-tertiary);
-    margin-left: 4px;
-}
-
-/* 一言メモ（回答一覧モーダル内） */
-.vote-detail-note {
-    font-size: var(--font-size-xs);
-    color: var(--text-secondary);
-    margin-left: 4px;
-    padding: 1px 6px;
-    background: var(--bg-muted);
-    border-radius: var(--radius-full);
 }
 
 /* ====== 2026年7月改修: イベント別ページ・出欠一括回答・チェックリスト ====== */
@@ -4146,9 +3906,7 @@ button.person-chip.is-link:focus-visible { outline: 2px solid var(--primary-colo
 }
 
 /* タイムライン・開催履歴の「この回の詳細」ボタン（<a>から<button>に変えたため） */
-button.sfb-detail-link,
 button.sfb-event-link,
-
 /* 年度アコーディオンのヘッダー（キーボード操作できるよう <div> から <button> に変えたため） */
 button.fy-header {
     width: 100%;
@@ -4474,7 +4232,6 @@ mark.search-hit {
     /* 書類の提出ステータス選択（ホーム・イベント別で共用）もスマホで押しやすい高さに */
     .report-status-select { min-height: 36px; }
 }
-
 
 /* ========== 予定ページ: 検索＋「絞り込み」 ========== */
 .ev-search-row { display: flex; align-items: center; gap: var(--space-sm); flex: 1; min-width: 0; }
