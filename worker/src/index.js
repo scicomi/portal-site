@@ -20,6 +20,9 @@ import { uploadFile, deleteFile, serveFile } from './files.js';
 import { runMaintenance } from './maintenance.js';
 import { moveRecordToTrash, listTrash, restoreTrash, purgeTrash, purgeExpiredTrash, getTrashRow, TRASH_ADMIN_ONLY } from './trash.js';
 
+// リクエスト本文の上限。最大のものはファイルのアップロード(base64 で元の約 1.34 倍。上限は設定 file_max_mb)
+const MAX_REQUEST_BYTES = 28 * 1024 * 1024;
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -30,8 +33,13 @@ export default {
       }
       // API は POST のみ(本文の JSON で action を受け取る)。トークンを URL に載せる GET は受け付けない
       if (request.method === 'POST') {
+        // 大きすぎる本文は、読み込み・解析の前に断る(認証前でも、解析の負荷とメモリを使わせないため)
+        const tooLarge = () => jsonResponse({ success: false, error: 'too_large' }, request, env, 413);
+        if ((parseInt(request.headers.get('Content-Length') || '0', 10) || 0) > MAX_REQUEST_BYTES) return tooLarge();
+        const text = await request.text();
+        if (text.length > MAX_REQUEST_BYTES) return tooLarge();
         let body = {};
-        try { body = JSON.parse(await request.text()) || {}; } catch (_) { body = {}; }
+        try { body = JSON.parse(text) || {}; } catch (_) { body = {}; }
         return jsonResponse(await handlePost(env, ctx, request, body), request, env);
       }
       return new Response('Method Not Allowed', { status: 405, headers: Object.assign({ Allow: 'POST, OPTIONS' }, corsHeaders(request, env)) });

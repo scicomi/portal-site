@@ -528,6 +528,28 @@ test('ゴミ箱: 期限が来たものは完全に削除され、R2 のファイ
   assert.equal((await fetch(fileUrl)).status, 404);
 });
 
+test('保存: 長すぎる値は too_large で拒否する(上限内の長い文章は保存できる)。大きすぎる本文は認証前に断る', async () => {
+  const id = 'ev_test_size_' + Date.now();
+  try {
+    let r = await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Title: 'あ'.repeat(1000), Date: '2099-01-05', Category: 'normal' } });
+    assert.equal(r.success, false);
+    assert.equal(r.error, 'too_large');
+    assert.equal(r.detail, 'Title');
+    r = await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Title: '長い備考', Date: '2099-01-05', Category: 'normal', Remarks: 'あ'.repeat(60000) } });
+    assert.equal(r.success, true);   // 備考は長い文章を許す(約 18 万バイト)
+    r = await post({ action: 'save', resource: 'events', token: member, item: { ID: id, Remarks: 'あ'.repeat(200000), _baseUpdatedAt: r.item.UpdatedAt } });
+    assert.equal(r.error, 'too_large');
+    assert.equal(r.detail, 'Remarks');
+  } finally {
+    await post({ action: 'delete', resource: 'events', id, token: member });
+    const t = (await post({ action: 'listTrash', token: member })).items.find(x => x.recordId === id);
+    if (t) await post({ action: 'purgeTrash', token: member, id: t.id });
+  }
+  const res = await fetch(BASE, { method: 'POST', body: JSON.stringify({ action: 'version', pad: 'x'.repeat(29 * 1024 * 1024) }) });
+  assert.equal(res.status, 413);
+  assert.equal((await res.json()).error, 'too_large');
+});
+
 test('ゴミ箱: 完全に削除しても、ほかのレコードやゴミ箱の行が使っているファイルは消さない', async () => {
   const up = await post({ action: 'uploadFile', token: member, file: { name: '共有.txt', mimeType: 'text/plain', base64: Buffer.from('shared').toString('base64') } });
   const fileUrl = up.file.url.replace(/^https?:\/\/[^/]+/, BASE);

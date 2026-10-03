@@ -56,6 +56,28 @@ function cellValue(val) {
   return String(val);                                            // 数値・真偽値も文字列(一覧の返却形式と揃える)
 }
 
+// 1 列・1 行の大きさの上限(UTF-8 のバイト数)。D1 は 1 行 2MB が上限で、超えると保存が internal_error になる。
+// また、全員が初回表示で一覧(listAll)を読み込むので、異常に長い値が 1 件あるだけでサイト全体が重くなる。
+const SHORT_COLUMNS = ['Title', 'Name', 'Furigana', 'SiteName', 'StudentID', 'Category', 'Role'];   // 題名・氏名など
+const LONG_COLUMNS = ['Body', 'Sections', 'Remarks', 'Reflections', 'Positives'];                   // ガイド本文・セクション・備考・振り返り
+const SHORT_MAX_BYTES = 2000;      // 日本語で約 660 字
+const LONG_MAX_BYTES = 500000;     // 日本語で約 16 万字
+const CELL_MAX_BYTES = 100000;     // その他の列(添付・写真などの JSON の列を含む)
+const ROW_MAX_BYTES = 1500000;     // 1 回の保存で送る列の合計
+
+// 大きすぎる値は保存しない(detail は超えた列名。合計の超過は '')
+function checkCellSizes(item, cols) {
+  const enc = new TextEncoder();
+  let total = 0;
+  for (const c of cols) {
+    const n = enc.encode(cellValue(item[c])).length;
+    const max = SHORT_COLUMNS.indexOf(c) >= 0 ? SHORT_MAX_BYTES : LONG_COLUMNS.indexOf(c) >= 0 ? LONG_MAX_BYTES : CELL_MAX_BYTES;
+    if (n > max) throw new ApiError('too_large', c);
+    total += n;
+  }
+  if (total > ROW_MAX_BYTES) throw new ApiError('too_large', '');
+}
+
 export class ConflictError extends Error {
   constructor() { super('conflict'); this.name = 'ConflictError'; }
 }
@@ -158,6 +180,7 @@ export async function saveResource(env, name, item) {
 
   const hasId = item.ID !== undefined && item.ID !== null && item.ID !== '';
   if (hasId && (typeof item.ID !== 'string' || !ID_PATTERN.test(item.ID))) throw new ApiError('invalid_id');
+  checkCellSizes(item, res.columns.filter(c => item[c] !== undefined));
 
   let existing = null;
   if (hasId) {
@@ -257,11 +280,14 @@ export async function upsertVote(env, v) {
 // ---- 監査ログ ----
 // 共通パスワード運用のため個人特定はできないが、操作種別・対象・ロール・トークン識別子を残す。
 
+// 監査ログの詳細(リソース名と ID、ファイル名など)は、この長さで切る(クライアントが送る値をそのまま溜めないため)
+const AUDIT_DETAIL_MAX = 200;
+
 export async function appendAuditLog(env, action, detail, token, role) {
   try {
     const tokenHash = token ? (await sha256Hex(token)).slice(0, 12) : '';
     await env.DB.prepare('INSERT INTO audit_log (Timestamp, Action, Detail, TokenHash, Role) VALUES (?, ?, ?, ?, ?)')
-      .bind(jstIso(), action, str(detail), tokenHash, role || '').run();
+      .bind(jstIso(), action, str(detail).slice(0, AUDIT_DETAIL_MAX), tokenHash, role || '').run();
   } catch (e) {
     console.error('AuditLog write failed: ' + e);
   }

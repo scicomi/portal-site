@@ -246,7 +246,7 @@ const api = {
     });
     if (!res.success) {
       console.error('save failed:', res);
-      throw new Error(res.error || 'save failed');
+      throw apiFailure(res, 'save failed');
     }
     if (!res.item) {
       console.warn('server did not return item; falling back to local item.');
@@ -338,7 +338,7 @@ const api = {
     if (!res.success) {
       console.error('saveGuide failed:', res);
       if (res.error === 'admin_required') throw new Error('ADMIN_REQUIRED');
-      throw new Error(res.error || 'save guide failed');
+      throw apiFailure(res, 'save guide failed');
     }
     return res.item || { ...item };
   },
@@ -365,7 +365,7 @@ const api = {
     if (!res.success) {
       if (res.error === 'admin_required') throw new Error('ADMIN_REQUIRED');
       if (res.error === 'conflict') throw new Error('conflict');
-      throw new Error(res.error || 'save password failed');
+      throw apiFailure(res, 'save password failed');
     }
     return res.item || { ...item };
   },
@@ -549,6 +549,14 @@ const api = {
   }
 };
 
+// 保存の失敗を Error にする。message はエラーコード（isConflictError などが見る）、detail はサーバーの補足（大きすぎた列名など）
+function apiFailure(res, fallback) {
+  const err = new Error(res.error || fallback);
+  err.code = res.error || '';
+  if (res.detail) err.detail = res.detail;
+  return err;
+}
+
 // ---- API エラーを人間向けの日本語に変換（UI 表示用） ----
 function humanizeApiError(e) {
   const code = (e && (e.code || e.message)) || '';
@@ -569,6 +577,8 @@ function humanizeApiError(e) {
       return 'ログインの失敗が続いたため、しばらくログインできません。10分ほど待ってから、もう一度お試しください。';
     case 'conflict':
       return '他の人が先に更新しました。ページを再読み込みしてから、もう一度お試しください。';
+    case 'too_large':
+      return '内容が長すぎるため保存できません。文章を短くするか、分けて保存してください。' + (e.detail ? '（項目: ' + e.detail + '）' : '');
     case 'BAD_RESPONSE':
       return 'サーバーからの応答を解釈できませんでした。' + (e.detail ? '（' + e.detail + '…）' : '');
     default:
