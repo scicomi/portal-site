@@ -55,7 +55,7 @@ function memberSuggestSources() {
 
 // 「自分の名前」として端末に記憶されている ID（出欠回答などで選択した名前。vote-widget.js と同じキー）
 function myMemberId() {
-    try { return localStorage.getItem('scicomi_vote_member') || ''; } catch (e) { return ''; }
+    try { return localStorage.getItem(VOTE_MEMBER_KEY) || ''; } catch (e) { return ''; }
 }
 
 // m が「自分」の記録か。年度ごとに別レコード（ID が違う）になるため、

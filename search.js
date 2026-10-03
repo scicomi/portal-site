@@ -78,7 +78,7 @@ function parseSearchQuery(raw) {
   rest.split(/\s+/).filter(Boolean).forEach(tok => {
     // フィールド限定（既知の接頭辞のみ。URL 等の「:」を誤爆させない）
     const m = tok.match(/^([^:：]+)[:：](.+)$/);
-    if (m && SEARCH_FIELD_PREFIXES.indexOf(m[1]) >= 0) {
+    if (m && SEARCH_FIELD_PREFIXES.indexOf(searchNormalize(m[1])) >= 0) {
       const value = searchNormalize(m[2]);
       if (value) q.fields.push({ name: searchNormalize(m[1]), value });
       return;
@@ -353,7 +353,7 @@ function showSearchHelpModal() {
 
 // ====== 検索窓バインド（デバウンス + サジェスト + キーボード + ARIA） ======
 
-const SEARCH_HISTORY_PREFIX = 'scicomi_search_history_';
+const SEARCH_HISTORY_PREFIX = CONFIG.SEARCH_HISTORY_PREFIX;
 const SEARCH_HISTORY_MAX = 20;
 
 function _searchHistoryLoad(key) {

@@ -219,7 +219,7 @@ const api = {
       const data = await res.json();
       localStorage.setItem(HOLIDAYS_CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
       return data;
-    } catch (_) { return {}; }
+    } catch (e) { console.warn('祝日データを取得できませんでした:', e && e.message); return {}; }
   },
 
   // ---- CRUD ----
@@ -562,6 +562,9 @@ function humanizeApiError(e) {
       return 'ネットワークに接続できません。通信環境を確認してください。';
     case 'unauthorized':
       return 'セッションの有効期限が切れました。再ログインしてください。';
+    case 'ADMIN_REQUIRED':
+    case 'admin_required':
+      return '幹部の認証が必要です。右上のメニューから管理者モードにしてください。';
     case 'rate_limited':
       return 'ログインの失敗が続いたため、しばらくログインできません。10分ほど待ってから、もう一度お試しください。';
     case 'BAD_RESPONSE':

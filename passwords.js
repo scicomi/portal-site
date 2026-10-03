@@ -367,7 +367,7 @@ function renderPwPhotoPreview() {
     wrap.classList.toggle('hidden', !has);
     if (has) {
         const p = pwEditingPhotos[0];
-        img.src = fileImageUrl(p, 400);
+        img.src = safeHttpUrl(fileImageUrl(p, 400));   // http(s) 以外は表示しない（一覧側と同じ）
     }
     btn.classList.toggle('hidden', has);
 }
@@ -533,7 +533,7 @@ function deletePwEntry(id) {
     overlay.innerHTML = `
         <div class="confirm-dialog">
             <h3>「${escapeHtml(p.SiteName || '(名称未設定)')}」を削除</h3>
-            <p>このログイン情報を削除しますか？この操作は取り消せません。</p>
+            <p>このログイン情報を削除しますか？${TRASH_KEEP_NOTE}</p>
             <div class="confirm-dialog-actions">
                 <button class="btn btn-secondary" onclick="this.closest('.confirm-dialog-overlay').remove()">キャンセル</button>
                 <button class="btn btn-danger" id="confirm-pw-del-btn">削除する</button>

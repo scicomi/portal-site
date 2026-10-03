@@ -11,6 +11,13 @@
 
 // ====== 振り返りフィードバック ユーティリティ ======
 
+// 旧形式(JSON でない平文)の振り返りの id 用。同じ文字列なら必ず同じ値になる(djb2)
+function legacyFeedbackHash(text) {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
 function parseFeedbackEntries(raw) {
   if (!raw || (typeof raw === 'string' && !raw.trim())) return [];
   if (Array.isArray(raw)) return raw;
@@ -19,7 +26,7 @@ function parseFeedbackEntries(raw) {
     if (trimmed.startsWith('[')) {
       try { return JSON.parse(trimmed); } catch (_) {}
     }
-    return [{ id: 'legacy_' + Date.now(), date: '', eventId: '', eventTitle: '', text: trimmed }];
+    return [{ id: 'legacy_' + legacyFeedbackHash(trimmed), date: '', eventId: '', eventTitle: '', text: trimmed }];
   }
   return [];
 }
@@ -309,7 +316,7 @@ async function _drainEventPatches(id) {
       toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', opts.conflictDuration || 4000);
       if (opts.onConflict) opts.onConflict();
     } else {
-      toast('保存失敗: ' + (e && e.message), 'error');
+      toast('保存失敗: ' + humanizeApiError(e), 'error');
     }
     all.forEach(j => j.resolve(false));
   }
@@ -505,7 +512,7 @@ function openMemberDetailModal(id, members, opts) {
 // 走るため、ヘッダーのブランド表示だけは同期的にキャッシュから先出しし、後から _applyCfg で更新する）
 function _readCachedSiteSettings() {
   try {
-    const raw = localStorage.getItem('scicomi_site_settings');
+    const raw = localStorage.getItem(CONFIG.SITE_SETTINGS_KEY);
     if (!raw) return null;
     return JSON.parse(raw).data || null;
   } catch (_) { return null; }
@@ -814,11 +821,11 @@ function handleLogout(btn) {
     api.clearAdminToken();
     api.clearAllCache();
     // サーバー設定由来のキャッシュも消す（次のログインで再取得される）
-    localStorage.removeItem('scicomi_site_settings');
-    localStorage.removeItem('scicomi_welcome_message');
+    localStorage.removeItem(CONFIG.SITE_SETTINGS_KEY);
+    localStorage.removeItem(CONFIG.WELCOME_MESSAGE_KEY);
     // 検索履歴も消す（検索語から活動内容が推測できるため。共有端末を想定）
     Object.keys(localStorage)
-      .filter(k => k.indexOf('scicomi_search_history_') === 0)
+      .filter(k => k.indexOf(CONFIG.SEARCH_HISTORY_PREFIX) === 0)
       .forEach(k => localStorage.removeItem(k));
     location.href = 'index.html';
     return;
@@ -962,7 +969,7 @@ function showConfirmDialog({ title, message, okLabel = 'OK', cancelLabel = 'キ�
     } catch (e) {
       okBtn.disabled = false;
       okBtn.textContent = orig;
-      toast('失敗しました: ' + (e && e.message ? e.message : e), 'error');
+      toast('失敗しました: ' + humanizeApiError(e), 'error');
     }
   });
   setTimeout(() => okBtn.focus(), 30);
@@ -1246,7 +1253,7 @@ function toastUndo(message, onUndo, onCommit, delay = 5000, buttonLabel = '元�
     if (undone) return;
     t.classList.remove('show');
     setTimeout(() => t.remove(), 300);
-    try { await onCommit(); } catch (e) { toast('削除失敗: ' + e.message, 'error'); }
+    try { await onCommit(); } catch (e) { toast('削除失敗: ' + humanizeApiError(e), 'error'); }
   }, delay);
 }
 
@@ -1255,11 +1262,11 @@ function toastUndo(message, onUndo, onCommit, delay = 5000, buttonLabel = '元�
 // 設定を書き換えた直後にキャッシュを捨てる（次回 applySiteSettings で必ずサーバーへ取りに行く）。
 // settings.js・experiments.js など、Config キーを保存する複数ページから使う共通処理。
 function invalidateSettingsCache() {
-  localStorage.removeItem('scicomi_site_settings');
+  localStorage.removeItem(CONFIG.SITE_SETTINGS_KEY);
 }
 
 async function applySiteSettings() {
-    const SETTINGS_CACHE_KEY = 'scicomi_site_settings';
+    const SETTINGS_CACHE_KEY = CONFIG.SITE_SETTINGS_KEY;
     const SETTINGS_TTL = 10 * 60 * 1000; // 10分
     try {
         const cached = localStorage.getItem(SETTINGS_CACHE_KEY);
@@ -1281,7 +1288,10 @@ async function applySiteSettings() {
         const cfg = await api.getPublicConfig();
         _applyCfg(cfg);
         localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify({ data: cfg, ts: Date.now() }));
-    } catch (_) {}
+    } catch (e) {
+        // 取得できなくても既定値で動くが、期限日数などが管理者の設定と違う値になる。原因調査用に残す
+        console.warn('サイト設定を取得できませんでした(既定値で動作します):', e && e.message);
+    }
 }
 
 function _applyCfg(cfg) {
@@ -1293,8 +1303,8 @@ function _applyCfg(cfg) {
     if (cfg.deadline_alert_warning != null && cfg.deadline_alert_warning !== '') CONFIG.DEADLINE_ALERT.warning = safeInt(cfg.deadline_alert_warning, CONFIG.DEADLINE_ALERT.warning);
     // ホームのメッセージは空なら削除（管理者がクリアしたら既定文へ戻す）
     if (cfg.welcome_message !== undefined) {
-        if (cfg.welcome_message) localStorage.setItem('scicomi_welcome_message', cfg.welcome_message);
-        else localStorage.removeItem('scicomi_welcome_message');
+        if (cfg.welcome_message) localStorage.setItem(CONFIG.WELCOME_MESSAGE_KEY, cfg.welcome_message);
+        else localStorage.removeItem(CONFIG.WELCOME_MESSAGE_KEY);
     }
     if (cfg.pr_channels) CONFIG.PR_CHANNELS = cfg.pr_channels.split(',').map(s => s.trim()).filter(Boolean);
     // アップロード上限はサーバー(worker の file_max_mb)が正。取得できたらフロントの事前チェックも合わせる
@@ -1359,7 +1369,13 @@ function createRichEditor(container, initialHtml, options = {}) {
   container.appendChild(wrapper);
 
   const editorApi = {
-    getHtml: () => sanitizeRichHtml(content.innerHTML)
+    // 全消去しても <br> などが残ることがあるので、文字もリンクも画像も無ければ '' を返す
+    getHtml: () => {
+      const html = sanitizeRichHtml(content.innerHTML).trim();
+      const probe = document.createElement('div');
+      probe.innerHTML = html;
+      return !probe.textContent.trim() && !probe.querySelector('a, img') ? '' : html;
+    }
   };
   container._richEditor = editorApi;
   return editorApi;

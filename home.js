@@ -86,7 +86,7 @@ function renderLoadError() {
 function renderWelcome() {
     const el = document.getElementById('welcome-msg');
     if (!el) return;
-    const custom = localStorage.getItem('scicomi_welcome_message');
+    const custom = localStorage.getItem(CONFIG.WELCOME_MESSAGE_KEY);
     const body = custom || '今日も活動を楽しんでいきましょう。';
     el.innerHTML = sanitizeRichHtml(body);
 
@@ -104,7 +104,7 @@ function editWelcomeMessage() {
     if (editBtn) editBtn.style.display = 'none';
     area.classList.remove('hidden');
 
-    const custom = localStorage.getItem('scicomi_welcome_message') || '';
+    const custom = localStorage.getItem(CONFIG.WELCOME_MESSAGE_KEY) || '';
     area.innerHTML = `
         <div id="welcome-rich-editor"></div>
         <div class="action-buttons" style="margin-top:8px;">
@@ -132,12 +132,11 @@ function cancelWelcomeEdit() {
 async function saveWelcomeMessage() {
     const editor = document.getElementById('welcome-rich-editor')?._richEditor;
     if (!editor) return;
-    const html = editor.getHtml().trim();
-    const value = html === '<br>' || !html ? '' : html;
+    const value = editor.getHtml();
     try {
         await api.adminSetConfig('welcome_message', value);
-        if (value) localStorage.setItem('scicomi_welcome_message', value);
-        else localStorage.removeItem('scicomi_welcome_message');
+        if (value) localStorage.setItem(CONFIG.WELCOME_MESSAGE_KEY, value);
+        else localStorage.removeItem(CONFIG.WELCOME_MESSAGE_KEY);
         invalidateSettingsCache();
         toast('メッセージを保存しました', 'success');
         cancelWelcomeEdit();

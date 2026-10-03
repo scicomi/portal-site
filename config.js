@@ -23,6 +23,10 @@ const CONFIG = {
   // 2: イベントをサーバー形（DB の列名）だけで保存するようにした（旧 UI形 Date_End / Event_Time 等を廃止）
   CACHE_SCHEMA: 2,
   TOKEN_KEY: 'scicomi_portal_token',
+  // ===== localStorage のキー(複数ファイルから使うもの。ログアウト時の掃除から漏れないよう、ここで一元管理) =====
+  SITE_SETTINGS_KEY: 'scicomi_site_settings',
+  WELCOME_MESSAGE_KEY: 'scicomi_welcome_message',
+  SEARCH_HISTORY_PREFIX: 'scicomi_search_history_',
   HOLIDAYS_CACHE_KEY: 'scicomi_holidays_cache',
   HOLIDAYS_TTL_MS: 30 * 24 * 60 * 60 * 1000, // 30日
 
