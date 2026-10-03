@@ -976,7 +976,8 @@ function showConfirmDialog({ title, message, okLabel = 'OK', cancelLabel = 'キ�
   return { close };
 }
 
-function showDiscardConfirm(onDiscard) {
+// onStay: 「編集を続ける」(背景クリック・Esc も同じ)で閉じたときに呼ぶ(省略可)
+function showDiscardConfirm(onDiscard, onStay) {
   if (document.getElementById('discard-confirm-overlay')) return;
   const ov = document.createElement('div');
   ov.id = 'discard-confirm-overlay';
@@ -991,10 +992,11 @@ function showDiscardConfirm(onDiscard) {
       </div>
     </div>`;
   document.body.appendChild(ov);
-  ov.querySelector('[data-stay]').addEventListener('click', () => ov.remove());
+  const stay = () => { ov.remove(); if (onStay) onStay(); };
+  ov.querySelector('[data-stay]').addEventListener('click', stay);
   ov.querySelector('[data-discard]').addEventListener('click', () => { ov.remove(); onDiscard(); });
-  ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
-  bindModalEscape(ov, () => ov.remove());
+  ov.addEventListener('click', (e) => { if (e.target === ov) stay(); });
+  bindModalEscape(ov, stay);
   setTimeout(() => ov.querySelector('[data-stay]').focus(), 30);
 }
 

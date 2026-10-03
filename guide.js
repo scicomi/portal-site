@@ -21,6 +21,8 @@ let gdConflict = false;    // 他の人が先に更新した（自動保存を�
 let gdSearchKw = '';
 let gdEditor = null;       // 表示中の Editor.js
 let gdMountSeq = 0;
+let gdLoaded = false;      // 一覧を一度でも読み込めたか(まだなら、読み込みは「初回」扱い)
+let gdOrderChain = Promise.resolve();   // 並べ替えの保存は、1 件ずつ順番に実行する
 const GD_OPEN_KEY = 'scicomi_guide_open';
 const GD_SAVE_DELAY_MS = 1200;
 
@@ -99,20 +101,30 @@ async function gdInit() {
   document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (gdDirty) gdSaveNow(); }
   });
-  if (!(await refreshData(true))) return;   // 読み込めなければ、エラーの案内を残す（ホームで上書きしない）
+  if (!(await refreshData())) return;   // 読み込めなければ、エラーの案内を残す（ホームで上書きしない）
   gdOpenFromUrl();
 }
 
-// ヘッダーの同期表示（クリックで再読込）から呼ばれる。入力中のページは上書きしない。読み込めたら true
-async function refreshData(initial) {
-  updateSyncStatus(initial === true && !gdPages.length ? 'initial-loading' : 'syncing');
+// ヘッダーの同期表示（クリックで再読込。引数 true で呼ばれる）から呼ばれる。入力中のページは上書きしない。読み込めたら true。
+// 初回の読み込みかどうかは gdLoaded で決める(同期表示のクリックも引数は同じ true なので、引数では区別できない)。
+// 'silent': 一覧と状態だけ更新し、開いているページの再描画は呼び出し側に任せる(「最新を読み込む」など)
+async function refreshData(mode) {
+  const first = !gdLoaded;
+  updateSyncStatus(first && !gdPages.length ? 'initial-loading' : 'syncing');
   try {
     const items = await api.list('guides');
     updateSyncStatus('fresh', Date.now());
     const mine = gdCurrentId ? gdById(gdCurrentId) : null;
     gdPages = sortGuides(items);
+    gdLoaded = true;
     gdRenderTree();
-    if (initial) return true;
+    if (first || mode === 'silent') return true;
+    // 開いていたページが(他の管理者に)削除されていたら、トップに戻す。入力中なら、そのまま残して保存時の競合の案内に任せる
+    if (mine && !gdById(gdCurrentId) && !gdDirty && !gdSavePromise) {
+      gdCurrentId = '';
+      gdSyncUrl();
+      toast('開いていたページは、削除されたためトップに戻しました', 'info', 4000);
+    }
     if (!gdDirty && !gdSavePromise && !gdConflict) {
       const fresh = gdCurrentId ? gdById(gdCurrentId) : null;
       if (!gdDraft && (!mine || !fresh || mine.UpdatedAt !== fresh.UpdatedAt)) gdRenderCurrent();
@@ -163,23 +175,33 @@ const gdDot = (p, cls) => `<span class="gd-dot ${cls || ''}" style="background:$
 
 // ---------- URL・画面遷移 ----------
 
-function gdOpenFromUrl() {
-  const id = new URLSearchParams(location.search).get('p') || '';
-  gdShow(id && gdById(id) ? id : '', false);
+// 表示中のページに合わせて、URL の ?p= を書き直す(履歴は増やさない)
+function gdSyncUrl() {
+  try { history.replaceState(null, '', gdCurrentId ? 'guide.html?p=' + encodeURIComponent(gdCurrentId) : 'guide.html'); } catch (_) {}
 }
 
-// 離れる前に、保存中のものは終わるまで待ち、未保存の変更があれば保存してから proceed を実行する
-async function gdLeave(proceed) {
+// 初回の表示と、ブラウザの戻る・進む(popstate)から呼ばれる
+function gdOpenFromUrl() {
+  const id = new URLSearchParams(location.search).get('p') || '';
+  const known = !!(id && gdById(id));
+  if (id && !known) { try { history.replaceState(null, '', 'guide.html'); } catch (_) {} }   // 存在しない(削除済みの)ページの URL は残さない
+  // 未保存の変更があって「編集を続ける」を選んだら、URL だけ移動先に変わったままにせず、表示中のページの URL に戻す
+  gdShow(known ? id : '', false, gdSyncUrl);
+}
+
+// 離れる前に、保存中のものは終わるまで待ち、未保存の変更があれば保存してから proceed を実行する。
+// onStay: 未保存の確認で「編集を続ける」を選んだとき(省略可)
+async function gdLeave(proceed, onStay) {
   await gdFlushSave();
   if (gdConflict) {
-    showDiscardConfirm(() => { gdConflict = false; gdDirty = false; proceed(); });
+    showDiscardConfirm(() => { gdConflict = false; gdDirty = false; proceed(); }, onStay);
     return;
   }
-  if (gdDirty) { showDiscardConfirm(() => { gdDirty = false; proceed(); }); return; }   // 保存に失敗したままのとき
+  if (gdDirty) { showDiscardConfirm(() => { gdDirty = false; proceed(); }, onStay); return; }   // 保存に失敗したままのとき
   proceed();
 }
 
-function gdShow(id, push) {
+function gdShow(id, push, onStay) {
   gdLeave(() => {
     gdCurrentId = id || '';
     gdDraft = null;
@@ -190,7 +212,7 @@ function gdShow(id, push) {
     gdRenderCurrent();
     gdCloseSide();
     window.scrollTo(0, 0);
-  });
+  }, onStay);
 }
 
 function gdNewPage(parentId) {
@@ -787,31 +809,43 @@ function gdSiblings(p) {
   return gdPages.filter(q => (gdById(q.ParentID) ? q.ParentID : '') === key);
 }
 
-async function gdApplyOrder(ids) {
-  await gdFlushSave();                       // 開いているページの入力中の分を先に保存する
+// 画面には先に反映し、サーバーへの保存は 1 件ずつ順番に行う(↑↓ボタンの連打やドラッグで、同じページの基準の版が食い違って
+// 偽の conflict にならないようにする)。保存の完了まで待ちたい呼び出し側のために Promise を返す
+function gdApplyOrder(ids) {
   const changes = [];
   ids.forEach((id, i) => {
     const p = gdById(id), v = String((i + 1) * 10);
-    if (p && p.SortOrder !== v) changes.push([p, v]);
+    if (p && p.SortOrder !== v) changes.push({ id, v, old: p.SortOrder });
   });
-  if (!changes.length) return;
-  const before = changes.map(([p]) => [p, p.SortOrder]);
-  changes.forEach(([p, v]) => { p.SortOrder = v; });      // 先に画面へ反映する
+  if (!changes.length) return gdOrderChain;
+  changes.forEach(c => { gdById(c.id).SortOrder = c.v; });      // 先に画面へ反映する
   gdPages = sortGuides(gdPages);
   gdRenderTree();
   gdRenderHomeList();
+  gdOrderChain = gdOrderChain.then(() => gdSaveOrder(changes));
+  return gdOrderChain;
+}
+
+async function gdSaveOrder(changes) {
   try {
-    for (const [p, v] of changes) {
-      const saved = await api.saveGuide({ ID: p.ID, SortOrder: v, _baseUpdatedAt: p.UpdatedAt });
+    await gdFlushSave();                       // 開いているページの入力中の分を先に保存する(その応答で並び順の値が戻るので、反映し直す)
+    changes.forEach(c => { const p = gdById(c.id); if (p) p.SortOrder = c.v; });
+    gdPages = sortGuides(gdPages);
+    gdRenderTree();
+    gdRenderHomeList();
+    for (const c of changes) {
+      const p = gdById(c.id);
+      if (!p) continue;                        // 他の人に削除された
+      const saved = await api.saveGuide({ ID: c.id, SortOrder: c.v, _baseUpdatedAt: p.UpdatedAt });
       const at = gdPages.findIndex(x => x.ID === saved.ID);
       if (at >= 0) gdPages[at] = saved;
       if (saved.ID === gdCurrentId) gdBase = saved.UpdatedAt;
     }
     gdSetStatus('順番を保存しました');
   } catch (e) {
-    before.forEach(([p, old]) => { p.SortOrder = old; });
+    changes.forEach(c => { const p = gdById(c.id); if (p) p.SortOrder = c.old; });
     toast(e && e.message === 'conflict' ? '他の人が先に更新したため、並べ替えできませんでした。最新を読み込みます' : '並べ替えを保存できませんでした: ' + (e && e.message ? e.message : e), 'error', 4500);
-    await refreshData(true);
+    await refreshData();                       // 一部だけ保存できていることもあるので、サーバーの状態に合わせる(入力中でなければページも描き直す)
     gdRenderTree();
     gdRenderHomeList();
   }
@@ -908,9 +942,16 @@ function gdDelete(id) {
     message: '削除すると元に戻せません。',
     okLabel: '削除する', danger: true,
     onOk: async () => {
+      // 削除する間は自動保存を止める。「未保存」の印を下ろすのは、削除が成功してから(失敗したら、入力中の内容を守る)
       clearTimeout(gdSaveTimer);
+      while (gdSavePromise) await gdSavePromise;
+      try {
+        await api.delete('guides', id);
+      } catch (e) {
+        if (gdDirty && !gdConflict) gdSaveTimer = setTimeout(gdSaveNow, GD_SAVE_DELAY_MS);
+        throw e;
+      }
       gdDirty = false; gdConflict = false;
-      await api.delete('guides', id);
       gdPages = gdPages.filter(p => p.ID !== id);
       toast('削除しました', 'success');
       gdShow(page.ParentID && gdById(page.ParentID) ? page.ParentID : '', true);
@@ -950,8 +991,8 @@ function registerGuideActions() {
     },
     'gd-reload': async () => {
       gdConflict = false; gdDirty = false;
-      await refreshData(true);
-      if (gdCurrentId && !gdById(gdCurrentId)) gdCurrentId = '';
+      await refreshData('silent');
+      if (gdCurrentId && !gdById(gdCurrentId)) { gdCurrentId = ''; gdSyncUrl(); }   // 削除されていたページの URL(?p=)を残さない
       gdRenderTree(); gdRenderCurrent();
     },
     'gd-overwrite': () => {
