@@ -1,0 +1,10 @@
+# 改行コードの統一: リポジトリ・作業ツリーとも LF にする(Windows の core.autocrlf=true でも CRLF が混ざらない)
+* text=auto eol=lf
+
+# 画像・フォントなどはそのまま扱う
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff2 binary
