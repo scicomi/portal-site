@@ -845,21 +845,28 @@ function handleLogout(btn) {
 // ====== モーダル アクセシビリティ ======
 
 function trapFocus(modal) {
-  const focusable = modal.querySelectorAll('input, button, select, textarea, a[href], [tabindex]:not([tabindex="-1"])');
-  if (!focusable.length) return;
-  const first = focusable[0], last = focusable[focusable.length - 1];
+  // Tab を押すたびに数え直す。開いた時点では無効だったボタンが有効になる・先頭や末尾が無効なとき、モーダルの外へ抜けないようにする
+  const focusables = () => Array.from(modal.querySelectorAll('input, button, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'))
+    .filter(el => !el.disabled && el.getClientRects().length > 0);
+  const items = focusables();
+  if (!items.length) return;
   // 開いた直後にフォーカスがモーダル外（多くは body）に残ると、最初の Tab で背後のページへ
   // 抜けてしまう。まだモーダル内に無ければ先頭要素へ移す（呼び出し側が個別に .focus() する
   // 場合は trapFocus の後に実行されるため、そちらが後勝ちで上書きする）。
   if (!modal.contains(document.activeElement)) {
-    try { first.focus({ preventScroll: true }); } catch (_) { first.focus(); }
+    try { items[0].focus({ preventScroll: true }); } catch (_) { items[0].focus(); }
   }
   modal.addEventListener('keydown', (e) => {
     if (e.key !== 'Tab') return;
+    const list = focusables();
+    if (!list.length) { e.preventDefault(); return; }
+    const first = list[0], last = list[list.length - 1];
+    const active = document.activeElement;
+    if (!list.includes(active)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); return; }   // 無効なボタンなど、一覧に無い所にフォーカスがあるとき
     if (e.shiftKey) {
-      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      if (active === first) { e.preventDefault(); last.focus(); }
     } else {
-      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      if (active === last) { e.preventDefault(); first.focus(); }
     }
   });
 }

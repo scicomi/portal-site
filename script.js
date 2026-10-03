@@ -846,7 +846,11 @@ function openQuickCreate(category) {
     }, 80);
 }
 
+// 保存の通信中は、キャンセル・Esc で閉じない(閉じるとアップロード済みの関連資料を消すので、保存が成功したとき、消えたファイルを参照するイベントができる)
+let _qcSaving = false;
+
 function closeQuickCreate() {
+    if (_qcSaving) return;
     const overlay = document.getElementById('qc-overlay');
     if (overlay) overlay.remove();
     // 保存せずに閉じたときは、アップロード済みの関連資料を消す（保存成功時は _sessionUploads を空にしてから呼ぶ）
@@ -905,6 +909,7 @@ async function saveQuickCreate() {
     const btn = document.getElementById('qc-save');
     btn.disabled = true;
     btn.textContent = '保存中...';
+    _qcSaving = true;
 
     try {
         const { _sessionUploads, ...payload } = draft;
@@ -912,14 +917,16 @@ async function saveQuickCreate() {
         eventsData.unshift(saved);
         api.saveCache('events', eventsData);
         draft._sessionUploads = [];   // 保存できたので、アップロード済みファイルは消さない
+        _qcSaving = false;
         closeQuickCreate();
         warnKyokaOverdue(saved);
         // 続きの入力はイベント詳細ページで。開いたら編集ウィザードを自動で出す（edit=1）
         location.href = 'event-series.html?event=' + encodeURIComponent(saved.ID) + '&edit=1';
     } catch (err) {
+        _qcSaving = false;
         btn.disabled = false;
         btn.textContent = '追加';
-        toast('保存失敗: ' + err.message, 'error');
+        toast('保存失敗: ' + humanizeApiError(err), 'error');
     }
 }
 
