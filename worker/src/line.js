@@ -1,4 +1,4 @@
-// LINE 公式アカウントによる新規イベント通知(gas/Code.gs の notifyNewEvent_ / sendLineBroadcast_ の移植)
+// LINE 公式アカウントによる新規イベント通知(旧 GAS の通知処理の移植)
 
 import { getConfig, getSecret } from './config.js';
 import { appendAuditLog } from './data.js';

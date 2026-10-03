@@ -1,4 +1,4 @@
-// Gemini の意図解析用システムプロンプト(gas/Code.gs の buildBotSystemPrompt_ の移植)。
+// Gemini の意図解析用システムプロンプト(旧 GAS の buildBotSystemPrompt_ の移植)。
 // 日付は JST で計算する。テンプレート内の \n は、モデルに見せる JSON 例のためにそのまま残す。
 
 import { jstDate } from './util.js';

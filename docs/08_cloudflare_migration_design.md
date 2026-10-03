@@ -70,7 +70,7 @@
 | `gemini_usage` | `Date` | Script Properties | 日ごとの使用回数 |
 | `auth_fail` | 自動採番 | CacheService | IP 単位のログイン失敗記録(一定期間で削除) |
 
-- 列の詳細は [01_sheets_schema.md](01_sheets_schema.md) と `gas/Code.gs` の `*_HEADERS` に従う。実装時にマイグレーション用 SQL を `worker/migrations/` に置く。
+- 列の詳細は [01_sheets_schema.md](01_sheets_schema.md) と `worker/migrations/*.sql`(現在の正)に従う。実装時にマイグレーション用 SQL を `worker/migrations/` に置く。
 - `events` などは `UpdatedAt` にインデックスを付け、将来の差分取得に備える。
 - 「シートに列を足す」運用は、SQL のマイグレーション(列追加)に置き換わる。
 

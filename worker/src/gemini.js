@@ -1,4 +1,4 @@
-// Gemini 連携(gas/Code.gs の移植)。
+// Gemini 連携(旧 GAS の Gemini 連携の移植)。
 //
 // モデル名は年々変わり、いつか廃止される。コード変更なしで自己修復するため、
 //   1) config の gemini_model を最優先で使う(管理画面から手動切替も可)

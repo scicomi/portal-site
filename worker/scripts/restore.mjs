@@ -6,7 +6,7 @@
 //      node scripts/restore.mjs <backup.json> --remote --yes      実際に復元する(現在のデータは消える)
 //   --local を付けるとローカル DB に対して行う
 //
-// 復元されるもの: events / members / experiments / passwords / event_votes / config / audit_log / gemini_usage
+// 復元されるもの: tables.js の全リソース(events / members / experiments / passwords / guides) と event_votes / config / audit_log / gemini_usage / trash
 // 復元されないもの: パスワードのハッシュ・API キー(バックアップに含めない)。復元後に設定画面から入れ直す。
 //                    R2 のファイル本体(バックアップの対象外。R2 側に残っていればそのまま使える)。
 // 復元後、そのロールのログインは変わらない(パスワードのハッシュは D1 に残るため)。

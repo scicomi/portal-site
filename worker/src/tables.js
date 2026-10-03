@@ -1,5 +1,5 @@
-// リソース定義。列名は gas/Code.gs の *_HEADERS と同一(スプレッドシート時代の列名を維持)。
-// migrations/0001_init.sql のテーブル定義と一致させること。
+// リソース定義。列名は migrations/*.sql のテーブル定義と同一にすること(列を足すときは両方を直す)。
+// 0001 以降の全 migrations(0002 の追加列、0003 の削除列を含む)を足し合わせた結果と一致させること。
 
 export const RESOURCES = {
   events: {

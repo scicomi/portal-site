@@ -64,7 +64,7 @@ API のURL: `https://scicomi-portal.scicomi.workers.dev`(`config.js` の `API_UR
 
 ## ページ構成
 
-10ページ構成(誰でも使う8ページ＋管理者専用の2ページ)：
+11ページ構成(誰でも使う9ページ＋管理者専用の2ページ。AI検索は停止中)：
 
 | ページ | URL | 役割 |
 |---|---|---|
@@ -94,14 +94,17 @@ API のURL: `https://scicomi-portal.scicomi.workers.dev`(`config.js` の `API_UR
 ```
 portal-site/
 ├── index.html / events.html / event-series.html / members.html /
-│   experiments.html / experiment-detail.html / bot.html /
-│   passwords.html / settings.html          # 各ページ
-├── style.css          # 共通スタイル
+│   experiments.html / experiment-detail.html / guide.html / trash.html /
+│   bot.html / passwords.html / settings.html   # 各ページ
+├── style.css / guide.css  # 共通スタイル / ガイドページ用スタイル
+├── icon.png / title.png   # ヘッダーのアイコンとタイトル画像
+├── vendor/editorjs/   # ガイドのエディタ(配布ファイルそのまま。直接編集しない)
 ├── config.js          # ★一元設定（API URL・カテゴリ定義・期限ルール等）
 ├── api.js             # APIとの通信レイヤー
 ├── app.js             # 共通ロジック（認証/ナビ/同期/トースト/ユーティリティ）
 ├── home.js / script.js / members.js / experiments.js / experiment-detail.js /
-│   event-series.js / event-wizard.js / passwords.js / settings.js / bot.js /
+│   event-series.js / event-wizard.js / event-fields.js / passwords.js /
+│   settings.js / trash.js / guide.js / guide-blocks.js / bot.js /
 │   search.js / vote-widget.js              # ページごとのロジック
 ├── worker/            # ★バックエンド（Cloudflare Workers）
 │   ├── src/           #   API本体
@@ -207,7 +210,7 @@ Gemini の API キーと LINE のチャネルアクセストークンは、設�
 ### バックアップと復元
 
 **毎日 03:00（日本時間）に、D1 の全データが R2 の `backups/YYYY-MM-DD.json` に自動保存される。**
-- 世代数は設定の `backup_keep_count`（既定14）。古いものは自動で削除される。
+- 世代数は設定の `backup_keep_count`（既定14）。古いものは自動で削除される。この値と、監査ログの保管日数 `audit_keep_days`、LINE 通知の ON/OFF `event_notify_enabled`（`false` で通知しない）は、設定画面には出ない。変えるときは D1 Console で `config` テーブルを直接更新する（人が行う）。
 - パスワードのハッシュ・API キーはバックアップに**含まれない**。
 - R2 のファイル本体（アップロードされた画像・資料）はバックアップの対象外。R2 側に残っていればそのまま使える。
 - 毎日の結果は監査ログに残る。成功は `backup_ok`（保存先と世代数）、定期処理のどれかの失敗は `maintenance_fail`。D1 Console で次を実行し、最新の `backup_ok` が今日（または昨日）の日付なら正常:
@@ -279,9 +282,11 @@ APIキーを設定しても Bot が AI 回答にならず「キーワード検�
 
 ### 旧 GAS へ戻したい（緊急時のみ）
 
-1. `config.js` の `API_URL` を旧 GAS のデプロイ URL に戻して再公開する
-2. GAS の `Code.gs` の `READ_ONLY_MODE` を `false` にして、新しいバージョンでデプロイする
-3. **新サーバーで入力されたデータは旧 GAS には入っていない**ので、戻すのは最後の手段にする
+旧 GAS(`gas/`)はリポジトリから削除済みで、**git の履歴にだけ残っている**。戻すには、履歴から `gas/Code.gs` を取り出す必要がある(`git log --diff-filter=D -- gas/Code.gs` で削除したコミットを探し、その親コミットから復元する)。
+
+1. 履歴から `Code.gs` を復元して GAS にデプロイし、`READ_ONLY_MODE` を `false` にする
+2. `config.js` の `API_URL` を旧 GAS のデプロイ URL に戻して再公開する
+3. **新サーバーで入力されたデータは旧 GAS には入っていない**ので、戻すのは最後の手段にする。実際に戻す前に人に相談すること
 
 ---
 

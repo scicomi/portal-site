@@ -1,6 +1,6 @@
 # SciComi Site API (Cloudflare Workers)
 
-GAS の Web アプリ(`gas/Code.gs`)の置き換え。設計は [../docs/08_cloudflare_migration_design.md](../docs/08_cloudflare_migration_design.md)。
+旧 GAS の Web アプリ(`gas/Code.gs`。削除済みで git の履歴にだけ残る)の置き換え。設計は [../docs/08_cloudflare_migration_design.md](../docs/08_cloudflare_migration_design.md)。
 
 - **API**: Workers(`src/`)。クライアント(`../api.js`)とは、`action` を POST する従来の方式・JSON の形・エラーコードで互換
 - **データ**: D1(`migrations/0001_init.sql`)。列名はスプレッドシート時代の列名のまま
@@ -62,7 +62,7 @@ node scripts/set-password.mjs admin  --remote        # 幹部パスワード(一
 
 ## データ移行(スプレッドシート → D1)
 
-1. GAS エディタで `exportAllForMigration` を実行 → マイドライブに `scicomi_export_*.json` ができる(**パスワード一覧を含むので、取り込み後に必ず削除**)
+1. (移行は完了済み。以下は履歴の記録)旧 GAS(git の履歴にある)のエディタで `exportAllForMigration` を実行 → マイドライブに `scicomi_export_*.json` ができる(**パスワード一覧を含むので、取り込み後に必ず削除**)
 2. JSON をこのフォルダにダウンロードし、取り込む:
    ```bash
    node scripts/import.mjs scicomi_export_XXXX.json --remote --dry-run   # 件数だけ確認
