@@ -47,19 +47,16 @@ function voteStaffIds(members) {
 
 // ====== 締切 ======
 
-// 出欠の締切日時。VoteDeadline（任意設定）が優先、無ければイベント最終日。いずれも当日23:59まで。
-function voteDeadlineDate(ev) {
-  const d = ev.VoteDeadline || ev.DateEnd || ev.Date;
-  if (!d) return null;
-  const dt = parseISODate(d);
-  if (!dt) return null;
-  dt.setHours(23, 59, 59, 999);
-  return dt;
+// 出欠の締切日。VoteDeadline（任意設定）が優先、無ければイベント最終日。いずれも当日いっぱい(日本時間の 23:59 まで。サーバーと同じ)。
+function voteDeadlineISO(ev) {
+  const d = String(ev.VoteDeadline || ev.DateEnd || ev.Date || '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '';
 }
 
+// 締切日の翌日(日本時間)になったら締切後。日付の文字列どうしで比べるので、端末のタイムゾーンに影響されない
 function voteDeadlinePassed(ev) {
-  const dt = voteDeadlineDate(ev);
-  return !!dt && dt < new Date();
+  const d = voteDeadlineISO(ev);
+  return !!d && todayISO() > d;
 }
 
 // ====== 集計 ======

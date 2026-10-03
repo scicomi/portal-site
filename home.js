@@ -198,6 +198,7 @@ function initHomeCalendar(attempt = 0) {
         selectable: false,
         headerToolbar: { left: 'prev', center: 'title', right: 'today next' },
         buttonText: { today: '今日' },
+        now: jstNowAsLocalDate,   // 「今日」の強調と「今日」ボタンは、端末のタイムゾーンではなく日本時間で数える
         dayCellClassNames: function (arg) {
             const dateStr = toISODate(arg.date);
             return holidaysData[dateStr] ? ['holiday'] : [];
@@ -254,7 +255,7 @@ function openHomeCalendarJumpPicker() {
     let year = cur.getFullYear();
     const curY = cur.getFullYear();
     const curM = cur.getMonth();
-    const now = new Date();
+    const now = jstNowAsLocalDate();   // 「今月」の強調は、端末ではなく日本時間で数える
 
     const pop = document.createElement('div');
     pop.className = 'cal-jump-pop';

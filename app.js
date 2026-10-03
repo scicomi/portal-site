@@ -47,9 +47,10 @@ function genFeedbackId() {
   return 'fb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
 }
 
+// 年度は 4 月始まり。「今」は日本時間で数える(下の jstParts)
 function currentFiscalYear() {
-  const now = new Date();
-  return (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+  const p = jstParts();
+  return p.m >= 4 ? p.y : p.y - 1;
 }
 
 // ====== 共通ユーティリティ ======
@@ -105,13 +106,36 @@ function parseISODate(str) {
   return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
 }
 
-function todayISO() {
-  return toISODate(new Date());
+// ====== 日本時間(JST)で「今」を数える ======
+// 「今日」「年度」「出欠の締切」は、端末のタイムゾーンではなく日本時間で判定する。サーバー(締切・通知)が日本時間なので、
+// 留学中など海外から操作しても、画面とサーバーで日付がずれないようにするため。
+// 「2026-10-03」のような日付そのものはタイムゾーンを持たないので、他の日付計算(parseISODate など)はそのままでよい。
+const _jstFormat = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+});
+
+// ms(省略時は現在)の、日本時間での年月日時分秒
+function jstParts(ms) {
+  const o = {};
+  _jstFormat.formatToParts(new Date(ms === undefined ? Date.now() : ms)).forEach(p => { o[p.type] = p.value; });
+  return { y: +o.year, m: +o.month, d: +o.day, hh: +o.hour, mm: +o.minute, ss: +o.second };
 }
 
-// ISO 日付（YYYY-MM-DD）に n 日（負も可）を足した ISO 日付。iso 省略時は今日から数える。
+function todayISO() {
+  const p = jstParts();
+  return p.y + '-' + String(p.m).padStart(2, '0') + '-' + String(p.d).padStart(2, '0');
+}
+
+// 日本時間の「いま」の年月日時分秒を、端末のローカル時刻の Date にしたもの(FullCalendar の「今日」など、Date を求めるものに渡す)
+function jstNowAsLocalDate() {
+  const p = jstParts();
+  return new Date(p.y, p.m - 1, p.d, p.hh, p.mm, p.ss);
+}
+
+// ISO 日付（YYYY-MM-DD）に n 日（負も可）を足した ISO 日付。iso 省略時は今日（日本時間）から数える。
 function addDaysISO(iso, n) {
-  const d = iso ? parseISODate(iso) : new Date();
+  const d = parseISODate(iso || todayISO());
   d.setDate(d.getDate() + n);
   return toISODate(d);
 }
