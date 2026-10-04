@@ -468,7 +468,7 @@ function openOccurrence(id) {
     selectOccurrence(id);
     activateSeriesTab('summary');
     const detail = document.getElementById('series-detail');
-    if (detail) detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (detail) detail.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
 }
 
 // タブ上の未処理バッジ（概要=未提出の書類数 / 出欠=未回答者数）。
