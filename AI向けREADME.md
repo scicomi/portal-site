@@ -230,3 +230,14 @@ AI にはできない、または任せてはいけない作業。指示する�
 - **削除はゴミ箱に入る**（ガイド以外。`trash` テーブル、`worker/src/trash.js`、7 日で完全削除）。メンバーも削除・復元・完全削除ができる。パスワード一覧の分だけ管理者専用。添付・写真・動画・振り返り・セクションの列を足したら `worker/src/data.js` の `TRASH_ITEM_RULES` に追加する。削除したファイルの R2 実体は `deleteFile` で直接消さず、ゴミ箱の完全削除に任せる(完全削除は、ほかのレコードやゴミ箱の別の行がまだ同じファイルを参照していれば、R2 から消さない。`trash.js` の `isFileReferenced`)。`trash` の中身（個人情報を含む）を AI に流さない
 - メンバー（`members`）と実験ネタ（`experiments`）の追加・編集は、サーバー側では一般のトークンでも通る（共通パスワード方式の仕様。`tables.js` の `adminOnly` は `false`）。画面の「幹部の認証」は誤操作防止であって権限の強制ではない。幹部限定にしたいと頼まれたら、まず人に相談する
 - 画面の「今日」・年度・出欠の締切は、端末のタイムゾーンではなく**日本時間**で判定する（海外から操作しても、サーバーと同じ日付で動くように。`app.js` の `jstParts` / `todayISO` / `currentFiscalYear`、`vote-widget.js` の `voteDeadlinePassed`）。「今日」を求めるときに `new Date()` から直接日付を作らず、`todayISO()` を使う。YYYY-MM-DD の日付そのものはタイムゾーンを持たないので、そのまま比べてよい
+- **保存できる値の長さに上限がある**（`worker/src/data.js`）。題名・氏名などの短い列は 2,000 バイト、本文・備考・振り返りなどの長い列は 500,000 バイト、その他（JSON の列を含む）は 100,000 バイト、1 回の保存の合計は 1,500,000 バイト。リクエスト本文は 28MB まで（超えると `too_large`、画面は「内容が長すぎるため保存できません」）。ファイルの上限の設定 `file_max_mb` は 1〜20。新しい列を足すときは、短い列か長い列かを `data.js` の `SHORT_COLUMNS` / `LONG_COLUMNS` で決める
+- **出欠は、実在するメンバーとイベントにだけ保存される**（`submitVote`。実在しなければ `invalid_id` / `member_not_found`）。ゴミ箱から戻すときも、相手が消えている投票は戻さない。テストで投票するときは、先にテスト用のメンバーを作る
+- **ガイド本文は、描画する前に無害化する**（`guide.js` の `gdSanitizeBlocks`。Editor.js の掃除は保存時と貼り付け時にしか効かない）。新しい種類のブロックを `guide-blocks.js` に足すときは、HTML を持つ項目を `gdSanitizeBlocks` の対象に入れ、`innerHTML` に入れる前に `sanitizeRichHtml` を通す
+- **保存が競合したときは、画面側で最新を取り込む**。イベントのウィザードは、最新の上に自分が変えた項目だけを重ねて開き直せる（`event-wizard.js` の `rebaseEventInput`、`toastUndo` の「入力を開き直す」）。実験詳細は最新を取り込んで、もう一度保存を促す（`experiment-detail.js` の `refreshCurrentExpAfterConflict`）。実験・メンバーのウィザードは、競合すると最新を読み込むだけで入力は残らない（既知の制約）。`toastUndo` の `onUndo` が `false` を返すと、ボタンを残して再試行できる
+- **失敗の文言は `humanizeApiError(e)` を通す**（`api.js`）。`err.message` をそのままトーストに出さない（`NETWORK_UNREACHABLE` や `internal_error` のようなコードが画面に出てしまう）
+- **アクセシビリティの共通の仕組み**（`app.js`。ページごとに書かなくてよい）:
+  - `autoLabelControls`: `<label>` を `.e1-group` の中、入力欄と同じ場所に置けば、自動で `for` / `id` で結び付く。ラベルの末尾が「*」なら `aria-required` が付く。ラジオ・チェックボックスの並びは、グループの名前（`aria-labelledby`）になる。動的に作られる画面（ウィザードなど）にも効く
+  - `initTablistKeyboard`: `role="tab"` のタブに、← → / Home / End の操作と、選択中のタブだけを Tab の停止位置にする処理を付ける。タブ（`role="tablist"` の中）には `aria-selected` を必ず付ける
+  - `ensureSkipLink`: `renderHeader` が「本文へ移動」のスキップリンクを差し込む。`<main>` があるページで有効
+  - マウスを乗せたときだけ出る操作（行内の編集・削除、写真の ✕）は、タッチ端末（`@media (hover: none)`）では常に表示する。タップ領域は 44px（`--touch-min`）以上にする
+  - 通知（トースト）の領域は最初から DOM にあり、失敗は `role="alert"`。文字・枠の色は `style.css` の変数（`--text-muted` など）が、白地で 4.5:1 以上になる濃さにそろえてある。色を足すときは、コントラストを確かめる
