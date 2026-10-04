@@ -134,7 +134,7 @@ npx wrangler whoami     # ログインできているか確認（AI が実行し
 
 **順番が重要。** DB を先に変え、API を次に、画面を最後に出す。古いフロントと新しい API が一時的に混ざっても壊れないようにするため。
 
-1. `worker/migrations/` に**新しい番号のファイル**を作る（既存のマイグレーションは絶対に編集しない。番号は `ls worker/migrations` の最後 + 1。現在は 0006）。
+1. `worker/migrations/` に**新しい番号のファイル**を作る（既存のマイグレーションは絶対に編集しない。番号は `ls worker/migrations` の最後 + 1。この文書を書いた時点の最新は 0005 なので、次は 0006 — 増えたら実際のフォルダを見ること）。
    例: `0006_add_event_parking.sql`
    ```sql
    ALTER TABLE events ADD COLUMN Parking TEXT NOT NULL DEFAULT '';
@@ -151,7 +151,7 @@ npx wrangler whoami     # ログインできているか確認（AI が実行し
    4. `git push`（フロントを更新）
 6. 本番の画面で、追加した項目が保存・表示できることを確認
 
-補足: 復元用スクリプトやバックアップは列を `tables.js` から参照するので、手順 2 を忘れると新しい列がバックアップされない。
+補足: 毎日のバックアップは `SELECT *` で全列を保存するので、列を足しても自動で含まれる。一方、復元スクリプト（`worker/scripts/restore.mjs`）は `tables.js` の列だけを書き戻すので、手順 2 を忘れると新しい列が復元されない。**新しいテーブルを足すときは**、バックアップの対象（`worker/src/maintenance.js` の `BACKUP_TABLES`）と、`restore.mjs` の `columnsOf` にも追加する。
 
 ### C. 選択肢・カテゴリ・色・期限ルールを変える
 

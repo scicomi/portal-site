@@ -1,5 +1,7 @@
 # 07. 参加投票の再設計 思案書 — vote.html は本当に必要か
 
+> **旧 GAS 時代の記述を含む資料（履歴）です。** 本文の「要 GAS 再デプロイ」「`gas/Code.gs:行番号`」「`setupSpreadsheet()`」は、2026-09 の Cloudflare 移行前のもので、現在は一致しません（`gas/` は削除済み）。出欠の現行の実装は `vote-widget.js`、DB の列は [worker/src/tables.js](../worker/src/tables.js) と `worker/migrations/`、システム全体は [README.md](../README.md) を参照してください。
+
 > **実施記録（2026-07-08）**: 案A を実装済み。リンク未共有とのことでリダイレクタは置かず
 > vote.html / vote.js は即削除した。§5.1・§5.2・§5.4 も実装済み（§5.3 は方針どおり現状維持）。
 > 共通実装は `vote-widget.js`。バックエンドは `EventVotes` に `Note` 列、`Events` に

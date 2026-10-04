@@ -8,7 +8,7 @@
  * ◆ よくある変更
  *   - APIのURLを変えた          → API_URL(Cloudflare Workers。worker/ を参照)
  *   - イベントカテゴリを増やす    → EVENT_CATEGORIES に1行足す
- *   - 実験のタブを増やす          → EXPERIMENT_CATEGORIES に1行足す
+ *   - 実験の分類の名前・色を変える → EXPERIMENT_CATEGORIES(一覧のタブと登録画面の選択肢は experiments.html / experiments.js に直書き。増やすときはそこも直す)
  *   - メンバーの役職を増やす      → MEMBER_ROLES に1行足す
  *   - 書類期限の日数を変える      → DEADLINE_RULES
  */

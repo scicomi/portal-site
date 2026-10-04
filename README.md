@@ -127,8 +127,8 @@ portal-site/
 |---|---|
 | APIのURLを変えた | `API_URL` |
 | イベント種類を増やす | `EVENT_CATEGORIES` に1行 |
-| 実験タブを増やす | `EXPERIMENT_CATEGORIES` に1行 |
-| メンバー区分を増やす | `MEMBER_CATEGORIES` に1行 |
+| 実験の分類（バッジの名前・色）を変える | `EXPERIMENT_CATEGORIES`（一覧のタブと登録画面の選択肢は `experiments.html` / `experiments.js` に直接書かれているので、分類そのものを増やすときはそこも直す） |
+| メンバーの役職を増やす | `MEMBER_ROLES` に1行 |
 | 書類期限の日数を変える | `DEADLINE_RULES`（設定ページからも変更可） |
 
 ---

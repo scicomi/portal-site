@@ -1,5 +1,7 @@
 # 06. 検索システム改善プラン（10段階 + 3週間ロードマップ）
 
+> **旧 GAS 時代の記述を含む資料（履歴）です。** 本文の「package.json はない（静的サイト + GAS）」「`gas/Code.gs:行番号`」は、2026-09 の Cloudflare 移行前のもので、現在は一致しません（`gas/` は削除済みで Git の履歴にだけ残る。`worker/` に package.json とテストがある）。検索の現行の実装は `search.js`、システム全体は [README.md](../README.md)、移行後の設計は [08_cloudflare_migration_design.md](08_cloudflare_migration_design.md) を参照してください。
+
 > **注記（2026-09）:** 本文中の `test.html`（ブラウザで開くアサートランナー）は削除済みです。現在リポジトリにあるテストは worker の結合テスト（`worker/test/`、`npm test`）だけで、`search.js` の単体テストはありません。
 
 > **実装状況（2026-07-10）**: 全10段階を実装済み（`search.js` 新設）。

@@ -3,7 +3,7 @@
 旧 GAS の Web アプリ(`gas/Code.gs`。削除済みで git の履歴にだけ残る)の置き換え。設計は [../docs/08_cloudflare_migration_design.md](../docs/08_cloudflare_migration_design.md)。
 
 - **API**: Workers(`src/`)。クライアント(`../api.js`)とは、`action` を POST する従来の方式・JSON の形・エラーコードで互換
-- **データ**: D1(`migrations/0001_init.sql`)。列名はスプレッドシート時代の列名のまま
+- **データ**: D1(テーブル定義は `migrations/` の SQL を番号順に適用した結果。列の一覧は `src/tables.js`)。列名はスプレッドシート時代の列名のまま
 - **ファイル**: R2(`/files/<キー>` で公開。ログイン不要)
 - **定期実行**: 毎日 03:00 JST に D1 を R2 の `backups/` に保存し、古いログを整理(`src/maintenance.js`)
 
