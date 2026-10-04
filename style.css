@@ -4324,3 +4324,30 @@ mark.search-hit {
         padding-bottom: 2px;
     }
 }
+
+/* ========== タッチ端末(アクセシビリティ) ========== */
+/* ホバーのないタブレット(769px 以上)では、行にカーソルを乗せられず、行内の編集・削除が出せないので、常に表示する */
+@media (hover: none) {
+    .inline-actions { opacity: 1; pointer-events: auto; }
+}
+/* 指で押す端末では、操作部品を 44px(--touch-min)以上にする。小さい部品は隣の部品と押し間違えやすい */
+@media (pointer: coarse) {
+    .inline-action-btn,
+    .ev-vote-select,
+    .empty-cell,
+    .account-btn,
+    .filter-chip,
+    .fc .fc-button { min-height: var(--touch-min); }
+    .vote-count-badge,
+    .back-link,
+    .doc-slot-main,
+    .dash-card-toggle,
+    .dash-section-link {
+        display: inline-flex;
+        align-items: center;
+        min-height: var(--touch-min);
+    }
+    .vote-count-badge { justify-content: center; min-width: var(--touch-min); }
+    .empty-cell,
+    .expd-section-edit-btn { min-width: var(--touch-min); min-height: var(--touch-min); }
+}
