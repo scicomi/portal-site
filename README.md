@@ -225,6 +225,23 @@ Gemini の API キーと LINE のチャネルアクセストークンは、設�
 2. 予行（内容の表示だけ）: `cd worker && node scripts/restore.mjs <ファイル名> --remote`
 3. 実行: `node scripts/restore.mjs <ファイル名> --remote --yes`
 
+値が長い行（ガイドの本文など、約 100KB を超えるもの）は、D1 の 1 文の長さの上限に収まるよう、スクリプトが分割して書き込む。復元の途中で失敗したときの挙動は、ローカルでは全体が元に戻ることを確認している（本番の D1 でも同様と表示されるが、本番での実演はしていない）。
+
+**復元の練習（ローカル・ダミーデータ）:** 本番のバックアップ JSON には、メンバーの個人情報とパスワード一覧の平文が入っている。**練習のために本番のバックアップを手元の PC に置かない。** 代わりに、ローカルの Worker で作ったバックアップを使う。
+
+```bash
+cd worker
+npm run db:migrate:local                              # 準備は worker/README.md の「ローカル開発」
+npm run dev -- --test-scheduled                       # 定期実行を手動で起こせるようにして起動（別ターミナルで続ける）
+curl "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?cron=0+18+*+*+*"   # ローカルのバックアップを作る（PowerShell は curl.exe を使う）
+npx wrangler r2 object get scicomi-portal-files/backups/YYYY-MM-DD.json --local --persist-to .wrangler/state --file backup-local.json
+cp -r .wrangler/state .wrangler/state-backup          # 念のため現状を退避（Windows は Copy-Item -Recurse）
+node scripts/restore.mjs backup-local.json --local            # 予行
+node scripts/restore.mjs backup-local.json --local --yes      # 実行
+```
+
+`YYYY-MM-DD` は日本時間の今日の日付。`backup-local.json` は Git に入れない（`.gitignore` の `backup*.json` で除外される）。`/cdn-cgi/handler/scheduled` が 404 のときは、`/__scheduled?cron=0+18+*+*+*` を試す（wrangler の版で変わる）。
+
 ### 操作履歴を確認したい（監査ログ）
 
 D1 の `audit_log` テーブルに、作成・更新・削除・ファイル操作・設定変更・ログイン失敗などが時系列で記録される。ダッシュボードの D1 Console で確認できる。
@@ -254,23 +271,39 @@ D1 の `audit_log` テーブルに、作成・更新・削除・ファイル操�
 
 ### ログイン画面が繰り返し出る・「セッションの有効期限が切れました」
 
+- ログイン画面に「セッションの有効期限が切れました。再ログインしてください。」と理由が出る。ログインは 180 日で切れるほか、パスワードを変えると切れる。
 - パスワードを変更した直後は、全員がログインし直しになる（仕様）。
 - 一部の人だけ続く場合は、その人のブラウザで F12 → Console に `api.errorLogText()` と入力して出力を確認する（直近30件の通信エラーが記録されている）。
 
-### 「Failed to fetch」「サーバーからの応答を解釈できません」
+### 「ネットワークに接続できません」「サーバーが HTML を返しました」「サーバーからの応答を解釈できませんでした」
+
+画面にこれらが出る（「Failed to fetch」は、F12 の Console に `api.errorLogText()` と入力したときの記録に出る内部の呼び名）。
 
 1. `https://scicomi-portal.scicomi.workers.dev` に `{"action":"version"}` を POST して応答があるか確認（下記コマンド）。
 2. 応答がなければ、[Cloudflare のステータス](https://www.cloudflarestatus.com/) と、ダッシュボードの Workers のログ（Observability / Logs）を確認。
-3. 応答があるのに特定の端末だけ失敗するなら、その端末のネットワーク・拡張機能・ブラウザを疑う。
+3. **全員が通信できなくなった**とき（特定の端末だけではない）は、フロントの置き場所を変えたり、URL を変えたりしていないか確認する。`worker/wrangler.toml` の `ALLOWED_ORIGINS` に含まれない URL からは、ブラウザが API を呼べない（追加して再デプロイが必要。AI向けREADME §7）。`config.js` の `API_URL` が正しいかも確認する。
+4. 応答があるのに特定の端末だけ失敗するなら、その端末のネットワーク・拡張機能・ブラウザを疑う（ブラウザの強制再読込 Ctrl+Shift+R も試す）。
 
 ```bash
+# Git Bash / Mac / Linux
 curl -X POST https://scicomi-portal.scicomi.workers.dev -d '{"action":"version"}'
 ```
 
+```powershell
+# Windows の PowerShell（PowerShell 5.1 の curl は別のコマンドの別名で、上の書き方は使えない）
+Invoke-RestMethod -Method Post -Uri https://scicomi-portal.scicomi.workers.dev -Body '{"action":"version"}'
+```
+
+### 「サーバーでエラーが起きました」と出る
+
+サーバー内部のエラー（`internal_error`）。Cloudflare の無料枠（1日10万リクエスト、D1 の読み取り500万行/日・書き込み10万行/日）を超えたときも、この形で返る。ダッシュボードの Workers & Pages → `scicomi-portal` で使用量を確認し、超えていたら翌日まで待つか、有料プランに上げる。超えていなければ、Workers のログを確認する。
+
 ### 保存しても反映されない・エラーになる
 
-- 画面上部の同期ステータスにマウスを合わせると、エラーの内容が出る。
-- Workers の無料枠（1日10万リクエスト、D1 の書き込み10万行/日）を超えると、D1 がエラーを返す。ダッシュボードで使用量を確認し、超えていたら有料プランに上げる。
+- 画面上部の同期ステータスにマウスを合わせると、エラーの内容が出る（赤い「同期エラー」の表示）。
+- 通信が不安定なとき、**保存の送信だけは自動で再試行しない**。「ネットワークに接続できません」と出ても、サーバーには保存できていることがある。もう一度保存する前に、ページを再読み込みして、内容が保存されていないか確認する（重複して作られるのを防ぐため）。
+- 「他の人が先に更新しました」と出たときは、最新の内容を読み込み直して、もう一度保存する（上の「同時編集について」）。
+- Workers の無料枠を超えると、D1 がエラーを返す（上の「サーバーでエラーが起きました」）。
 
 ### Bot（Gemini）が「レート制限／無料枠の上限」になる
 
