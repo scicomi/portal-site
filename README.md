@@ -215,6 +215,9 @@ Gemini の API キーと LINE のチャネルアクセストークンは、設�
 - R2 のファイル本体（アップロードされた画像・資料）はバックアップの対象外。R2 側に残っていればそのまま使える。
 - 毎日の結果は監査ログに残る。成功は `backup_ok`（保存先と世代数）、定期処理のどれかの失敗は `maintenance_fail`。D1 Console で次を実行し、最新の `backup_ok` が今日（または昨日）の日付なら正常:
   `SELECT Timestamp, Action, Detail FROM audit_log WHERE Action IN ('backup_ok', 'maintenance_fail') ORDER BY Id DESC LIMIT 10;`
+- **失敗しても通知は来ない**。人が見に行くまで誰も気づかないので、月に 1 回は上の SQL を実行すること（確認する担当者を決めておく。[人への引き継ぎ.md](人への引き継ぎ.md) §8）。Worker が動かなかった日や D1 が止まっていた日は、`backup_ok` も `maintenance_fail` も残らず、その日の行が**抜ける**。日付が連続しているかを見る
+- LINE の新規イベント通知が失敗すると、`event_notify_fail` が監査ログに残る。通知が届かないと言われたときは次で調べる:
+  `SELECT Timestamp, Detail FROM audit_log WHERE Action = 'event_notify_fail' ORDER BY Id DESC LIMIT 10;`
 
 **復元する手順**（現在のデータは上書きされる）：
 
