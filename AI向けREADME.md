@@ -109,7 +109,7 @@ npx wrangler whoami     # ログインできているか確認（AI が実行し
 
 1. 作業前に `git status` で状態を確認する
 2. ローカルで確認する
-   - フロント: `npx http-server . -p 8080 -c-1` → `http://localhost:8080`
+   - フロント: `npx http-server . -p 8080 -c-1` → `http://localhost:8080`(⚠ `?api=` を付けないと**本番の API**につながり、保存・削除が本番データに反映される。ローカルの Worker に向けるには、下の「ローカルの API に画面をつなぐ」の `?api=` を必ず付ける)
    - API: `cd worker && npm run dev` と `npm test`（別ターミナル）
    - ローカルの API に画面をつなぐ: `index.html?api=http://127.0.0.1:8787`（解除は `?api=reset`。ページ自体を localhost で開いたときだけ有効）
 3. 変更内容を人に説明し、了承を得る

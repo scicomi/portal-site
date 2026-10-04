@@ -9,7 +9,9 @@
 
 ## ローカル開発
 
-Node 20 で動くよう Wrangler 3 系に固定している(`package.json`)。
+Wrangler は `package.json` で 4.147.0 に固定している。**Node.js 22 以上**が必要(動作確認は Node 24)。
+
+**Windows では、リポジトリを短いパス(例: `C:\work\portal`)に置く。** ローカル DB の SQLite ファイルのフルパスが Windows の 260 文字上限を超えると、`npm run db:migrate:local` などが `internal error; reference=...` だけで失敗する(原因がエラーから分からない)。OneDrive 配下や深いフォルダは避ける。
 
 Git Bash(mac / Linux のターミナルも同じ):
 
@@ -40,6 +42,8 @@ npm test               # 別の PowerShell で
 ```
 
 - `npm test` は起動中のローカル Worker(`npm run dev`)に接続する結合テスト。起動していないと全件 `fetch failed` になる
+- 接続先とパスワードは環境変数で変えられる(`worker/test/api.test.mjs` 冒頭)。既定は `API_BASE=http://127.0.0.1:8787`、`TEST_MEMBER_PW=test-member-pw`、`TEST_ADMIN_PW=test-admin-pw`。別のポートで `npm run dev` を起動したときや、`set-password.mjs` で別のテスト用パスワードを入れたときは、同じ値を渡す(例: PowerShell は `$env:API_BASE='http://127.0.0.1:8790'; npm test`)。ほかの Worker が 8787 で動いていると、意図しない相手にテストが当たるので注意
+- 別のポート・別の保存先で動かすとき(複数の作業を並行するときなど): `npx wrangler dev --local --persist-to .wrangler/state-x --port 8790 --inspector-port 9233`。`set-password.mjs` は既定の保存先(`.wrangler/state`)に書くので、別の保存先に使う場合は、先に `.wrangler/state` をフォルダごとコピーしておく。復元スクリプトは `--persist-to=<フォルダ>` で保存先を選べる
 - テストはローカル DB の設定(ブランド名など)を既定値に戻してから始める。ログイン試行制限のテストはテスト専用の IP だけをロックするので、続けて再実行できる
 
 画面から試すときは、`index.html?api=http://127.0.0.1:8787` で開く(そのブラウザだけ接続先が切り替わる。`?api=reset` で解除)。

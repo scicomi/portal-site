@@ -138,7 +138,8 @@ portal-site/
 ### フロントエンド（HTML/JS/CSS）を編集する場合
 
 1. ファイルを編集する
-2. ローカルで確認: `npx http-server . -p 8080 -c-1` を実行し、`http://localhost:8080` を開く
+2. ローカルで確認: `npx http-server . -p 8080 -c-1` を実行し、`http://localhost:8080` を開く（フロントの配信は 8080、ローカルの API は 8787 と、ポートが別）
+   - ⚠ **`?api=` を付けずに開くと、画面は本番の API につながる。** 本番のデータを保存・削除してしまうので、試す前に必ず下の「本番に影響させずに試す」のとおり `?api=http://127.0.0.1:8787` を付け、ローカルの Worker（`cd worker && npm run dev`）を起動しておくこと
 3. GitHub にアップロードすると GitHub Pages に反映される
    - `worker/` 内の **`node_modules/` `.wrangler/` `.dev.vars` は GitHub にアップロードしない**(`.gitignore` で除外済み。秘密の設定や大量の依存ファイルが入っている。無くても `npm install` などで作り直せる)。それ以外の `worker/` の中身はコードなのでアップロードしてよい
 
