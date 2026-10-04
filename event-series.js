@@ -1253,14 +1253,14 @@ function renderResultsTab() {
     }
 
     const tabBtn = (key, label) =>
-        `<button type="button" class="grandchild-tab ${resultsGrandTab === key ? 'active' : ''}" data-gtab="${escapeAttr(key)}" onclick="switchResultsGrandTab(this)">${escapeHtml(label)}</button>`;
+        `<button type="button" role="tab" aria-selected="${resultsGrandTab === key}" class="grandchild-tab ${resultsGrandTab === key ? 'active' : ''}" data-gtab="${escapeAttr(key)}" onclick="switchResultsGrandTab(this)">${escapeHtml(label)}</button>`;
 
     box.innerHTML = `
         <div class="grandchild-tab-bar" role="tablist" aria-label="振り返りの対象">
             ${tabBtn('venue', '会場・運営')}
             ${expNames.map(n => tabBtn('exp:' + n, n)).join('')}
         </div>
-        <div id="series-results-pane"></div>
+        <div id="series-results-pane" role="tabpanel"></div>
     `;
     renderResultsPane();
 }
@@ -1269,6 +1269,7 @@ function switchResultsGrandTab(btn) {
     resultsGrandTab = btn.dataset.gtab;
     document.querySelectorAll('#series-results-view .grandchild-tab').forEach(b => {
         b.classList.toggle('active', b === btn);
+        b.setAttribute('aria-selected', String(b === btn));
     });
     renderResultsPane();
 }

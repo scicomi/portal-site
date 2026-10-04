@@ -606,6 +606,47 @@ function initAutoLabel() {
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAutoLabel);
 else initAutoLabel();
 
+// タブ(role="tab")のキーボード操作: ← → で隣のタブへ、Home / End で先頭・末尾へ移り、そのタブを開く。
+// 選択中のタブだけを Tab キーの停止位置にする(roving tabindex)。選択の印(aria-selected)が変わったとき・タブが作られたときに合わせ直す
+function syncTablist(tl) {
+  const tabs = Array.from(tl.querySelectorAll('[role="tab"]'));
+  if (!tabs.length) return;
+  const sel = tabs.find(t => t.getAttribute('aria-selected') === 'true') || tabs[0];
+  tabs.forEach(t => { t.tabIndex = t === sel ? 0 : -1; });
+}
+function initTablistKeyboard() {
+  const syncAll = root => root.querySelectorAll('[role="tablist"]').forEach(syncTablist);
+  syncAll(document);
+  new MutationObserver(records => records.forEach(r => {
+    if (r.type === 'attributes') {
+      const tl = r.target.closest('[role="tablist"]');
+      if (tl) syncTablist(tl);
+    } else {
+      r.addedNodes.forEach(n => {
+        if (n.nodeType !== 1) return;
+        if (n.matches('[role="tablist"]')) syncTablist(n);
+        syncAll(n);
+      });
+    }
+  })).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-selected'] });
+  document.addEventListener('keydown', e => {
+    const tab = e.target.closest && e.target.closest('[role="tab"]');
+    if (!tab || !tab.closest('[role="tablist"]')) return;
+    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return;
+    const tabs = Array.from(tab.closest('[role="tablist"]').querySelectorAll('[role="tab"]')).filter(t => t.offsetParent !== null);
+    let i = tabs.indexOf(tab);
+    if (e.key === 'ArrowRight') i = (i + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft') i = (i - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') i = 0;
+    else i = tabs.length - 1;
+    e.preventDefault();
+    tabs[i].focus();
+    tabs[i].click();
+  });
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initTablistKeyboard);
+else initTablistKeyboard();
+
 function renderHeader(activePage) {
   const header = document.querySelector('.app-header');
   if (!header) return;
@@ -631,7 +672,7 @@ function renderHeader(activePage) {
     navHtml += `
       <div class="nav-group">
         <button type="button" class="nav-link nav-group-btn ${members.some(i => i.page === activePage) ? 'active' : ''}" aria-haspopup="true" aria-expanded="false">${escapeHtml(groups[item.group].label)} <span class="nav-caret" aria-hidden="true">&#9662;</span></button>
-        <div class="nav-menu hidden" role="menu">${members.map(i => link(i, 'nav-menu-item')).join('')}</div>
+        <div class="nav-menu hidden">${members.map(i => link(i, 'nav-menu-item')).join('')}</div>
       </div>`;
   });
 
@@ -866,10 +907,17 @@ function handleAdminRelease() {
 // ナビのドロップダウン。.app-nav は横スクロール(overflow)のため、メニューは fixed で
 // ボタンの真下に置く（absolute だと切り取られる）。外側クリック・Esc・スクロールで閉じる。
 function bindNavGroups(header) {
-  const closeAll = () => header.querySelectorAll('.nav-group').forEach(g => {
-    g.querySelector('.nav-menu').classList.add('hidden');
-    g.querySelector('.nav-group-btn').setAttribute('aria-expanded', 'false');
-  });
+  // 開いていたメニューのボタンを返す(Esc で閉じたとき、フォーカスをそのボタンに戻すため)
+  const closeAll = () => {
+    let opened = null;
+    header.querySelectorAll('.nav-group').forEach(g => {
+      const menu = g.querySelector('.nav-menu');
+      if (!menu.classList.contains('hidden')) opened = g.querySelector('.nav-group-btn');
+      menu.classList.add('hidden');
+      g.querySelector('.nav-group-btn').setAttribute('aria-expanded', 'false');
+    });
+    return opened;
+  };
   header.querySelectorAll('.nav-group').forEach(g => {
     const btn = g.querySelector('.nav-group-btn');
     const menu = g.querySelector('.nav-menu');
@@ -888,7 +936,7 @@ function bindNavGroups(header) {
   if (!header._navCloseBound) {
     header._navCloseBound = true;
     document.addEventListener('click', closeAll);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { const b = closeAll(); if (b) b.focus(); } });
     window.addEventListener('resize', closeAll);
   }
   header.querySelector('.app-nav').addEventListener('scroll', closeAll);
