@@ -11,24 +11,17 @@
 
 // ====== 振り返りフィードバック ユーティリティ ======
 
-// 旧形式(JSON でない平文)の振り返りの id 用。同じ文字列なら必ず同じ値になる(djb2)
-function legacyFeedbackHash(text) {
-  let h = 5381;
-  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
-  return (h >>> 0).toString(36);
-}
-
+// 振り返りの列(実験の Positives / Reflections)は、JSON の配列の文字列。空・配列でない値・読めない値は [] を返す
 function parseFeedbackEntries(raw) {
-  if (!raw || (typeof raw === 'string' && !raw.trim())) return [];
   if (Array.isArray(raw)) return raw;
-  if (typeof raw === 'string') {
-    const trimmed = raw.trim();
-    if (trimmed.startsWith('[')) {
-      try { return JSON.parse(trimmed); } catch (_) {}
-    }
-    return [{ id: 'legacy_' + legacyFeedbackHash(trimmed), date: '', eventId: '', eventTitle: '', text: trimmed }];
+  if (typeof raw !== 'string' || !raw.trim().startsWith('[')) return [];
+  try {
+    const entries = JSON.parse(raw.trim());
+    return Array.isArray(entries) ? entries : [];
+  } catch (_) {
+    console.error('振り返りの値を JSON として読めませんでした');
+    return [];
   }
-  return [];
 }
 
 function stringifyFeedbackEntries(entries) {

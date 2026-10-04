@@ -35,8 +35,10 @@ function gdParseBody(body) {
     const d = JSON.parse(s);
     if (d && Array.isArray(d.blocks)) return gdSanitizeBlocks(d.blocks);
   } catch (_) {}
-  // JSON でない本文（手で DB に入れた文章など）は、1 行 1 段落として扱う
-  return s.split(/\n+/).map(t => ({ type: 'paragraph', data: { text: escapeHtml(t) } }));
+  // 読めない本文は空として扱う。管理者が編集して保存すると上書きされるので、原因が分かるよう記録しておく
+  // （消えた場合は、毎日のバックアップ(R2 の backups/)の guides.Body から戻せる）
+  console.error('ガイドの本文を読めませんでした（Editor.js の JSON ではありません）');
+  return [];
 }
 
 // ガイドで使うインライン書式（guide-blocks.js の INLINE と、太字・斜体・下線・マーカー・インラインコード・リンク）
