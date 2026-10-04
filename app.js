@@ -1310,7 +1310,8 @@ function updateSyncStatus(state, timestamp, errMsg) {
 
 // ====== トースト通知 ======
 
-function toast(message, type = 'info', duration = 3000) {
+// 通知の置き場。読み上げ(aria-live)の領域は、最初のメッセージと同時に作ると読まれないことがあるので、ページを開いたときに空の状態で作っておく
+function ensureToastContainer() {
   let container = document.getElementById('toast-container');
   if (!container) {
     container = document.createElement('div');
@@ -1319,9 +1320,18 @@ function toast(message, type = 'info', duration = 3000) {
     container.setAttribute('role', 'status');
     document.body.appendChild(container);
   }
+  return container;
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureToastContainer);
+else ensureToastContainer();
+
+function toast(message, type = 'info', duration = 3000) {
+  const container = ensureToastContainer();
   const t = document.createElement('div');
   t.className = `toast toast-${type}`;
   t.textContent = message;
+  // 失敗は、読み上げ中でも割り込んで伝える。読む時間も確保する(3 秒では、画面を見ていても読み切れないことがある)
+  if (type === 'error') { t.setAttribute('role', 'alert'); duration = Math.max(duration, 6000); }
   container.appendChild(t);
   setTimeout(() => t.classList.add('show'), 10);
   setTimeout(() => {
@@ -1333,14 +1343,7 @@ function toast(message, type = 'info', duration = 3000) {
 // buttonLabel: ボタンの文言（既定は「元に戻す」）
 // onUndo が false を返したら「今は実行できなかった」とみなして、トーストとボタンを残す（あとでもう一度押せる）。
 function toastUndo(message, onUndo, onCommit, delay = 5000, buttonLabel = '元に戻す') {
-  let container = document.getElementById('toast-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.id = 'toast-container';
-    container.setAttribute('aria-live', 'polite');
-    container.setAttribute('role', 'status');
-    document.body.appendChild(container);
-  }
+  const container = ensureToastContainer();
   const t = document.createElement('div');
   t.className = 'toast toast-undo';
   t.innerHTML = `
