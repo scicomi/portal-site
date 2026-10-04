@@ -448,29 +448,14 @@ function seriesKeyOf(ev) {
   return k.replace(/\s+/g, '').replace(/^第\d+回/, '');
 }
 
-// PartsList を新旧どちらの形式でも {name, presenters:[]} の配列に正規化する（読み取り専用用途）。
-//   旧形式: [{partName:"一部", items:[{name, presenter}]}]
-//   新形式: [{name, presenters:[]}]
-// ※ 編集UIで使う script.js の parsePartsList は空時に空行プレースホルダを返す仕様のため別物。
+// PartsList を {name, presenters:[]} の配列にそろえる（読み取り専用用途）。
+// ※ 編集UIで使う event-wizard.js の parsePartsList は空時に空行プレースホルダを返す仕様のため別物。
 //   集計・表示（bot 等）はこちらを使う。空・不正は [] を返す。
 function normalizeParts(raw) {
-  let data = raw;
-  if (data === null || data === undefined || data === '') return [];
-  if (typeof data === 'string') {
-    try { data = JSON.parse(data); } catch (_) { return []; }
-  }
-  if (!Array.isArray(data)) return [];
-  if (data[0] && data[0].partName !== undefined) {
-    const flat = [];
-    data.forEach(p => (p.items || []).forEach(it => {
-      if (!it.name && !it.presenter) return;
-      flat.push({ name: it.name || '', presenters: it.presenter ? [it.presenter] : [] });
-    }));
-    return flat;
-  }
-  return data.map(it => ({
+  if (!Array.isArray(raw)) return [];
+  return raw.map(it => ({
     name: it.name || '',
-    presenters: Array.isArray(it.presenters) ? it.presenters : (it.presenter ? [it.presenter] : [])
+    presenters: Array.isArray(it.presenters) ? it.presenters : []
   }));
 }
 

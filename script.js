@@ -426,7 +426,7 @@ function onInlineVoteChange(selectEl, eventId) {
 // ---- 検索・フィルタ ----
 
 // 検索フィールド定義（search.js の createSearcher 用）。重要度順に並べる。
-// 実験名・発表者は PartsList（配列。旧データは JSON 文字列）に入っているため normalizeParts（app.js）で展開する。
+// 実験名・発表者は PartsList（配列）に入っているため normalizeParts（app.js）で展開する。
 const EVENT_SEARCH_FIELDS = [
     { key: 'title', label: 'タイトル', weight: 100, aliases: ['title', 'タイトル'], get: e => [e.Title, e.PlanName, e.MeetingNumber ? `第${e.MeetingNumber}回 ${e.Title || ''}` : ''] },
     { key: 'location', label: '場所', weight: 80, aliases: ['location', '場所'], get: e => [e.Location] },

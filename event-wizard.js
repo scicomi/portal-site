@@ -419,40 +419,13 @@ function initTagInput(container, selectedValues, placeholder, filterFn, opts) {
     return container._tagInput;
 }
 
-// ---- Files の正規化 ----
-// 古いデータには URL 文字列だけの要素があるため、ウィザードで扱う { name, url, ... } にそろえる（コピーを返す）。
-function normalizeEventFiles(files) {
-    return (Array.isArray(files) ? files : []).map(f => typeof f === 'string' ? { name: '', url: f } : f);
-}
-
-// ---- PartsList 新旧フォーマット変換 ----
-// 旧: [{partName:"一部", items:[{name:"スライム", presenter:"太田"}]}]
-// 新: [{name:"スライム", presenters:["太田","鈴木"]}]
+// ---- PartsList（編集用）----
+// 形式: [{name:"スライム", presenters:["太田","鈴木"]}]。空のときは、入力欄を 1 行出すための空行を返す（app.js の normalizeParts は空なら [] を返す）。
 function parsePartsList(raw) {
-    let data = [];
-    if (!raw) return [{ name: '', presenters: [] }];
-    try {
-        data = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
-    } catch (_) { return [{ name: '', presenters: [] }]; }
-    if (!Array.isArray(data) || data.length === 0) return [{ name: '', presenters: [] }];
-
-    if (data[0] && data[0].partName !== undefined) {
-        const flat = [];
-        data.forEach(p => (p.items || []).forEach(it => {
-            if (!it.name && !it.presenter) return;
-            const existing = flat.find(f => f.name === it.name);
-            if (existing && it.presenter && !existing.presenters.includes(it.presenter)) {
-                existing.presenters.push(it.presenter);
-            } else if (!existing) {
-                flat.push({ name: it.name || '', presenters: it.presenter ? [it.presenter] : [] });
-            }
-        }));
-        return flat.length > 0 ? flat : [{ name: '', presenters: [] }];
-    }
-
-    return data.map(item => ({
+    if (!Array.isArray(raw) || raw.length === 0) return [{ name: '', presenters: [] }];
+    return raw.map(item => ({
         name: item.name || '',
-        presenters: Array.isArray(item.presenters) ? item.presenters : (item.presenter ? [item.presenter] : [])
+        presenters: Array.isArray(item.presenters) ? item.presenters : []
     }));
 }
 
@@ -738,9 +711,7 @@ function eventForWizard(editId, template) {
         if (!existing) return null;
         // 配列列(資料・書類・実験など)を一覧のイベントと共有すると、キャンセルしても削除や追加が画面に残り、
         // 次の保存で確定してしまう。ウィザード用に完全に複製する
-        const copy = JSON.parse(JSON.stringify(existing));
-        copy.Files = normalizeEventFiles(copy.Files);
-        return copy;
+        return JSON.parse(JSON.stringify(existing));
     }
     if (!template) return null;
     return {

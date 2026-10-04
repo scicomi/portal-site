@@ -32,8 +32,6 @@
     { color: 'red',    label: '赤',     dot: '#e5484d' },
     { color: 'purple', label: '紫',     dot: '#8e6bd8' },
   ];
-  // 旧データ（絵文字アイコン）の色への読み替え
-  const LEGACY_ICON_COLOR = { '💡': 'blue', '✅': 'green', '⚠️': 'yellow', '🚫': 'red', '📌': 'purple', '❓': 'gray' };
   const colorOf = c => CALLOUT_COLORS.find(x => x.color === c) || CALLOUT_COLORS[1];
   const dotSvg = hex => '<svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="5" fill="' + hex + '"/></svg>';
 
@@ -44,7 +42,7 @@
     static get sanitize() { return { color: false, icon: false, text: INLINE }; }
     constructor({ data, readOnly, block }) {
       const d = data || {};
-      this.data = { color: d.color || LEGACY_ICON_COLOR[d.icon] || 'blue', text: d.text || '' };
+      this.data = { color: d.color || 'blue', text: d.text || '' };
       this.readOnly = readOnly;
       this.block = block;
     }

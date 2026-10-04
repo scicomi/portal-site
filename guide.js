@@ -33,7 +33,7 @@ function gdParseBody(body) {
   if (!s) return [];
   try {
     const d = JSON.parse(s);
-    if (d && Array.isArray(d.blocks)) return gdSanitizeBlocks(gdMigrateBlocks(d.blocks));
+    if (d && Array.isArray(d.blocks)) return gdSanitizeBlocks(d.blocks);
   } catch (_) {}
   // JSON でない本文（手で DB に入れた文章など）は、1 行 1 段落として扱う
   return s.split(/\n+/).map(t => ({ type: 'paragraph', data: { text: escapeHtml(t) } }));
@@ -72,18 +72,6 @@ function gdSanitizeBlocks(blocks) {
     }
     return Object.assign({}, b, { data: d });
   });
-}
-
-// 旧形式のトグル（見出し＋本文を 1 ブロックに持つ）を、新形式（見出し＋インデントした下のブロック）に直す
-function gdMigrateBlocks(blocks) {
-  const out = [];
-  blocks.forEach(b => {
-    if (b && b.type === 'toggle' && b.data && b.data.text) {
-      out.push({ type: 'toggle', data: { title: b.data.title || '' }, tunes: b.tunes });
-      out.push({ type: 'paragraph', data: { text: b.data.text }, tunes: { indentTune: { level: Math.min(3, (((b.tunes || {}).indentTune || {}).level || 0) + 1) } } });
-    } else out.push(b);
-  });
-  return out;
 }
 
 // HTML 断片を文字だけにする（検索・カード用）。DOMParser はスクリプトを実行しない
