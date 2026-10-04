@@ -3,17 +3,20 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-    // アコーディオン見出しはマウスだけでなくキーボード（Enter / Space）でも開閉できるようにし、
-    // 開閉状態を aria-expanded で支援技術へ伝える（見出しは role="button" tabindex="0"）。
+    // アコーディオン見出し: 見出し(h2)の中身をボタンに入れる。role="button" の中の見出しは、見出しとして扱われないため。
+    // ボタンなので Enter / Space で開閉でき、開閉状態は aria-expanded で支援技術へ伝わる(マウスのクリックは行全体の onclick が受ける)
     document.querySelectorAll('.settings-section-header').forEach(h => {
         const section = h.closest('.settings-section');
-        h.setAttribute('aria-expanded', String(!(section && section.classList.contains('collapsed'))));
-        h.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-                e.preventDefault();
-                toggleSettingsSection(h);
-            }
-        });
+        const title = h.querySelector('h2');
+        if (!title) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'settings-toggle-btn';
+        btn.setAttribute('aria-expanded', String(!(section && section.classList.contains('collapsed'))));
+        while (title.firstChild) btn.appendChild(title.firstChild);
+        title.appendChild(btn);
+        h.removeAttribute('role');
+        h.removeAttribute('tabindex');
     });
     bootPage('settings', init);
 });
@@ -23,7 +26,8 @@ function toggleSettingsSection(headerEl) {
     const section = headerEl.closest('.settings-section');
     if (!section) return;
     const collapsed = section.classList.toggle('collapsed');
-    headerEl.setAttribute('aria-expanded', String(!collapsed));
+    const btn = headerEl.querySelector('.settings-toggle-btn');
+    if (btn) btn.setAttribute('aria-expanded', String(!collapsed));
 }
 
 async function init() {

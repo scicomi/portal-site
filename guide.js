@@ -602,7 +602,9 @@ function gdRenderCurrent() {
         <button type="button" class="gd-page-icon" id="gd-icon" ${canEdit ? 'data-action="gd-icon-open"' : 'disabled'} data-val="${escapeAttr(page ? page.Icon : '')}" aria-label="ページの色" ${canEdit ? 'title="色を変える"' : ''}>${gdDot(page, 'gd-dot-lg')}</button>
         <div class="gd-icon-menu" id="gd-icon-menu" hidden>${window.GuideBlocks.COLORS.map(c => `<button type="button" data-action="gd-icon-pick" data-icon="${c.color}" title="${c.label}" aria-label="${c.label}"><span class="gd-dot gd-dot-lg" style="background:${c.dot}"></span></button>`).join('')}</div>
       </div>
-      <div id="gd-title" class="gd-page-title" contenteditable="${canEdit ? 'true' : 'false'}" role="textbox" aria-label="ページのタイトル" data-placeholder="無題" spellcheck="false">${escapeHtml(page ? page.Title : '')}</div>
+      ${canEdit
+        ? `<div id="gd-title" class="gd-page-title" contenteditable="true" role="textbox" aria-label="ページのタイトル" data-placeholder="無題" spellcheck="false">${escapeHtml(page ? page.Title : '')}</div>`
+        : `<h1 id="gd-title" class="gd-page-title" contenteditable="false" data-placeholder="無題">${escapeHtml(page ? page.Title : '')}</h1>`}
     </div>
     <div id="gd-editor" class="gd-editor-holder"></div>
     ${kids.length ? `<section class="gd-subpages"><h2>このページの中のページ</h2><div class="gd-cards">${kids.map(gdCardHtml).join('')}</div></section>` : ''}
@@ -634,6 +636,7 @@ function gdRenderHome(el) {
   document.title = 'ガイド | SciComi Site';
   el.innerHTML = `
     <div class="gd-home">
+      <h1 class="sr-only">ガイド</h1>
       <div class="gd-home-bar">
         <input id="gd-home-search" class="gd-home-search" type="search" placeholder="ガイドを検索" aria-label="ガイドを検索" autocomplete="off" value="${escapeAttr(gdSearchKw)}">
         ${gdCanEdit() ? '<button type="button" class="gd-new-btn" data-action="gd-new-root">＋ 新しいページ</button>' : ''}
