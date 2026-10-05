@@ -684,6 +684,7 @@ function renderHeader(activePage) {
               ? `<button type="button" class="account-menu-item" role="menuitem" data-account="admin-off">管理者モードを解除</button>`
               : `<button type="button" class="account-menu-item" role="menuitem" data-account="admin-on">管理者モードにする</button>`
             }
+            <button type="button" class="account-menu-item" role="menuitem" data-account="theme" id="account-theme-btn">表示: ${window.SciTheme ? SciTheme.labels[SciTheme.get()] : '自動'}</button>
             <button type="button" class="account-menu-item account-menu-danger" role="menuitem" data-account="logout">ログアウト</button>
           </div>
         </div>
@@ -731,6 +732,10 @@ function bindAccountMenu(header) {
     const item = e.target.closest('[data-account]');
     if (!item) return;
     const act = item.dataset.account;
+    if (act === 'theme') {   // 自動 → ライト → ダーク。メニューは開いたままにして結果を見られるようにする
+      if (window.SciTheme) { SciTheme.set(SciTheme.next()); item.textContent = '表示: ' + SciTheme.labels[SciTheme.get()]; }
+      return;
+    }
     if (act === 'logout') { handleLogout(item); return; }   // 2回押しで実行。確認中はメニューを開いたままにする
     close();
     if (act === 'admin-on') showAdminAuthModal();
