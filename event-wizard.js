@@ -1,7 +1,7 @@
 /**
  * イベント編集ウィザード（共通モジュール）
  *
- * events.html と event.html の両方から読み込む（config.js / api.js / app.js の後、
+ * events.html と events.html の両方から読み込む（config.js / api.js / app.js の後、
  * 各ページスクリプトの前）。含まれるもの:
  *   - 日付レンジピッカー・タグ入力・実験行などの入力部品
  *   - 既存イベントの編集・複製ウィザード（openEventWizard 一式）
@@ -1318,7 +1318,7 @@ function deleteFromEvWizard() {
     confirmDeleteEvent(id);
 }
 
-// ---- イベント削除（確認 → 削除 → 「元に戻す」）: events.html / event.html 共通 ----
+// ---- イベント削除（確認 → 削除 → 「元に戻す」）: events.html / events.html 共通 ----
 function confirmDeleteEvent(id) {
     const ev = _wzHost().getEvent(id);
     if (!ev) return;

@@ -2,8 +2,8 @@
  * ホームページ（ダッシュボード）
  */
 
-// リスト行クリックで詳細ページへ(遷移先はこのサイト内の event.html のみ)
-registerActions({ 'home-goto': el => { const h = el.dataset.href || ''; if (/^event.html\?/.test(h)) location.href = h; } });
+// リスト行クリックで詳細ページへ(遷移先はこのサイト内の events.html のみ)
+registerActions({ 'home-goto': el => { const h = el.dataset.href || ''; if (/^events\.html\?/.test(h)) location.href = h; } });
 
 document.addEventListener('DOMContentLoaded', () => {
     bootPage('home', init);
@@ -238,7 +238,7 @@ function initHomeCalendar() {
             successCallback(fcEvents);
         },
         eventClick: function (info) {
-            location.href = 'event.html?event=' + encodeURIComponent(info.event.id);
+            location.href = 'events.html?event=' + encodeURIComponent(info.event.id);
         }
     });
     homeCalendar.render();
@@ -372,7 +372,7 @@ function renderKyokaCard(events) {
         <li class="report-row">
             <span class="dl-date">${shortDate(r.date)}${overdue ? '<span class="report-overdue">超過</span>' : ''}</span>
             <span class="dl-title">
-                <a href="event.html?event=${encodeURIComponent(r.id)}" class="report-event-link">${escapeHtml(r.event || '(無題)')}</a>
+                <a href="events.html?event=${encodeURIComponent(r.id)}" class="report-event-link">${escapeHtml(r.event || '(無題)')}</a>
                 ${r.admin ? `<span class="report-admin">担当: ${escapeHtml(r.admin)}</span>` : ''}
             </span>
             <select class="report-status-select status-${docStatusClass(KYOKA_STATUS, r.status)}" data-event-id="${escapeAttr(r.id)}" title="提出ステータスを変更">
@@ -416,7 +416,7 @@ function renderReportsCard(events) {
         <li class="report-row">
             <span class="dl-date">${shortDate(r.date)}${overdue ? '<span class="report-overdue">超過</span>' : ''}</span>
             <span class="dl-title">
-                <a href="event.html?event=${encodeURIComponent(r.id)}&tab=feedback" class="report-event-link">${escapeHtml(r.event || '(無題)')}</a>
+                <a href="events.html?event=${encodeURIComponent(r.id)}&tab=feedback" class="report-event-link">${escapeHtml(r.event || '(無題)')}</a>
                 ${r.admin ? `<span class="report-admin">担当: ${escapeHtml(r.admin)}</span>` : ''}
             </span>
             <select class="report-status-select status-${docStatusClass(REPORT_STATUS, r.status)}" data-event-id="${escapeAttr(r.id)}" title="提出ステータスを変更">
@@ -469,7 +469,7 @@ function renderFeedbackPending(events) {
     setActionTotal(container, pending.length);
 
     container.innerHTML = pending.slice(0, 5).map(e => {
-        const url = `event.html?event=${encodeURIComponent(e.ID)}&tab=feedback`;
+        const url = `events.html?event=${encodeURIComponent(e.ID)}&tab=feedback`;
         return `<li data-action="home-goto" data-href="${escapeAttr(url)}" style="cursor:pointer;">
             <span class="dl-date">${shortDate(e.Date)}</span>
             <span class="dl-title"><a href="${url}" class="report-event-link">${escapeHtml(e.Title || '(無題)')}</a></span>
@@ -556,7 +556,7 @@ function renderVoteReminder(events, members, votes, memberId) {
     const textEl = document.getElementById('vote-reminder-text');
     const linkEl = document.getElementById('vote-reminder-link');
     textEl.textContent = `出欠が未回答の予定が${pending.length}件あります`;
-    linkEl.href = `event.html?event=${encodeURIComponent(first.ID)}&vote=1`;
+    linkEl.href = `events.html?event=${encodeURIComponent(first.ID)}&vote=1`;
     banner.classList.remove('hidden');
 }
 

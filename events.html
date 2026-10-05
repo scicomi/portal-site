@@ -22,6 +22,8 @@
     <datalist id="experiment-datalist"></datalist>
 
     <main class="container">
+        <!-- 一覧(?event= も ?key= も無いとき) -->
+        <div id="events-list-view">
         <div class="page-header">
             <h1 class="page-title">予定</h1>
             <div class="ev-search-row">
@@ -87,10 +89,78 @@
                 </tbody>
             </table>
         </div>
+        </div>
+
+        <!-- ===== シリーズ詳細モード ===== -->
+        <div id="series-view" class="hidden">
+            <div style="margin-bottom: 16px; display:flex; gap:16px;">
+                <a href="events.html" class="back-link">&larr; 予定一覧へ</a>
+            </div>
+
+            <div id="series-loading" class="loading-text">読み込み中</div>
+
+            <div id="series-content" class="hidden">
+                <div class="series-header-card">
+                    <div class="series-header-top">
+                        <div class="series-header-titles">
+                            <h1 id="series-title" class="series-title"></h1>
+                        </div>
+                        <div id="series-header-actions" class="series-header-actions"></div>
+                    </div>
+                    <!-- 開催回の選択（複数回あるときだけ表示）。プルダウンだけで切り替える -->
+                    <div id="series-occ-picker" class="series-occ-picker"></div>
+                </div>
+
+                <!-- 1段フラットタブ。会場だけは全開催回が対象（data-zone="series"）で、下の対象範囲バーに期間を出す -->
+                <div class="scope-tab-bar" id="series-tab-bar" role="tablist" aria-label="イベント情報の切り替え">
+                    <button class="scope-tab active" role="tab" aria-selected="true" data-tab="summary" data-zone="occ" onclick="switchSeriesTab(this)">概要<span class="scope-badge hidden" id="scope-badge-summary"></span></button>
+                    <button class="scope-tab" role="tab" aria-selected="false" data-tab="attendance" data-zone="occ" onclick="switchSeriesTab(this)">出欠<span class="scope-badge hidden" id="scope-badge-attendance"></span></button>
+                    <button class="scope-tab" role="tab" aria-selected="false" data-tab="reflection" data-zone="occ" onclick="switchSeriesTab(this)">振り返り</button>
+                    <button class="scope-tab" role="tab" aria-selected="false" data-tab="venue" data-zone="series" onclick="switchSeriesTab(this)">会場</button>
+                </div>
+
+                <!-- 対象範囲バー: 「会場」のときだけ対象期間を出す（開催回の選択はヘッダーカード内） -->
+                <div class="scope-ctx" id="series-scope-ctx"></div>
+
+                <!-- 概要 -->
+                <div class="scope-pane" role="tabpanel" tabindex="0" data-pane="summary">
+                    <div id="series-detail"></div>
+                </div>
+
+                <!-- 出欠 -->
+                <div class="scope-pane hidden" role="tabpanel" tabindex="0" data-pane="attendance">
+                    <div id="series-attendance-detail"></div>
+                </div>
+
+                <!-- 振り返り（記入と表示を1か所に統合） -->
+                <div class="scope-pane hidden" role="tabpanel" tabindex="0" data-pane="reflection">
+                    <div id="series-reflection-entry"></div>
+                    <div id="series-results-view"></div>
+                </div>
+
+                <!-- 会場（全開催回が対象） -->
+                <div class="scope-pane hidden" role="tabpanel" tabindex="0" data-pane="venue">
+                    <div id="series-safety-card" class="series-safety-card hidden">
+                        <div class="series-safety-header">
+                            <div class="series-safety-title">会場情報・緊急連絡先</div>
+                            <button type="button" class="expd-section-edit-btn" title="編集" onclick="editSafetyInfo()">&#9998;</button>
+                        </div>
+                        <div id="series-safety-grid" class="series-safety-grid"></div>
+                    </div>
+                    <h3 class="series-history-heading">会場運営の振り返り</h3>
+                    <div class="expd-feedback-filters">
+                        <button class="filter-chip active" data-fb="all" aria-pressed="true" onclick="filterSeriesFb('all')">全て</button>
+                        <button class="filter-chip" data-fb="positive" aria-pressed="false" onclick="filterSeriesFb('positive')">良かった点</button>
+                        <button class="filter-chip" data-fb="reflection" aria-pressed="false" onclick="filterSeriesFb('reflection')">改善点</button>
+                    </div>
+                    <div id="series-feedback-timeline"></div>
+                </div>
+            </div>
+        </div>
     </main>
 
     <!-- FAB -->
-    <button class="fab" onclick="openNewEventModal()" aria-label="予定を追加"><span class="fab-icon">＋</span>予定を追加</button>
+    <button class="fab" id="events-fab" onclick="openNewEventModal()" aria-label="予定を追加"><span class="fab-icon">＋</span>予定を追加</button>
 
     <script src="config.js"></script>
     <script src="api.js"></script>
@@ -99,7 +169,21 @@
     <script src="vote-widget.js"></script>
     <script src="event-wizard.js"></script>
     <script src="event-fields.js"></script>
-    <script src="script.js"></script>
+    <script>
+        // ?event=<ID> / ?key=<シリーズ> のときはイベント詳細、それ以外は予定の一覧（それぞれ専用の JS を読む）
+        (function () {
+            var p = new URLSearchParams(location.search);
+            var isDetail = p.has('event') || p.has('key');
+            document.getElementById(isDetail ? 'events-list-view' : 'series-view').remove();
+            if (isDetail) {
+                document.getElementById('events-fab').remove();
+                document.getElementById('series-view').classList.remove('hidden');
+                document.title = 'イベント詳細 | SciComi Site';
+            }
+            // 解析中に書き込めば DOMContentLoaded より前に実行される（動的追加だと間に合わない）
+            document.write('<script src="' + (isDetail ? 'event-detail.js' : 'script.js') + '"><\/script>');
+        })();
+    </script>
 </body>
 
 </html>

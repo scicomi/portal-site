@@ -60,7 +60,7 @@ function seriesPatchOpts(extra) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    bootPage('series', init);
+    bootPage('events', init);
 });
 
 async function init() {
@@ -77,14 +77,6 @@ async function init() {
         history.replaceState(null, '', location.pathname + (q ? '?' + q : ''));
     }
     if (scrollToFeedback) detailFbOpen = true; // 未記入通知などから来たら折りたたみを開いておく
-    // 一覧ページは廃止した。イベントを指さずに開かれたら予定ページへ移す
-    if (!seriesKey && !currentEventId) {
-        location.replace('events.html');
-        return;
-    }
-
-    document.getElementById('series-view').classList.remove('hidden');
-
     loadAuxData(); // メンバー・実験は補助情報。裏で読み込み、揃い次第再描画する。
 
     // ページ内の編集ウィザード用の補助データ（祝日・担当/実験の入力候補）を裏で読み込む
@@ -301,7 +293,7 @@ function renderScopeContext() {
 
 // 表示中のシリーズと開催回を URL に書く（履歴は増やさない）
 function syncSeriesUrl() {
-    history.replaceState(null, '', `event.html?key=${encodeURIComponent(seriesKey)}&event=${encodeURIComponent(currentEventId)}`);
+    history.replaceState(null, '', `events.html?key=${encodeURIComponent(seriesKey)}&event=${encodeURIComponent(currentEventId)}`);
 }
 
 function selectOccurrence(id) {

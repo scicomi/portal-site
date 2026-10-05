@@ -230,7 +230,7 @@ function renderEventsList() {
     }
     listEl.innerHTML = list.map(ev => {
         const cat = getEventCategory(ev.Category || 'normal');
-        return `<a href="event.html?event=${encodeURIComponent(ev.ID)}" class="expd-event-chip" title="${escapeAttr(ev.Title)}">
+        return `<a href="events.html?event=${encodeURIComponent(ev.ID)}" class="expd-event-chip" title="${escapeAttr(ev.Title)}">
             <span class="expd-event-date">${escapeHtml(ev.Date || '')}</span>
             <span class="expd-event-title">${escapeHtml(ev.Title || '(無題)')}</span>
             <span class="cat-dot" style="color:${cat.bg};" role="img" aria-label="${cat.short}" title="${cat.short}">&#9679;</span>

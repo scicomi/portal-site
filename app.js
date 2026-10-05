@@ -86,7 +86,7 @@ document.addEventListener('error', e => {
 }, true);
 
 // 年度ごとの折りたたみ見出し（<button class="fy-header" data-action="fy-toggle">）の開閉。
-// 直後の兄弟要素（.fy-body）の表示を切り替える。experiment-detail.js の振り返りと event.js の振り返りで共用。
+// 直後の兄弟要素（.fy-body）の表示を切り替える。experiment-detail.js の振り返りと event-detail.js の振り返りで共用。
 function toggleFyGroup(btn) {
   const open = btn.classList.toggle('open');
   btn.setAttribute('aria-expanded', String(open));
