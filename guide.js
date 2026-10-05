@@ -428,7 +428,10 @@ function gdMount(blocks, autofocus, readOnly) {
     minHeight: readOnly ? 0 : 120,
     autofocus: !!autofocus,
     tunes: ['indentTune'],
-    onChange: () => { if (armed && !gdHist.busy) { gdMarkDirty(); gdHistSchedule(); } },
+    onChange: () => {
+      gdApplyFold();   // ブロックの追加・削除・移動の後も、折りたたみの範囲を取り直す
+      if (armed && !gdHist.busy) { gdMarkDirty(); gdHistSchedule(); }
+    },
   });
   gdEditor = ed;
   gdHistReset();
@@ -471,6 +474,29 @@ document.addEventListener('keydown', e => {
   e.preventDefault();
   e.stopPropagation();
   ind.dispatchEvent(new CustomEvent('gd-indent', { detail: e.shiftKey ? -1 : 1 }));
+}, true);
+
+// Enter で新しいブロックができたら、インデントを引き継ぐ。トグルの見出しからなら、中身（1 段深い）として作る。
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.shiftKey || e.isComposing || !gdEditor || !gdCanEdit()) return;
+  const t = e.target;
+  if (!t.closest || !t.closest('#gd-editor')) return;
+  if (t.closest('.cdx-list, .tc-table, .ce-code, textarea, input, select')) return;
+  if (document.querySelector('#gd-editor .ce-popover--opened')) return;
+  const cur = t.closest('.ce-block');
+  const ind = cur && cur.querySelector('.gd-indent');
+  if (!ind) return;
+  const lv = parseInt(ind.dataset.level, 10) || 0;
+  const want = cur.querySelector('.gd-tg') ? lv + 1 : lv;
+  if (want === 0) return;
+  const before = gdEditor.blocks.getBlocksCount();
+  const idx = gdEditor.blocks.getCurrentBlockIndex();
+  setTimeout(() => {
+    if (!gdEditor || gdEditor.blocks.getBlocksCount() !== before + 1) return;
+    const nb = document.querySelectorAll('#gd-editor .ce-block')[idx + 1];
+    const nind = nb && nb.querySelector('.gd-indent');
+    if (nind) nind.dispatchEvent(new CustomEvent('gd-indent', { detail: want - (parseInt(nind.dataset.level, 10) || 0) }));
+  }, 0);
 }, true);
 
 // ---------- 元に戻す（Ctrl+Z）・やり直し（Ctrl+Shift+Z / Ctrl+Y） ----------
