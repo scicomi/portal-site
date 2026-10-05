@@ -70,7 +70,7 @@ API のURL: `https://scicomi-portal.scicomi.workers.dev`(`config.js` の `API_UR
 |---|---|---|
 | ホーム | `index.html` | ダッシュボード。許可願/報告書の期限・振り返り未記入・出欠一括回答・直近イベント |
 | イベント | `events.html` | 日程一覧（カレンダー）＋クイック作成・編集・削除 |
-| イベント別 | `event-series.html` | **イベント1件の正規詳細ページ**。パラメータ無しなら全シリーズの一覧。`?event=<ID>` で該当回の詳細（現地情報・書類ステータス・参加状況・振り返り・統計） |
+| イベント詳細 | `event.html` | **イベント1件の正規詳細ページ**(ナビには出さず、予定ページから開く。パラメータ無しなら予定ページへ移る)。`?event=<ID>` で該当回の詳細（現地情報・書類ステータス・参加状況・振り返り・統計） |
 | メンバー | `members.html` | 3カテゴリ（アドバイザー/コーディネーター/メンバー）テーブル表示 |
 | 実験ネタ | `experiments.html` | フィルタ式（工作/実験ショー/その他）の実験データベース |
 | ガイド | `guide.html` | Notion 風の手順書・マニュアル集（書類の書き方、活動ガイド、領収書の渡し方など）。ページを入れ子にでき、閲覧画面の文字をそのままクリックして書き換える（編集専用ページはない。「/」でブロックを選ぶ。少し待つと自動保存。Ctrl+Z で元に戻せる。Tab で入れ子にでき、トグルの中に画像・番号付きリストなども入れられる。左のページ一覧は、ドラッグ、または「･･･」メニューの上へ/下へで順番を入れ替えられる）。`?p=<ID>` で 1 ページを開く。閲覧は一般メンバーも可、作成・編集・削除は幹部のみ（サーバーでも制限している）。エディタは `vendor/editorjs/`（Editor.js・Apache-2.0 / MIT。取得元と版は同フォルダの README.md） |
@@ -93,7 +93,7 @@ API のURL: `https://scicomi-portal.scicomi.workers.dev`(`config.js` の `API_UR
 
 ```
 portal-site/
-├── index.html / events.html / event-series.html / members.html /
+├── index.html / events.html / event.html / members.html /
 │   experiments.html / experiment-detail.html / guide.html / trash.html /
 │   bot.html / passwords.html / settings.html   # 各ページ
 ├── style.css / guide.css  # 共通スタイル / ガイドページ用スタイル
@@ -103,7 +103,7 @@ portal-site/
 ├── api.js             # APIとの通信レイヤー
 ├── app.js             # 共通ロジック（認証/ナビ/同期/トースト/ユーティリティ）
 ├── home.js / script.js / members.js / experiments.js / experiment-detail.js /
-│   event-series.js / event-wizard.js / event-fields.js / passwords.js /
+│   event.js / event-wizard.js / event-fields.js / passwords.js /
 │   settings.js / trash.js / guide.js / guide-blocks.js / bot.js /
 │   search.js / vote-widget.js              # ページごとのロジック
 ├── worker/            # ★バックエンド（Cloudflare Workers）

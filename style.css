@@ -407,7 +407,8 @@ main:focus { outline: none; }
     box-shadow: var(--shadow-lg);
     width: 95%;
     max-width: 520px;
-    max-height: 85vh;
+    /* 中身の長短で大きさが変わらないよう、高さは固定（中身は .wizard-body 内でスクロール） */
+    height: min(85vh, 680px);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -633,7 +634,7 @@ tr:focus-within > td .inline-actions {
     .fab { display: inline-flex; bottom: 16px; right: 16px; }
     /* モバイルは FAB があるためページ上部の作成ボタンは隠す（重複を避ける） */
     .page-new-btn { display: none; }
-    .wizard-panel { max-height: 92vh; width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+    .wizard-panel { height: min(92vh, 680px); width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
     .wizard-overlay { align-items: flex-end; }
     .wizard-header { padding: 16px 16px 0; }
     .wizard-progress { padding: 12px 16px 0; }
@@ -3224,6 +3225,33 @@ textarea:focus {
     width: 100%; height: 100%;
     border: none;
 }
+/* 動画のポップアップ再生 */
+.video-popup-overlay {
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+    background: rgba(0,0,0,0.75);
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+    z-index: var(--z-modal);
+    animation: modalIn 0.2s ease-out;
+}
+.video-popup {
+    position: relative;
+    width: min(960px, 100%);
+    max-height: 100%;
+    background: var(--card-bg);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: 12px;
+}
+.video-popup-close {
+    position: absolute; top: -14px; right: -14px;
+    width: var(--touch-min, 44px); height: var(--touch-min, 44px);
+    border-radius: 50%; border: none; cursor: pointer;
+    background: var(--card-bg); color: var(--text-primary);
+    box-shadow: var(--shadow-lg); font-size: 1.4rem; line-height: 1;
+}
+.video-popup-title { margin: 10px 4px 2px; font-weight: 600; color: var(--text-primary); }
+@media (max-width: 768px) { .video-popup-close { top: 6px; right: 6px; background: rgba(0,0,0,0.6); color: #fff; } }
 .video-delete {
     position: absolute;
     top: 6px; right: 6px;
@@ -3489,7 +3517,7 @@ textarea:focus {
 }
 .series-header-actions .btn { text-decoration: none; }
 
-/* Safety / Emergency info card (event-series) */
+/* Safety / Emergency info card (event) */
 .series-safety-card {
     background: light-dark(#fdf2f2, #2e1c1e);
     border: 1px solid light-dark(#fecaca, #6b2d30);
@@ -3665,24 +3693,6 @@ a.vote-count-badge:hover { color: var(--primary-color); text-decoration: underli
 /* ポップアップ内のリンクボタン（<a class="btn">）は下線を消す */
 .action-buttons a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 
-/* --- シリーズ一覧（イベント別ページのトップ） --- */
-/* 行が全部同じ見た目で単調にならないよう、縞模様と「次回開催あり」行の
-   強調（左アクセント＋バッジ化）で優先度を視覚化する */
-#series-index-table tbody tr:nth-child(even) {
-    background: var(--bg-subtle);
-}
-#series-index-table tbody tr.row-has-next td:first-child {
-    box-shadow: inset 4px 0 0 var(--success-color);
-}
-.series-index-next {
-    display: inline-block;
-    background: var(--success-bg-alt);
-    color: var(--success-text-alt);
-    padding: 3px 10px;
-    border-radius: var(--radius-full);
-    font-weight: 700;
-    white-space: nowrap;
-}
 .count-chip {
     display: inline-block;
     background: var(--bg-subtle);
@@ -4202,6 +4212,8 @@ mark.search-hit {
 .ev-date-cell { width: 1%; }
 .ev-date-year { font-size: 0.7rem; font-weight: 500; line-height: 1.3; }
 .ev-date-md { line-height: 1.3; }
+.series-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.series-group-head .expd-section-edit-btn { order: 0; }
 
 /* ========== Events Page Vote Column ========== */
 /* 一覧の見出しと「〇〇さんで回答中」を同じ行に置く。名前が未選択のときだけ、行全体の案内バナーにする */

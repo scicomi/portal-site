@@ -6,7 +6,7 @@
  *   読み込み順: config.js → api.js → app.js → vote-widget.js → 各ページJS
  *   利用ページ: index.html（出欠一括回答）
  *               events.html（プレビューモーダル内のインライン回答・参加バッジ）
- *               event-series.html（「参加状況」タブのトグル式インライン回答）
+ *               event.html（「参加状況」タブのトグル式インライン回答）
  *
  * データはサーバーの event_votes テーブル（EventID, MemberID, Status, UpdatedAt, Note）。
  * 名前選択は localStorage（VOTE_MEMBER_KEY）で端末に記憶し、全ページで共有する。
@@ -39,7 +39,7 @@ function cacheEventVotes(eventId, eventVotes) {
   api.saveCache('votes', cached.items.filter(v => v.eventId !== eventId).concat(eventVotes || []));
 }
 
-// ====== 対象者算出（旧 vote.js / home.js / event-series.js の3重実装を統合） ======
+// ====== 対象者算出（旧 vote.js / home.js / event.js の3重実装を統合） ======
 
 function voteStaffIds(members) {
   return new Set((members || []).filter(m => !isVoteEligibleMember(m)).map(m => m.ID));

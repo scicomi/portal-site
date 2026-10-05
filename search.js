@@ -1,7 +1,7 @@
 /**
  * SciComi Site - 共通検索エンジン
  *
- * リスト系ページ（events / members / experiments / event-series / experiment-detail /
+ * リスト系ページ（events / members / experiments / event / experiment-detail /
  * passwords）の検索を共通化する（config.js → api.js → app.js の後、各ページ JS の前に読み込む前提）:
  *   - searchNormalize:     日本語正規化（かな統一・全角半角統一）
  *   - parseSearchQuery:    検索演算子のパース（スペース=AND / -語=除外 / "フレーズ" / 場所:○○）
@@ -103,7 +103,7 @@ function searchQueryTerms(pq) {
   return pq.include.concat(pq.phrases, pq.fields.map(f => f.value));
 }
 
-// フィールド構造を持たないページ（event-series / experiment-detail / passwords）向けの照合。
+// フィールド構造を持たないページ（event / experiment-detail / passwords）向けの照合。
 // フィールド指定はこのヘルパでは通常語として扱う。
 function matchesParsedQuery(hayNorm, pq) {
   if (!pq) return true;

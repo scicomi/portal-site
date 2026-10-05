@@ -230,7 +230,7 @@ function renderEventsList() {
     }
     listEl.innerHTML = list.map(ev => {
         const cat = getEventCategory(ev.Category || 'normal');
-        return `<a href="event-series.html?event=${encodeURIComponent(ev.ID)}" class="expd-event-chip" title="${escapeAttr(ev.Title)}">
+        return `<a href="event.html?event=${encodeURIComponent(ev.ID)}" class="expd-event-chip" title="${escapeAttr(ev.Title)}">
             <span class="expd-event-date">${escapeHtml(ev.Date || '')}</span>
             <span class="expd-event-title">${escapeHtml(ev.Title || '(無題)')}</span>
             <span class="cat-dot" style="color:${cat.bg};" role="img" aria-label="${cat.short}" title="${cat.short}">&#9679;</span>
@@ -657,17 +657,34 @@ function showMoreVideos() {
     renderVideos();
 }
 
-// サムネイルをクリックした時だけ埋め込み再生に切り替える（多数登録時に全件同時ロードしないため）
+// サムネイルをクリックした時だけ、ポップアップで埋め込み再生する（多数登録時に全件同時ロードしないため）
 const YT_ID_RE = /^[\w-]{11}$/;
 function playVideo(btn, id) {
     if (!YT_ID_RE.test(String(id))) return;
-    const wrap = btn.closest('.video-item');
-    if (!wrap) return;
-    const embed = document.createElement('div');
-    embed.className = 'video-embed';
-    embed.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1" title="YouTube video player" frameborder="0"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
-    btn.replaceWith(embed);
+    const item = btn.closest('.video-item');
+    const title = item?.querySelector('.video-title')?.textContent || '動画';
+    const overlay = document.createElement('div');
+    overlay.className = 'video-popup-overlay';
+    overlay.innerHTML = `
+        <div class="video-popup" role="dialog" aria-modal="true" aria-label="${escapeAttr(title)}">
+            <button type="button" class="video-popup-close" aria-label="閉じる">&times;</button>
+            <div class="video-embed">
+                <iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1" title="${escapeAttr(title)}" frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+            </div>
+            ${item?.querySelector('.video-title') ? `<p class="video-popup-title">${escapeHtml(title)}</p>` : ''}
+        </div>`;
+    document.body.appendChild(overlay);
+    let cleanup = () => {};
+    const close = () => {
+        cleanup();
+        overlay.remove(); // iframe ごと消えるので、再生も止まる
+        try { btn.focus(); } catch (_) { /* 元のボタンが消えていても無視 */ }
+    };
+    overlay.querySelector('.video-popup-close').addEventListener('click', close);
+    bindOverlayClose(overlay, close);
+    cleanup = bindModalEscape(overlay, close);
+    trapFocus(overlay.querySelector('.video-popup'));
 }
 
 function openAddVideoModal() {

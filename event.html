@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
     <script src="theme-init.js"></script>
-    <title>イベント別 | SciComi Site</title>
+    <title>イベント詳細 | SciComi Site</title>
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
@@ -20,52 +20,10 @@
 
     <main class="container">
 
-        <!-- ===== シリーズ一覧モード（?key / ?event なしでアクセスした時） ===== -->
-        <div id="series-index" class="hidden">
-            <div class="page-header">
-                <h1 class="page-title" style="margin:0; flex:1;">イベント別</h1>
-                <div class="search-box" role="search">
-                    <input id="series-index-search" class="search-input" type="search" placeholder="イベント名・企画名・場所で検索"
-                        aria-label="イベントを検索"
-                        role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="series-index-search-suggest"
-                        autocomplete="off">
-                    <ul id="series-index-search-suggest" class="search-suggest" role="listbox" aria-label="検索候補" hidden></ul>
-                </div>
-            </div>
-            <div id="series-index-filters" class="page-filters">
-                <button class="filter-chip active" data-sidx="event" aria-pressed="true" onclick="onSeriesIndexFilter('event')"><span class="cat-dot" style="color:#f8b4b4;" aria-hidden="true">&#9679;</span>イベント</button>
-                <button class="filter-chip" data-sidx="other" aria-pressed="false" onclick="onSeriesIndexFilter('other')"><span class="cat-dot" style="color:#86efac;" aria-hidden="true">&#9679;</span>その他</button>
-                <button class="filter-chip" data-sidx="all" aria-pressed="false" onclick="onSeriesIndexFilter('all')">全部</button>
-                <span class="filter-divider"></span>
-                <select id="series-index-status-filter" class="e1-input" style="width:auto; padding:4px 10px; font-size:0.85rem;" title="開催状況で絞り込み" onchange="onSeriesIndexStatusFilter(this.value)">
-                    <option value="all" selected>すべて</option>
-                    <option value="upcoming">次回開催あり</option>
-                    <option value="past">終了のみ</option>
-                </select>
-                <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="goToNewEvent()">＋ 新規イベント</button>
-            </div>
-            <div class="table-wrapper">
-                <table class="data-table" id="series-index-table">
-                    <thead>
-                        <tr>
-                            <th style="width:1px;"><span class="sr-only">操作</span></th>
-                            <th>タイトル</th>
-                            <th>開催回数</th>
-                            <th>次回/直近開催</th>
-                        </tr>
-                    </thead>
-                    <tbody id="series-index-tbody">
-                        <tr><td colspan="4" class="loading-text">読み込み中</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
         <!-- ===== シリーズ詳細モード ===== -->
         <div id="series-view" class="hidden">
             <div style="margin-bottom: 16px; display:flex; gap:16px;">
-                <a href="event-series.html" class="back-link">&larr; イベント別一覧</a>
-                <a href="events.html" class="back-link">予定一覧へ</a>
+                <a href="events.html" class="back-link">&larr; 予定一覧へ</a>
             </div>
 
             <div id="series-loading" class="loading-text">読み込み中</div>
@@ -137,6 +95,6 @@
     <script src="vote-widget.js"></script>
     <script src="event-wizard.js"></script>
     <script src="event-fields.js"></script>
-    <script src="event-series.js"></script>
+    <script src="event.js"></script>
 </body>
 </html>

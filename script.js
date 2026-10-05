@@ -200,7 +200,7 @@ function _bindEventTableDelegation() {
         if (e.target.closest('[data-action-cell]')) return;
         const row = e.target.closest('tr[data-id]');
         if (!row) return;
-        location.href = `event-series.html?event=${encodeURIComponent(row.dataset.id)}`;
+        location.href = `event.html?event=${encodeURIComponent(row.dataset.id)}`;
     });
 }
 
@@ -272,7 +272,7 @@ async function init() {
 function redirectLegacyEventParam() {
     const id = new URLSearchParams(location.search).get('event');
     if (!id) return false;
-    location.replace('event-series.html?event=' + encodeURIComponent(id));
+    location.replace('event.html?event=' + encodeURIComponent(id));
     return true;
 }
 
@@ -598,7 +598,7 @@ function renderEvents() {
             const eligibleCount = membersData.length > 0 ? voteEligibleMembers(membersData, ev).length : 0;
             const label = eligibleCount > 0 ? `${vc.attend} / ${eligibleCount}` : `${vc.attend}`;
             const noanswer = Math.max(0, eligibleCount - (vc.attend + vc.absent + vc.undecided));
-            voteBadge = `<a class="vote-count-badge" href="event-series.html?event=${encodeURIComponent(ev.ID)}&vote=1" data-action="vote" aria-label="「${escapeAttr(displayTitle)}」の出欠状況: 参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}${eligibleCount > 0 ? `・未回答${noanswer}` : ''}" title="参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}${eligibleCount > 0 ? `・未回答${noanswer}` : ''} — タップで出欠を回答">${label}</a>`;
+            voteBadge = `<a class="vote-count-badge" href="event.html?event=${encodeURIComponent(ev.ID)}&vote=1" data-action="vote" aria-label="「${escapeAttr(displayTitle)}」の出欠状況: 参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}${eligibleCount > 0 ? `・未回答${noanswer}` : ''}" title="参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}${eligibleCount > 0 ? `・未回答${noanswer}` : ''} — タップで出欠を回答">${label}</a>`;
         }
         // 出欠ドロップダウン（今後の予定のみ、幹部会は対象外）
         let voteCell = '';
@@ -620,12 +620,11 @@ function renderEvents() {
         return `
             <tr class="clickable-row" data-id="${escapeAttr(ev.ID)}" title="タップで詳細ページへ">
                 <td class="cell-name ev-date-cell" style="white-space:nowrap;">
-                    ${dateCellHtml(ev.Date)} <span class="text-muted">(${dayOfWeekJP(ev.Date)})</span>
-                    ${ev.DateEnd && ev.DateEnd !== ev.Date ? '<br><span class="text-muted" style="font-size:0.8rem;">〜 ' + escapeHtml(ev.DateEnd) + '</span>' : ''}
+                    ${eventDateCellHtml(ev, !isUpcoming)}
                 </td>
                 <td class="ev-title-cell">
                     <span class="cat-dot" style="color:${cat.bg};" role="img" aria-label="${cat.short}" title="${cat.short}">&#9679;</span>
-                    <a href="event-series.html?event=${encodeURIComponent(ev.ID)}" data-action="open" style="font-weight:600;color:inherit;text-decoration:none;">${titleHtml}</a>${matchBadge}
+                    <a href="event.html?event=${encodeURIComponent(ev.ID)}" data-action="open" style="font-weight:600;color:inherit;text-decoration:none;">${titleHtml}</a>${matchBadge}
                 </td>
                 <td class="ev-vote-cell" data-action="stoprow">${voteCell}</td>
                 <td>${voteBadge}</td>
@@ -928,7 +927,7 @@ async function saveQuickCreate() {
         closeQuickCreate();
         warnKyokaOverdue(saved);
         // 続きの入力はイベント詳細ページで。開いたら編集ウィザードを自動で出す（edit=1）
-        location.href = 'event-series.html?event=' + encodeURIComponent(saved.ID) + '&edit=1';
+        location.href = 'event.html?event=' + encodeURIComponent(saved.ID) + '&edit=1';
     } catch (err) {
         _qcSaving = false;
         btn.disabled = false;

@@ -86,7 +86,7 @@ document.addEventListener('error', e => {
 }, true);
 
 // 年度ごとの折りたたみ見出し（<button class="fy-header" data-action="fy-toggle">）の開閉。
-// 直後の兄弟要素（.fy-body）の表示を切り替える。experiment-detail.js の振り返りと event-series.js の振り返りで共用。
+// 直後の兄弟要素（.fy-body）の表示を切り替える。experiment-detail.js の振り返りと event.js の振り返りで共用。
 function toggleFyGroup(btn) {
   const open = btn.classList.toggle('open');
   btn.setAttribute('aria-expanded', String(open));
@@ -165,14 +165,25 @@ function shortDate(str) {
   return dow ? `${md}(${dow})` : md;
 }
 
-// 予定一覧などの日付列で「年」だけ小さく2段組にして横幅を抑えるための表示用HTML（YYYY-MM-DD前提）
-function dateCellHtml(str) {
-  const s = String(str || '');
-  const dash = s.indexOf('-');
-  if (dash < 0) return escapeHtml(s);
-  const year = s.slice(0, dash);
-  const md = s.slice(dash + 1);
-  return `<span class="ev-date-year">${escapeHtml(year)}</span><br><span class="ev-date-md">${escapeHtml(md)}</span>`;
+// 複数日の終了日を「11-03(火)」の形にする(開始日と同じ年は年を省く。年をまたぐときだけ年を付ける)
+function formatDateRangeEnd(start, end) {
+  const e = String(end || '');
+  const md = e.split('-').slice(1).join('-');
+  if (!md) return e;
+  const dow = dayOfWeekJP(e);
+  const sameYear = String(start || '').slice(0, 4) === e.slice(0, 4);
+  return (sameYear ? '' : e.slice(0, 4) + '-') + md + (dow ? `(${dow})` : '');
+}
+
+// 予定一覧の日付列。showYear が false(今後の予定)なら年を出さない。複数日は「11-01 (日)〜 11-03(火)」
+function eventDateCellHtml(ev, showYear) {
+  const s = String(ev.Date || '');
+  const md = s.split('-').slice(1).join('-');
+  const year = s.slice(0, 4);
+  const range = ev.DateEnd && ev.DateEnd !== ev.Date ? `〜 ${escapeHtml(formatDateRangeEnd(ev.Date, ev.DateEnd))}` : '';
+  const dow = dayOfWeekJP(s);
+  return (showYear && md ? `<span class="ev-date-year">${escapeHtml(year)}</span><br>` : '')
+    + `<span class="ev-date-md">${escapeHtml(md || s)}</span> <span class="text-muted">${dow ? `(${dow})` : ''}${range ? ' ' + range : ''}</span>`;
 }
 
 function genId(prefix) {

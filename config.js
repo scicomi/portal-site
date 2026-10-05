@@ -37,7 +37,7 @@ const CONFIG = {
   },
 
   // ===== 書類（許可願・報告書）の提出ステータス =====
-  // home / event-series で共用（以前は両ページに重複定義があり、片方だけ直すとズレていた）。
+  // home / event で共用（以前は両ページに重複定義があり、片方だけ直すとズレていた）。
   // cssClass は style.css の .report-status-select.status-* に対応する色分けクラス。
   KYOKA_STATUS: {
     '':            { label: '未提出',                 cssClass: 'none' },
@@ -105,7 +105,6 @@ const CONFIG = {
   NAV_ITEMS: [
     { href: 'index.html',        label: 'ホーム',       page: 'home' },
     { href: 'events.html',       label: '予定',         page: 'events' },
-    { href: 'event-series.html', label: 'イベント別',   page: 'series' },
     { href: 'members.html',      label: 'メンバー',     page: 'members' },
     { href: 'experiments.html', label: '実験ネタ',   page: 'experiments' },
     { href: 'bot.html',         label: 'AI検索',     page: 'bot', feature: 'BOT' },

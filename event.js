@@ -1,12 +1,8 @@
 /**
- * イベント別ページ（シリーズ＋イベント詳細）
+ * イベント詳細ページ（?key=<シリーズキー> または ?event=<イベントID>）
+ * タブ = 概要 / 出欠 / 振り返り / 会場。?key も ?event も無いときは予定ページ（events.html）へ移る。
  *
- * 1ページで2モードを持つ:
- *   - 一覧モード   … ?key も ?event も無い。全シリーズ（同名イベントのまとまり）をカードで一覧。
- *   - 詳細モード   … ?key=<シリーズキー> または ?event=<イベントID>。
- *                     タブ = 概要 / 出欠 / 振り返り / 会場。
- *
- * イベント詳細タブがこのサイトの「イベント1件の正規ページ」。
+ * このページがこのサイトの「イベント1件の正規ページ」。
  * 旧・詳細モーダル（events.html）と投票サマリー・書類ステータスをここに統合した。
  * データはサーバー形（DateEnd / TimeStart / AdminKyoka 等）で扱う。
  */
@@ -16,9 +12,6 @@ let seriesEvents = [];       // 表示中シリーズ（日付降順）
 let seriesKey = '';
 let seriesFbFilter = 'all';
 let currentEventId = '';     // 詳細タブで選択中の開催回
-let indexMode = false;
-let indexFilter = 'event';   // 一覧モードのフィルタ: event / other / all（ミーティングは表示しない）
-let indexStatusFilter = 'all'; // 開催状況フィルタ: all / upcoming（次回開催あり） / past（終了のみ）
 let membersCache = [];
 let experimentsCache = [];
 const votesCache = {};       // eventId -> votes[]
@@ -49,10 +42,10 @@ configureEventWizard({
         if (seriesEvents.length > 0) renderAll();
     },
     onConflict: () => init(),
-    // シリーズの最後の1回を消したら一覧モードへ戻る（ページを離れるので「元に戻す」は出さない）
+    // シリーズの最後の1回を消したら予定ページへ戻る（ページを離れるので「元に戻す」は出さない）
     onDeleted() {
         if (seriesEvents.length > 0) return true;
-        location.href = 'event-series.html';
+        location.href = 'events.html';
         return false;
     }
 });
@@ -84,18 +77,13 @@ async function init() {
         history.replaceState(null, '', location.pathname + (q ? '?' + q : ''));
     }
     if (scrollToFeedback) detailFbOpen = true; // 未記入通知などから来たら折りたたみを開いておく
-    indexMode = !seriesKey && !currentEventId;
-
-    document.getElementById(indexMode ? 'series-index' : 'series-view').classList.remove('hidden');
-    if (indexMode) {
-        document.title = 'イベント別 | SciComi Site';
-        // 検索窓（デバウンス・サジェスト・キーボード操作は search.js が面倒を見る）
-        attachSearchBox(document.getElementById('series-index-search'), {
-            onSearch: () => renderSeriesIndex(),
-            suggestSources: seriesSuggestSources,
-            historyKey: 'series'
-        });
+    // 一覧ページは廃止した。イベントを指さずに開かれたら予定ページへ移す
+    if (!seriesKey && !currentEventId) {
+        location.replace('events.html');
+        return;
     }
+
+    document.getElementById('series-view').classList.remove('hidden');
 
     loadAuxData(); // メンバー・実験は補助情報。裏で読み込み、揃い次第再描画する。
 
@@ -138,11 +126,7 @@ async function init() {
             <div class="empty-hint">${escapeHtml(humanizeApiError(e))}</div>
             <button type="button" class="btn btn-secondary" onclick="init()">再読み込み</button>
         </div>`;
-        if (indexMode) {
-            if (allEventsData.length === 0) {
-                document.getElementById('series-index-tbody').innerHTML = `<tr><td colspan="4">${errorHtml}</td></tr>`;
-            }
-        } else if (seriesEvents.length === 0) {
+        if (seriesEvents.length === 0) {
             const loading = document.getElementById('series-loading');
             loading.classList.remove('loading-text');
             loading.innerHTML = errorHtml;
@@ -157,7 +141,7 @@ function loadAuxData() {
     const cachedVotes = api.loadCache('votes');
     if (cachedVotes && Array.isArray(cachedVotes.items)) primeVotesCache(cachedVotes.items);
     // 実験リンク・未回答数の表示が変わるので、詳細を描画済みなら再描画
-    if (!indexMode && seriesEvents.length > 0) renderDetail();
+    if (seriesEvents.length > 0) renderDetail();
 }
 
 // listAll / キャッシュで受け取った全投票を eventId ごとに votesCache へ展開する。
@@ -171,11 +155,6 @@ function primeVotesCache(votes) {
 }
 
 function onDataReady(isFresh) {
-    if (indexMode) {
-        renderSeriesIndex();
-        return;
-    }
-
     // ?event=<ID> だけで来た場合はイベントからシリーズキーを導出する
     if (currentEventId && !seriesKey) {
         const ev = allEventsData.find(e => e.ID === currentEventId);
@@ -198,129 +177,6 @@ function filterSeries() {
     seriesEvents = allEventsData
         .filter(ev => seriesKeyOf(ev) === seriesKey && ev.Date)
         .sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
-}
-
-// ====== 一覧モード（シリーズ一覧） ======
-
-function onSeriesIndexFilter(f) {
-    indexFilter = f;
-    document.querySelectorAll('.filter-chip[data-sidx]').forEach(c => {
-        const isActive = c.dataset.sidx === f;
-        c.classList.toggle('active', isActive);
-        c.setAttribute('aria-pressed', String(isActive));
-    });
-    renderSeriesIndex();
-}
-
-function onSeriesIndexStatusFilter(v) {
-    indexStatusFilter = v;
-    renderSeriesIndex();
-}
-
-function buildSeriesIndex() {
-    const map = {};
-    allEventsData.forEach(ev => {
-        if (!ev.Date) return;
-        const key = seriesKeyOf(ev);
-        if (!key) return;
-        (map[key] || (map[key] = [])).push(ev);
-    });
-    const today = todayISO();
-    return Object.keys(map).map(key => {
-        const events = map[key].slice().sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
-        const latest = events[0];
-        const next = events
-            .filter(e => (e.DateEnd || e.Date) >= today)
-            .sort((a, b) => (a.Date || '').localeCompare(b.Date || ''))[0] || null;
-        return {
-            key,
-            title: (latest.Title || '(無題)').replace(/^第\d+回\s*/, ''),
-            count: events.length,
-            latestId: latest.ID,
-            latestDate: latest.Date,
-            next,
-            category: latest.Category || 'normal',
-            location: latest.Location || '',
-            // 検索用: 全開催回のイベント名・企画名・場所（最新回に無くても過去回の場所で見つかるように）
-            searchText: events.map(e => [e.Title, e.PlanName, e.Location].filter(Boolean).join(' ')).join(' ')
-        };
-    });
-}
-
-// サジェスト候補（イベント名・場所）。ミーティング類はこのページでは扱わないので除く。
-function seriesSuggestSources() {
-    const titles = new Set(), locations = new Set();
-    buildSeriesIndex().forEach(s => {
-        if (isMeetingCategory(s.category)) return;
-        if (s.title) titles.add(s.title);
-        if (s.location) locations.add(s.location);
-    });
-    return [
-        { label: 'イベント', values: [...titles] },
-        { label: '場所', values: [...locations] }
-    ];
-}
-
-function renderSeriesIndex() {
-    const tbody = document.getElementById('series-index-tbody');
-    if (!tbody) return;
-    // かな・全角半角の揺れ吸収 + AND/-除外/"フレーズ" で照合する（search.js）
-    const pq = parseSearchQuery(document.getElementById('series-index-search')?.value || '');
-
-    let list = buildSeriesIndex();
-    list = list.filter(s => {
-        // ミーティング類はこのページでは扱わない（全部でもイベント＋その他のみ）
-        if (isMeetingCategory(s.category)) return false;
-        const isOther = s.category === 'other';
-        if (indexFilter === 'event' && isOther) return false;
-        if (indexFilter === 'other' && !isOther) return false;
-        if (indexStatusFilter === 'upcoming' && !s.next) return false;
-        if (indexStatusFilter === 'past' && s.next) return false;
-        if (pq && !matchesParsedQuery(searchNormalize(s.title + ' ' + s.searchText), pq)) return false;
-        return true;
-    });
-    if (pq) announceSearchResult(`検索結果 ${list.length}件`);
-
-    // 次回開催が近いものを先頭に、あとは直近開催が新しい順
-    list.sort((a, b) => {
-        if (a.next && b.next) return a.next.Date.localeCompare(b.next.Date);
-        if (a.next) return -1;
-        if (b.next) return 1;
-        return (b.latestDate || '').localeCompare(a.latestDate || '');
-    });
-
-    if (list.length === 0) {
-        const hasNarrowing = pq || indexFilter !== 'all' || indexStatusFilter !== 'all';
-        tbody.innerHTML = `<tr><td colspan="4" class="empty-state">
-            <div class="empty-text">該当する催しはありません</div>
-            ${hasNarrowing ? '<div class="empty-hint">検索キーワードや絞り込みを変更してみてください</div>' : ''}
-        </td></tr>`;
-        return;
-    }
-
-    // 検索中はマッチ部分をハイライト表示（search.js の highlightText は escape 込み）
-    const hlTerms = pq ? searchQueryTerms(pq) : [];
-    const hl = v => pq ? highlightText(v, hlTerms) : escapeHtml(v);
-    tbody.innerHTML = list.map(s => {
-        const cat = getEventCategory(s.category);
-        return `
-            <tr class="clickable-row${s.next ? ' row-has-next' : ''}" data-key="${escapeAttr(s.key)}" data-latest-id="${escapeAttr(s.latestId)}" title="タップで詳細ページへ">
-                <td><span class="cat-dot" style="color:${cat.bg};" role="img" aria-label="${cat.short}" title="${cat.short}">&#9679;</span></td>
-                <td class="cell-name">${hl(s.title)}</td>
-                <td style="white-space:nowrap;"><span class="count-chip">${s.count}回</span></td>
-                <td style="white-space:nowrap;">${s.next
-                    ? `<span class="series-index-next">次回 ${escapeHtml(s.next.Date)} (${dayOfWeekJP(s.next.Date)})</span>`
-                    : `<span class="text-muted">直近 ${escapeHtml(s.latestDate || '---')}</span>`}</td>
-            </tr>
-        `;
-    }).join('');
-
-    // 検索・フィルタで毎回作り直すため、ハンドラは都度上書き（addEventListener の重複登録を避ける）
-    tbody.onclick = (e) => {
-        const row = e.target.closest('tr[data-key]');
-        if (!row) return;
-        location.href = `event-series.html?key=${encodeURIComponent(row.dataset.key)}`;
-    };
 }
 
 // ====== 詳細モード ======
@@ -445,7 +301,7 @@ function renderScopeContext() {
 
 // 表示中のシリーズと開催回を URL に書く（履歴は増やさない）
 function syncSeriesUrl() {
-    history.replaceState(null, '', `event-series.html?key=${encodeURIComponent(seriesKey)}&event=${encodeURIComponent(currentEventId)}`);
+    history.replaceState(null, '', `event.html?key=${encodeURIComponent(seriesKey)}&event=${encodeURIComponent(currentEventId)}`);
 }
 
 function selectOccurrence(id) {
@@ -828,35 +684,38 @@ function renderDetail() {
         ? [ev.GatherTime && `集合 ${escapeHtml(ev.GatherTime)}`, ev.DismissTime && `解散 ${escapeHtml(ev.DismissTime)}`].filter(Boolean).join(' / ')
         : emptyCell('wz-ev-gather');
 
+    // セクション見出しの行。右端のペンボタンで、編集ウィザードの該当の入力欄を開く
+    const groupRow = (g, label, focusId) => `<tr class="series-detail-group" data-g="${g}"><th colspan="2"><span class="series-group-head"><span>${label}</span><button type="button" class="expd-section-edit-btn" data-action="es-edit-event" data-id="${escapeAttr(ev.ID)}" data-focus="${focusId}" title="${label}を編集" aria-label="${label}を編集">&#9998;</button></span></th></tr>`;
+
     const dateStr = `${escapeHtml(ev.Date)} (${dayOfWeekJP(ev.Date)})`
-        + (ev.DateEnd && ev.DateEnd !== ev.Date ? ` 〜 ${escapeHtml(ev.DateEnd)} (${dayOfWeekJP(ev.DateEnd)})` : '');
+        + (ev.DateEnd && ev.DateEnd !== ev.Date ? ` 〜 ${escapeHtml(formatDateRangeEnd(ev.Date, ev.DateEnd))}` : '');
     const timeStr = (ev.TimeStart && ev.TimeEnd) ? `${escapeHtml(ev.TimeStart)} 〜 ${escapeHtml(ev.TimeEnd)}` : '未定';
 
     box.innerHTML = `
         <table class="d1-table series-detail-table">
-            <tr class="series-detail-group" data-g="event"><th colspan="2">${isMeeting ? 'ミーティング' : 'イベント'}</th></tr>
+            ${groupRow('event', isMeeting ? 'ミーティング' : 'イベント', 'wz-ev-title')}
             <tr><th>${isMeeting ? 'ミーティング名' : 'イベント名'}</th><td><span class="text-primary" style="font-size:1.15rem; font-weight:600;">${escapeHtml(displayTitle)}</span></td></tr>
             ${!isMeeting ? `<tr><th>企画名</th><td>${ev.PlanName ? escapeHtml(ev.PlanName) : emptyCell('wz-ev-planname')}</td></tr>` : ''}
             ${!isMeeting ? `<tr><th>企画担当者</th><td>${personChipsHtml(ev.PlanLeader) || emptyCell('wz-ev-planleader')}</td></tr>` : ''}
             <tr><th>場所</th><td>${ev.Location ? `<span class="exp-link-inline" style="cursor:pointer;" onclick="goToVenueInfoTab()" title="会場情報タブへ">${escapeHtml(ev.Location)}</span>` : emptyCell('wz-ev-location')}</td></tr>
             ${!isMeeting ? `<tr><th>対象・人数</th><td>${ev.Audience ? escapeHtml(ev.Audience) : emptyCell('wz-ev-audience')}</td></tr>` : ''}
-            <tr class="series-detail-group" data-g="schedule"><th colspan="2">日程</th></tr>
+            ${groupRow('schedule', '日程', 'wz-ev-time-start')}
             <tr><th>日にち</th><td>${dateStr}${isUpcoming ? ' <span class="occ-badge occ-upcoming">開催予定</span>' : ''}</td></tr>
             <tr><th>時間</th><td>${ev.TimeStart && ev.TimeEnd ? timeStr : emptyCell('wz-ev-time-start')}</td></tr>
             ${!isMeeting ? `<tr><th>集合・解散</th><td>${gatherDismiss}</td></tr>` : ''}
             ${!isMeeting ? `
-            <tr class="series-detail-group" data-g="transport"><th colspan="2">荷物運搬</th></tr>
+            ${groupRow('transport', '荷物運搬', 'wz-ev-transport')}
             <tr><th>運搬方法</th><td>${ev.TransportMethod ? escapeHtml(ev.TransportMethod) : emptyCell('wz-ev-transport')}</td></tr>
             <tr><th>運転者</th><td>${personChipsHtml(ev.TransportDriver) || emptyCell('wz-ev-driver')}</td></tr>
             <tr><th>同乗者</th><td>${personChipsHtml(ev.TransportPassengers) || emptyCell('wz-ev-passenger')}</td></tr>` : ''}
             ${!isMeeting ? `
-            <tr class="series-detail-group" data-g="content"><th colspan="2">実験内容・発表者</th></tr>
+            ${groupRow('content', '実験内容・発表者', 'wz-ev-exp-container')}
             <tr><td colspan="2">${expHtml}</td></tr>` : ''}
-            <tr class="series-detail-group" data-g="notes"><th colspan="2">${isMeeting ? '議題・資料' : '備考'}</th></tr>
+            ${groupRow('notes', isMeeting ? '議題・資料' : '備考', 'wz-ev-remarks')}
             <tr><td colspan="2">${notesHtml || emptyCell('wz-ev-remarks')}</td></tr>
             ${isMeeting ? `<tr><th>関連資料</th><td>${detailFilesHtml(ev, 'MeetingDocs', true)}</td></tr>
             <tr><th>議事録</th><td>${detailFilesHtml(ev, 'Minutes', false)}</td></tr>` : ''}
-            ${!isMeeting ? `<tr class="series-detail-group" data-g="docs"><th colspan="2">書類</th></tr>
+            ${!isMeeting ? `${groupRow('docs', '書類', 'wz-ev-admin-kyoka')}
             <tr><td colspan="2">${docsHtml}${docFilesHtml}</td></tr>
             <tr class="series-detail-group" data-g="after"><th colspan="2">イベント後に対応</th></tr>
             <tr class="detail-lv1"><th>来場者</th><td><input type="number" min="0" class="e1-input post-event-input" data-pe-field="VisitorCount"
@@ -1630,10 +1489,4 @@ function activateSeriesTab(name) {
 // 「場所」の値タップで会場タブへ（住所・連絡先・緊急連絡先はそちらにまとまっている）
 function goToVenueInfoTab() {
     activateSeriesTab('venue');
-}
-
-// ====== 新規イベント作成（予定一覧の「種類選択」ダイアログを開く） ======
-
-function goToNewEvent() {
-    location.href = 'events.html?action=new';
 }
