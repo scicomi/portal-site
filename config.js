@@ -104,7 +104,7 @@ const CONFIG = {
   // ===== ナビゲーション =====
   NAV_ITEMS: [
     { href: 'index.html',        label: 'ホーム',       page: 'home' },
-    { href: 'events.html',       label: '予定',         page: 'events' },
+    { href: 'events.html',       label: 'イベント',       page: 'events' },
     { href: 'members.html',      label: 'メンバー',     page: 'members' },
     { href: 'experiments.html', label: '実験ネタ',   page: 'experiments' },
     { href: 'bot.html',         label: 'AI検索',     page: 'bot', feature: 'BOT' },

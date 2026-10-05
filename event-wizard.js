@@ -768,7 +768,7 @@ function openEventWizard(editId, template, focusId, restored) {
     overlay.innerHTML = `
         <div class="wizard-panel" role="dialog" aria-modal="true" style="max-width:560px;">
             <div class="wizard-header">
-                <h2 class="wizard-title">${isEdit ? 'イベントを編集' : '予定を複製して追加'}</h2>
+                <h2 class="wizard-title">${isEdit ? 'イベントを編集' : 'イベントを複製して追加'}</h2>
                 <p class="wizard-subtitle">${isEdit ? escapeHtml(e.Title || '') : `「${escapeHtml((template || e).Title || '(無題)')}」の内容を引き継いで作成します`}</p>
             </div>
             <div class="wizard-progress">

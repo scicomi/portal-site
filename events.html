@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
     <script src="theme-init.js"></script>
-    <title>予定 | SciComi Site</title>
+    <title>イベント | SciComi Site</title>
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
@@ -25,11 +25,11 @@
         <!-- 一覧(?event= も ?key= も無いとき) -->
         <div id="events-list-view">
         <div class="page-header">
-            <h1 class="page-title">予定</h1>
+            <h1 class="page-title">イベント</h1>
             <div class="ev-search-row">
                 <div class="search-box" role="search">
                     <input id="event-search" class="search-input" type="search" placeholder="イベント名・企画名・場所で検索"
-                        title="ショートカット: / キーで検索欄へ" aria-label="予定を検索"
+                        title="ショートカット: / キーで検索欄へ" aria-label="イベントを検索"
                         role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="event-search-suggest"
                         autocomplete="off">
                     <ul id="event-search-suggest" class="search-suggest" role="listbox" aria-label="検索候補" hidden></ul>
@@ -56,7 +56,7 @@
                     </div>
                 </div>
             </div>
-            <button class="btn btn-primary page-new-btn" onclick="openNewEventModal()" title="ショートカット: n キー">＋ 予定を追加</button>
+            <button class="btn btn-primary page-new-btn" onclick="openNewEventModal()" title="ショートカット: n キー">＋ イベントを追加</button>
         </div>
 
         <div class="event-list-top">
@@ -94,7 +94,7 @@
         <!-- ===== シリーズ詳細モード ===== -->
         <div id="series-view" class="hidden">
             <div style="margin-bottom: 16px; display:flex; gap:16px;">
-                <a href="events.html" class="back-link">&larr; 予定一覧へ</a>
+                <a href="events.html" class="back-link">&larr; イベント一覧へ</a>
             </div>
 
             <div id="series-loading" class="loading-text">読み込み中</div>
@@ -160,7 +160,7 @@
     </main>
 
     <!-- FAB -->
-    <button class="fab" id="events-fab" onclick="openNewEventModal()" aria-label="予定を追加"><span class="fab-icon">＋</span>予定を追加</button>
+    <button class="fab" id="events-fab" onclick="openNewEventModal()" aria-label="イベントを追加"><span class="fab-icon">＋</span>イベントを追加</button>
 
     <script src="config.js"></script>
     <script src="api.js"></script>

@@ -555,7 +555,7 @@ function renderVoteReminder(events, members, votes, memberId) {
     const first = pending[0];
     const textEl = document.getElementById('vote-reminder-text');
     const linkEl = document.getElementById('vote-reminder-link');
-    textEl.textContent = `出欠が未回答の予定が${pending.length}件あります`;
+    textEl.textContent = `出欠が未回答のイベントが${pending.length}件あります`;
     linkEl.href = `events.html?event=${encodeURIComponent(first.ID)}&vote=1`;
     banner.classList.remove('hidden');
 }

@@ -226,7 +226,7 @@ async function init() {
         suggestSources: eventSuggestSources,
         historyKey: 'events',
         helpShortcuts: [
-            ['n', '新しい予定を追加'],
+            ['n', '新しいイベントを追加'],
             ['Ctrl+S', '編集モーダルの保存']
         ]
     });
@@ -535,7 +535,7 @@ function renderEvents() {
 
     let periodLabel = '今後の予定';
     if (filterState.period.startsWith('fy_')) {
-        periodLabel = filterState.period.slice(3) + '年度の予定';
+        periodLabel = filterState.period.slice(3) + '年度のイベント';
     }
     // 絞り込みパネルを閉じていても今の条件が分かるよう、カテゴリも見出しに出す
     const catChip = filterState.category !== 'all' ? document.querySelector(`.filter-chip[data-cat="${filterState.category}"]`) : null;
@@ -554,11 +554,11 @@ function renderEvents() {
         const hint = hasNarrowing
             ? '検索キーワードやカテゴリの絞り込みを変更してみてください'
             : (filterState.period === 'upcoming' && eventsData.length > 0
-                ? '年度を選択すると過去の予定を確認できます'
+                ? '年度を選択すると過去のイベントを確認できます'
                 : '');
         tbody.innerHTML = `<tr><td colspan="5" class="empty-state">
             <span class="empty-icon">&#x1F4C5;</span>
-            <div class="empty-text">該当する予定はありません</div>
+            <div class="empty-text">該当するイベントはありません</div>
             ${hint ? `<div class="empty-hint">${hint}</div>` : ''}
         </td></tr>`;
         populateVoteMemberSelector();
@@ -621,9 +621,9 @@ function renderEvents() {
                 <td>${voteBadge}</td>
                 <td data-action-cell>
                     <div class="inline-actions">
-                        <button class="inline-action-btn" data-action="duplicate" aria-label="「${escapeAttr(displayTitle)}」を複製" title="この予定を複製して新規作成">複製</button>
-                        <button class="inline-action-btn" data-action="edit" aria-label="「${escapeAttr(displayTitle)}」を編集" title="この予定を編集">編集</button>
-                        <button class="inline-action-btn danger" data-action="delete" aria-label="「${escapeAttr(displayTitle)}」を削除" title="この予定を削除">削除</button>
+                        <button class="inline-action-btn" data-action="duplicate" aria-label="「${escapeAttr(displayTitle)}」を複製" title="このイベントを複製して新規作成">複製</button>
+                        <button class="inline-action-btn" data-action="edit" aria-label="「${escapeAttr(displayTitle)}」を編集" title="このイベントを編集">編集</button>
+                        <button class="inline-action-btn danger" data-action="delete" aria-label="「${escapeAttr(displayTitle)}」を削除" title="このイベントを削除">削除</button>
                     </div>
                 </td>
             </tr>
@@ -642,7 +642,7 @@ function startNewEventBlank() {
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
         <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="cat-modal-title">
-            <h2 id="cat-modal-title">予定の種類を選択</h2>
+            <h2 id="cat-modal-title">イベントの種類を選択</h2>
             <div class="category-buttons">
                 <button class="btn btn-category cat-normal-btn" data-cat="normal">新規イベント</button>
                 <button class="btn btn-category cat-normal-btn" data-existing="1">既存イベント</button>
@@ -764,7 +764,7 @@ function openQuickCreate(category) {
     overlay.innerHTML = `
         <div class="wizard-panel" role="dialog" aria-modal="true" style="max-width:480px;">
             <div class="wizard-header">
-                <h2 class="wizard-title">予定を追加</h2>
+                <h2 class="wizard-title">イベントを追加</h2>
                 <p class="wizard-subtitle">まず枠だけ登録できます。${isMeeting ? '' : '実験・担当などの詳細はあとから追記できます。'}</p>
             </div>
             <div class="wizard-body">
