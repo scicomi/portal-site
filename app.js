@@ -912,19 +912,33 @@ function bindNavGroups(header) {
     });
     return opened;
   };
+  const hoverable = window.matchMedia('(hover: hover) and (pointer: fine)');
   header.querySelectorAll('.nav-group').forEach(g => {
     const btn = g.querySelector('.nav-group-btn');
     const menu = g.querySelector('.nav-menu');
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      const open = menu.classList.contains('hidden');
+    const openMenu = () => {
       closeAll();
-      if (!open) return;
       const r = btn.getBoundingClientRect();
       menu.classList.remove('hidden');
       menu.style.top = r.bottom + 'px';
       menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
       btn.setAttribute('aria-expanded', 'true');
+    };
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (menu.classList.contains('hidden')) openMenu(); else closeAll();
+    });
+    // PC(マウス)では、乗せるだけで開き、離れると少し待ってから閉じる。メニューは .nav-group の子なので、ボタンからメニューへ動かしても閉じない
+    let closeTimer = null;
+    g.addEventListener('mouseenter', () => {
+      if (!hoverable.matches) return;
+      clearTimeout(closeTimer);
+      if (menu.classList.contains('hidden')) openMenu();
+    });
+    g.addEventListener('mouseleave', () => {
+      if (!hoverable.matches) return;
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(closeAll, 200);
     });
   });
   if (!header._navCloseBound) {
