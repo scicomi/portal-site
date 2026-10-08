@@ -428,7 +428,6 @@ function openExpWizard(editId, restored) {
         ev.preventDefault();
         wizardNext();
     });
-    setTimeout(() => document.getElementById('wz-ex-name')?.focus(), 80);
 }
 
 function closeExpWizard() {
@@ -484,11 +483,6 @@ function wizardNext() {
     if (wizardStep < total - 1) {
         wizardStep++;
         updateWizardUI();
-        const step = document.querySelector('#exp-wizard-overlay .wizard-step.active');
-        if (step) {
-            const firstInput = step.querySelector('input, textarea, select');
-            if (firstInput) setTimeout(() => firstInput.focus(), 100);
-        }
     } else {
         saveExp();
     }

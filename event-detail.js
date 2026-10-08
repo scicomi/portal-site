@@ -269,7 +269,15 @@ function renderOccPicker() {
         const label = `${n}回目　${compactOccDate(e.Date)}(${dayOfWeekJP(e.Date)})${up ? '・開催予定' : ''}`;
         return `<option value="${escapeAttr(e.ID)}" ${e.ID === currentEvent().ID ? 'selected' : ''}>${escapeHtml(label)}</option>`;
     }).join('');
-    box.innerHTML = `<select class="occ-select" aria-label="開催回を選ぶ" data-change-action="es-select-occ">${options}</select>`;
+    // 前（日付が古い側）・次（新しい側）の開催回へ移るボタン。端では無効にする
+    const idx = asc.findIndex(x => x.ID === currentEvent().ID);
+    const prev = asc[idx - 1], next = asc[idx + 1];
+    const navBtn = (target, dir, arrow, label) => `<button type="button" class="occ-nav-btn" ${target ? `data-action="es-select-occ" data-id="${escapeAttr(target.ID)}" title="${label}（${escapeAttr(compactOccDate(target.Date))}）"` : 'disabled'} aria-label="${label}の開催回へ">${arrow}</button>`;
+    box.innerHTML = `<div class="occ-picker-row">
+        ${navBtn(prev, 'prev', '&#8249;', '前')}
+        <select class="occ-select" aria-label="開催回を選ぶ" data-change-action="es-select-occ">${options}</select>
+        ${navBtn(next, 'next', '&#8250;', '次')}
+    </div>`;
 }
 
 // タブ直下の対象範囲バー。「シリーズ全体」を見ているときだけ、全何回を対象にしているかを示す
@@ -502,6 +510,15 @@ function detailFileLinkHtml(f, i) {
 
 // 書類ファイル（依頼書など・1 ファイル）: 「依頼書」という名前の小さな枠。
 // 空なら点線の枠（押す／ドロップで追加できそうな見た目）、あれば実線の枠にファイル名と 差し替え・削除。
+// 提出済みの枠は書類名そのものをリンクにする（ファイル名は出さない。名前はツールチップだけ）
+function docSlotLabelHtml(f, label) {
+    const url = safeHttpUrl(f.url);
+    const title = escapeAttr(f.name || label);
+    return url
+        ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="doc-slot-label doc-slot-link" title="${title}を開く">${label}</a>`
+        : `<span class="doc-slot-label" title="リンク切れ">${label}（リンク切れ）</span>`;
+}
+
 function docSlotHtml(ev, field) {
     const label = DETAIL_FILE_LABELS[field];
     const f = (Array.isArray(ev[field]) ? ev[field] : [])[0];
@@ -513,8 +530,7 @@ function docSlotHtml(ev, field) {
     }
     return `<div class="doc-slot is-filled" data-drop-field="${field}">
         <span class="doc-slot-icon" aria-hidden="true">&#10003;</span>
-        <span class="doc-slot-label">${label}</span>
-        ${detailFileLinkHtml(f, 0)}
+        ${docSlotLabelHtml(f, label)}
         <button type="button" class="doc-slot-btn" data-action="es-file-pick" title="ファイルをドロップ、またはクリックで差し替え" aria-label="${label}を差し替え">&#8635;</button>
         <button type="button" class="doc-slot-btn" data-action="es-file-remove" data-field="${field}" data-index="0" title="削除" aria-label="${label}を削除">&times;</button>
         ${fileInputHtml(field, false)}</div>`;

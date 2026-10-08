@@ -3877,8 +3877,27 @@ button.person-chip.is-link:focus-visible { outline: 2px solid var(--primary-colo
 }
 .doc-slot.is-empty { border-style: dashed; color: var(--text-tertiary); background: transparent; }
 .doc-slot.is-empty:hover, .doc-slot.is-empty:focus-within { border-color: var(--primary-light); color: var(--primary-color); background: var(--primary-subtle); }
-.doc-slot.is-filled { border-color: var(--success-color); background: light-dark(#f0fdf4, #12301f); }
-.doc-slot.is-filled .doc-slot-icon { color: #16a34a; font-weight: 700; }
+.doc-slot.is-filled { border-color: var(--success-color); background: light-dark(#f0fdf4, #12301f); padding: 4px 6px 4px 12px; gap: 4px; }
+.doc-slot.is-filled .doc-slot-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; margin-right: 2px; border-radius: 50%;
+    background: #16a34a; color: #fff; font-size: 0.7rem; font-weight: 700;
+}
+.doc-slot-link { color: inherit; text-decoration: none; }
+.doc-slot-link:hover { color: var(--primary-color); text-decoration: underline; text-underline-offset: 3px; }
+.doc-slot.is-filled .doc-slot-btn { border-radius: 50%; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.doc-slot.is-filled .doc-slot-btn:hover { background: light-dark(rgba(0,0,0,0.07), rgba(255,255,255,0.12)); }
+
+/* 開催回の選択: 前・次の開催回へ移るボタン */
+.occ-picker-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.occ-nav-btn {
+    width: 36px; height: 36px; border-radius: var(--radius-full); box-sizing: border-box;
+    border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-primary);
+    font-size: 1.3rem; line-height: 1; cursor: pointer; padding: 0 0 2px;
+}
+.occ-nav-btn:hover:not(:disabled) { border-color: var(--primary-light); color: var(--primary-color); background: var(--primary-subtle); }
+.occ-nav-btn:disabled { opacity: 0.35; cursor: default; }
+.occ-nav-btn:focus-visible { outline: 3px solid var(--primary-color); outline-offset: 2px; }
 .doc-slot-main { all: unset; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .doc-slot-main:focus-visible, .doc-slot-inline:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; border-radius: var(--radius-full); }
 .doc-slot-inline { cursor: pointer; }

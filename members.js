@@ -476,7 +476,6 @@ function openMemberWizard(editId, restored) {
         ev.preventDefault();
         mbWizardNext();
     });
-    setTimeout(() => document.getElementById('wz-mb-student-id')?.focus(), 80);
 }
 
 function closeMemberWizard() {
@@ -538,11 +537,6 @@ function mbWizardNext() {
     if (mbWizardStep < total - 1) {
         mbWizardStep++;
         updateMbWizardUI();
-        const step = document.querySelector('#mb-wizard-overlay .wizard-step.active');
-        if (step) {
-            const firstInput = step.querySelector('input, textarea, select');
-            if (firstInput) setTimeout(() => firstInput.focus(), 100);
-        }
     } else {
         saveMember();
     }

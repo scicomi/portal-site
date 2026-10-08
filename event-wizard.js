@@ -796,10 +796,7 @@ function openEventWizard(editId, template, focusId, restored) {
     // 初期値の流し込み（時間セレクト・日付ピッカー・タグ入力）が終わった後に呼ぶこと。
     bindEditDismissGuard(overlay, closeEventWizard);
 
-    setTimeout(() => {
-        const firstInput = overlay.querySelector('.wizard-step.active input:not([type="hidden"]), .wizard-step.active textarea, .wizard-step.active select');
-        if (firstInput) firstInput.focus();
-    }, 80);
+    // 欄の自動選択はしない（ペンボタンなどで欄を指定されたときだけ、その欄へ移る）
     if (focusId) setTimeout(() => focusEvWizardField(overlay, focusId), 160);
 }
 
@@ -911,11 +908,6 @@ function evWizardGoto(n) {
     if (n < 0 || n >= steps.length || n === evWizardStep) return;
     evWizardStep = n;
     updateEvWizardUI();
-    const step = document.querySelector('#ev-wizard-overlay .wizard-step.active');
-    if (step) {
-        const fi = step.querySelector('input:not([type="hidden"]):not([type="file"]):not(.tag-input-field), textarea, select');
-        if (fi) setTimeout(() => fi.focus(), 100);
-    }
 }
 
 function evWizardNext() {
@@ -944,11 +936,6 @@ function evWizardNext() {
     if (evWizardStep < total - 1) {
         evWizardStep++;
         updateEvWizardUI();
-        const step = document.querySelector('#ev-wizard-overlay .wizard-step.active');
-        if (step) {
-            const fi = step.querySelector('input:not([type="hidden"]):not([type="file"]):not(.tag-input-field), textarea, select');
-            if (fi) setTimeout(() => fi.focus(), 100);
-        }
     } else {
         saveEventFromWizard();
     }

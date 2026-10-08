@@ -837,10 +837,6 @@ function openQuickCreate(category) {
     // 初期値の流し込みが終わった後に呼ぶこと（スナップショット基準がずれるため）。
     bindEditDismissGuard(overlay, closeQuickCreate);
 
-    setTimeout(() => {
-        const firstInput = overlay.querySelector('#qc-title, #qc-meeting-num');
-        if (firstInput) firstInput.focus();
-    }, 80);
 }
 
 // 保存の通信中は、キャンセル・Esc で閉じない(閉じるとアップロード済みの関連資料を消すので、保存が成功したとき、消えたファイルを参照するイベントができる)
