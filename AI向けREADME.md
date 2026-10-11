@@ -49,7 +49,7 @@ D1（データ・SQLite） ／ R2（ファイル・毎日のバックアップ�
 | 場所 | 内容 |
 |---|---|
 | `config.js` | **フロントの設定の一元管理**。カテゴリ・色・期限ルール・API URL |
-| `api.js` / `app.js` | 通信レイヤー / 共通ロジック。スクリプトの読み込み順は `config.js → api.js → app.js → 各ページ.js`（**変えない**） |
+| `api.js` / `app.js` | 通信レイヤー / 共通ロジック。スクリプトの読み込み順は `config.js → api.js → app.js → pwa.js → 各ページ.js`（**変えない**） |
 | `*.html` と対応する `*.js` | 各ページ |
 | `worker/src/index.js` | API の入口 |
 | `worker/src/tables.js` | **テーブルと列の定義**（`RESOURCES`）。DB の列を増やすとき必ず直す |
@@ -243,3 +243,4 @@ AI にはできない、または任せてはいけない作業。指示する�
   - 通知（トースト）の領域は最初から DOM にあり、失敗は `role="alert"`。文字・枠の色は `style.css` の変数（`--text-muted` など）が、白地で 4.5:1 以上になる濃さにそろえてある。色を足すときは、コントラストを確かめる
 - **ダークテーマ**: 配色は CSS の `light-dark(ライトの色, ダークの色)` で書く(`style.css` の `:root` のトークン、`guide.css`)。新しい色を足すときは両方の値を書く。`<head>` の `theme-init.js` が、端末の設定(自動)かアカウントメニューで選んだ値(`localStorage` の `scicomi_theme`)を `data-theme` に反映する。カテゴリ色(`config.js` の `bg` / `text`)のようにパステルの地と濃い文字をセットで持つ色は、ダークでも固定のまま使う(片方だけ変えると読めなくなる)
 - **プッシュ通知(Web Push)**: 設計は [docs/11_pwa_push_plan.md](docs/11_pwa_push_plan.md)。暗号化と署名は `worker/src/webpush.js`(外部ライブラリなし。RFC 8291 の試験値で `worker/test/webpush.test.mjs` が確かめる)、登録と送信待ちは `worker/src/push.js`。鍵は公開鍵が `wrangler.toml` の `VAPID_PUBLIC_KEY`、秘密鍵が Secret の `VAPID_PRIVATE_KEY`(人が `node scripts/gen-vapid.mjs --remote` で作る。AI は値を扱わない)。公開鍵が空なら通知は無効。`push_subscriptions`・`push_outbox` は `tables.js` にもバックアップにも入れない(宛先 URL を外に出さない。端末が自動で登録し直す)。一般パスワードを変えると、全端末の登録が無効になる(epoch)。無料枠の CPU 10ms に収めるため、1 回に送る件数は `PUSH_BATCH_SIZE`(既定 5)で、残りは 1 分ごとの定期実行が送る。本番で CPU 超過(エラー 1102)が出たら下げる。宛先は配信基盤のホストだけを受け付ける(`push.js` の `ENDPOINT_HOSTS`)
+- **PWA**: `manifest.webmanifest`・`sw.js`・`pwa.js`・`icons/`。新しいページを足すときは、`<head>` に manifest・apple-touch-icon・theme-color の行を、スクリプトに `pwa.js`(`app.js` の直後)を入れる(既存のページからコピーする)。`sw.js` には `fetch` の処理を**入れない**(入れると画面がキャッシュされ、`git push` した変更が利用者に届くのが遅れる)。`sw.js` は `config.js` を `importScripts` するので、`config.js` に `window`・`document` を使う処理を書かない。アイコンは `icon_PWA.png`(白地)から作った。作り直すときは、白地を透明にして、maskable と apple-touch-icon には白い背景を敷く

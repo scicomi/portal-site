@@ -106,6 +106,8 @@ portal-site/
 │   event-detail.js / event-wizard.js / event-fields.js / passwords.js /
 │   settings.js / trash.js / guide.js / guide-blocks.js / bot.js /
 │   search.js / vote-widget.js              # ページごとのロジック
+├── pwa.js / sw.js / manifest.webmanifest   # PWA(ホーム画面に追加・プッシュ通知)。sw.js は画面をキャッシュしない
+├── icons/            # PWA のアイコン(元画像は icon_PWA.png)
 ├── worker/            # ★バックエンド（Cloudflare Workers）
 │   ├── src/           #   API本体
 │   ├── migrations/    #   D1 のテーブル定義（SQL）
@@ -116,7 +118,7 @@ portal-site/
 ```
 
 > **スクリプトの読み込み順**は全ページ共通で
-> `config.js → api.js → app.js → 各ページ.js`。
+> `config.js → api.js → app.js → pwa.js → 各ページ.js`。
 > config.js が他の全てより先に読まれる前提なので、この順序は変えないこと。
 
 ### 拡張するときはまず config.js
