@@ -14,7 +14,7 @@ PBKDF2_ITERATIONS = "100000"
 GEMINI_ENABLED = "false"
 # プッシュ通知(Web Push)の公開鍵(秘密ではない)。秘密鍵は Secret の VAPID_PRIVATE_KEY。
 # 作り方: node scripts/gen-vapid.mjs --remote(秘密鍵は画面に出さず Secret に登録し、公開鍵だけを表示する)。空なら通知は無効
-VAPID_PUBLIC_KEY = ""
+VAPID_PUBLIC_KEY = "BLzG1xbX4m_8AHiIqkTuxuhA8JVaWpOk1QMjCVlF4SrDqI5dbVUcPgRQxWc9TtQ96gYSOFbRIJH1V2UaOO249KI"
 # 配信基盤(Apple・Google など)が、送り方に問題があったときに運営者へ連絡する先
 VAPID_SUBJECT = "mailto:sc.tokai@gmail.com"
 # 1 回の実行で送る通知の件数。無料枠の CPU 10ms に収める(1 件あたり約 1〜1.5ms)。CPU 超過のエラーが出たら下げる
