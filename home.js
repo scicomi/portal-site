@@ -37,7 +37,6 @@ async function init() {
         experiments: cachedEx ? cachedEx.items : []
     });
     renderWelcome();
-    renderPushInviteCard();   // pwa.js
     renderSiteLinks();
 
     updateSyncStatus(cachedEv ? 'cached' : 'initial-loading', cachedEv ? cachedEv.timestamp : null);

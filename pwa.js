@@ -4,7 +4,8 @@
  * - Service Worker（sw.js）の登録（ページを開いたら、ログインの有無に関係なく）
  * - 通知のオン・オフ（ボタンの操作の中で許可を求める。iPhone はホーム画面に追加したアプリの中だけ）
  * - 登録の送り直し（1 日 1 回、ログインし直したとき、名前を変えたとき。サーバーの鍵が変わったら登録し直す）
- * - ホームの「スマホに通知を受け取る」カード（renderPushInviteCard。home.js が呼ぶ）
+ * - ホームの「スマホに通知を受け取る」カード（renderPushInviteCard）。メンバーへの発表までは出さない（index.html に
+ *   <div id="push-invite-card" class="exp-recruit-card hidden"></div> を置き、home.js の init から呼ぶと出る）
  * - 通知の設定のモーダル（showPushSettingsModal。アカウントメニューから開く）
  */
 
