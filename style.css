@@ -3356,6 +3356,41 @@ textarea:focus {
     word-break: break-word;
 }
 
+/* 1 人 1 件ずつ並べる振り返り（書いた人の名前つき。自分の記入だけ編集・削除できる） */
+.sfb-lines { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sfb-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; }
+.sfb-line-text { color: var(--text-primary); line-height: 1.55; white-space: pre-wrap; word-break: break-word; min-width: 0; }
+.sfb-author { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; }
+.sfb-line-actions { margin-left: auto; display: inline-flex; gap: 2px; }
+.sfb-line-btn {
+    border: 0;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    min-width: 32px;
+    min-height: 32px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+.sfb-line-btn:hover { color: var(--primary-color); background: var(--border-subtle); }
+@media (hover: none) { .sfb-line-btn { min-width: var(--touch-min); min-height: var(--touch-min); } }
+
+.fb-author-row, .exp-fb-row.fb-author-row { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; text-align: left; gap: 8px; margin-top: 12px; }
+.exp-fb-row.fb-author-row label { width: auto; padding-top: 0; }
+.fb-author-row .e1-input { width: auto; max-width: 100%; }
+.fb-author-label { font-size: 0.85rem; color: var(--text-secondary); }
+.fb-author-row .btn-link {
+    border: 0;
+    background: none;
+    padding: 0 4px;
+    min-height: 32px;
+    color: var(--primary-color);
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: 0.8rem;
+}
+@media (hover: none) { .fb-author-row .btn-link { min-height: var(--touch-min); } }
+
 .sfb-event-link {
     margin-left: auto;
     font-size: 0.75rem;

@@ -440,13 +440,13 @@ function renderFeedbackPending(events) {
     const container = document.getElementById('feedback-pending');
     if (!container) return;
     const today = todayISO();
-    const cutoff = addDaysISO(todayISO(), -14);
+    // 終了した日から 5 日間は、書いた人がいても「振り返りを記入」に出す（みんなが書けるように。書いたかどうかでは消さない）
+    const cutoff = addDaysISO(today, -5);
     const pending = (events || [])
         .filter(e => {
             if (isMeetingCategory(e.Category)) return false;
             const endDate = e.DateEnd || e.Date;
-            if (!endDate || endDate >= today || endDate < cutoff) return false;
-            return !(e.Positives || '').trim() && !(e.Reflections || '').trim();
+            return !!endDate && endDate <= today && endDate >= cutoff;
         })
         .sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
     setActionTotal(container, pending.length);
@@ -456,7 +456,7 @@ function renderFeedbackPending(events) {
         return `<li data-action="home-goto" data-href="${escapeAttr(url)}" style="cursor:pointer;">
             <span class="dl-date">${shortDate(e.Date)}</span>
             <span class="dl-title"><a href="${url}" class="report-event-link">${escapeHtml(e.Title || '(無題)')}</a></span>
-            <span class="dl-badge badge-warning">未記入</span>
+            <span class="dl-badge badge-warning">振り返りを記入</span>
         </li>`;
     }).join('');
 }

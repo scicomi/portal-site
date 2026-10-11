@@ -29,6 +29,26 @@ function stringifyFeedbackEntries(entries) {
   return JSON.stringify(entries);
 }
 
+// イベントの振り返り(events の Positives / Reflections)は、1 人 1 件の JSON 配列
+// ({ id, text, memberId, name, createdAt })。以前の「1 つの文章」は、名前なしの 1 件として読む。
+function parseEventFeedback(raw) {
+  if (Array.isArray(raw)) return raw;
+  const s = typeof raw === 'string' ? raw.trim() : '';
+  if (!s) return [];
+  if (s.startsWith('[')) {
+    try {
+      const entries = JSON.parse(s);
+      if (Array.isArray(entries)) return entries;
+    } catch (_) { /* 「[」で始まる普通の文章。下で 1 件として扱う */ }
+  }
+  return [{ id: 'fb_legacy', text: s, memberId: '', name: '' }];
+}
+
+// 振り返りの本文だけを「・」付きの行にして返す(AI への入力などの、文章が欲しいとき用)
+function eventFeedbackText(raw) {
+  return parseEventFeedback(raw).map(e => '・' + String(e.text || '').trim()).filter(s => s.length > 1).join('\n');
+}
+
 function getFiscalYear(dateStr) {
   if (!dateStr) return null;
   const parts = dateStr.split('-').map(Number);
@@ -295,6 +315,7 @@ function _cloneEventVal(v) {
 //   opts.onSaved(ev, saved)      … 保存成功時
 //   opts.onRollback(ev, err)     … 失敗でロールバックした後（再描画）。err は失敗の原因（isConflictError で判定できる）
 //   opts.onConflict()            … 競合時（再読み込み）
+//   opts.silentConflict          … true なら競合のトースト・onConflict を出さない（onRollback の err で判定して再試行する用）
 //   opts.persist()               … ローカルキャッシュへの書き戻し（更新・ロールバックのたびに呼ぶ）
 //   opts.successMessage / successDuration / conflictDuration … トースト
 // 応答待ちの間に積まれた patch は 1 回の送信にまとめる。失敗した場合は、そのイベントで未確定の
@@ -352,8 +373,11 @@ async function _drainEventPatches(id) {
     if (opts.persist) opts.persist();
     all.forEach(j => { if (j.opts.onRollback) j.opts.onRollback(ev, e); });
     if (isConflictError(e)) {
-      toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', opts.conflictDuration || 4000);
-      if (opts.onConflict) opts.onConflict();
+      // silentConflict: 呼び出し側が最新を読み直して再試行するので、トーストも再読み込みもしない
+      if (!opts.silentConflict) {
+        toast('他の人がこのイベントを編集しました。最新を読み込みます。', 'error', opts.conflictDuration || 4000);
+        if (opts.onConflict) opts.onConflict();
+      }
     } else {
       toast('保存失敗: ' + humanizeApiError(e), 'error');
     }

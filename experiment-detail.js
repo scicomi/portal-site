@@ -323,6 +323,7 @@ function renderFeedbackEntry(f) {
                 <span class="fb-icon">${icon}</span>
                 <span class="fb-label">${label}</span>
                 ${eventLink}
+                ${f.name ? `<span class="fb-event-tag fb-general">${escapeHtml(f.name)}</span>` : ''}
                 <span class="fb-date">${escapeHtml(dateStr)}</span>
                 <button class="fb-del-btn" data-action="expd-del-feedback" data-id="${escapeAttr(f.id || '')}" data-type="${escapeAttr(f.type || '')}" title="削除">&#10005;</button>
             </div>

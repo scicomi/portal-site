@@ -209,6 +209,11 @@ function renderAll() {
     updateScopeBadges();
     if (!isMtg) {
         renderFeedbackTimeline();
+        // 振り返りタブを開いたまま最新が届いたとき（キャッシュ表示のあとの再描画・競合後の再読み込み）も、記入欄と表示を最新にする。書きかけは保たれる
+        if (document.querySelector('.scope-tab.active')?.dataset.tab === 'reflection') {
+            renderReflectionTab();
+            renderResultsTab();
+        }
     }
 
     if (autoEditEventId) {
@@ -1043,11 +1048,90 @@ function renderAttendanceListBody() {
 
 // ---- 振り返り記入サブタブ ----
 
+// 書きかけの入力(開催回ごと)。タブの切り替えや再読み込みで描き直しても、入力が消えないように、
+// 描き直す直前に画面から読み取って、描いたあとに戻す。保存できた欄は保存時に空にするので、戻らない
+const reflectionDrafts = {};
+let fbAuthorChanging = false;   // 記入者を「変更」中(名前の選択欄を出す)
+
+function captureReflectionDraft() {
+    const box = document.getElementById('series-reflection-entry');
+    const id = box && box.dataset.evId;
+    if (!id) return;
+    const val = sel => (box.querySelector(sel) || {}).value || '';
+    const draft = { pos: val('#series-fb-positives'), ref: val('#series-fb-reflections'), author: val('#series-fb-author'), exp: {} };
+    box.querySelectorAll('#series-exp-feedback .exp-fb-card').forEach(card => {
+        draft.exp[card.dataset.expName] = {
+            pos: (card.querySelector('.exp-fb-positive') || {}).value || '',
+            ref: (card.querySelector('.exp-fb-reflection') || {}).value || ''
+        };
+    });
+    reflectionDrafts[id] = draft;
+}
+
+function restoreReflectionDraft(box, evId) {
+    const d = reflectionDrafts[evId];
+    if (!d) return;
+    const setVal = (sel, v, root) => { const el = (root || box).querySelector(sel); if (el && v) el.value = v; };
+    const openCard = card => {
+        const head = card.querySelector('.detail-toggle-header');
+        const body = card.querySelector('.exp-fb-card-body');
+        if (!head || !body) return;
+        body.classList.remove('hidden');
+        head.setAttribute('aria-expanded', 'true');
+        head.querySelector('.detail-toggle-icon').innerHTML = '&#9660;';
+    };
+    setVal('#series-fb-positives', d.pos);
+    setVal('#series-fb-reflections', d.ref);
+    setVal('#series-fb-author', d.author);
+    if (d.pos || d.ref) openCard(box.querySelector('#series-fb-positives').closest('.exp-fb-card'));
+    box.querySelectorAll('#series-exp-feedback .exp-fb-card').forEach(card => {
+        const e = d.exp[card.dataset.expName];
+        if (!e || (!e.pos && !e.ref)) return;
+        setVal('.exp-fb-positive', e.pos, card);
+        setVal('.exp-fb-reflection', e.ref, card);
+        openCard(card);
+    });
+}
+
+// 記入できるメンバー(退会済みを除く)。名前を選ぶ欄の選択肢
+function feedbackAuthorOptionsHtml() {
+    const list = (membersCache || []).filter(m => m.Name && m.Active !== 'false');
+    return '<option value="">-- 名前を選択 --</option>' +
+        groupMembersByGrade(list).map(g =>
+            `<optgroup label="${escapeAttr(g.label)}">${g.members.map(m => `<option value="${escapeAttr(m.ID)}">${escapeHtml(m.Name)}</option>`).join('')}</optgroup>`
+        ).join('');
+}
+
+// 端末に記憶した「あなたの名前」に当たるメンバー(無い・名簿に居ないなら null)
+function savedFeedbackAuthor() {
+    const id = getSavedVoteMemberId();
+    const m = id && (membersCache || []).find(x => x.ID === id);
+    return m ? { id: m.ID, name: m.Name } : null;
+}
+
+// 記入者の名前の行。名前が未設定、または「変更」中は選択欄、設定済みなら名前だけを見せる
+function feedbackAuthorRowHtml() {
+    const saved = savedFeedbackAuthor();
+    if (saved && !fbAuthorChanging) {
+        return `<div class="exp-fb-row fb-author-row">
+            <span class="fb-author-label">記入者</span>
+            <strong>${escapeHtml(saved.name)}</strong>
+            <button type="button" class="btn-link" data-action="es-fb-change-author">変更</button>
+        </div>`;
+    }
+    return `<div class="exp-fb-row fb-author-row">
+        <label for="series-fb-author">記入者 <span aria-hidden="true">*</span></label>
+        <select class="e1-input" id="series-fb-author" aria-required="true">${feedbackAuthorOptionsHtml()}</select>
+    </div>`;
+}
+
 function renderReflectionTab() {
     const box = document.getElementById('series-reflection-entry');
     if (!box) return;
+    captureReflectionDraft();
     const ev = currentEvent();
-    if (!ev) { box.innerHTML = ''; return; }
+    if (!ev) { box.innerHTML = ''; delete box.dataset.evId; return; }
+    box.dataset.evId = ev.ID;
 
     const isMeeting = isMeetingCategory(ev.Category);
     const parts = normalizeParts(ev.PartsList).filter(p => p.name || (p.presenters && p.presenters.length));
@@ -1083,19 +1167,21 @@ function renderReflectionTab() {
                 <div class="exp-fb-card-body hidden">
                     <div class="exp-fb-row">
                         <label>良かった点</label>
-                        <textarea class="e1-input" id="series-fb-positives" rows="3" placeholder="会場・運営で良かったこと">${escapeHtml(ev.Positives || '')}</textarea>
+                        <textarea class="e1-input" id="series-fb-positives" rows="3" placeholder="会場・運営で良かったこと"></textarea>
                     </div>
                     <div class="exp-fb-row">
                         <label>改善点</label>
-                        <textarea class="e1-input" id="series-fb-reflections" rows="3" placeholder="会場・運営の改善点">${escapeHtml(ev.Reflections || '')}</textarea>
+                        <textarea class="e1-input" id="series-fb-reflections" rows="3" placeholder="会場・運営の改善点"></textarea>
                     </div>
                 </div>
             </div>
+            ${feedbackAuthorRowHtml()}
             <div style="margin-top:12px; text-align:right;">
                 <button id="series-fb-save-btn" class="btn btn-primary-solid" style="width:auto; padding:8px 24px;" onclick="saveDetailFeedback()">保存</button>
             </div>
         </div>
     `;
+    restoreReflectionDraft(box, ev.ID);
 }
 
 // ---- 成果・振り返り表示サブタブ（孫タブ: 会場・運営 / 実験名ごと） ----
@@ -1149,66 +1235,102 @@ function renderResultsPane() {
         : renderExpResultsHtml(resultsGrandTab.slice(4));
 }
 
-// 会場・運営: 開催回ごとの成果（来場者数など）と会場運営の振り返りを新しい順に表示
+// 振り返りを書いた本人(または、名前なしの以前の記入)だけが、編集・削除できる
+function canModifyFeedback(en) {
+    const me = getSavedVoteMemberId();
+    return !en.memberId || (!!me && en.memberId === me);
+}
+
+// 1 人分ずつの行。名前を添え、直せる記入には編集・削除ボタンを付ける(actions を渡したときだけ)
+function feedbackLinesHtml(entries, actions) {
+    return `<span class="sfb-lines">${entries.map(en => `<span class="sfb-line">
+            <span class="sfb-line-text">${escapeHtml(en.text || '')}</span>
+            ${en.name ? `<span class="sfb-author">（${escapeHtml(en.name)}）</span>` : ''}
+            ${actions && canModifyFeedback(en) ? `<span class="sfb-line-actions">
+                <button type="button" class="sfb-line-btn" data-action="es-fb-edit" data-id="${escapeAttr(actions.evId)}" data-field="${actions.field}" data-eid="${escapeAttr(en.id || '')}" aria-label="この振り返りを編集" title="編集">&#9998;</button>
+                <button type="button" class="sfb-line-btn" data-action="es-fb-del" data-id="${escapeAttr(actions.evId)}" data-field="${actions.field}" data-eid="${escapeAttr(en.id || '')}" aria-label="この振り返りを削除" title="削除">&#10005;</button>
+            </span>` : ''}
+        </span>`).join('')}</span>`;
+}
+
+// 「良かった点」「改善点」それぞれ 1 ブロックに、書いた人の分をまとめて並べる
+function feedbackGroupHtml(type, entries, actions) {
+    if (entries.length === 0) return '';
+    const isPos = type === 'positive';
+    return `<div class="sfb-entry ${isPos ? 'sfb-positive' : 'sfb-reflection'}">
+        <span class="sfb-icon">${isPos ? '&#9675;' : '&#9651;'}</span>
+        <span class="sfb-label">${isPos ? '良かった点' : '改善点'}</span>
+        ${feedbackLinesHtml(entries, actions)}
+    </div>`;
+}
+
+const feedbackHasText = en => !!String((en && en.text) || '').trim();
+
+// 会場・運営: 選んでいる開催回の成果（来場者数など）と会場運営の振り返りを表示する。
+// 過去の回の分は、会場タブの「会場運営の振り返り」で全回ぶん見られる
 function renderVenueResultsHtml() {
-    const occs = seriesEvents.slice()
-        .sort((a, b) => (b.Date || '').localeCompare(a.Date || ''))
+    const ev0 = currentEvent();
+    const occs = (ev0 ? [ev0] : [])
         .map(ev => {
-            const pos = (ev.Positives || '').trim();
-            const ref = (ev.Reflections || '').trim();
+            const pos = parseEventFeedback(ev.Positives).filter(feedbackHasText);
+            const ref = parseEventFeedback(ev.Reflections).filter(feedbackHasText);
             const memo = (ev.ResultsMemo || '').trim();
             const visitors = (ev.VisitorCount || '').toString().trim();
             const participants = (ev.ParticipantCount || '').toString().trim();
-            if (!pos && !ref && !memo && !visitors && !participants) return '';
+            if (pos.length === 0 && ref.length === 0 && !memo && !visitors && !participants) return '';
             return `
             <div class="detail-section-card results-occ-card">
                 <div class="results-occ-date">
-                    <button type="button" class="sfb-event-link" data-action="es-open-occ" data-id="${escapeAttr(ev.ID)}">${escapeHtml(ev.Date || '')} (${dayOfWeekJP(ev.Date)})</button>
+                    <span class="sfb-event-link">${escapeHtml(ev.Date || '')} (${dayOfWeekJP(ev.Date)})</span>
                 </div>
                 ${visitors || participants ? `<div class="results-counts">
                     ${visitors ? `<span class="results-count-chip">来場者数 <strong>${escapeHtml(visitors)}</strong> 人</span>` : ''}
                     ${participants ? `<span class="results-count-chip">参加メンバー <strong>${escapeHtml(participants)}</strong> 人</span>` : ''}
                 </div>` : ''}
                 ${memo ? `<div class="results-memo" style="white-space:pre-wrap;">${escapeHtml(memo)}</div>` : ''}
-                ${pos ? `<div class="sfb-entry sfb-positive"><span class="sfb-icon">&#9675;</span><span class="sfb-label">良かった点</span><span class="sfb-text">${escapeHtml(pos)}</span></div>` : ''}
-                ${ref ? `<div class="sfb-entry sfb-reflection"><span class="sfb-icon">&#9651;</span><span class="sfb-label">改善点</span><span class="sfb-text">${escapeHtml(ref)}</span></div>` : ''}
+                ${feedbackGroupHtml('positive', pos, { evId: ev.ID, field: 'Positives' })}
+                ${feedbackGroupHtml('reflection', ref, { evId: ev.ID, field: 'Reflections' })}
             </div>`;
         }).filter(Boolean);
 
     return occs.length > 0
         ? occs.join('')
-        : '<div class="empty-state" style="padding:30px 20px;">会場・運営の成果・振り返りはまだありません<div class="empty-hint">「振り返りを記入」タブから記入できます</div></div>';
+        : '<div class="empty-state" style="padding:30px 20px;">この回の会場・運営の成果・振り返りはまだありません<div class="empty-hint">「振り返りを記入」タブから記入できます</div></div>';
 }
 
-// 実験ごと: 実験レコード（Positives/Reflections 履歴JSON）からこのシリーズ分のみ表示
+// 実験ごと: 実験レコード（Positives/Reflections 履歴JSON）から、選んでいる開催回の分だけをまとめて表示する
+// （ほかの回の分は、実験ページで見られる）
 function renderExpResultsHtml(expName) {
     const exp = experimentsCache.find(e => e.Name === expName);
     if (!exp) {
         return `<div class="empty-state" style="padding:30px 20px;">「${escapeHtml(expName)}」の実験データが見つかりません</div>`;
     }
-    const seriesIds = new Set(seriesEvents.map(e => e.ID));
-    const collect = (raw, type) => parseFeedbackEntries(raw)
-        .filter(en => seriesIds.has(en.eventId))
-        .map(en => ({ ...en, type }));
-    const entries = [
-        ...collect(exp.Positives, 'positive'),
-        ...collect(exp.Reflections, 'reflection')
-    ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const curId = (currentEvent() || {}).ID;
+    const byEvent = new Map();   // 開催回の ID -> { positive: [], reflection: [] }
+    const collect = (raw, type) => parseFeedbackEntries(raw).forEach(en => {
+        if (!feedbackHasText(en) || en.eventId !== curId) return;
+        if (!byEvent.has(en.eventId)) byEvent.set(en.eventId, { positive: [], reflection: [] });
+        byEvent.get(en.eventId)[type].push(en);
+    });
+    collect(exp.Positives, 'positive');
+    collect(exp.Reflections, 'reflection');
 
     const link = `<p style="margin:0 0 12px;"><a class="tbl-link" href="experiment-detail.html?id=${encodeURIComponent(exp.ID)}" style="font-size:0.85rem;">他イベント分も含めた振り返りは実験ページで見る &rarr;</a></p>`;
 
-    if (entries.length === 0) {
-        return link + `<div class="empty-state" style="padding:30px 20px;">このイベントでの「${escapeHtml(expName)}」の振り返りはまだありません<div class="empty-hint">「振り返りを記入」タブから記入できます</div></div>`;
-    }
-    return link + `<div class="detail-section-card">${entries.map(en => {
-        const isPos = en.type === 'positive';
-        return `<div class="sfb-entry ${isPos ? 'sfb-positive' : 'sfb-reflection'}">
-            <span class="sfb-icon">${isPos ? '&#9675;' : '&#9651;'}</span>
-            <span class="sfb-label">${isPos ? '良かった点' : '改善点'}</span>
-            <span class="sfb-text">${escapeHtml(en.text || '')}</span>
-            ${en.eventId ? `<button type="button" class="sfb-event-link" data-action="es-open-occ" data-id="${escapeAttr(en.eventId)}">${escapeHtml(en.date || '')}</button>` : `<span class="sfb-date">${escapeHtml(en.date || '')}</span>`}
+    const cards = seriesEvents.filter(ev => ev.ID === curId && byEvent.has(ev.ID)).map(ev => {
+        const g = byEvent.get(ev.ID);
+        return `<div class="detail-section-card results-occ-card">
+            <div class="results-occ-date">
+                <span class="sfb-event-link">${escapeHtml(ev.Date || '')} (${dayOfWeekJP(ev.Date)})</span>
+            </div>
+            ${feedbackGroupHtml('positive', g.positive)}
+            ${feedbackGroupHtml('reflection', g.reflection)}
         </div>`;
-    }).join('')}</div>`;
+    });
+    if (cards.length === 0) {
+        return link + `<div class="empty-state" style="padding:30px 20px;">この回の「${escapeHtml(expName)}」の振り返りはまだありません<div class="empty-hint">「振り返りを記入」タブから記入できます</div></div>`;
+    }
+    return link + cards.join('');
 }
 
 // ---- 書類ステータス・振り返りの保存（楽観的UI + 競合検知） ----
@@ -1228,29 +1350,204 @@ async function saveDocStatus(id, field, value) {
     }));
 }
 
+// 最新のイベントを取り直して、手元のデータに反映する（保存が競合したときの再試行用）
+async function reloadEventFromServer(id) {
+    try {
+        const list = await api.list('events');
+        const fresh = list.find(e => e.ID === id);
+        const ev = allEventsData.find(e => e.ID === id);
+        if (fresh && ev) {
+            Object.assign(ev, fresh);
+            api.saveCache('events', allEventsData);
+        }
+    } catch (_) { /* 取れなければ、次の保存の失敗として知らせる */ }
+}
+
+// イベントの振り返り（Positives / Reflections）を、最新の内容に対して書き換えて保存する。
+// edits: { 列名: 現在の配列 => 新しい配列 }。ほかの人の保存と競合したら、最新を取り直して書き換え直す（最大 3 回）。
+// 追記・編集・削除のどれも、ほかの人の記入を消さないための入口。保存できたら true
+async function updateEventFeedback(evId, edits) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const ev = allEventsData.find(e => e.ID === evId);
+        if (!ev) return false;
+        const patch = {};
+        Object.keys(edits).forEach(field => {
+            patch[field] = stringifyFeedbackEntries(edits[field](parseEventFeedback(ev[field])));
+        });
+        let conflict = false;
+        const ok = await saveEventPatch(evId, patch, seriesPatchOpts({
+            silentConflict: true,
+            onRollback: (_ev, err) => { if (isConflictError(err)) conflict = true; }
+        }));
+        if (ok) return true;
+        if (!conflict) return false;   // 競合以外の失敗は、saveEventPatch がトーストで知らせている
+        await reloadEventFromServer(evId);
+    }
+    toast('ほかの人の保存と重なり、保存できませんでした。もう一度お試しください。', 'error', 6000);
+    return false;
+}
+
+// 記入・編集・削除のあと、表示だけを描き直す（記入欄は触らない）
+function refreshAfterFeedbackChange() {
+    filterSeries();
+    renderDetail();
+    renderFeedbackTimeline();
+    renderResultsTab();
+}
+
+// 記入する人。名前の選択欄があればそこで選んだ人、無ければ端末に記憶した「あなたの名前」。決まらなければ null
+function resolveFeedbackAuthor() {
+    const sel = document.getElementById('series-fb-author');
+    if (sel) {
+        const m = (membersCache || []).find(x => x.ID === sel.value);
+        return m ? { id: m.ID, name: m.Name, picked: true } : null;
+    }
+    return savedFeedbackAuthor();
+}
+
+registerActions({
+    'es-fb-change-author': () => { fbAuthorChanging = true; renderReflectionTab(); },
+    'es-fb-edit': el => openFeedbackEdit(el.dataset.id, el.dataset.field, el.dataset.eid),
+    'es-fb-del': el => confirmDeleteFeedback(el.dataset.id, el.dataset.field, el.dataset.eid)
+});
+
+function findEventFeedback(evId, field, entryId) {
+    const ev = allEventsData.find(e => e.ID === evId);
+    return ev ? parseEventFeedback(ev[field]).find(x => x.id === entryId) : undefined;
+}
+
+function openFeedbackEdit(evId, field, entryId) {
+    const en = findEventFeedback(evId, field, entryId);
+    if (!en) { toast('この振り返りは見つかりません（ほかの人が削除した可能性があります）', 'error'); return; }
+    const label = field === 'Positives' ? '良かった点' : '改善点';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal-content" style="max-width:460px;" role="dialog" aria-modal="true" aria-labelledby="fb-edit-title">
+            <h2 id="fb-edit-title" style="margin-top:0;">振り返りを編集（${label}）</h2>
+            <textarea class="e1-input" id="fb-edit-text" rows="5" aria-label="振り返りの内容">${escapeHtml(en.text || '')}</textarea>
+            <div class="action-buttons" style="margin-top:16px;">
+                <button type="button" class="btn btn-secondary" style="width:auto;" data-close>キャンセル</button>
+                <button type="button" class="btn btn-primary-solid" style="width:auto;" id="fb-edit-save">保存</button>
+            </div>
+        </div>`;
+    const close = () => overlay.remove();
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    bindOverlayClose(overlay, close);
+    bindModalEscape(overlay, close);
+    overlay.querySelector('#fb-edit-save').addEventListener('click', async (e) => {
+        const text = overlay.querySelector('#fb-edit-text').value.trim();
+        if (!text) { toast('内容を入力してください（消したいときは削除してください）', 'error'); return; }
+        e.target.disabled = true;
+        const ok = await updateEventFeedback(evId, {
+            [field]: list => list.map(x => x.id === entryId ? { ...x, text, editedAt: new Date().toISOString() } : x)
+        });
+        if (!ok) { e.target.disabled = false; return; }
+        close();
+        refreshAfterFeedbackChange();
+        toast('保存しました', 'success');
+    });
+    document.body.appendChild(overlay);
+    trapFocus(overlay.querySelector('.modal-content'));
+    overlay.querySelector('#fb-edit-text').focus();
+}
+
+function confirmDeleteFeedback(evId, field, entryId) {
+    const en = findEventFeedback(evId, field, entryId);
+    if (!en) { toast('この振り返りは見つかりません（ほかの人が削除した可能性があります）', 'error'); return; }
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-dialog-overlay';
+    overlay.innerHTML = `
+        <div class="confirm-dialog">
+            <h3>振り返りを削除</h3>
+            <p>この振り返りを削除しますか？${en.name ? `（記入者: ${escapeHtml(en.name)}）` : ''}</p>
+            <div class="confirm-dialog-actions">
+                <button type="button" class="btn btn-secondary" data-close>キャンセル</button>
+                <button type="button" class="btn btn-danger" id="confirm-fb-del-btn">削除する</button>
+            </div>
+        </div>`;
+    const close = () => overlay.remove();
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    bindOverlayClose(overlay, close);
+    bindModalEscape(overlay, close);
+    overlay.querySelector('#confirm-fb-del-btn').addEventListener('click', async () => {
+        close();
+        const index = parseEventFeedback((allEventsData.find(e => e.ID === evId) || {})[field]).findIndex(x => x.id === entryId);
+        const ok = await updateEventFeedback(evId, { [field]: list => list.filter(x => x.id !== entryId) });
+        if (!ok) return;
+        refreshAfterFeedbackChange();
+        // 消した振り返りは、一定時間だけ元に戻せる（もとの位置へ戻す）
+        toastUndo('振り返りを削除しました', async () => {
+            const back = await updateEventFeedback(evId, {
+                [field]: list => {
+                    if (list.some(x => x.id === entryId)) return list;
+                    const next = list.slice();
+                    next.splice(Math.min(Math.max(index, 0), next.length), 0, en);
+                    return next;
+                }
+            });
+            if (back) refreshAfterFeedbackChange();
+            return back;   // false ならボタンを残して、もう一度押せる
+        }, () => {}, 8000);
+    });
+    document.body.appendChild(overlay);
+    bindModalEscape(overlay, close);
+    trapFocus(overlay.querySelector('.confirm-dialog'));
+}
+
+const cardHasFeedbackText = card =>
+    !!((card.querySelector('.exp-fb-positive')?.value || '').trim() || (card.querySelector('.exp-fb-reflection')?.value || '').trim());
+
 async function saveDetailFeedback() {
     const ev = currentEvent();
     if (!ev) return;
+    const evId = ev.ID;
 
-    const positives = document.getElementById('series-fb-positives')?.value || '';
-    const reflections = document.getElementById('series-fb-reflections')?.value || '';
+    const posText = (document.getElementById('series-fb-positives')?.value || '').trim();
+    const refText = (document.getElementById('series-fb-reflections')?.value || '').trim();
+    const hasExp = Array.from(document.querySelectorAll('#series-exp-feedback .exp-fb-card')).some(cardHasFeedbackText);
+    if (!posText && !refText && !hasExp) {
+        toast('書いた内容がありません', 'error');
+        return;
+    }
+    const author = resolveFeedbackAuthor();
+    if (!author) {
+        toast('記入者の名前を選んでください', 'error');
+        document.getElementById('series-fb-author')?.focus();
+        return;
+    }
 
     const saveBtn = document.getElementById('series-fb-save-btn');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
+    const enableBtn = () => { if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; } };
 
-    // 失敗（競合を含む）はヘルパーがトースト表示・ロールバックする。入力欄はそのまま残す
-    const ok = await saveEventPatch(ev.ID, { Positives: positives, Reflections: reflections }, seriesPatchOpts({ conflictDuration: 5000 }));
-    if (!ok) {
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; }
-        return;
+    // 選んだ名前は端末に記憶する（ホームや出欠の「あなたの名前」と同じ）
+    if (author.picked) setSavedVoteMemberId(author.id);
+
+    // 会場・運営: 自分の分を 1 件ずつ追記する（ほかの人の記入は消さない）。失敗（競合を含む）はヘルパーがトースト表示する。入力欄はそのまま残す
+    if (posText || refText) {
+        const stamp = new Date().toISOString();
+        const make = text => ({ id: genFeedbackId(), text, memberId: author.id, name: author.name, createdAt: stamp });
+        const edits = {};
+        if (posText) { const en = make(posText); edits.Positives = list => [...list, en]; }
+        if (refText) { const en = make(refText); edits.Reflections = list => [...list, en]; }
+        const ok = await updateEventFeedback(evId, edits);
+        if (!ok) { enableBtn(); return; }
+        // 保存できた分は空にする（実験側が失敗して「保存」を押し直したとき、二重に追記しないため）
+        const posEl = document.getElementById('series-fb-positives');
+        const refEl = document.getElementById('series-fb-reflections');
+        if (posEl) posEl.value = '';
+        if (refEl) refEl.value = '';
+        filterSeries();
     }
-    filterSeries();
 
     // 実験ごとの振り返りの保存に失敗したら、成功トーストは出さず、入力を残したままエラーを表示する
-    const failures = await saveExperimentFeedbackEntries(ev);
+    const failures = await saveExperimentFeedbackEntries(ev, author);
+    fbAuthorChanging = false;
     if (failures.length > 0) {
-        toast('イベントの振り返りは保存しましたが、実験ごとの振り返りを保存できませんでした（' + failures.join('、') + '）。保存できなかった分の入力は残してあります。', 'error', 8000);
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存'; }
+        toast((posText || refText ? '会場・運営の振り返りは保存しましたが、' : '') + '実験ごとの振り返りを保存できませんでした（' + failures.join('、') + '）。保存できなかった分の入力は残してあります。', 'error', 8000);
+        enableBtn();
         renderFeedbackTimeline();
         renderResultsTab();
         return;
@@ -1266,69 +1563,70 @@ async function saveDetailFeedback() {
 
 // 実験ごとの振り返りを、対応する実験レコード（Positives/Reflections の履歴JSON）へ追記する。
 // 失敗した実験の説明（文字列）の配列を返す。空配列なら全件成功。
-async function saveExperimentFeedbackEntries(eventData) {
+async function saveExperimentFeedbackEntries(eventData, author) {
     const failures = [];
-    const fbCards = document.querySelectorAll('#series-exp-feedback .exp-fb-card');
+    const fbCards = Array.from(document.querySelectorAll('#series-exp-feedback .exp-fb-card')).filter(cardHasFeedbackText);
     if (!fbCards.length) return failures;
 
-    let experiments = (api.loadCache('experiments') || {}).items;
-    if (!experiments) {
-        try {
-            experiments = await api.list('experiments');
-            api.saveCache('experiments', experiments);
-        } catch (e) {
-            return ['実験一覧を取得できません: ' + (e && e.message)];
-        }
+    // 端末のキャッシュは古いことがあり、それに追記すると競合し続けるので、最新の一覧を取り直す（取れなければキャッシュで続ける）
+    let experiments;
+    try {
+        experiments = await api.list('experiments');
+    } catch (e) {
+        experiments = (api.loadCache('experiments') || {}).items;
+        if (!experiments) return ['実験一覧を取得できません: ' + humanizeApiError(e)];
     }
 
     for (const fbCard of fbCards) {
         const expName = fbCard.dataset.expName;
         const posText = (fbCard.querySelector('.exp-fb-positive')?.value || '').trim();
         const refText = (fbCard.querySelector('.exp-fb-reflection')?.value || '').trim();
-        if (!posText && !refText) continue;
 
         // 記入欄を表示した時点で引いた実験の ID で探す（そのあと実験名が変わっても、同じ実験に書ける）。
         // ID が無い（表示時に見つからなかった）ときだけ、名前で探す
         const expId = fbCard.dataset.expId || '';
-        const exp = (expId && experiments.find(e => e.ID === expId)) || experiments.find(e => e.Name === expName);
+        const findExp = () => (expId && experiments.find(e => e.ID === expId)) || experiments.find(e => e.Name === expName);
+        let exp = findExp();
         if (!exp) {
             // 黙って飛ばすと、保存できたように見えて入力が消える。失敗として知らせ、入力欄は残す
             failures.push(`${expName}: 実験ネタが見つかりません（名前が変わった可能性があります）`);
             continue;
         }
 
-        const prevPositives = exp.Positives;
-        const prevReflections = exp.Reflections;
-        if (posText) {
-            const entries = parseFeedbackEntries(exp.Positives);
-            entries.push({
-                id: genFeedbackId(), date: eventData.Date || todayISO(),
-                eventId: eventData.ID || '', eventTitle: eventData.Title || '', text: posText
-            });
-            exp.Positives = stringifyFeedbackEntries(entries);
-        }
-        if (refText) {
-            const entries = parseFeedbackEntries(exp.Reflections);
-            entries.push({
-                id: genFeedbackId(), date: eventData.Date || todayISO(),
-                eventId: eventData.ID || '', eventTitle: eventData.Title || '', text: refText
-            });
-            exp.Reflections = stringifyFeedbackEntries(entries);
+        const make = text => ({
+            id: genFeedbackId(), date: eventData.Date || todayISO(),
+            eventId: eventData.ID || '', eventTitle: eventData.Title || '',
+            memberId: author.id, name: author.name, text
+        });
+        const newPos = posText ? make(posText) : null;
+        const newRef = refText ? make(refText) : null;
+
+        // 競合したら、最新を取り直して追記し直す（同じ記入を 2 回は追記しない。入力を作り直すのは 1 度だけ）
+        let saved = null, lastError = null;
+        for (let attempt = 0; attempt < 2 && !saved; attempt++) {
+            const draft = { ...exp };
+            if (newPos) draft.Positives = stringifyFeedbackEntries([...parseFeedbackEntries(exp.Positives), newPos]);
+            if (newRef) draft.Reflections = stringifyFeedbackEntries([...parseFeedbackEntries(exp.Reflections), newRef]);
+            try {
+                saved = await api.save('experiments', { ...draft, _baseUpdatedAt: exp.UpdatedAt || '' });
+            } catch (e) {
+                lastError = e;
+                if (!isConflictError(e) || attempt === 1) break;
+                try { experiments = await api.list('experiments'); } catch (_) { break; }
+                exp = findExp();
+                if (!exp) break;
+            }
         }
 
-        try {
-            const saved = await api.save('experiments', { ...exp, _baseUpdatedAt: exp.UpdatedAt || '' });
-            const idx = experiments.findIndex(e => e.ID === exp.ID);
+        if (saved) {
+            const idx = experiments.findIndex(e => e.ID === saved.ID);
             if (idx >= 0) experiments[idx] = saved;
             // 保存できた実験の入力欄は空にする（ほかの実験が失敗して「保存」を押し直したとき、二重に追記しないため）
             fbCard.querySelectorAll('.exp-fb-positive, .exp-fb-reflection').forEach(t => { t.value = ''; });
-        } catch (e) {
-            // 失敗した分は追記前の状態に戻す（再保存で二重に追記されないように）
-            exp.Positives = prevPositives;
-            exp.Reflections = prevReflections;
-            const reason = String(e && e.message).includes('conflict') ? '他の人が編集中' : (e && e.message);
+        } else {
+            const reason = lastError && isConflictError(lastError) ? '他の人の保存と重なりました' : humanizeApiError(lastError);
             failures.push(`${expName}: ${reason}`);
-            console.warn('Experiment feedback save failed for', expName, e);
+            console.warn('Experiment feedback save failed for', expName, lastError);
         }
     }
 
@@ -1409,9 +1707,9 @@ function renderFeedbackTimeline() {
     seriesEvents.forEach(ev => {
         const fy = getFiscalYear(ev.Date);
         const label = fy ? `${fy}年度` : '日付なし';
-        const pos = (ev.Positives || '').trim();
-        const ref = (ev.Reflections || '').trim();
-        if (!pos && !ref) return;
+        const pos = parseEventFeedback(ev.Positives).filter(feedbackHasText);
+        const ref = parseEventFeedback(ev.Reflections).filter(feedbackHasText);
+        if (pos.length === 0 && ref.length === 0) return;
         if (!grouped[label]) grouped[label] = [];
         grouped[label].push({ ev, pos, ref });
     });
@@ -1429,11 +1727,11 @@ function renderFeedbackTimeline() {
 
         const entries = [];
         items.forEach(({ ev, pos, ref }) => {
-            if (pos && (seriesFbFilter === 'all' || seriesFbFilter === 'positive')) {
-                entries.push({ type: 'positive', text: pos, date: ev.Date, id: ev.ID });
+            if (seriesFbFilter === 'all' || seriesFbFilter === 'positive') {
+                pos.forEach(en => entries.push({ type: 'positive', text: en.text, name: en.name, date: ev.Date, id: ev.ID }));
             }
-            if (ref && (seriesFbFilter === 'all' || seriesFbFilter === 'reflection')) {
-                entries.push({ type: 'reflection', text: ref, date: ev.Date, id: ev.ID });
+            if (seriesFbFilter === 'all' || seriesFbFilter === 'reflection') {
+                ref.forEach(en => entries.push({ type: 'reflection', text: en.text, name: en.name, date: ev.Date, id: ev.ID }));
             }
         });
         if (entries.length === 0) return '';
@@ -1450,7 +1748,7 @@ function renderFeedbackTimeline() {
                     return `<div class="sfb-entry ${isPos ? 'sfb-positive' : 'sfb-reflection'}">
                         <span class="sfb-icon">${isPos ? '&#9675;' : '&#9651;'}</span>
                         <span class="sfb-label">${isPos ? '良かった点' : '改善点'}</span>
-                        <span class="sfb-text">${escapeHtml(f.text)}</span>
+                        <span class="sfb-text">${escapeHtml(f.text)}${f.name ? ` <span class="sfb-author">（${escapeHtml(f.name)}）</span>` : ''}</span>
                         <button type="button" class="sfb-event-link" data-action="es-open-occ" data-id="${escapeAttr(f.id)}">${escapeHtml(f.date)}</button>
                     </div>`;
                 }).join('')}

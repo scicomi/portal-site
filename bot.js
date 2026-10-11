@@ -829,8 +829,9 @@ function buildEventContext(ev) {
   const expNames = eventExperimentNames(ev);
   if (expNames.length) lines.push('実施した実験: ' + expNames.join(', '));
   if (ev.Remarks)   lines.push('備考:\n' + ev.Remarks);
-  if ((ev.Positives || '').trim())   lines.push('振り返り（良かった点）:\n' + ev.Positives);
-  if ((ev.Reflections || '').trim()) lines.push('振り返り（改善点）:\n' + ev.Reflections);
+  const evPos = eventFeedbackText(ev.Positives), evRef = eventFeedbackText(ev.Reflections);
+  if (evPos) lines.push('振り返り（良かった点）:\n' + evPos);
+  if (evRef) lines.push('振り返り（改善点）:\n' + evRef);
   return lines.join('\n\n');
 }
 
