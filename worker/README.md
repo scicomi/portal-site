@@ -26,6 +26,7 @@ NEW_PASSWORD=test-member-pw node scripts/set-password.mjs member --local   # テ
 NEW_PASSWORD=test-admin-pw  node scripts/set-password.mjs admin  --local
 node scripts/gen-vapid.mjs --local                                       # プッシュ通知のローカル用の鍵(.dev.vars に書く)
 echo PUSH_ALLOW_LOCAL_ENDPOINT=true >> .dev.vars                          # 通知のテストで 127.0.0.1 を宛先に使う
+echo PUSH_NOTIFY_DELAY_SEC=0 >> .dev.vars                                 # イベントの通知を待たずに送る(本番は約 3 分待つ)
 npm run dev            # http://127.0.0.1:8787
 npm test               # 別ターミナルで。API の契約を検証する
 ```
@@ -42,6 +43,7 @@ $env:NEW_PASSWORD='test-admin-pw';  node scripts/set-password.mjs admin  --local
 Remove-Item Env:NEW_PASSWORD
 node scripts/gen-vapid.mjs --local
 Add-Content .dev.vars 'PUSH_ALLOW_LOCAL_ENDPOINT=true'
+Add-Content .dev.vars 'PUSH_NOTIFY_DELAY_SEC=0'
 npm run dev            # http://127.0.0.1:8787
 npm test               # 別の PowerShell で
 ```
@@ -50,7 +52,7 @@ npm test               # 別の PowerShell で
 - 接続先とパスワードは環境変数で変えられる(`worker/test/api.test.mjs` 冒頭)。既定は `API_BASE=http://127.0.0.1:8787`、`TEST_MEMBER_PW=test-member-pw`、`TEST_ADMIN_PW=test-admin-pw`。別のポートで `npm run dev` を起動したときや、`set-password.mjs` で別のテスト用パスワードを入れたときは、同じ値を渡す(例: PowerShell は `$env:API_BASE='http://127.0.0.1:8790'; npm test`)。ほかの Worker が 8787 で動いていると、意図しない相手にテストが当たるので注意
 - 別のポート・別の保存先で動かすとき(複数の作業を並行するときなど): `npx wrangler dev --local --persist-to .wrangler/state-x --port 8790 --inspector-port 9233`。`set-password.mjs` は既定の保存先(`.wrangler/state`)に書くので、別の保存先に使う場合は、先に `.wrangler/state` をフォルダごとコピーしておく。復元スクリプトは `--persist-to=<フォルダ>` で保存先を選べる
 - プッシュ通知のテストは、テストの中に配信基盤の代わりの受け口(127.0.0.1)を立て、届いた通知を復号して確かめる。`.dev.vars` に鍵か `PUSH_ALLOW_LOCAL_ENDPOINT=true` が無いと、そのテストだけ飛ばす(skipped と出る)。`.dev.vars` を書き換えたら `npm run dev` を起動し直す(起動中のサーバーは、コードは読み直すが `.dev.vars` は読み直さない)
-- 定期実行を手で動かすには `npx wrangler dev --local --persist-to .wrangler/state --test-scheduled` で起動し、`curl "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?cron=*+*+*+*+*"`(通知の送信)/ `cron=0+18+*+*+*`(毎日の処理)
+- `npm run dev` は `--test-scheduled` 付きで起動する(テストが定期実行を呼ぶため。ローカルだけの機能)。定期実行を手で動かすには、`curl "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?cron=*+*+*+*+*"`(通知の送信)/ `cron=0+18+*+*+*`(毎日の処理)
 - テストはローカル DB の設定(ブランド名など)を既定値に戻してから始める。ログイン試行制限のテストはテスト専用の IP だけをロックするので、続けて再実行できる
 
 画面から試すときは、`index.html?api=http://127.0.0.1:8787` で開く(そのブラウザだけ接続先が切り替わる。`?api=reset` で解除)。

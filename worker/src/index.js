@@ -20,6 +20,7 @@ import { runMaintenance } from './maintenance.js';
 import {
   pushEnabled, subscribePush, unsubscribePush, resubscribePush, pushStats, sendTestPush, drainPushOutboxSafe, batchSize
 } from './push.js';
+import { loadEventBefore, notifyEventSaved } from './eventNotify.js';
 import { moveRecordToTrash, listTrash, restoreTrash, purgeTrash, purgeExpiredTrash, getTrashRow, TRASH_ADMIN_ONLY } from './trash.js';
 
 // リクエスト本文の上限。最大のものはファイルのアップロード(base64 で元の約 1.34 倍。上限は設定 file_max_mb)
@@ -45,7 +46,7 @@ export default {
         if (text.length > MAX_REQUEST_BYTES) return tooLarge();
         let body = {};
         try { body = JSON.parse(text) || {}; } catch (_) { body = {}; }
-        return jsonResponse(await handlePost(env, request, body), request, env);
+        return jsonResponse(await handlePost(env, ctx, request, body), request, env);
       }
       return new Response('Method Not Allowed', { status: 405, headers: Object.assign({ Allow: 'POST, OPTIONS' }, corsHeaders(request, env)) });
     } catch (err) {
@@ -65,7 +66,7 @@ const versionInfo = () => ({ success: true, version: CODE_VERSION, serverTime: n
 
 // ---- POST ----
 
-async function handlePost(env, request, body) {
+async function handlePost(env, ctx, request, body) {
   const token = body.token || '';
   const action = body.action || '';
   const resource = body.resource || '';   // 省略時に events を対象にしない(list/save/delete は getResource が unknown resource を返す)
@@ -161,6 +162,8 @@ async function handlePost(env, request, body) {
       if (!res) return { success: false, error: 'unknown resource: ' + resource };
       // adminOnly: 閲覧も管理者のみ(パスワード一覧) / adminWrite: 閲覧はメンバーも可で、書き込みだけ管理者のみ(ガイド)
       if ((res.adminOnly || res.adminWrite) && !(await checkAdmin(env, body.adminToken))) return { success: false, error: 'admin_required' };
+      // イベントの通知の判定用に、保存前の行を読んでおく(新規なら null)
+      const eventBefore = resource === 'events' && pushEnabled(env) && body.item ? await loadEventBefore(env, body.item.ID) : null;
       let saved;
       try {
         saved = await saveResource(env, resource, body.item || {});
@@ -170,6 +173,15 @@ async function handlePost(env, request, body) {
       }
       const byAdmin = !!(res.adminOnly || res.adminWrite);
       await appendAuditLog(env, saved.created ? 'create' : 'update', resource + ':' + saved.item.ID, byAdmin ? body.adminToken : token, byAdmin ? 'admin' : 'member');
+      // イベント・ミーティングの追加と編集を通知する(送信待ちに積むだけ。送るのは定期実行)。
+      // 削除の取り消しによる再作成は、元の CreatedAt を持って来るので通知しない
+      const isRestore = saved.created && !!(body.item && body.item.CreatedAt);
+      if (resource === 'events' && !isRestore && pushEnabled(env)) {
+        ctx.waitUntil(notifyEventSaved(env, saved.created, eventBefore, saved.item).catch(async e => {
+          console.error('event notify failed: ' + (e && e.stack || e));
+          await appendAuditLog(env, 'push_fail', 'event ' + saved.item.ID + ': ' + String((e && e.message) || e).slice(0, 200), '', 'system');
+        }));
+      }
       return { success: true, item: saved.item };
     }
 

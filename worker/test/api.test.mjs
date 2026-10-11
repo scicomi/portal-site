@@ -881,3 +881,80 @@ test('プッシュ通知: 登録・テスト送信(暗号化と署名)・宛先�
     rx.server.close();
   }
 });
+
+test('プッシュ通知: イベントの追加・編集で、送信待ちに積んで定期実行が送る(まとめ・対象外・停止・復元)', async t => {
+  const pub = (await post({ action: 'getPublicConfig', token: member })).config.push_public_key;
+  const runCron = () => fetch(BASE + '/cdn-cgi/handler/scheduled?cron=*+*+*+*+*');
+  if (!pub || (await runCron()).status !== 200) {
+    t.skip('VAPID の鍵が無いか、npm run dev が --test-scheduled 付きで起動していない');
+    return;
+  }
+  const rx = await startPushReceiver();
+  const keys = await makeClientKeys();
+  const endpoint = rx.base + '/ev';
+  const r0 = await post({ action: 'pushSubscribe', token: member, subscription: { endpoint, keys: { p256dh: keys.publicKey, auth: keys.auth } } });
+  if (r0.error === 'invalid_subscription') { rx.server.close(); t.skip('PUSH_ALLOW_LOCAL_ENDPOINT が .dev.vars に無い'); return; }
+  assert.equal(r0.success, true);
+  // 定期実行を動かし、受け口に届いた通知(復号した中身)を返す
+  const deliver = async () => {
+    const before = rx.received.length;
+    await runCron();
+    for (let i = 0; i < 30 && rx.received.length === before; i++) await new Promise(r => setTimeout(r, 100));
+    return Promise.all(rx.received.slice(before).map(async g => JSON.parse(await decryptPushBody(g.body, keys.publicKey, keys.privateKey, keys.auth))));
+  };
+  const setCfg = (key, value) => post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key, value });
+  const id = 'ev_push_' + Date.now();
+  let ev;
+  const save = async patch => {
+    const r = await post({ action: 'save', resource: 'events', token: member, item: Object.assign({}, ev || {}, patch, { _baseUpdatedAt: ev ? ev.UpdatedAt : '' }) });
+    assert.equal(r.success, true, JSON.stringify(r));
+    ev = r.item;
+  };
+  try {
+    // 追加
+    await save({ ID: id, Title: '通知テスト', Category: 'normal', Date: '2099-11-03', Location: '体育館' });
+    let got = await deliver();
+    assert.equal(got.length, 1);
+    assert.deepEqual(got[0], { title: '新しいイベント', body: '通知テスト / 11/3(火) 出欠を記入して下さい', url: 'events.html?event=' + id, tag: id });
+    assert.equal(rx.received[rx.received.length - 1].headers.topic, id.slice(0, 32));
+
+    // 編集(場所だけ)
+    await save({ Location: '講堂' });
+    got = await deliver();
+    assert.deepEqual(got.map(p => [p.title, p.body]), [['場所が変わりました', '通知テスト / 体育館 → 講堂']]);
+
+    // 送る前の連続した編集は 1 件にまとまる
+    await save({ Date: '2099-11-10' });
+    await save({ Location: '体育館' });
+    got = await deliver();
+    assert.deepEqual(got.map(p => [p.title, p.body]), [['内容が変わりました', '通知テスト / 場所・日程']]);
+
+    // 送る前に元に戻したら、通知は取り消す
+    await save({ Remarks: 'いったん書く' });
+    await save({ Remarks: '' });
+    assert.equal((await deliver()).length, 0);
+
+    // 対象外の列(来場者数・振り返り)だけの保存では通知しない
+    await save({ VisitorCount: '120', Reflections: 'よかった' });
+    assert.equal((await deliver()).length, 0);
+
+    // 設定で止めると送らない
+    assert.equal((await setCfg('push_events_enabled', 'maybe')).error, 'invalid_value');
+    assert.equal((await setCfg('push_events_enabled', 'false')).success, true);
+    await save({ Location: '中庭' });
+    assert.equal((await deliver()).length, 0);
+    assert.equal((await setCfg('push_events_enabled', 'true')).success, true);
+
+    // 削除の取り消し(元の CreatedAt を持った再作成)では通知しない
+    const restoredId = 'ev_push_r_' + Date.now();
+    const rr = await post({ action: 'save', resource: 'events', token: member, item: { ID: restoredId, Title: '復元', Category: 'normal', Date: '2099-12-01', CreatedAt: '2026-01-01T00:00:00.000Z' } });
+    assert.equal(rr.success, true);
+    assert.equal((await deliver()).length, 0);
+    await post({ action: 'delete', resource: 'events', token: member, id: restoredId });
+  } finally {
+    await setCfg('push_events_enabled', 'true');
+    await post({ action: 'pushUnsubscribe', endpoint });
+    if (ev) await post({ action: 'delete', resource: 'events', token: member, id });
+    rx.server.close();
+  }
+});

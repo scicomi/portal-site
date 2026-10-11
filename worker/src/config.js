@@ -45,7 +45,8 @@ export const DEFAULT_CONFIG = {
   experiment_recruit_url: '',
   experiment_recruit_note: '',
   pr_channels: 'Twitter,Instagram,HP',
-  site_links: '[]'
+  site_links: '[]',
+  push_events_enabled: 'true'   // イベント・ミーティングの追加と編集をプッシュ通知する('false' で止める)
 };
 
 // メンバー(非管理者)にも公開してよい表示系設定(getPublicConfig)。機密値は含めない。
@@ -168,6 +169,8 @@ export function validateConfigValue(key, value) {
       const n = /^\d+$/.test(v.trim()) ? parseInt(v.trim(), 10) : NaN;
       return n >= min && n <= max ? '' : min + '〜' + max + 'の整数を指定してください';
     }
+    case 'push_events_enabled':
+      return ['true', 'false'].indexOf(v) >= 0 ? '' : 'true か false を指定してください';
     case 'password':
     case 'admin_password':
       return v.trim().length >= PASSWORD_MIN_LENGTH ? '' : 'パスワードは' + PASSWORD_MIN_LENGTH + '文字以上にしてください';

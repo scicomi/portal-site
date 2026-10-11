@@ -8,3 +8,5 @@ TOKEN_SECRET=ここにローカル用の16文字以上のでたらめな文字�
 # VAPID_PRIVATE_KEY=...
 # プッシュ通知の結合テストで、宛先に http://127.0.0.1 を許す(ローカル専用。本番には設定しない)
 PUSH_ALLOW_LOCAL_ENDPOINT=true
+# イベントの通知を、保存してから送るまでの秒数(本番は 180)。結合テストを待たずに済むよう 0 にする
+PUSH_NOTIFY_DELAY_SEC=0

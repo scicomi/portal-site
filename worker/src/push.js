@@ -132,8 +132,8 @@ export async function pushStats(env) {
 // ---- 送信待ちに積む ----
 
 // payload: { title, body, url, tag }。collapseKey を渡すと、まだ送っていない同じ鍵の通知を置き換える。
-// 積んだ件数を返す(鍵が未設定なら積まない)
-export async function enqueuePush(env, topic, payload, collapseKey) {
+// delaySec: 送るまで待つ秒数(その間の保存し直しをまとめるため)。積んだ件数を返す(鍵が未設定なら積まない)
+export async function enqueuePush(env, topic, payload, collapseKey, delaySec) {
   if (!pushEnabled(env) || PUSH_TOPICS.indexOf(topic) < 0) return 0;
   const text = JSON.stringify(payload);
   if (new TextEncoder().encode(text).length > MAX_PLAINTEXT_BYTES) throw new Error('push payload too large');
@@ -144,9 +144,21 @@ export async function enqueuePush(env, topic, payload, collapseKey) {
   stmts.push(env.DB.prepare(
     'INSERT INTO push_outbox (Endpoint, Payload, CollapseKey, Attempts, NextAt, CreatedAt) '
     + 'SELECT Endpoint, ?, ?, 0, ?, ? FROM push_subscriptions WHERE Epoch = ? AND Topics LIKE ?'
-  ).bind(text, key, now, now, await getEpoch(env, 'member'), '%"' + topic + '"%'));
+  ).bind(text, key, now + Math.max(0, delaySec || 0), now, await getEpoch(env, 'member'), '%"' + topic + '"%'));
   const out = await env.DB.batch(stmts);
   return (out[out.length - 1].meta && out[out.length - 1].meta.changes) || 0;
+}
+
+// まだ送っていない(取り出されていない)同じ鍵の通知があるか
+export async function hasPendingPush(env, collapseKey) {
+  const row = await env.DB.prepare('SELECT 1 AS x FROM push_outbox WHERE CollapseKey = ? AND Attempts = 0 LIMIT 1').bind(String(collapseKey || '')).first();
+  return !!row;
+}
+
+// まだ送っていない同じ鍵の通知を取り消す
+export async function cancelPush(env, collapseKey) {
+  if (!collapseKey) return;
+  await env.DB.prepare('DELETE FROM push_outbox WHERE CollapseKey = ? AND Attempts = 0').bind(String(collapseKey)).run();
 }
 
 // ---- 送信 ----

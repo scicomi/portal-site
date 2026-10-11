@@ -81,6 +81,10 @@ async function loadSettings() {
         // ゴミ箱の保管日数
         document.getElementById('cfg-trash-keep-days').value = cfg.trash_keep_days != null && cfg.trash_keep_days !== '' ? parseInt(cfg.trash_keep_days, 10) : 7;
 
+        // プッシュ通知
+        document.getElementById('cfg-push-events').value = cfg.push_events_enabled === 'false' ? 'false' : 'true';
+        loadPushStats();
+
         // 広報媒体
         document.getElementById('cfg-pr-channels').value = cfg.pr_channels || 'Twitter,Instagram,HP';
 
@@ -242,6 +246,24 @@ async function saveDeadlineRules(btn) {
         CONFIG.DEADLINE_RULES.houkoku = houkoku;
         toast('期限ルールを保存しました', 'success');
     });
+}
+
+// --- プッシュ通知の登録台数（宛先はサーバーから返らない。台数だけ） ---
+
+async function loadPushStats() {
+    const el = document.getElementById('cfg-push-stats');
+    if (!el) return;
+    try {
+        const s = await api.pushStats();
+        if (!s.enabled) {
+            el.textContent = '通知の鍵が未設定のため、使えません（設定方法は docs/11_pwa_push_plan.md の §8）。';
+            return;
+        }
+        const detail = Object.keys(s.byLabel || {}).map(k => k + ' ' + s.byLabel[k]).join('・');
+        el.textContent = s.total + ' 台' + (detail ? '（' + detail + '）' : '') + (s.pending ? '／送信待ち ' + s.pending + ' 件' : '');
+    } catch (e) {
+        if (!e.handled) el.textContent = '読み込めませんでした: ' + humanizeApiError(e);
+    }
 }
 
 // --- ゴミ箱の保管日数 ---

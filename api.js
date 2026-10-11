@@ -360,6 +360,13 @@ const api = {
     return true;
   },
 
+  // 管理者向け: 登録台数だけ（{ enabled, total, byLabel, pending }）
+  async pushStats() {
+    const res = await this._post({ action: 'pushStats', token: this.getToken(), adminToken: this.getAdminToken() });
+    if (!res.success) throw apiFailure(res, 'pushStats failed');
+    return res;
+  },
+
   // ---- ガイド（閲覧はメンバーも可、書き込みは管理者のみ） ----
   // 保存には管理者トークンが要る（save は管理者トークンを送らないので、専用の関数にしてある）。
   async saveGuide(item) {

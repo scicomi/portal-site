@@ -83,6 +83,34 @@
                 </div>
             </div>
 
+            <!-- プッシュ通知 -->
+            <div class="settings-section collapsed">
+                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h2>プッシュ通知</h2>
+                        <p class="settings-section-desc">イベント・ミーティングの追加と変更を、通知をオンにしたメンバーのスマホに知らせます。</p>
+                    </div>
+                    <span class="settings-section-chevron">&#9662;</span>
+                </div>
+                <div class="settings-card">
+                    <div class="e1-group">
+                        <label class="e1-label">登録されている端末</label>
+                        <p id="cfg-push-stats" class="settings-hint">読み込み中...</p>
+                    </div>
+                    <div class="e1-group">
+                        <label class="e1-label">自動で通知する</label>
+                        <p class="settings-hint">追加したとき・イベント名、日程、場所、担当、備考などを変えたときに通知します（保存の約3分後。続けて保存した分は1件にまとまります）。メンバーの名前は通知に載りません。</p>
+                        <div style="display:flex;gap:8px;">
+                            <select id="cfg-push-events" class="e1-input" style="flex:1;">
+                                <option value="true">通知する</option>
+                                <option value="false">通知しない</option>
+                            </select>
+                            <button class="btn btn-primary-solid" onclick="saveSettingField('push_events_enabled','cfg-push-events', this)" style="width:auto;padding:8px 20px;">保存</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- パスワード管理 -->
             <div class="settings-section collapsed">
                 <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
