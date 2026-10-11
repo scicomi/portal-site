@@ -10,3 +10,6 @@ TOKEN_SECRET=ここにローカル用の16文字以上のでたらめな文字�
 PUSH_ALLOW_LOCAL_ENDPOINT=true
 # イベントの通知を、保存してから送るまでの秒数(本番は 180)。結合テストを待たずに済むよう 0 にする
 PUSH_NOTIFY_DELAY_SEC=0
+# Teams への通知の結合テスト(test/teams-api.test.mjs)用の値は、ここには書かない。試験用の値だけを書いた別のファイルを
+# `wrangler dev --env-file .dev.vars --env-file <別のファイル>` で足す(手順は docs/12_teams_notify_plan.md の §7)。
+# 本番の送信先(TEAMS_WEBHOOK_URL)は Secret に人が登録する。ローカルの .dev.vars に本物の URL を入れない。

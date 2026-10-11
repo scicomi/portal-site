@@ -3551,6 +3551,12 @@ textarea:focus {
     flex-shrink: 0;
 }
 .series-header-actions .btn { text-decoration: none; }
+/* Teams への通知ボタン(event-detail.js)の横の、前回の通知の時刻などの補足 */
+.teams-notify-note {
+    align-self: center;
+    font-size: 12px;
+    color: var(--text-muted);
+}
 
 /* Safety / Emergency info card (event) */
 .series-safety-card {

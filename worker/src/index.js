@@ -21,6 +21,8 @@ import {
   pushEnabled, subscribePush, unsubscribePush, resubscribePush, pushStats, sendTestPush, drainPushOutboxSafe, batchSize
 } from './push.js';
 import { loadEventBefore, notifyEventSaved } from './eventNotify.js';
+import { enqueueTeamsNew, teamsNewDelaySec, drainTeamsSafe, teamsStatus, notifyTeamsNow } from './teams.js';
+import { teamsConfigured } from './config.js';
 import { moveRecordToTrash, listTrash, restoreTrash, purgeTrash, purgeExpiredTrash, getTrashRow, TRASH_ADMIN_ONLY } from './trash.js';
 
 // リクエスト本文の上限。最大のものはファイルのアップロード(base64 で元の約 1.34 倍。上限は設定 file_max_mb)
@@ -57,8 +59,10 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    if (event.cron === PUSH_CRON) ctx.waitUntil(drainPushOutboxSafe(env, batchSize(env)));
-    else ctx.waitUntil(runMaintenance(env));
+    if (event.cron === PUSH_CRON) {
+      ctx.waitUntil(drainPushOutboxSafe(env, batchSize(env)));
+      ctx.waitUntil(drainTeamsSafe(env, 3));   // Teams の新規の通知(送信先が未設定なら何もしない)
+    } else ctx.waitUntil(runMaintenance(env));
   }
 };
 
@@ -182,6 +186,13 @@ async function handlePost(env, ctx, request, body) {
           await appendAuditLog(env, 'push_fail', 'event ' + saved.item.ID + ': ' + String((e && e.message) || e).slice(0, 200), '', 'system');
         }));
       }
+      // Teams への新規の通知は、イベントの追加だけ送信待ちに積む(送るのは定期実行。変更はボタン)
+      if (resource === 'events' && saved.created && !isRestore && teamsConfigured(env)) {
+        ctx.waitUntil(enqueueTeamsNew(env, saved.item.ID, teamsNewDelaySec(env)).catch(async e => {
+          console.error('teams enqueue failed: ' + (e && e.stack || e));
+          await appendAuditLog(env, 'teams_fail', 'enqueue ' + saved.item.ID + ': ' + String((e && e.message) || e).slice(0, 100), '', 'system');
+        }));
+      }
       return { success: true, item: saved.item };
     }
 
@@ -275,6 +286,19 @@ async function handlePost(env, ctx, request, body) {
     if (action === 'pushStats') {
       if (!(await checkAdmin(env, body.adminToken))) return { success: false, error: 'admin_required' };
       return await pushStats(env);
+    }
+
+    // --- Teams への通知(詳細ページのボタン)。送信先が未設定なら enabled: false / feature_disabled ---
+    if (action === 'teamsStatus') {
+      if (!ID_PATTERN.test(String(body.eventId || ''))) return { success: false, error: 'invalid_id' };
+      return await teamsStatus(env, String(body.eventId));
+    }
+    if (action === 'teamsNotify') {
+      if (!ID_PATTERN.test(String(body.eventId || ''))) return { success: false, error: 'invalid_id' };
+      const r = await notifyTeamsNow(env, String(body.eventId));
+      if (r.success && r.sent) await appendAuditLog(env, 'teams_notify', body.eventId + ':' + r.kind + ':button', token, 'member');
+      if (!r.success && r.error === 'teams_failed') await appendAuditLog(env, 'teams_fail', body.eventId + ':button: ' + (r.detail || ''), token, 'member');
+      return r;
     }
 
     // --- 出欠投票 ---

@@ -18,7 +18,7 @@ const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
 // 通知する項目。show: 変更前後の値を文面に出すか(氏名・本文を含む項目は、項目名だけ)
 // 列の並びは、イベント詳細の表示順(event-detail.js)に合わせる
-const WATCHED = [
+export const WATCHED = [
   { key: 'title',     cols: ['Title'],                                   label: ev => isMeeting(ev) ? 'ミーティング名' : 'イベント名', show: true },
   { key: 'plan',      cols: ['PlanName'],                                label: () => '企画名', show: true },
   { key: 'leader',    cols: ['PlanLeader'],                              label: () => '企画担当者' },
@@ -78,8 +78,8 @@ function formatGather(ev) {
   return [s(ev.GatherTime) && '集合 ' + s(ev.GatherTime), s(ev.DismissTime) && '解散 ' + s(ev.DismissTime)].filter(Boolean).join(' ');
 }
 
-// 項目の値(比べる用・表示用)
-function fieldValue(w, ev) {
+// 項目の値(比べる用・表示用)。teams.js も使う
+export function fieldValue(w, ev) {
   if (w.key === 'date') return formatDateRange(ev) || s(ev.Date);
   if (w.key === 'time') return formatTimeRange(ev);
   if (w.key === 'gather') return formatGather(ev);

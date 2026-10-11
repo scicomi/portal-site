@@ -248,7 +248,58 @@ function renderHeaderActions() {
     box.innerHTML = `
         <button type="button" class="btn btn-secondary btn-sm" data-action="es-edit-event" data-id="${escapeAttr(ev.ID)}">編集</button>
         <a class="btn btn-secondary btn-sm" href="events.html?duplicate=${encodeURIComponent(ev.ID)}" title="この回の内容を引き継いで新しい開催を作る">複製</a>
+        <button type="button" class="btn btn-secondary btn-sm hidden" id="teams-notify-btn" data-action="es-teams-notify" data-id="${escapeAttr(ev.ID)}"></button>
+        <span class="teams-notify-note hidden" id="teams-notify-note"></span>
     `;
+    loadTeamsStatus(ev.ID);
+}
+
+// ---- Teams への通知（新規は自動。変更は、このボタンで前回からの差分を元の投稿への返信として送る） ----
+// 送信先が未設定なら、ボタンは出さない。状態は開催回ごとにサーバーから取る
+let teamsInfo = null;   // { id, state, sentAt, changed }
+
+function teamsSentLabel(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || '');
+    return m ? `${parseInt(m[2], 10)}/${parseInt(m[3], 10)} ${m[4]}:${m[5]}` : '';
+}
+
+async function loadTeamsStatus(id) {
+    let res;
+    try { res = await api.teamsStatus(id); } catch (_) { return; }   // 状態が取れなければ、ボタンは出さない（ほかの操作の邪魔をしない）
+    const btn = document.getElementById('teams-notify-btn');
+    const note = document.getElementById('teams-notify-note');
+    if (!btn || !note || !res || !res.enabled || currentEvent()?.ID !== id) return;   // 開催回が切り替わっていたら捨てる
+    teamsInfo = { id, state: res.state, sentAt: res.sentAt || '', changed: res.changed || [] };
+    const sent = res.state === 'sent';
+    const nChanged = teamsInfo.changed.length;
+    btn.textContent = sent ? (nChanged ? `Teams に変更を通知（${nChanged}件）` : 'Teams に通知済み')
+        : res.state === 'pending' ? 'Teams に今すぐ通知' : 'Teams に通知する';
+    btn.disabled = sent && !nChanged;
+    btn.title = sent ? (nChanged ? `変わった項目: ${teamsInfo.changed.join('、')}` : '前回の通知から変わった項目はありません')
+        : 'このイベントを Teams に通知する';
+    note.textContent = sent ? `前回の通知: ${teamsSentLabel(res.sentAt)}`
+        : res.state === 'pending' ? '登録の約3分後に自動で通知します'
+        : res.state === 'failed' ? '自動の通知に失敗しました' : '';
+    btn.classList.remove('hidden');
+    note.classList.toggle('hidden', !note.textContent);
+}
+
+function confirmTeamsNotify(id) {
+    if (!teamsInfo || teamsInfo.id !== id) return;
+    const isUpdate = teamsInfo.state === 'sent' && teamsInfo.changed.length > 0;
+    showConfirmDialog({
+        title: isUpdate ? 'Teams に変更を通知しますか？' : 'Teams に通知しますか？',
+        message: isUpdate
+            ? `前回の通知から変わった項目（${teamsInfo.changed.join('、')}）を、元の投稿への返信として Teams に送ります。`
+            : 'このイベントの内容を Teams のチャンネルに投稿します。',
+        okLabel: '送る',
+        busyLabel: '送信中...',
+        onOk: async () => {
+            const r = await api.teamsNotify(id);
+            toast(r.sent ? 'Teams に送りました（反映まで数十秒かかることがあります）' : '変わった項目がないため、送りませんでした', r.sent ? 'success' : 'info');
+            await loadTeamsStatus(id);
+        }
+    });
 }
 
 function currentEvent() {
@@ -958,6 +1009,7 @@ function switchAttendanceFilter(status) {
 // 描画した data-action / data-change-action の受け口（onclick 属性に ID を埋め込まない。app.js の registerActions 参照）
 registerActions({
     'es-edit-event': el => openEventWizard(el.dataset.id, null, el.dataset.focus || ''),
+    'es-teams-notify': el => confirmTeamsNotify(el.dataset.id),
     'es-file-pick': el => el.closest('[data-drop-field]').querySelector('[data-ef-input]').click(),
     'es-file-remove': el => removeDetailFile(el.dataset.field, Number(el.dataset.index)),
     'es-select-occ': el => selectOccurrence(el.dataset.id || el.value),   // 開催回プルダウンは value（data-id でも受け付ける）

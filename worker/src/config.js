@@ -6,6 +6,14 @@
 import { bumpEpoch, verifyPassword, hasPassword, storePassword } from './auth.js';
 import { vapidConfigured } from './webpush.js';
 
+// Teams への通知が使えるか。送信先の URL(Secret の TEAMS_WEBHOOK_URL)が https のときだけ有効(空なら機能ごと無効)。
+// ローカルの試験だけ、TEAMS_ALLOW_LOCAL_URL=true で http://127.0.0.1 / localhost を許す(本番には設定しない)
+export function teamsConfigured(env) {
+  const u = String((env && env.TEAMS_WEBHOOK_URL) || '').trim();
+  if (/^https:\/\/[^\s/]+/.test(u)) return true;
+  return !!env && String(env.TEAMS_ALLOW_LOCAL_URL) === 'true' && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/.test(u);
+}
+
 export const GEMINI_MODEL = 'gemini-2.5-flash-lite';
 export const GEMINI_DAILY_LIMIT = 1500;
 // 新しく設定するときだけ検証する(既存のパスワードはそのまま使える)。
@@ -130,6 +138,8 @@ export async function publicConfig(env) {
   cfg.gemini_daily_limit = String(GEMINI_DAILY_LIMIT);
   // プッシュ通知の公開鍵(秘密ではない)。鍵の組が未設定なら空で、画面は通知の案内を出さない
   cfg.push_public_key = vapidConfigured(env) ? String(env.VAPID_PUBLIC_KEY) : '';
+  // Teams への通知が使えるか(送信先の URL は返さない。画面はボタンを出すかどうかだけに使う)
+  cfg.teams_enabled = teamsConfigured(env) ? 'true' : 'false';
   return cfg;
 }
 

@@ -367,6 +367,21 @@ const api = {
     return res;
   },
 
+  // ---- Teams への通知（イベント詳細のボタン。送信先が未設定なら { enabled: false }） ----
+  // { enabled, state: 'none'|'pending'|'sent'|'failed', sentAt, changed: [前回から変わった項目の名前] }
+  async teamsStatus(eventId) {
+    const res = await this._post({ action: 'teamsStatus', token: this.getToken(), eventId });
+    if (!res.success) throw apiFailure(res, 'teamsStatus failed');
+    return res;
+  },
+
+  // 送信済みなら前回からの変更を、そうでなければ新規のカードを、今すぐ送る。{ sent, kind, changed }
+  async teamsNotify(eventId) {
+    const res = await this._post({ action: 'teamsNotify', token: this.getToken(), eventId });
+    if (!res.success) throw apiFailure(res, 'teamsNotify failed');
+    return res;
+  },
+
   // ---- ガイド（閲覧はメンバーも可、書き込みは管理者のみ） ----
   // 保存には管理者トークンが要る（save は管理者トークンを送らないので、専用の関数にしてある）。
   async saveGuide(item) {
@@ -631,6 +646,8 @@ function humanizeApiError(e) {
       return '続けて送ることはできません。1分ほど待ってから、もう一度お試しください。';
     case 'push_failed':
       return '通知を送れませんでした。' + (e.detail ? '（' + e.detail + '）' : '');
+    case 'teams_failed':
+      return 'Teams に送れませんでした。しばらく待ってから、もう一度お試しください。続く場合は、管理者に連絡してください。' + (e.detail ? '（' + e.detail + '）' : '');
     case 'BAD_RESPONSE':
       return 'サーバーからの応答を解釈できませんでした。' + (e.detail ? '（' + e.detail + '…）' : '');
     default:

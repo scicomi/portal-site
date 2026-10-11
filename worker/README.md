@@ -7,6 +7,7 @@
 - **ファイル**: R2(`/files/<キー>` で公開。ログイン不要)
 - **定期実行**: 毎日 03:00 JST に D1 を R2 の `backups/` に保存し、古いログを整理(`src/maintenance.js`)。1 分ごとに、プッシュ通知の送信待ちを送る(`src/push.js`)
 - **プッシュ通知**: Web Push を Worker から直接送る(暗号化と署名は `src/webpush.js`、登録と送信待ちは `src/push.js`)。設計は [../docs/11_pwa_push_plan.md](../docs/11_pwa_push_plan.md)
+- **Teams への通知**: 新規のイベントは自動、変更は詳細ページのボタンで、Power Automate のフロー経由で Teams に投稿する(`src/teams.js`)。送信先は Secret の `TEAMS_WEBHOOK_URL`(未登録なら機能ごと無効)。設計・フローの構造・本番の手順は [../docs/12_teams_notify_plan.md](../docs/12_teams_notify_plan.md)
 
 ## ローカル開発
 

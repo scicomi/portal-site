@@ -20,6 +20,11 @@ VAPID_SUBJECT = "mailto:sc.tokai@gmail.com"
 # 1 回の実行で送る通知の件数。無料枠の CPU 10ms に収める(1 件あたり約 1〜1.5ms)。CPU 超過のエラーが出たら下げる
 PUSH_BATCH_SIZE = "5"
 
+# Teams への通知のカードのボタンが開くポータルの URL(末尾の / は付けても付けなくてもよい)。
+# 送信先(Power Automate のフローの URL)は秘密なので、ここには書かない。Secret の TEAMS_WEBHOOK_URL に、人が
+# `npx wrangler secret put TEAMS_WEBHOOK_URL` で登録する。未登録なら Teams への通知は機能ごと無効(ボタンも出ない)
+SITE_URL = "https://scicomi.github.io/portal-site/"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "scicomi-portal"
