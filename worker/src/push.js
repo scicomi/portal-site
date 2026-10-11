@@ -272,14 +272,14 @@ export async function sendTestPush(env, endpoint) {
   const claimed = await env.DB.prepare(
     'INSERT INTO kv_cache (K, V, Exp) VALUES (?, \'1\', ?) ON CONFLICT(K) DO UPDATE SET V = \'1\', Exp = excluded.Exp WHERE kv_cache.Exp <= ? RETURNING K'
   ).bind(key, now + TEST_INTERVAL_SEC, now).first();
-  if (!claimed) return { success: false, error: 'rate_limited' };
+  if (!claimed) return { success: false, error: 'too_soon' };
   const payload = JSON.stringify({ title: 'テスト通知', body: 'この端末に通知が届きます。', url: 'index.html', tag: 'test' });
   const status = await sendOne(env, sub, payload, 'test');
   const kind = status === -1 ? 'reject' : classify(status);
   if (kind === 'ok') { await recordSuccess(env, endpoint); return { success: true }; }
   if (kind === 'gone') { await removeSubscription(env, endpoint); return { success: false, error: 'not_found' }; }
   if (kind === 'reject') await recordReject(env, endpoint);
-  return { success: false, error: 'push_failed', detail: '配信サービスが受け付けませんでした(' + status + ')' };
+  return { success: false, error: 'push_failed', detail: status > 0 ? '配信サービスが受け付けませんでした(' + status + ')' : '配信サービスに接続できませんでした' };
 }
 
 // ---- 毎日の整理(maintenance.js) ----

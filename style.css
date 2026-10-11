@@ -4451,3 +4451,25 @@ mark.search-hit {
     .modal-content { animation: none; }
     *, *::before, *::after { transition-duration: 0.01ms !important; }
 }
+
+/* ========== プッシュ通知（pwa.js） ========== */
+.push-steps {
+    margin: 0 0 10px;
+    padding-left: 1.4em;
+    font-size: 0.9rem;
+    line-height: 1.7;
+}
+.push-card-actions,
+.push-modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.push-modal-actions { justify-content: flex-end; margin-top: 4px; }
+.push-card-actions .btn,
+.push-modal-actions .btn {
+    width: auto;
+    flex: none;
+    min-height: var(--touch-min, 44px);
+}
+.push-box { max-width: min(480px, calc(100vw - 24px)); }

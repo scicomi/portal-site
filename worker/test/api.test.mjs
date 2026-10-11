@@ -853,7 +853,7 @@ test('プッシュ通知: 登録・テスト送信(暗号化と署名)・宛先�
     assert.equal(payload.url, 'index.html');
 
     // 続けて送ると回数制限。未登録の宛先は not_found。テスト通知はトークンが必要
-    assert.equal((await post({ action: 'pushTest', token: member, endpoint: rx.base + '/a' })).error, 'rate_limited');
+    assert.equal((await post({ action: 'pushTest', token: member, endpoint: rx.base + '/a' })).error, 'too_soon');
     assert.equal((await post({ action: 'pushTest', token: member, endpoint: rx.base + '/none' })).error, 'not_found');
     assert.equal((await post({ action: 'pushTest', endpoint: rx.base + '/a' })).error, 'unauthorized');
 

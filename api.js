@@ -340,6 +340,26 @@ const api = {
     return true;
   },
 
+  // ---- プッシュ通知（pwa.js が使う。宛先 endpoint はサーバーから返らない） ----
+  async pushSubscribe(subscription, memberId) {
+    const res = await this._post({ action: 'pushSubscribe', token: this.getToken(), subscription, memberId: memberId || '', topics: ['events'] });
+    if (!res.success) throw apiFailure(res, 'pushSubscribe failed');
+    return true;
+  },
+
+  // ログアウト後・トークン切れでも解除できるよう、トークンは送らない（宛先を知っていることが条件）
+  async pushUnsubscribe(endpoint) {
+    const res = await this._post({ action: 'pushUnsubscribe', endpoint });
+    if (!res.success) throw apiFailure(res, 'pushUnsubscribe failed');
+    return true;
+  },
+
+  async pushTest(endpoint) {
+    const res = await this._post({ action: 'pushTest', token: this.getToken(), endpoint });
+    if (!res.success) throw apiFailure(res, 'pushTest failed');
+    return true;
+  },
+
   // ---- ガイド（閲覧はメンバーも可、書き込みは管理者のみ） ----
   // 保存には管理者トークンが要る（save は管理者トークンを送らないので、専用の関数にしてある）。
   async saveGuide(item) {
@@ -596,6 +616,14 @@ function humanizeApiError(e) {
         : '他の人が先に更新しました。ページを再読み込みしてから、もう一度お試しください。';
     case 'too_large':
       return '内容が長すぎるため保存できません。文章を短くするか、分けて保存してください。' + (e.detail ? '（項目: ' + e.detail + '）' : '');
+    case 'feature_disabled':
+      return 'この機能は現在使えません（管理者がまだ設定していません）。';
+    case 'invalid_subscription':
+      return 'この端末の通知の情報が正しくありません。通知をオフにしてから、もう一度オンにしてください。';
+    case 'too_soon':
+      return '続けて送ることはできません。1分ほど待ってから、もう一度お試しください。';
+    case 'push_failed':
+      return '通知を送れませんでした。' + (e.detail ? '（' + e.detail + '）' : '');
     case 'BAD_RESPONSE':
       return 'サーバーからの応答を解釈できませんでした。' + (e.detail ? '（' + e.detail + '…）' : '');
     default:

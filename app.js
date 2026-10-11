@@ -719,6 +719,7 @@ function renderHeader(activePage) {
               ? `<button type="button" class="account-menu-item" role="menuitem" data-account="admin-off">管理者モードを解除</button>`
               : `<button type="button" class="account-menu-item" role="menuitem" data-account="admin-on">管理者モードにする</button>`
             }
+            <button type="button" class="account-menu-item hidden" role="menuitem" data-account="push" id="account-push-btn">通知</button>
             <button type="button" class="account-menu-item" role="menuitem" data-account="theme" id="account-theme-btn">表示: ${window.SciTheme ? SciTheme.labels[SciTheme.get()] : '自動'}</button>
             <button type="button" class="account-menu-item account-menu-danger" role="menuitem" data-account="logout">ログアウト</button>
           </div>
@@ -761,6 +762,7 @@ function bindAccountMenu(header) {
     menu.style.left = Math.max(8, Math.min(r.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8)) + 'px';
     btn.setAttribute('aria-expanded', 'true');
     refreshAccountName();
+    if (typeof refreshPushMenuItem === 'function') refreshPushMenuItem();   // pwa.js
   });
   menu.addEventListener('click', e => {
     e.stopPropagation();
@@ -776,6 +778,7 @@ function bindAccountMenu(header) {
     if (act === 'admin-on') showAdminAuthModal();
     if (act === 'admin-off') handleAdminRelease();
     if (act === 'name') showNameChangeModal();
+    if (act === 'push' && typeof showPushSettingsModal === 'function') showPushSettingsModal();   // pwa.js
   });
   // ヘッダーは再描画されることがある(ログイン直後など)ので、閉じる関数は最新のメニューのものに差し替える
   header._accountClose = close;
@@ -986,17 +989,11 @@ window.addEventListener('resize', syncHeaderHeightVar);
 
 function handleLogout(btn) {
   if (btn.dataset.confirming) {
-    api.clearToken();
-    api.clearAdminToken();
-    api.clearAllCache();
-    // サーバー設定由来のキャッシュも消す（次のログインで再取得される）
-    localStorage.removeItem(CONFIG.SITE_SETTINGS_KEY);
-    localStorage.removeItem(CONFIG.WELCOME_MESSAGE_KEY);
-    // 検索履歴も消す（検索語から活動内容が推測できるため。共有端末を想定）
-    Object.keys(localStorage)
-      .filter(k => k.indexOf(CONFIG.SEARCH_HISTORY_PREFIX) === 0)
-      .forEach(k => localStorage.removeItem(k));
-    location.href = 'index.html';
+    if (btn.dataset.loggingOut) return;
+    btn.dataset.loggingOut = '1';
+    // この端末の通知を解除してから（ログアウトした端末に届き続けないように。pwa.js）
+    const pushDone = typeof disablePushOnLogout === 'function' ? disablePushOnLogout() : Promise.resolve();
+    pushDone.then(() => finishLogout());
     return;
   }
   btn.dataset.confirming = '1';
@@ -1009,6 +1006,20 @@ function handleLogout(btn) {
       btn.style.color = '';
     }
   }, 3000);
+}
+
+function finishLogout() {
+  api.clearToken();
+  api.clearAdminToken();
+  api.clearAllCache();
+  // サーバー設定由来のキャッシュも消す（次のログインで再取得される）
+  localStorage.removeItem(CONFIG.SITE_SETTINGS_KEY);
+  localStorage.removeItem(CONFIG.WELCOME_MESSAGE_KEY);
+  // 検索履歴も消す（検索語から活動内容が推測できるため。共有端末を想定）
+  Object.keys(localStorage)
+    .filter(k => k.indexOf(CONFIG.SEARCH_HISTORY_PREFIX) === 0)
+    .forEach(k => localStorage.removeItem(k));
+  location.href = 'index.html';
 }
 
 // ====== モーダル アクセシビリティ ======
