@@ -37,7 +37,6 @@ async function init() {
         experiments: cachedEx ? cachedEx.items : []
     });
     renderWelcome();
-    renderLineInvite();
     renderSiteLinks();
 
     updateSyncStatus(cachedEv ? 'cached' : 'initial-loading', cachedEv ? cachedEv.timestamp : null);
@@ -144,22 +143,6 @@ async function saveWelcomeMessage() {
     } catch (e) {
         toast('保存失敗: ' + humanizeApiError(e), 'error');
     }
-}
-
-// ---- LINE公式アカウントの友だち追加案内（設定画面の「友だち追加URL」を表示するだけ） ----
-
-function renderLineInvite() {
-    const card = document.getElementById('line-invite-card');
-    const link = document.getElementById('line-invite-link');
-    if (!card || !link) return;
-    const cfg = _readCachedSiteSettings() || {};
-    const url = (cfg.line_add_friend_url || '').trim();
-    if (!url) {
-        card.classList.add('hidden');
-        return;
-    }
-    link.href = safeHttpUrl(url);
-    card.classList.remove('hidden');
 }
 
 // ---- ダッシュボード ----

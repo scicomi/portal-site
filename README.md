@@ -40,7 +40,7 @@
 | レイヤー | サービス | 役割 |
 |---|---|---|
 | **フロントエンド** | GitHub Pages | 静的HTML/CSS/JSを配信。無料 |
-| **バックエンドAPI** | Cloudflare Workers(`worker/`) | 認証・データの読み書き・Gemini・LINE通知・定期バックアップ |
+| **バックエンドAPI** | Cloudflare Workers(`worker/`) | 認証・データの読み書き・Gemini・定期バックアップ |
 | **データベース** | Cloudflare D1(SQLite) | イベント・メンバー・実験・投票・設定・監査ログ |
 | **ファイル** | Cloudflare R2 | アップロードされた画像・資料、毎日のバックアップ |
 
@@ -171,9 +171,9 @@ npm run deploy   # 本番へ反映
 
 ログインは 180 日間有効。パスワードの入力を繰り返し間違えると、その接続元からの試行は徐々に遅くなり、一定回数を超えると一時的に拒否される（10 分で解除）。
 
-### API キー・トークンを設定したい
+### API キーを設定したい
 
-Gemini の API キーと LINE のチャネルアクセストークンは、設定ページから入力する。D1 に保存され、画面や API では「設定済み／未設定」しか返らない。
+Gemini の API キーは、設定ページから入力する。D1 に保存され、画面や API では「設定済み／未設定」しか返らない。
 
 ### パスワード一覧ページ（管理者専用）
 
@@ -210,14 +210,12 @@ Gemini の API キーと LINE のチャネルアクセストークンは、設�
 ### バックアップと復元
 
 **毎日 03:00（日本時間）に、D1 の全データが R2 の `backups/YYYY-MM-DD.json` に自動保存される。**
-- 世代数は設定の `backup_keep_count`（既定14）。古いものは自動で削除される。この値と、監査ログの保管日数 `audit_keep_days`、LINE 通知の ON/OFF `event_notify_enabled`（`false` で通知しない）は、設定画面には出ない。変えるときは D1 Console で `config` テーブルを直接更新する（人が行う）。
+- 世代数は設定の `backup_keep_count`（既定14）。古いものは自動で削除される。この値と、監査ログの保管日数 `audit_keep_days` は、設定画面には出ない。変えるときは D1 Console で `config` テーブルを直接更新する（人が行う）。
 - パスワードのハッシュ・API キーはバックアップに**含まれない**。
 - R2 のファイル本体（アップロードされた画像・資料）はバックアップの対象外。R2 側に残っていればそのまま使える。
 - 毎日の結果は監査ログに残る。成功は `backup_ok`（保存先と世代数）、定期処理のどれかの失敗は `maintenance_fail`。D1 Console で次を実行し、最新の `backup_ok` が今日（または昨日）の日付なら正常:
   `SELECT Timestamp, Action, Detail FROM audit_log WHERE Action IN ('backup_ok', 'maintenance_fail') ORDER BY Id DESC LIMIT 10;`
 - **失敗しても通知は来ない**。人が見に行くまで誰も気づかないので、月に 1 回は上の SQL を実行すること（確認する担当者を決めておく。[人への引き継ぎ.md](人への引き継ぎ.md) §8）。Worker が動かなかった日や D1 が止まっていた日は、`backup_ok` も `maintenance_fail` も残らず、その日の行が**抜ける**。日付が連続しているかを見る
-- LINE の新規イベント通知が失敗すると、`event_notify_fail` が監査ログに残る。通知が届かないと言われたときは次で調べる:
-  `SELECT Timestamp, Detail FROM audit_log WHERE Action = 'event_notify_fail' ORDER BY Id DESC LIMIT 10;`
 
 **復元する手順**（現在のデータは上書きされる）：
 

@@ -157,36 +157,6 @@
                 </div>
             </div>
 
-            <!-- LINE通知設定 -->
-            <div class="settings-section collapsed">
-                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
-                    <div>
-                        <h2>LINE通知</h2>
-                        <p class="settings-section-desc">新しいイベントが登録された際に、LINE公式アカウントから一斉通知します。</p>
-                    </div>
-                    <span class="settings-section-chevron">&#9662;</span>
-                </div>
-                <div class="settings-card">
-                    <div class="e1-group">
-                        <label class="e1-label">友だち追加URL</label>
-                        <p class="settings-hint">LINE公式アカウントの友だち追加リンク（例: https://lin.ee/xxxxx）。ホーム画面に案内が表示されます。</p>
-                        <div style="display:flex;gap:8px;">
-                            <input type="text" id="cfg-line-url" class="e1-input" placeholder="https://lin.ee/..." style="flex:1;">
-                            <button class="btn btn-primary-solid" onclick="saveSettingField('line_add_friend_url','cfg-line-url', this)" style="width:auto;padding:8px 20px;">保存</button>
-                        </div>
-                    </div>
-                    <div class="e1-group">
-                        <label class="e1-label">Channel Access Token</label>
-                        <p class="settings-hint">LINE Developersコンソールで発行したMessaging APIのトークン。サーバー側でのみ使用されます。</p>
-                        <div style="display:flex;gap:8px;">
-                            <input type="password" id="cfg-line-token" class="e1-input" placeholder="トークンを入力" style="flex:1;">
-                            <button class="btn btn-secondary" onclick="toggleVisibility('cfg-line-token')" style="width:auto;padding:8px 12px;" title="表示切替">&#128065;</button>
-                            <button class="btn btn-primary-solid" onclick="saveSecret('line_channel_access_token','cfg-line-token', this)" style="width:auto;padding:8px 20px;">保存</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- 広報媒体設定 -->
             <div class="settings-section collapsed">
                 <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">

@@ -29,7 +29,7 @@
 [Cloudflare Workers]  xxx.workers.dev            ← 新規(GAS の doPost/doGet の代替)
       ├─ [D1]  データ(イベント・メンバー・投票・設定・監査ログ)
       ├─ [R2]  ファイル(資料・写真)+ D1 の定期バックアップ
-      ├─ Gemini API / LINE API を呼び出し
+      ├─ Gemini API を呼び出し
       └─ Cron Trigger(定期実行)
 
 (GAS は移行完了後に停止。リマインダー・年間レポートのメール機能は廃止)
@@ -46,7 +46,6 @@
 | 監査ログ | AuditLog シート | D1 の audit_log | 保持日数の間引きは Cron |
 | ファイル(uploadFile/deleteFile) | Drive | R2 | 現在ファイルなし。新規機能として実装 |
 | Gemini(geminiProxy/geminiGenerate/geminiUsage) | GAS | Workers | 使用回数は D1 に記録。API キーは Secrets |
-| LINE 新規イベント通知 | GAS | Workers | トークンは Secrets |
 | バックアップ | 月次でシートを複製 | Cron で D1 を R2 に書き出し | 世代数は設定値を維持 |
 | 監査ログ・孤児ファイルの整理 | 月次トリガー | Cron | |
 | リマインダーメール・年間レポート | GAS の MailApp | **廃止** | 不要のため削除(関連する設定キーも削除) |
@@ -138,7 +137,7 @@ worker/
 ```
 
 - 初期は手元から `wrangler deploy` で公開する。安定後に、GitHub Actions からの自動公開を検討する(既存の `deploy-gas.yml` の代わり)。
-- 秘密情報(署名鍵、Gemini キー、LINE トークン)は `wrangler secret` で登録する。リポジトリには置かない。
+- 秘密情報(署名鍵、Gemini キー)は `wrangler secret` で登録する。リポジトリには置かない。
 
 ## 11. フェーズと完了条件
 
@@ -149,7 +148,7 @@ worker/
 | 3 | データ API(list/listAll/save/delete、競合検知、監査ログ) | 既存の画面が、Workers に向けて動く |
 | 4 | 投票・設定 | 出欠、締切の制御、設定画面が動く |
 | 5 | データ移行と照合 | 全テーブルの件数と内容が一致する |
-| 6 | Gemini・LINE・R2 | 各機能が動く |
+| 6 | Gemini・R2 | 各機能が動く |
 | 7 | Cron(D1 のバックアップ、監査ログの整理) | 毎日バックアップが R2 に保存される |
 | 8 | 並行運用・切り替え | 全員が Workers 経由で利用できる |
 | 9 | 運用整備 | README、引き継ぎ資料、使用量の確認方法 |
@@ -178,13 +177,13 @@ worker/
 |---|---|
 | 1 基盤 / 2 認証 / 3 データ API / 4 投票・設定 | 実装済み。ローカルで結合テスト 15 項目が通過(`worker/test/api.test.mjs`) |
 | 5 データ移行 | 取り込み・突き合わせのスクリプト実装済み。合成データで往復検証済み。本番データの投入は未実施 |
-| 6 Gemini・LINE・R2 | 実装済み。R2 はローカルで動作確認済み。Gemini は API キーが必要なため、本番で確認する |
+| 6 Gemini・R2 | 実装済み。R2 はローカルで動作確認済み。Gemini は API キーが必要なため、本番で確認する |
 | 7 Cron(バックアップ・整理) | 実装済み。ローカルで動作確認済み |
 | フロント差し替え | `api.js` に接続先の試験切替(`?api=`)を追加、Drive 依存の表示を修正、リマインダー設定を削除 |
 | 8 並行運用・切り替え | **完了(2026-09-29)**。本番の D1 へ取り込み(60 イベント・39 メンバー・19 実験・195 投票、全件一致を確認)、サイトを公開。旧 GAS は読み取り専用で保険として残す |
 | 9 運用整備 | 完了。README・`worker/README.md` を更新、復元(`restore.mjs`)と差分マージ(`merge.mjs`)を追加。切り替え後、同期エラー・ログイン画面の頻発が解消したことを確認。旧 GAS の停止と `deploy-gas.yml` の整理は任意 |
 
 **挙動の変更点(意図的)**
-- LINE の新規イベント通知: GAS 版は「クライアントが ID を省略したとき」だけ通知する実装で、フロントは常に ID を送るため実際には送られていなかった。Worker 版は「新しい行が作られたとき」に通知する。トークン未設定なら送られない。
-- 監査ログの `create` / `update` の区別も、同じ理由で「新しい行かどうか」で判定する。
+- LINE の新規イベント通知は、LINE 公式アカウントの送信上限(月 200 通)に達する見込みだったため、実装を断念して削除した。代わりに PWA のプッシュ通知を計画している([11_pwa_push_plan.md](11_pwa_push_plan.md))。
+- 監査ログの `create` / `update` の区別は「新しい行が作られたかどうか」で判定する(GAS 版は「クライアントが ID を省略したとき」を新規としていたが、フロントは常に ID を送るため区別できていなかった)。
 - 廃止した設定キー: `reminder_*`、`report_recipients`、`annual_report_enabled`、`file_sharing`、`file_retention_years`、`storage_*`。

@@ -327,7 +327,7 @@ test('管理者: パスワード一覧の保存・取得、設定の取得(機�
 
   const pub = await post({ action: 'getPublicConfig', token: member });
   assert.equal(pub.config.password, undefined);
-  assert.equal(pub.config.line_channel_access_token, undefined);
+  assert.equal(pub.config.gemini_api_key, undefined);
 
   assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'nope', value: 'x' })).error, 'forbidden_key');
   assert.equal((await post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key: 'password', value: ADMIN_PW })).error, 'invalid_value'); // 一般=幹部は拒否

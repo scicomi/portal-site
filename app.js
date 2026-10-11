@@ -1456,7 +1456,7 @@ async function applySiteSettings() {
         if (cached) {
             const obj = JSON.parse(cached);
             // 旧版は管理者設定（パスワード・APIキー）ごと保存していたため、残っていれば破棄する
-            const LEGACY_SECRET_KEYS = ['password', 'admin_password', 'gemini_api_key', 'line_channel_access_token', 'report_recipients'];  // report_recipients は廃止済み。古いキャッシュの掃除用に残す
+            const LEGACY_SECRET_KEYS = ['password', 'admin_password', 'gemini_api_key', 'report_recipients'];  // report_recipients は廃止済み。古いキャッシュの掃除用に残す
             if (obj.data && LEGACY_SECRET_KEYS.some(k => k in obj.data)) {
                 localStorage.removeItem(SETTINGS_CACHE_KEY);
             } else if (Date.now() - obj.ts < SETTINGS_TTL) {

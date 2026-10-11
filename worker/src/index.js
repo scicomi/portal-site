@@ -15,7 +15,6 @@ import {
   listEventVotes, voteDeadlinePassed, upsertVote, appendAuditLog, ID_PATTERN
 } from './data.js';
 import { handleGeminiProxy, handleGeminiGenerate, geminiUsageGet } from './gemini.js';
-import { notifyNewEvent } from './line.js';
 import { uploadFile, deleteFile, serveFile } from './files.js';
 import { runMaintenance } from './maintenance.js';
 import { moveRecordToTrash, listTrash, restoreTrash, purgeTrash, purgeExpiredTrash, getTrashRow, TRASH_ADMIN_ONLY } from './trash.js';
@@ -40,7 +39,7 @@ export default {
         if (text.length > MAX_REQUEST_BYTES) return tooLarge();
         let body = {};
         try { body = JSON.parse(text) || {}; } catch (_) { body = {}; }
-        return jsonResponse(await handlePost(env, ctx, request, body), request, env);
+        return jsonResponse(await handlePost(env, request, body), request, env);
       }
       return new Response('Method Not Allowed', { status: 405, headers: Object.assign({ Allow: 'POST, OPTIONS' }, corsHeaders(request, env)) });
     } catch (err) {
@@ -59,7 +58,7 @@ const versionInfo = () => ({ success: true, version: CODE_VERSION, serverTime: n
 
 // ---- POST ----
 
-async function handlePost(env, ctx, request, body) {
+async function handlePost(env, request, body) {
   const token = body.token || '';
   const action = body.action || '';
   const resource = body.resource || '';   // 省略時に events を対象にしない(list/save/delete は getResource が unknown resource を返す)
@@ -157,9 +156,6 @@ async function handlePost(env, ctx, request, body) {
       }
       const byAdmin = !!(res.adminOnly || res.adminWrite);
       await appendAuditLog(env, saved.created ? 'create' : 'update', resource + ':' + saved.item.ID, byAdmin ? body.adminToken : token, byAdmin ? 'admin' : 'member');
-      // 通知は真の新規作成だけ。削除の Undo による再作成は、元の CreatedAt を持って来るので通知しない
-      const isRestore = !!(body.item && body.item.CreatedAt);
-      if (saved.created && resource === 'events' && !isRestore) ctx.waitUntil(notifyNewEvent(env, saved.item));
       return { success: true, item: saved.item };
     }
 

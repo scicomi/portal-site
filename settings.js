@@ -84,10 +84,6 @@ async function loadSettings() {
         // 広報媒体
         document.getElementById('cfg-pr-channels').value = cfg.pr_channels || 'Twitter,Instagram,HP';
 
-        // LINE通知
-        document.getElementById('cfg-line-url').value = cfg.line_add_friend_url || '';
-        document.getElementById('cfg-line-token').placeholder = cfg.line_channel_access_token_set ? '設定済み（変更する場合のみ入力）' : 'トークンを入力';
-
         // リンク集
         renderSiteLinkRows(parseSiteLinks(cfg.site_links));
 
