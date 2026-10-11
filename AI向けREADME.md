@@ -134,8 +134,8 @@ npx wrangler whoami     # ログインできているか確認（AI が実行し
 
 **順番が重要。** DB を先に変え、API を次に、画面を最後に出す。古いフロントと新しい API が一時的に混ざっても壊れないようにするため。
 
-1. `worker/migrations/` に**新しい番号のファイル**を作る（既存のマイグレーションは絶対に編集しない。番号は `ls worker/migrations` の最後 + 1。この文書を書いた時点の最新は 0005 なので、次は 0006 — 増えたら実際のフォルダを見ること）。
-   例: `0006_add_event_parking.sql`
+1. `worker/migrations/` に**新しい番号のファイル**を作る（既存のマイグレーションは絶対に編集しない。番号は `ls worker/migrations` の最後 + 1。この文書を書いた時点の最新は 0006 なので、次は 0007 — 増えたら実際のフォルダを見ること）。
+   例: `0007_add_event_parking.sql`
    ```sql
    ALTER TABLE events ADD COLUMN Parking TEXT NOT NULL DEFAULT '';
    ```
@@ -242,3 +242,4 @@ AI にはできない、または任せてはいけない作業。指示する�
   - マウスを乗せたときだけ出る操作（行内の編集・削除、写真の ✕）は、タッチ端末（`@media (hover: none)`）では常に表示する。タップ領域は 44px（`--touch-min`）以上にする
   - 通知（トースト）の領域は最初から DOM にあり、失敗は `role="alert"`。文字・枠の色は `style.css` の変数（`--text-muted` など）が、白地で 4.5:1 以上になる濃さにそろえてある。色を足すときは、コントラストを確かめる
 - **ダークテーマ**: 配色は CSS の `light-dark(ライトの色, ダークの色)` で書く(`style.css` の `:root` のトークン、`guide.css`)。新しい色を足すときは両方の値を書く。`<head>` の `theme-init.js` が、端末の設定(自動)かアカウントメニューで選んだ値(`localStorage` の `scicomi_theme`)を `data-theme` に反映する。カテゴリ色(`config.js` の `bg` / `text`)のようにパステルの地と濃い文字をセットで持つ色は、ダークでも固定のまま使う(片方だけ変えると読めなくなる)
+- **プッシュ通知(Web Push)**: 設計は [docs/11_pwa_push_plan.md](docs/11_pwa_push_plan.md)。暗号化と署名は `worker/src/webpush.js`(外部ライブラリなし。RFC 8291 の試験値で `worker/test/webpush.test.mjs` が確かめる)、登録と送信待ちは `worker/src/push.js`。鍵は公開鍵が `wrangler.toml` の `VAPID_PUBLIC_KEY`、秘密鍵が Secret の `VAPID_PRIVATE_KEY`(人が `node scripts/gen-vapid.mjs --remote` で作る。AI は値を扱わない)。公開鍵が空なら通知は無効。`push_subscriptions`・`push_outbox` は `tables.js` にもバックアップにも入れない(宛先 URL を外に出さない。端末が自動で登録し直す)。一般パスワードを変えると、全端末の登録が無効になる(epoch)。無料枠の CPU 10ms に収めるため、1 回に送る件数は `PUSH_BATCH_SIZE`(既定 5)で、残りは 1 分ごとの定期実行が送る。本番で CPU 超過(エラー 1102)が出たら下げる。宛先は配信基盤のホストだけを受け付ける(`push.js` の `ENDPOINT_HOSTS`)

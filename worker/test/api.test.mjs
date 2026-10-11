@@ -9,6 +9,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
+import { makeClientKeys, decryptPushBody, verifyVapidJwt } from './push-helpers.mjs';
 
 const BASE = process.env.API_BASE || 'http://127.0.0.1:8787';
 const MEMBER_PW = process.env.TEST_MEMBER_PW || 'test-member-pw';
@@ -778,4 +780,104 @@ test('設定: 日数・件数の設定は範囲外を拒否する(巨大な値�
   }
   assert.equal((await set('trash_keep_days', '365')).success, true);
   assert.equal((await set('trash_keep_days', '7')).success, true);
+});
+
+// ---- プッシュ通知 ----
+// 配信基盤の代わりに、テストの中で 127.0.0.1 に受け口を立てる。Worker の .dev.vars に
+// VAPID の鍵(node scripts/gen-vapid.mjs --local)と PUSH_ALLOW_LOCAL_ENDPOINT=true が必要。無ければ飛ばす。
+
+function startPushReceiver() {
+  const received = [];
+  const statusFor = new Map();   // パス → 返すステータス(既定 201)
+  const server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', c => chunks.push(c));
+    req.on('end', () => {
+      received.push({ path: req.url, headers: req.headers, body: new Uint8Array(Buffer.concat(chunks)) });
+      res.writeHead(statusFor.get(req.url) || 201);
+      res.end();
+    });
+  });
+  return new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve({ server, received, statusFor, base: 'http://127.0.0.1:' + server.address().port })));
+}
+
+test('プッシュ通知: 登録・テスト送信(暗号化と署名)・宛先の検査・解除・付け替え', async t => {
+  const pub = (await post({ action: 'getPublicConfig', token: member })).config.push_public_key;
+  const probe = await post({ action: 'pushSubscribe', token: member, subscription: { endpoint: 'http://127.0.0.1:9/x', keys: (k => ({ p256dh: k.publicKey, auth: k.auth }))(await makeClientKeys()) } });
+  if (!pub || probe.error === 'feature_disabled' || probe.error === 'invalid_subscription') {
+    t.skip('VAPID の鍵か PUSH_ALLOW_LOCAL_ENDPOINT が .dev.vars に無い(worker/README.md の「ローカル開発」)');
+    return;
+  }
+  await post({ action: 'pushUnsubscribe', endpoint: 'http://127.0.0.1:9/x' });
+
+  const rx = await startPushReceiver();
+  try {
+    const keys = await makeClientKeys();
+    const sub = (path, k = keys) => ({ endpoint: rx.base + path, keys: { p256dh: k.publicKey, auth: k.auth } });
+
+    // 認証・宛先・鍵の検査
+    assert.equal((await post({ action: 'pushSubscribe', subscription: sub('/a') })).error, 'unauthorized');
+    assert.equal((await post({ action: 'pushSubscribe', token: member, subscription: Object.assign(sub('/a'), { endpoint: 'https://evil.example/push' }) })).error, 'invalid_subscription');
+    assert.equal((await post({ action: 'pushSubscribe', token: member, subscription: Object.assign(sub('/a'), { endpoint: 'https://user:pw@fcm.googleapis.com/x' }) })).error, 'invalid_subscription');
+    assert.equal((await post({ action: 'pushSubscribe', token: member, subscription: { endpoint: rx.base + '/a', keys: { p256dh: 'AAAA', auth: keys.auth } } })).error, 'invalid_subscription');
+    assert.equal((await post({ action: 'pushSubscribe', token: member, subscription: { endpoint: rx.base + '/a' } })).error, 'invalid_subscription');
+
+    // 登録(同じ宛先の再登録は上書き)
+    assert.equal((await post({ action: 'pushSubscribe', token: member, subscription: sub('/a'), topics: ['events', 'nope'] })).success, true);
+    assert.equal((await post({ action: 'pushSubscribe', token: member, subscription: sub('/a'), topics: ['events'] }, { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' })).success, true);
+
+    // 台数は管理者だけが見られ、宛先は返さない
+    assert.equal((await post({ action: 'pushStats', token: member })).error, 'admin_required');
+    const stats = await post({ action: 'pushStats', token: adminMember, adminToken: admin });
+    assert.equal(stats.success, true);
+    assert.ok(stats.byLabel.iPhone >= 1);
+    assert.ok(!JSON.stringify(stats).includes(rx.base));
+
+    // テスト通知: 受け口に届き、端末の鍵で復号でき、VAPID の署名が公開鍵で検証できる
+    const r = await post({ action: 'pushTest', token: member, endpoint: rx.base + '/a' });
+    assert.equal(r.success, true, JSON.stringify(r));
+    const got = rx.received.find(x => x.path === '/a');
+    assert.ok(got, '受け口に届いていない');
+    assert.equal(got.headers['content-encoding'], 'aes128gcm');
+    assert.equal(got.headers.ttl, '86400');
+    assert.equal(got.headers.topic, 'test');
+    const m = /^vapid t=([^,]+), k=(.+)$/.exec(got.headers.authorization || '');
+    assert.ok(m, 'Authorization が vapid 形式でない');
+    assert.equal(m[2], pub);
+    const claims = await verifyVapidJwt(m[1], pub);
+    assert.equal(claims.aud, rx.base);
+    assert.match(claims.sub, /^mailto:/);
+    assert.ok(claims.exp > Date.now() / 1000 && claims.exp <= Date.now() / 1000 + 86400);
+    const payload = JSON.parse(await decryptPushBody(got.body, keys.publicKey, keys.privateKey, keys.auth));
+    assert.equal(payload.title, 'テスト通知');
+    assert.equal(payload.url, 'index.html');
+
+    // 続けて送ると回数制限。未登録の宛先は not_found。テスト通知はトークンが必要
+    assert.equal((await post({ action: 'pushTest', token: member, endpoint: rx.base + '/a' })).error, 'rate_limited');
+    assert.equal((await post({ action: 'pushTest', token: member, endpoint: rx.base + '/none' })).error, 'not_found');
+    assert.equal((await post({ action: 'pushTest', endpoint: rx.base + '/a' })).error, 'unauthorized');
+
+    // 配信基盤が 410(端末側で解除済み)を返したら、登録を消す
+    const keysB = await makeClientKeys();
+    assert.equal((await post({ action: 'pushSubscribe', token: member, subscription: sub('/gone', keysB) })).success, true);
+    rx.statusFor.set('/gone', 410);
+    assert.equal((await post({ action: 'pushTest', token: member, endpoint: rx.base + '/gone' })).error, 'not_found');
+    rx.statusFor.delete('/gone');
+    assert.equal((await post({ action: 'pushResubscribe', oldEndpoint: rx.base + '/gone', subscription: sub('/gone2', keysB) })).error, 'not_found');
+
+    // 付け替え(Service Worker の pushsubscriptionchange): 古い宛先が登録済みなら、トークンなしで新しい宛先へ移せる
+    const keysC = await makeClientKeys();
+    assert.equal((await post({ action: 'pushResubscribe', oldEndpoint: rx.base + '/a', subscription: sub('/c', keysC) })).success, true);
+    assert.equal((await post({ action: 'pushTest', token: member, endpoint: rx.base + '/a' })).error, 'not_found');
+    assert.equal((await post({ action: 'pushTest', token: member, endpoint: rx.base + '/c' })).success, true);
+    const gotC = rx.received.filter(x => x.path === '/c').pop();
+    assert.equal(JSON.parse(await decryptPushBody(gotC.body, keysC.publicKey, keysC.privateKey, keysC.auth)).title, 'テスト通知');
+
+    // 解除(トークンなしでよい)
+    assert.equal((await post({ action: 'pushUnsubscribe', endpoint: rx.base + '/c' })).success, true);
+    assert.equal((await post({ action: 'pushTest', token: member, endpoint: rx.base + '/c' })).error, 'not_found');
+    assert.equal((await post({ action: 'pushUnsubscribe', endpoint: '' })).error, 'invalid_subscription');
+  } finally {
+    rx.server.close();
+  }
 });

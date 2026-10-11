@@ -12,6 +12,13 @@ ALLOWED_ORIGINS = "https://scicomi.github.io"
 PBKDF2_ITERATIONS = "100000"
 # AI検索(Gemini)の有効/無効。"true" 以外は Gemini へ一切送信しない。再開手順は docs/09_aibot_suspended.md。
 GEMINI_ENABLED = "false"
+# プッシュ通知(Web Push)の公開鍵(秘密ではない)。秘密鍵は Secret の VAPID_PRIVATE_KEY。
+# 作り方: node scripts/gen-vapid.mjs --remote(秘密鍵は画面に出さず Secret に登録し、公開鍵だけを表示する)。空なら通知は無効
+VAPID_PUBLIC_KEY = ""
+# 配信基盤(Apple・Google など)が、送り方に問題があったときに運営者へ連絡する先
+VAPID_SUBJECT = "mailto:sc.tokai@gmail.com"
+# 1 回の実行で送る通知の件数。無料枠の CPU 10ms に収める(1 件あたり約 1〜1.5ms)。CPU 超過のエラーが出たら下げる
+PUSH_BATCH_SIZE = "5"
 
 [[d1_databases]]
 binding = "DB"
@@ -25,5 +32,6 @@ binding = "FILES"
 bucket_name = "scicomi-portal-files"
 
 # 毎日 03:00 JST(=18:00 UTC): D1 のバックアップを R2 に保存し、古い監査ログを整理する
+# 1 分ごと: プッシュ通知の送信待ちを送る(送信待ちが空なら D1 を 1 回読むだけ。src/index.js の PUSH_CRON と同じ文字列にする)
 [triggers]
-crons = ["0 18 * * *"]
+crons = ["0 18 * * *", "* * * * *"]

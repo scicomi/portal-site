@@ -4,6 +4,7 @@
 // 公開設定(getPublicConfig)が揃う。機密キーの値は API では絶対に返さない(設定済みかどうかだけ返す)。
 
 import { bumpEpoch, verifyPassword, hasPassword, storePassword } from './auth.js';
+import { vapidConfigured } from './webpush.js';
 
 export const GEMINI_MODEL = 'gemini-2.5-flash-lite';
 export const GEMINI_DAILY_LIMIT = 1500;
@@ -126,6 +127,8 @@ export async function publicConfig(env) {
   const cfg = {};
   PUBLIC_CONFIG_KEYS.forEach(k => { cfg[k] = withDefault(map, k); });
   cfg.gemini_daily_limit = String(GEMINI_DAILY_LIMIT);
+  // プッシュ通知の公開鍵(秘密ではない)。鍵の組が未設定なら空で、画面は通知の案内を出さない
+  cfg.push_public_key = vapidConfigured(env) ? String(env.VAPID_PUBLIC_KEY) : '';
   return cfg;
 }
 

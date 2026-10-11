@@ -17,10 +17,16 @@ import {
 import { handleGeminiProxy, handleGeminiGenerate, geminiUsageGet } from './gemini.js';
 import { uploadFile, deleteFile, serveFile } from './files.js';
 import { runMaintenance } from './maintenance.js';
+import {
+  pushEnabled, subscribePush, unsubscribePush, resubscribePush, pushStats, sendTestPush, drainPushOutboxSafe, batchSize
+} from './push.js';
 import { moveRecordToTrash, listTrash, restoreTrash, purgeTrash, purgeExpiredTrash, getTrashRow, TRASH_ADMIN_ONLY } from './trash.js';
 
 // リクエスト本文の上限。最大のものはファイルのアップロード(base64 で元の約 1.34 倍。上限は設定 file_max_mb)
 const MAX_REQUEST_BYTES = 28 * 1024 * 1024;
+
+// 定期実行の種類(wrangler.toml の crons と同じ文字列)。1 分ごと: 通知の送信待ちを送る / それ以外(毎日 03:00): バックアップと整理
+const PUSH_CRON = '* * * * *';
 
 export default {
   async fetch(request, env, ctx) {
@@ -50,7 +56,8 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(runMaintenance(env));
+    if (event.cron === PUSH_CRON) ctx.waitUntil(drainPushOutboxSafe(env, batchSize(env)));
+    else ctx.waitUntil(runMaintenance(env));
   }
 };
 
@@ -123,6 +130,13 @@ async function handlePost(env, request, body) {
       await appendAuditLog(env, 'login_fail', '', '');
       await delayAfterAuthFail(env, 'member', ip);
       return { success: false };
+    }
+
+    // --- プッシュ通知の解除・付け替え(宛先を知っていることが条件。トークンが切れた端末・Service Worker からも呼べるように認証は求めない) ---
+    if (action === 'pushUnsubscribe') return await unsubscribePush(env, body.endpoint);
+    if (action === 'pushResubscribe') {
+      if (!pushEnabled(env)) return { success: false, error: 'feature_disabled' };
+      return await resubscribePush(env, body.oldEndpoint, body.subscription);
     }
 
     // --- 以下は認証必須 ---
@@ -234,6 +248,21 @@ async function handlePost(env, request, body) {
       const r = await adminSetConfig(env, key, body.value);
       if (r.success) await appendAuditLog(env, 'adminSetConfig', key, body.adminToken, 'admin');
       return r;
+    }
+
+    // --- プッシュ通知 ---
+    // 鍵(VAPID)が未設定なら登録を受け付けない(送れないため)
+    if (action === 'pushSubscribe') {
+      if (!pushEnabled(env)) return { success: false, error: 'feature_disabled' };
+      return await subscribePush(env, body, request.headers.get('User-Agent'));
+    }
+    if (action === 'pushTest') {
+      if (!pushEnabled(env)) return { success: false, error: 'feature_disabled' };
+      return await sendTestPush(env, body.endpoint);
+    }
+    if (action === 'pushStats') {
+      if (!(await checkAdmin(env, body.adminToken))) return { success: false, error: 'admin_required' };
+      return await pushStats(env);
     }
 
     // --- 出欠投票 ---

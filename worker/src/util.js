@@ -1,6 +1,6 @@
 // 共通ユーティリティ
 
-export const CODE_VERSION = '2026-10-03-cloudflare-3';
+export const CODE_VERSION = '2026-10-11-push-1';
 
 const enc = new TextEncoder();
 

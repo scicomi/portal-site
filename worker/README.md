@@ -5,7 +5,8 @@
 - **API**: Workers(`src/`)。クライアント(`../api.js`)とは、`action` を POST する従来の方式・JSON の形・エラーコードで互換
 - **データ**: D1(テーブル定義は `migrations/` の SQL を番号順に適用した結果。列の一覧は `src/tables.js`)。列名はスプレッドシート時代の列名のまま
 - **ファイル**: R2(`/files/<キー>` で公開。ログイン不要)
-- **定期実行**: 毎日 03:00 JST に D1 を R2 の `backups/` に保存し、古いログを整理(`src/maintenance.js`)
+- **定期実行**: 毎日 03:00 JST に D1 を R2 の `backups/` に保存し、古いログを整理(`src/maintenance.js`)。1 分ごとに、プッシュ通知の送信待ちを送る(`src/push.js`)
+- **プッシュ通知**: Web Push を Worker から直接送る(暗号化と署名は `src/webpush.js`、登録と送信待ちは `src/push.js`)。設計は [../docs/11_pwa_push_plan.md](../docs/11_pwa_push_plan.md)
 
 ## ローカル開発
 
@@ -23,6 +24,8 @@ node -e "require('fs').writeFileSync('.dev.vars','TOKEN_SECRET='+require('crypto
 npm run db:migrate:local
 NEW_PASSWORD=test-member-pw node scripts/set-password.mjs member --local   # テスト用の値(10 文字以上)
 NEW_PASSWORD=test-admin-pw  node scripts/set-password.mjs admin  --local
+node scripts/gen-vapid.mjs --local                                       # プッシュ通知のローカル用の鍵(.dev.vars に書く)
+echo PUSH_ALLOW_LOCAL_ENDPOINT=true >> .dev.vars                          # 通知のテストで 127.0.0.1 を宛先に使う
 npm run dev            # http://127.0.0.1:8787
 npm test               # 別ターミナルで。API の契約を検証する
 ```
@@ -37,6 +40,8 @@ npm run db:migrate:local
 $env:NEW_PASSWORD='test-member-pw'; node scripts/set-password.mjs member --local
 $env:NEW_PASSWORD='test-admin-pw';  node scripts/set-password.mjs admin  --local
 Remove-Item Env:NEW_PASSWORD
+node scripts/gen-vapid.mjs --local
+Add-Content .dev.vars 'PUSH_ALLOW_LOCAL_ENDPOINT=true'
 npm run dev            # http://127.0.0.1:8787
 npm test               # 別の PowerShell で
 ```
@@ -44,6 +49,8 @@ npm test               # 別の PowerShell で
 - `npm test` は起動中のローカル Worker(`npm run dev`)に接続する結合テスト。起動していないと全件 `fetch failed` になる
 - 接続先とパスワードは環境変数で変えられる(`worker/test/api.test.mjs` 冒頭)。既定は `API_BASE=http://127.0.0.1:8787`、`TEST_MEMBER_PW=test-member-pw`、`TEST_ADMIN_PW=test-admin-pw`。別のポートで `npm run dev` を起動したときや、`set-password.mjs` で別のテスト用パスワードを入れたときは、同じ値を渡す(例: PowerShell は `$env:API_BASE='http://127.0.0.1:8790'; npm test`)。ほかの Worker が 8787 で動いていると、意図しない相手にテストが当たるので注意
 - 別のポート・別の保存先で動かすとき(複数の作業を並行するときなど): `npx wrangler dev --local --persist-to .wrangler/state-x --port 8790 --inspector-port 9233`。`set-password.mjs` は既定の保存先(`.wrangler/state`)に書くので、別の保存先に使う場合は、先に `.wrangler/state` をフォルダごとコピーしておく。復元スクリプトは `--persist-to=<フォルダ>` で保存先を選べる
+- プッシュ通知のテストは、テストの中に配信基盤の代わりの受け口(127.0.0.1)を立て、届いた通知を復号して確かめる。`.dev.vars` に鍵か `PUSH_ALLOW_LOCAL_ENDPOINT=true` が無いと、そのテストだけ飛ばす(skipped と出る)。`.dev.vars` を書き換えたら `npm run dev` を起動し直す(起動中のサーバーは、コードは読み直すが `.dev.vars` は読み直さない)
+- 定期実行を手で動かすには `npx wrangler dev --local --persist-to .wrangler/state --test-scheduled` で起動し、`curl "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?cron=*+*+*+*+*"`(通知の送信)/ `cron=0+18+*+*+*`(毎日の処理)
 - テストはローカル DB の設定(ブランド名など)を既定値に戻してから始める。ログイン試行制限のテストはテスト専用の IP だけをロックするので、続けて再実行できる
 
 画面から試すときは、`index.html?api=http://127.0.0.1:8787` で開く(そのブラウザだけ接続先が切り替わる。`?api=reset` で解除)。

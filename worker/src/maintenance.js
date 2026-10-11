@@ -1,10 +1,10 @@
 // 定期実行(Cron Trigger: 毎日 03:00 JST)
 //   1) D1 の全データを JSON にして R2 の backups/ に保存し、古い世代を削除
-//   2) 監査ログ・ログイン失敗記録・一時キャッシュの整理
+//   2) 監査ログ・ログイン失敗記録・一時キャッシュ・プッシュ通知(古い送信待ち・無効な登録)の整理
 //   結果は監査ログ(audit_log)に残す。バックアップの成功は backup_ok、各処理の失敗は maintenance_fail
 //   (本番の console 出力は残らないため。確認方法は README の「バックアップと復元」)。
 //
-// バックアップに含めないもの: secrets(パスワードのハッシュ・API キー)、auth_fail、kv_cache。
+// バックアップに含めないもの: secrets(パスワードのハッシュ・API キー)、auth_fail、kv_cache、push_subscriptions・push_outbox(端末が登録し直す)。
 // R2 の backups/ 配下は /files/ からは配信されない(キーに '/' を含むため)。
 
 import { getConfigInt } from './config.js';
@@ -13,6 +13,7 @@ import { purgeExpiredTrash } from './trash.js';
 import { purgeOldAuthFail } from './auth.js';
 import { purgeExpiredCache } from './gemini.js';
 import { jstDate } from './util.js';
+import { purgePush } from './push.js';
 
 const BACKUP_TABLES = ['events', 'members', 'experiments', 'guides', 'passwords', 'event_votes', 'trash', 'config', 'audit_log', 'gemini_usage'];
 const BACKUP_PREFIX = 'backups/';
@@ -42,7 +43,8 @@ export async function runMaintenance(env) {
     ['trimAuditLog', async () => trimAuditLog(env, await getConfigInt(env, 'audit_keep_days', 365))],
     ['purgeTrash', () => purgeExpiredTrash(env)],
     ['purgeAuthFail', () => purgeOldAuthFail(env)],
-    ['purgeCache', () => purgeExpiredCache(env)]
+    ['purgeCache', () => purgeExpiredCache(env)],
+    ['purgePush', () => purgePush(env)]
   ];
   // 個々の処理が失敗しても他に影響しないよう個別に try/catch する
   for (const [name, fn] of steps) {
