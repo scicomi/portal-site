@@ -70,7 +70,7 @@ function docText(notRequired, person) {
   return flag(notRequired) ? '不要' : s(person);
 }
 
-// 項目の見せ方(空は呼び出し側で「未定」にする)
+// 項目の見せ方(空は呼び出し側で「ー」にする)
 function display(w, ev) {
   switch (w.key) {
     case 'date': return dateTimeText(Object.assign({}, ev, { TimeStart: '', TimeEnd: '' }));
@@ -81,7 +81,29 @@ function display(w, ev) {
   }
 }
 
-const orUndecided = v => s(v) || '未定';
+// 空の値は「ー」で表す
+const dash = v => s(v) || 'ー';
+
+// カードに並べる項目。keys: その項目が変わったと判断する WATCHED / DOC_FIELDS の key(変更のカードで印を付ける)
+function cardRows(ev) {
+  if (isMeeting(ev)) {
+    return [
+      { label: 'ミーティング名', keys: ['title'], value: eventDisplayName(ev) },
+      { label: '場所', keys: ['location'], value: s(ev.Location) },
+      { label: '日時', keys: ['date', 'time'], value: dateTimeText(ev) },
+      { label: '議題', keys: ['remarks'], value: s(ev.Remarks) }
+    ];
+  }
+  return [
+    { label: 'イベント名', keys: ['title'], value: eventDisplayName(ev) },
+    { label: '企画担当者', keys: ['leader'], value: s(ev.PlanLeader) },
+    { label: '場所', keys: ['location'], value: s(ev.Location) },
+    { label: 'イベント日時', keys: ['date', 'time'], value: dateTimeText(ev) },
+    { label: '実験内容・発表者', keys: ['parts'], value: partsText(ev) },
+    { label: '許可願担当', keys: ['kyoka'], value: docText(ev.KyokaNotRequired, ev.AdminKyoka) },
+    { label: '報告書担当', keys: ['houkoku'], value: docText(ev.HoukokuNotRequired, ev.AdminHoukoku) }
+  ];
+}
 
 // ボタンのリンク。`id=イベントのID~` は、変更のときにフローが元の投稿を探す目印(~ は id=12 と id=123 を取り違えない区切り。
 // ポータルは event だけを読み、id は無視する)
@@ -116,25 +138,12 @@ export function buildNewCard(ev, site) {
     const kind = MEETING_NAMES[s(ev.Category)] || 'ミーティング';
     return cardShell([
       header('attention', 'Attention', kind + 'が登録されました', name),
-      factSet([
-        ['ミーティング名', name],
-        ['場所', orUndecided(ev.Location)],
-        ['日時', orUndecided(dateTimeText(ev))],
-        ['議題', orUndecided(ev.Remarks)]
-      ])
+      factSet(cardRows(ev).map(r => [r.label, dash(r.value)]))
     ], links);
   }
   return cardShell([
     header('accent', 'Accent', '新しいイベントが登録されました', name),
-    factSet([
-      ['イベント名', name],
-      ['企画担当者', orUndecided(ev.PlanLeader)],
-      ['場所', orUndecided(ev.Location)],
-      ['イベント日時', orUndecided(dateTimeText(ev))],
-      ['実験内容・発表者', orUndecided(partsText(ev))],
-      ['許可願担当', orUndecided(docText(ev.KyokaNotRequired, ev.AdminKyoka))],
-      ['報告書担当', orUndecided(docText(ev.HoukokuNotRequired, ev.AdminHoukoku))]
-    ])
+    factSet(cardRows(ev).map(r => [r.label, dash(r.value)]))
   ], links);
 }
 
@@ -148,13 +157,24 @@ export function diffTeams(before, after) {
   return out;
 }
 
-// 変更のカード。changes は diffTeams の結果
-export function buildUpdateCard(ev, changes, site) {
+// 変更のカード。新規と同じ項目を全部並べ、変わった項目だけ、項目名に「(変更)」を付けて、
+// 前の値があれば「前 から 後」、前が空なら新しい値だけを出す。
+// before: 前回 Teams へ送った内容。changes: diffTeams(before, ev) の結果
+export function buildUpdateCard(ev, before, changes, site) {
   const lead = isMeeting(ev) ? 'ミーティングの内容が変更されました' : 'イベントの内容が変更されました';
+  const changedKeys = new Set(changes.map(c => c.w.key));
+  const prev = cardRows(Object.assign({}, before, { Category: ev.Category, MeetingNumber: ev.MeetingNumber }));
+  const arrow = (from, to) => (s(from) ? clip(s(from), MAX_VALUE_CHARS) + ' から ' + clip(dash(to), MAX_VALUE_CHARS) : dash(to));
+  const pairs = cardRows(ev).map((r, i) => (r.keys.some(k => changedKeys.has(k))
+    ? [r.label + '(変更)', arrow(prev[i].value, r.value)]
+    : [r.label, dash(r.value)]));
+  // カードの項目にない変更(備考・対象・運搬方法など)は、末尾に足す
+  const shown = new Set(cardRows(ev).flatMap(r => r.keys));
+  changes.filter(c => !shown.has(c.w.key)).forEach(c => pairs.push([c.label + '(変更)', arrow(c.from, c.to)]));
   return cardShell([
-    header('warning', 'Warning', lead, eventDisplayName(ev), 'Large'),
-    factSet(changes.map(c => [c.label, clip(orUndecided(c.from), MAX_VALUE_CHARS) + ' から ' + clip(orUndecided(c.to), MAX_VALUE_CHARS)])),
-    { type: 'TextBlock', text: '上記以外の項目に変更はありません。', isSubtle: true, wrap: true }
+    header('warning', 'Warning', lead, eventDisplayName(ev), 'ExtraLarge'),
+    factSet(pairs),
+    { type: 'TextBlock', text: '「(変更)」の付いた項目が変わりました。', isSubtle: true, wrap: true }
   ], eventLinks(site, ev));
 }
 
@@ -300,7 +320,7 @@ export async function notifyTeamsNow(env, id) {
       changes = diffTeams(before, ev);
       if (!changes.length) return { success: true, sent: false, changed: 0 };
       kind = 'update';
-      body = webhookBody('update', ev, buildUpdateCard(ev, changes, env.SITE_URL));
+      body = webhookBody('update', ev, buildUpdateCard(ev, before, changes, env.SITE_URL));
     }
   }
   if (!body) body = webhookBody('new', ev, buildNewCard(ev, env.SITE_URL));

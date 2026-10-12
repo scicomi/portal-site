@@ -86,7 +86,7 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     assert.equal(card.body[0].items[1].text, 'Teams 通知テスト');
     assert.equal(facts(first[0])['イベント日時'], '2099年11月3日(火) 10:00 から 15:00');
     assert.equal(facts(first[0])['場所'], '体育館');
-    assert.equal(facts(first[0])['許可願担当'], '未定');
+    assert.equal(facts(first[0])['許可願担当'], 'ー');
     assert.deepEqual(card.actions.map(a => a.url), Array(2).fill('https://scicomi.github.io/portal-site/events.html?event=' + id + '&id=' + id + '~'));
     assert.equal((await drain()).length, 0, '送った後に、もう一度は送らない');
 
@@ -112,7 +112,10 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     assert.equal(upd.kind, 'update');
     assert.equal(upd.eventKey, id);
     assert.equal(upd.attachments[0].content.body[0].items[0].text, 'イベントの内容が変更されました');
-    assert.deepEqual(facts(upd), { '場所': '体育館 から 大講堂', '報告書担当': '未定 から 三郎' });
+    assert.deepEqual(facts(upd), {
+      'イベント名': 'Teams 通知テスト', '企画担当者': '山田', '場所(変更)': '体育館 から 大講堂',
+      'イベント日時': '2099年11月3日(火) 10:00 から 15:00', '実験内容・発表者': 'ー', '許可願担当': 'ー', '報告書担当(変更)': '三郎'
+    });
     assert.deepEqual((await status(id)).changed, []);
     assert.equal(received.length, 2);
 
@@ -127,7 +130,10 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     assert.deepEqual((await status(id)).changed, ['場所']);
     r = await notify(id);
     assert.equal(r.sent, true);
-    assert.deepEqual(facts(received[received.length - 1].body), { '場所': '大講堂 から 中庭' });
+    const f3 = facts(received[received.length - 1].body);
+    assert.equal(f3['場所(変更)'], '大講堂 から 中庭');
+    assert.equal(f3['報告書担当'], '三郎');   // 前回の送信で反映済みなので、変更の印は付かない
+    assert.equal(Object.keys(f3).filter(k => k.endsWith('(変更)')).length, 1);
 
     // 削除の取り消し(元の CreatedAt を持った再作成)は、新規として送らない
     const restoredId = 'ev_teams_r_' + Date.now();

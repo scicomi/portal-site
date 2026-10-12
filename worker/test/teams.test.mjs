@@ -31,18 +31,18 @@ test('新規のカード(イベント): 7 項目と、青い枠、2 つのボタ
   assert.deepEqual(facts(c), {
     'イベント名': 'サイエンスショー', '企画担当者': '山田', '場所': '○○小学校',
     'イベント日時': '2026年11月3日(火) 10:00 から 15:00', '実験内容・発表者': 'スライム作り(花子、太郎)',
-    '許可願担当': '次郎', '報告書担当': '未定'
+    '許可願担当': '次郎', '報告書担当': 'ー'
   });
   assert.deepEqual(c.actions.map(a => a.title), ['ポータルで詳細を見る', '出欠を入力']);
 });
 
-test('新規のカード: 書類が不要なら「不要」、空の項目は「未定」', () => {
+test('新規のカード: 書類が不要なら「不要」、空の項目は「ー」', () => {
   const c = buildNewCard(Object.assign({}, ev, { KyokaNotRequired: '1', HoukokuNotRequired: 'true', PlanLeader: '', PartsList: '[]' }), SITE);
   const f = facts(c);
   assert.equal(f['許可願担当'], '不要');
   assert.equal(f['報告書担当'], '不要');
-  assert.equal(f['企画担当者'], '未定');
-  assert.equal(f['実験内容・発表者'], '未定');
+  assert.equal(f['企画担当者'], 'ー');
+  assert.equal(f['実験内容・発表者'], 'ー');
 });
 
 test('新規のカード(ミーティング): 4 項目と、赤い枠。回数つきの名前', () => {
@@ -53,7 +53,7 @@ test('新規のカード(ミーティング): 4 項目と、赤い枠。回数�
   assert.equal(c.body[0].items[1].text, '第4回 全体会');
   assert.deepEqual(facts(c), { 'ミーティング名': '第4回 全体会', '場所': '○○小学校', '日時': '2026年11月3日(火) 10:00 から 15:00', '議題': '議題1、議題2' });
   assert.equal(buildNewCard(Object.assign({}, m, { Category: 'admin' }), SITE).body[0].items[0].text, '幹部ミーティングが登録されました');
-  assert.equal(facts(buildNewCard(Object.assign({}, m, { Remarks: '' }), SITE))['議題'], '未定');
+  assert.equal(facts(buildNewCard(Object.assign({}, m, { Remarks: '' }), SITE))['議題'], 'ー');
 });
 
 test('ボタンのリンク: event を読ませ、id=ID~ を目印として添える', () => {
@@ -77,20 +77,42 @@ test('差分: 変わった項目だけ。書き方だけの違いは無視する
   assert.deepEqual([d[2].from, d[2].to], ['', '三郎']);
 });
 
-test('変更のカード: 黄色い枠で、変更前 から 変更後。空は「未定」。長い値は切る', () => {
+test('変更のカード: 新規と同じ項目を全部並べ、変わった項目だけ「(変更)」を付ける。空は「ー」。長い値は切る', () => {
   const after = Object.assign({}, ev, { Location: '', AdminHoukoku: '三郎', Remarks: 'あ'.repeat(200) });
-  const c = buildUpdateCard(after, diffTeams(ev, after), SITE);
+  const c = buildUpdateCard(after, ev, diffTeams(ev, after), SITE);
   assert.equal(c.body[0].style, 'warning');
   assert.equal(c.body[0].items[0].text, 'イベントの内容が変更されました');
   assert.equal(c.body[0].items[1].text, 'サイエンスショー');
   const f = facts(c);
-  assert.equal(f['場所'], '○○小学校 から 未定');
-  assert.equal(f['報告書担当'], '未定 から 三郎');
-  assert.ok(f['備考'].endsWith('…'));
-  assert.ok(f['備考'].length < 140);
+  // 変わっていない項目は、今の値のまま(全項目が並ぶ)
+  assert.equal(f['イベント名'], 'サイエンスショー');
+  assert.equal(f['企画担当者'], '山田');
+  assert.equal(f['イベント日時'], '2026年11月3日(火) 10:00 から 15:00');
+  assert.equal(f['実験内容・発表者'], 'スライム作り(花子、太郎)');
+  assert.equal(f['許可願担当'], '次郎');
+  // 前の値があれば「前 から 後」(後が空なら「ー」)。前が空なら新しい値だけ
+  assert.equal(f['場所(変更)'], '○○小学校 から ー');
+  assert.equal(f['報告書担当(変更)'], '三郎');
+  assert.ok(!('場所' in f) && !('報告書担当' in f));
+  // カードの項目にない変更(備考)は、末尾に足す
+  assert.ok(f['備考(変更)'].endsWith('…'));
+  assert.ok(f['備考(変更)'].length < 140);
+  assert.equal(Object.keys(f).pop(), '備考(変更)');
   assert.equal(c.actions.length, 2);
   const m = Object.assign({}, after, { Category: 'general' });
-  assert.equal(buildUpdateCard(m, diffTeams(ev, m), SITE).body[0].items[0].text, 'ミーティングの内容が変更されました');
+  assert.equal(buildUpdateCard(m, ev, diffTeams(ev, m), SITE).body[0].items[0].text, 'ミーティングの内容が変更されました');
+});
+
+test('変更のカード: 日程や時間が変わったら、日時の行を「前 から 後」にする。ミーティングも全項目', () => {
+  const after = Object.assign({}, ev, { Date: '2026-11-10', TimeStart: '13:00' });
+  const f = facts(buildUpdateCard(after, ev, diffTeams(ev, after), SITE));
+  assert.equal(f['イベント日時(変更)'], '2026年11月3日(火) 10:00 から 15:00 から 2026年11月10日(火) 13:00 から 15:00');
+  assert.equal(Object.keys(f).length, 7);   // 備考などの余分な行は増えない
+  const mb = Object.assign({}, ev, { Category: 'general', Title: '全体会', MeetingNumber: '4', Remarks: '' });
+  const ma = Object.assign({}, mb, { Remarks: '議題1' });
+  const mf = facts(buildUpdateCard(ma, mb, diffTeams(mb, ma), SITE));
+  assert.deepEqual(Object.keys(mf), ['ミーティング名', '場所', '日時', '議題(変更)']);
+  assert.equal(mf['議題(変更)'], '議題1');
 });
 
 test('フローへ送る本文: eventKey と kind と attachments', () => {
