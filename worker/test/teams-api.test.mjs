@@ -54,11 +54,22 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     await new Promise(r => setTimeout(r, 150));
     return received.slice(before).map(x => x.body);
   };
-  const facts = body => Object.fromEntries(body.attachments[0].content.body.find(b => b.type === 'FactSet').facts.map(f => [f.title, f.value]));
+  // カードの項目を { '項目名(印)': '値' } にする。名前の横の学番は、空白でつなぐ。折りたたまれた文は先頭だけ
+  const rows = body => Object.fromEntries(body.attachments[0].content.body.slice(1).filter(b => b.type === 'Container').flatMap(g => g.items).map(c => {
+    const h = c.items[0];
+    const label = h.type === 'ColumnSet' ? h.columns[0].items[0].text + h.columns[1].items[0].text : h.text;
+    const value = c.items.slice(1).filter(b => b.type !== 'ActionSet' && b.isVisible !== false)
+      .map(b => (b.type === 'ColumnSet' ? b.columns.map(col => col.items[0].text).join(' ') : b.text)).join('\n');
+    return [label, value];
+  }));
   const status = id => post({ action: 'teamsStatus', token: member, eventId: id });
   const notify = id => post({ action: 'teamsNotify', token: member, eventId: id });
   const id = 'ev_teams_' + Date.now();
   const mid = 'ev_teams_m_' + Date.now();
+  const mbId = 'mb_teams_' + Date.now();
+  // 名前は、ローカル DB の既存のメンバーと重ならない、試験専用のもの。企画担当者だけメンバー表に登録して、学番が付くことを確かめる
+  const LEADER = 'Teams試験担当' + Date.now();
+  const SABURO = 'Teams試験三郎' + Date.now();
   let ev;
   const save = async patch => {
     const r = await post({ action: 'save', resource: 'events', token: member, item: Object.assign({}, ev || {}, patch, { _baseUpdatedAt: ev ? ev.UpdatedAt : '' }) });
@@ -73,7 +84,8 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     assert.equal((await notify('ev_not_exist')).error, 'not_found');
 
     // 新規: 保存すると、定期実行が 1 件だけ送る(まだ送っていない間の保存し直しは 1 件にまとまる)
-    await save({ ID: id, Title: 'Teams 通知テスト', Category: 'normal', Date: '2099-11-03', DateEnd: '', TimeStart: '10:00', TimeEnd: '15:00', Location: '体育館', PlanLeader: '山田' });
+    assert.equal((await post({ action: 'save', resource: 'members', token: member, item: { ID: mbId, Name: LEADER, StudentID: '9ZZT0001' } })).success, true);
+    await save({ ID: id, Title: 'Teams 通知テスト', Category: 'normal', Date: '2099-11-03', DateEnd: '', TimeStart: '10:00', TimeEnd: '15:00', Location: '体育館', PlanLeader: LEADER });
     await save({ Remarks: '保存し直し' });
     const first = await drain();
     assert.equal(first.length, 1, JSON.stringify(first.map(b => b.kind)));
@@ -82,11 +94,12 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     assert.equal(first[0].type, 'message');
     assert.equal(received[0].headers['content-type'], 'application/json; charset=utf-8');
     const card = first[0].attachments[0].content;
-    assert.equal(card.body[0].items[0].text, '新しいイベントが登録されました');
-    assert.equal(card.body[0].items[1].text, 'Teams 通知テスト');
-    assert.equal(facts(first[0])['イベント日時'], '2099年11月3日(火) 10:00 から 15:00');
-    assert.equal(facts(first[0])['場所'], '体育館');
-    assert.equal(facts(first[0])['許可願担当'], 'ー');
+    assert.equal(card.msteams.width, 'Full');
+    assert.deepEqual(card.body[0].items.map(i => i.text), ['新しいイベントが登録されました', 'Teams 通知テスト']);
+    assert.deepEqual(rows(first[0]), {
+      'イベント日時': '2099年11月3日(火) 10:00 から 15:00', '場所': '体育館', '企画担当者': LEADER + ' 9ZZT0001',
+      '実験内容': 'ー', '許可願担当': 'ー', '報告書担当': 'ー'
+    });
     assert.deepEqual(card.actions.map(a => a.url), Array(2).fill('https://scicomi.github.io/portal-site/events.html?event=' + id + '&id=' + id + '~'));
     assert.equal((await drain()).length, 0, '送った後に、もう一度は送らない');
 
@@ -102,7 +115,7 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
 
     // 変更: 保存しただけでは送らない。ボタンで、前回からの差分だけを kind: update で送る(何度直しても 1 件)
     await save({ Location: '講堂' });
-    await save({ Location: '大講堂', AdminHoukoku: '三郎' });
+    await save({ Location: '大講堂', AdminHoukoku: SABURO });
     assert.equal((await drain()).length, 0);
     st = await status(id);
     assert.deepEqual(st.changed, ['場所', '報告書担当']);
@@ -111,11 +124,12 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     const upd = received[received.length - 1].body;
     assert.equal(upd.kind, 'update');
     assert.equal(upd.eventKey, id);
-    assert.equal(upd.attachments[0].content.body[0].items[0].text, 'イベントの内容が変更されました');
-    assert.deepEqual(facts(upd), {
-      'イベント名': 'Teams 通知テスト', '企画担当者': '山田', '場所(変更)': '体育館 から 大講堂',
-      'イベント日時': '2099年11月3日(火) 10:00 から 15:00', '実験内容・発表者': 'ー', '許可願担当': 'ー', '報告書担当(変更)': '三郎'
+    assert.equal(upd.attachments[0].content.body[0].items[0].text, 'イベントの内容が更新されました');   // 変更(場所)と追記(報告書担当)が混ざる
+    assert.deepEqual(rows(upd), {
+      'イベント日時': '2099年11月3日(火) 10:00 から 15:00', '場所(変更)': '大講堂', '企画担当者': LEADER + ' 9ZZT0001',
+      '実験内容': 'ー', '許可願担当': 'ー', '報告書担当(追記)': SABURO
     });
+    assert.ok(!JSON.stringify(upd).includes('体育館'), '変更前の値は出さない');
     assert.deepEqual((await status(id)).changed, []);
     assert.equal(received.length, 2);
 
@@ -130,10 +144,11 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     assert.deepEqual((await status(id)).changed, ['場所']);
     r = await notify(id);
     assert.equal(r.sent, true);
-    const f3 = facts(received[received.length - 1].body);
-    assert.equal(f3['場所(変更)'], '大講堂 から 中庭');
-    assert.equal(f3['報告書担当'], '三郎');   // 前回の送信で反映済みなので、変更の印は付かない
-    assert.equal(Object.keys(f3).filter(k => k.endsWith('(変更)')).length, 1);
+    const f3 = rows(received[received.length - 1].body);
+    assert.equal(f3['場所(変更)'], '中庭');
+    assert.equal(f3['報告書担当'], SABURO);   // 前回の送信で反映済みなので、変更の印は付かない
+    assert.equal(Object.keys(f3).filter(k => /\((追記|変更|削除)\)$/.test(k)).length, 1);
+    assert.equal(received[received.length - 1].body.attachments[0].content.body[0].items[0].text, 'イベントの内容が変更されました');
 
     // 削除の取り消し(元の CreatedAt を持った再作成)は、新規として送らない
     const restoredId = 'ev_teams_r_' + Date.now();
@@ -150,13 +165,14 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     assert.deepEqual([r.success, r.sent, r.kind], [true, true, 'new']);
     const mtg = received[received.length - 1].body;
     assert.equal(mtg.attachments[0].content.body[0].style, 'attention');
-    assert.equal(mtg.attachments[0].content.body[0].items[1].text, '第4回 全体会');
-    assert.deepEqual(facts(mtg), { 'ミーティング名': '第4回 全体会', '場所': '大教室', '日時': '2099年11月5日(木) 18:00 から 19:30', '議題': '議題1、議題2' });
+    assert.deepEqual(mtg.attachments[0].content.body[0].items.map(i => i.text), ['全体ミーティングが登録されました', '第4回 全体会']);
+    assert.deepEqual(rows(mtg), { '日時': '2099年11月5日(木) 18:00 から 19:30', '場所': '大教室', '議題': '議題1、議題2' });
     assert.equal((await status(mid)).state, 'sent');
     assert.equal((await drain()).length, 0, '送信待ちが残っていて、二重に送らない');
   } finally {
     await post({ action: 'delete', resource: 'events', token: member, id });
     await post({ action: 'delete', resource: 'events', token: member, id: mid });
+    await post({ action: 'delete', resource: 'members', token: member, id: mbId });
     server.close();
   }
 });
