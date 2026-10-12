@@ -3551,12 +3551,42 @@ textarea:focus {
     flex-shrink: 0;
 }
 .series-header-actions .btn { text-decoration: none; }
-/* Teams への通知ボタン(event-detail.js)の横の、前回の通知の時刻などの補足 */
-.teams-notify-note {
-    align-self: center;
-    font-size: 12px;
-    color: var(--text-muted);
+.series-header-actions { align-items: center; flex-wrap: wrap; }
+/* 編集・複製を 1 つにつなげたボタン */
+.hdr-seg { display: inline-flex; }
+.hdr-seg .btn { border-radius: 0; }
+.hdr-seg .btn:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.hdr-seg .btn:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; margin-left: -1px; }
+.hdr-ico { width: 16px; height: 16px; flex: none; }
+
+/* Teams への通知(event-detail.js): 状態を表すチップ。押すと送る内容のポップオーバーが開く */
+.teams-wrap { position: relative; }
+.teams-chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    min-height: var(--touch-min); padding: 4px 14px 4px 11px;
+    border-radius: var(--radius-full); border: 1px solid var(--border-color);
+    background: var(--bg-subtle); color: var(--text-color);
+    font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer;
 }
+.teams-chip:hover:not(:disabled) { border-color: var(--primary-light); }
+.teams-chip:disabled { cursor: default; }
+.teams-chip--ok { background: light-dark(#e8f5ee, #1c2f25); border-color: transparent; color: light-dark(#1e7a45, #6fd29a); }
+.teams-chip--warn { background: light-dark(#fff4dc, #33290f); border-color: transparent; color: light-dark(#8a5a00, #f0c060); }
+.teams-chip--err { background: light-dark(#fdecec, #3a1d1f); border-color: transparent; color: light-dark(#a02424, #ff9a9a); }
+.teams-chip-badge { font-size: 11px; font-weight: 700; padding: 0 7px; border-radius: var(--radius-full); background: light-dark(#fff, #1e1e23); line-height: 18px; }
+.teams-chip-time { font-size: 12px; font-weight: 400; color: var(--text-muted); }
+.teams-pop {
+    position: absolute; right: 0; top: calc(100% + 8px); z-index: 20;
+    width: min(320px, calc(100vw - 32px)); padding: 14px;
+    background: var(--surface); border: 1px solid var(--border-color);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
+}
+.teams-pop-title { margin: 0 0 6px; font-size: 0.9rem; }
+.teams-pop-list { margin: 0 0 8px; padding: 0; list-style: none; font-size: 0.85rem; }
+.teams-pop-list li { padding: 3px 0; display: flex; gap: 8px; }
+.teams-pop-list li::before { content: "＋"; font-weight: 700; color: light-dark(#8a5a00, #f0c060); }
+.teams-pop-note { margin: 0 0 12px; font-size: 12px; color: var(--text-muted); }
+.teams-pop-row { display: flex; justify-content: flex-end; gap: 8px; }
 
 /* Safety / Emergency info card (event) */
 .series-safety-card {

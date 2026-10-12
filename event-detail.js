@@ -245,14 +245,23 @@ function renderHeaderActions() {
     if (!box) return;
     const ev = currentEvent();
     if (!ev) { box.innerHTML = ''; return; }
+    teamsInfo = null;
     box.innerHTML = `
-        <button type="button" class="btn btn-secondary btn-sm" data-action="es-edit-event" data-id="${escapeAttr(ev.ID)}">編集</button>
-        <a class="btn btn-secondary btn-sm" href="events.html?duplicate=${encodeURIComponent(ev.ID)}" title="この回の内容を引き継いで新しい開催を作る">複製</a>
-        <button type="button" class="btn btn-secondary btn-sm hidden" id="teams-notify-btn" data-action="es-teams-notify" data-id="${escapeAttr(ev.ID)}"></button>
-        <span class="teams-notify-note hidden" id="teams-notify-note"></span>
+        <div class="hdr-seg">
+            <button type="button" class="btn btn-secondary btn-sm" data-action="es-edit-event" data-id="${escapeAttr(ev.ID)}">${HDR_ICON.edit}編集</button>
+            <a class="btn btn-secondary btn-sm" href="events.html?duplicate=${encodeURIComponent(ev.ID)}" title="この回の内容を引き継いで新しい開催を作る">${HDR_ICON.copy}複製</a>
+        </div>
+        <div class="teams-wrap hidden" id="teams-wrap"></div>
     `;
     loadTeamsStatus(ev.ID);
 }
+
+const HDR_ICON = {
+    edit: '<svg class="hdr-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round" stroke-linecap="round"/></svg>',
+    copy: '<svg class="hdr-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>',
+    teams: '<svg class="hdr-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="13" height="13" rx="2.5" fill="currentColor" opacity=".9"/><path d="M6.5 10.2h6M9.5 10.2V16" stroke="#fff" stroke-width="1.8" stroke-linecap="round" fill="none"/><circle cx="18" cy="8" r="2.6" fill="currentColor" opacity=".7"/><path d="M16.5 12h4.2c.8 0 1.3.6 1.3 1.3V16a3 3 0 0 1-3 3h-.3" fill="currentColor" opacity=".7"/></svg>',
+    send: '<svg class="hdr-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l16-8-6 16-3-6-7-2z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg>'
+};
 
 // ---- Teams への通知（新規は自動。変更は、このボタンで前回からの差分を元の投稿への返信として送る） ----
 // 送信先が未設定なら、ボタンは出さない。状態は開催回ごとにサーバーから取る
@@ -266,41 +275,88 @@ function teamsSentLabel(iso) {
 async function loadTeamsStatus(id) {
     let res;
     try { res = await api.teamsStatus(id); } catch (_) { return; }   // 状態が取れなければ、ボタンは出さない（ほかの操作の邪魔をしない）
-    const btn = document.getElementById('teams-notify-btn');
-    const note = document.getElementById('teams-notify-note');
-    if (!btn || !note || !res || !res.enabled || currentEvent()?.ID !== id) return;   // 開催回が切り替わっていたら捨てる
+    const wrap = document.getElementById('teams-wrap');
+    if (!wrap || !res || !res.enabled || currentEvent()?.ID !== id) return;   // 開催回が切り替わっていたら捨てる
     teamsInfo = { id, state: res.state, sentAt: res.sentAt || '', changed: res.changed || [] };
-    const sent = res.state === 'sent';
-    const nChanged = teamsInfo.changed.length;
-    btn.textContent = sent ? (nChanged ? `Teams に変更を通知（${nChanged}件）` : 'Teams に通知済み')
-        : res.state === 'pending' ? 'Teams に今すぐ通知' : 'Teams に通知する';
-    btn.disabled = sent && !nChanged;
-    btn.title = sent ? (nChanged ? `変わった項目: ${teamsInfo.changed.join('、')}` : '前回の通知から変わった項目はありません')
-        : 'このイベントを Teams に通知する';
-    note.textContent = sent ? `前回の通知: ${teamsSentLabel(res.sentAt)}`
-        : res.state === 'pending' ? '登録の約3分後に自動で通知します'
-        : res.state === 'failed' ? '自動の通知に失敗しました' : '';
-    btn.classList.remove('hidden');
-    note.classList.toggle('hidden', !note.textContent);
+    renderTeamsChip(wrap);
+    wrap.classList.remove('hidden');
 }
 
-function confirmTeamsNotify(id) {
-    if (!teamsInfo || teamsInfo.id !== id) return;
-    const isUpdate = teamsInfo.state === 'sent' && teamsInfo.changed.length > 0;
-    showConfirmDialog({
-        title: isUpdate ? 'Teams に変更を通知しますか？' : 'Teams に通知しますか？',
-        message: isUpdate
-            ? `前回の通知から変わった項目（${teamsInfo.changed.join('、')}）を、元の投稿への返信として Teams に送ります。`
-            : 'このイベントの内容を Teams のチャンネルに投稿します。',
-        okLabel: '送る',
-        busyLabel: '送信中...',
-        onOk: async () => {
-            const r = await api.teamsNotify(id);
-            toast(r.sent ? 'Teams に送りました（反映まで数十秒かかることがあります）' : '変わった項目がないため、送りませんでした', r.sent ? 'success' : 'info');
-            await loadTeamsStatus(id);
-        }
-    });
+// 状態チップ（押すと、送る内容を見せるポップオーバーが開く）。新規の通知は自動なので、普段は「通知済み」の表示だけになる
+function renderTeamsChip(wrap) {
+    const t = teamsInfo;
+    const sent = t.state === 'sent';
+    const nChanged = t.changed.length;
+    const hasChange = sent && nChanged > 0;
+    const done = sent && !nChanged;   // 送るものが無い
+    const tone = hasChange ? 'warn' : done ? 'ok' : t.state === 'failed' ? 'err' : '';
+    const label = hasChange ? '変更を通知' : done ? '通知済み' : t.state === 'pending' ? '自動通知待ち' : t.state === 'failed' ? '再通知' : 'Teams に通知';
+    const time = sent ? teamsSentLabel(t.sentAt) : '';
+    const tip = hasChange ? `変わった項目: ${t.changed.join('、')}`
+        : done ? '前回の通知から変わった項目はありません'
+        : t.state === 'pending' ? '登録の約3分後に自動で通知します（今すぐ送ることもできます）'
+        : t.state === 'failed' ? '自動の通知に失敗しました' : 'このイベントを Teams に通知する';
+
+    let body;
+    if (hasChange) {
+        body = `<h3 class="teams-pop-title">Teams に変更を送ります</h3>
+            <ul class="teams-pop-list">${t.changed.map(c => `<li>${escapeHtml(c)}</li>`).join('')}</ul>
+            <p class="teams-pop-note">元の投稿への返信として送ります。${time ? `前回の通知: ${escapeHtml(time)}` : ''}</p>`;
+    } else {
+        const note = t.state === 'pending' ? '登録の約3分後に自動でも通知されます。'
+            : t.state === 'failed' ? '自動の通知に失敗したため、もう一度送ります。' : '';
+        body = `<h3 class="teams-pop-title">Teams に投稿します</h3>
+            <p class="teams-pop-note">このイベントの内容を Teams のチャンネルに投稿します。${note}</p>`;
+    }
+
+    wrap.innerHTML = `
+        <button type="button" class="teams-chip${tone ? ` teams-chip--${tone}` : ''}" id="teams-notify-btn" data-action="es-teams-toggle" aria-haspopup="dialog" aria-expanded="false" title="${escapeAttr(tip)}" ${done ? 'disabled' : ''}>
+            ${HDR_ICON.teams}<span>${label}</span>
+            ${hasChange ? `<span class="teams-chip-badge">${nChanged}</span>` : ''}
+            ${time && done ? `<span class="teams-chip-time">${escapeHtml(time)}</span>` : ''}
+        </button>
+        <div class="teams-pop hidden" id="teams-pop" role="dialog" aria-label="Teams への通知">
+            ${body}
+            <div class="teams-pop-row">
+                <button type="button" class="btn btn-secondary btn-sm" data-action="es-teams-close">やめる</button>
+                <button type="button" class="btn btn-primary btn-sm" id="teams-send-btn" data-action="es-teams-send" data-id="${escapeAttr(t.id)}">${HDR_ICON.send}送る</button>
+            </div>
+        </div>`;
 }
+
+function setTeamsPop(open) {
+    const pop = document.getElementById('teams-pop');
+    const btn = document.getElementById('teams-notify-btn');
+    if (!pop || !btn) return;
+    pop.classList.toggle('hidden', !open);
+    btn.setAttribute('aria-expanded', String(open));
+    if (open) document.getElementById('teams-send-btn')?.focus();
+}
+
+async function sendTeamsNotify(id) {
+    if (!teamsInfo || teamsInfo.id !== id) return;
+    const sendBtn = document.getElementById('teams-send-btn');
+    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '送信中...'; }
+    try {
+        const r = await api.teamsNotify(id);
+        toast(r.sent ? 'Teams に送りました（反映まで数十秒かかることがあります）' : '変わった項目がないため、送りませんでした', r.sent ? 'success' : 'info');
+        await loadTeamsStatus(id);
+    } catch (e) {
+        toast(humanizeApiError(e), 'error');
+        if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = `${HDR_ICON.send}送る`; }
+    }
+}
+
+// ポップオーバーの外を押す・Esc で閉じる
+document.addEventListener('click', e => {
+    if (!e.target.closest('#teams-wrap')) setTeamsPop(false);
+});
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !document.getElementById('teams-pop')?.classList.contains('hidden')) {
+        setTeamsPop(false);
+        document.getElementById('teams-notify-btn')?.focus();
+    }
+});
 
 function currentEvent() {
     return seriesEvents.find(e => e.ID === currentEventId) || seriesEvents[0];
@@ -1009,7 +1065,9 @@ function switchAttendanceFilter(status) {
 // 描画した data-action / data-change-action の受け口（onclick 属性に ID を埋め込まない。app.js の registerActions 参照）
 registerActions({
     'es-edit-event': el => openEventWizard(el.dataset.id, null, el.dataset.focus || ''),
-    'es-teams-notify': el => confirmTeamsNotify(el.dataset.id),
+    'es-teams-toggle': () => setTeamsPop(document.getElementById('teams-pop')?.classList.contains('hidden')),
+    'es-teams-close': () => { setTeamsPop(false); document.getElementById('teams-notify-btn')?.focus(); },
+    'es-teams-send': el => sendTeamsNotify(el.dataset.id),
     'es-file-pick': el => el.closest('[data-drop-field]').querySelector('[data-ef-input]').click(),
     'es-file-remove': el => removeDetailFile(el.dataset.field, Number(el.dataset.index)),
     'es-select-occ': el => selectOccurrence(el.dataset.id || el.value),   // 開催回プルダウンは value（data-id でも受け付ける）
