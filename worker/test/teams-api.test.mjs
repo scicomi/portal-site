@@ -97,8 +97,7 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     assert.equal(card.msteams.width, 'Full');
     assert.deepEqual(card.body[0].items.map(i => i.text), ['新しいイベントが登録されました', 'Teams 通知テスト']);
     assert.deepEqual(rows(first[0]), {
-      'イベント日時': '2099年11月3日(火) 10:00 から 15:00', '集合・解散': 'ー', '場所': '体育館', '企画担当者': LEADER + ' 9ZZT0001',
-      '実験内容': 'ー', '関連ファイル': 'ー', '許可願担当': 'ー', '報告書担当': 'ー'
+      '場所': '体育館', 'イベント日時': '2099年11月3日(火) 10:00 から 15:00', '企画担当者': LEADER + ' 9ZZT0001', '備考': '保存し直し'
     });
     assert.deepEqual(card.actions.map(a => a.url), Array(2).fill('https://scicomi.github.io/portal-site/events.html?event=' + id + '&id=' + id + '~'));
     assert.equal((await drain()).length, 0, '送った後に、もう一度は送らない');
@@ -126,8 +125,8 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     assert.equal(upd.eventKey, id);
     assert.equal(upd.attachments[0].content.body[0].items[0].text, 'イベントの内容が更新されました');   // 変更(場所)と追記(報告書担当)が混ざる
     assert.deepEqual(rows(upd), {
-      'イベント日時': '2099年11月3日(火) 10:00 から 15:00', '集合・解散': 'ー', '場所(変更)': '大講堂', '企画担当者': LEADER + ' 9ZZT0001',
-      '実験内容': 'ー', '関連ファイル': 'ー', '許可願担当': 'ー', '報告書担当(追記)': SABURO
+      '場所(変更)': '大講堂', 'イベント日時': '2099年11月3日(火) 10:00 から 15:00', '企画担当者': LEADER + ' 9ZZT0001',
+      '報告書担当(追記)': SABURO, '備考': '保存し直し'
     });
     assert.ok(!JSON.stringify(upd).includes('体育館'), '変更前の値は出さない');
     assert.deepEqual((await status(id)).changed, []);

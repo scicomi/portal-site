@@ -27,7 +27,8 @@ const DOC_FIELDS = [
   { key: 'houkoku', cols: ['AdminHoukoku', 'HoukokuNotRequired'], label: () => '報告書担当' },
   { key: 'files',   cols: ['Files'],                              label: () => '関連ファイル' }
 ];
-export const TEAMS_FIELDS = WATCHED.concat(DOC_FIELDS);
+// 対象・人数は、カードに載せない(通知の対象にもしない)
+export const TEAMS_FIELDS = WATCHED.concat(DOC_FIELDS).filter(w => w.key !== 'audience');
 const SNAPSHOT_COLUMNS = Array.from(new Set(['ID', 'Category', 'MeetingNumber'].concat(TEAMS_FIELDS.flatMap(w => w.cols))));
 
 const s = v => (v === null || v === undefined ? '' : String(v)).trim();
@@ -112,7 +113,7 @@ function valueFor(w, ev) {
 // 空の値は「ー」で表す
 const dash = v => s(v) || 'ー';
 
-// カードに並べる項目。keys: その項目が変わったと判断する WATCHED / DOC_FIELDS の key(変更のカードで印を付ける)
+// カードに並べる項目。空の項目は出さない(変更のカードで、空になった項目だけは「ー」と「(削除)」で出す)。keys: その項目が変わったと判断する WATCHED / DOC_FIELDS の key(変更のカードで印を付ける)
 // group: 同じ番号の項目を 1 つのかたまりにして、かたまりの間に区切り線を入れる(題名は見出しに出すので、ここには入れない)
 // type: 'text' = 文章 / 'list' = 箇条書き(1 行 1 件) / 'people' = 人名(カンマ区切り。学番を添える)
 function cardRows(ev) {
@@ -124,14 +125,19 @@ function cardRows(ev) {
     ];
   }
   return [
+    { label: '企画名', group: 1, keys: ['plan'], type: 'text', value: s(ev.PlanName) },
+    { label: '場所', group: 1, keys: ['location'], type: 'text', value: s(ev.Location) },
     { label: 'イベント日時', group: 1, keys: ['date', 'time'], type: 'text', value: dateTimeText(ev) },
     { label: '集合・解散', group: 1, keys: ['gather'], type: 'text', value: gatherText(ev) },
-    { label: '場所', group: 1, keys: ['location'], type: 'text', value: s(ev.Location) },
     { label: '企画担当者', group: 1, keys: ['leader'], type: 'people', value: s(ev.PlanLeader) },
     { label: '実験内容', group: 2, keys: ['parts'], type: 'list', value: partNames(ev).join(NL) },
-    { label: '関連ファイル', group: 2, keys: ['files'], type: 'links', value: filesText(ev) },
-    { label: '許可願担当', group: 3, keys: ['kyoka'], type: 'people', value: docText(ev.KyokaNotRequired, ev.AdminKyoka) },
-    { label: '報告書担当', group: 3, keys: ['houkoku'], type: 'people', value: docText(ev.HoukokuNotRequired, ev.AdminHoukoku) }
+    { label: '運搬方法', group: 3, keys: ['transport'], type: 'text', value: s(ev.TransportMethod) },
+    { label: '運転者', group: 3, keys: ['people'], type: 'people', value: s(ev.TransportDriver) },
+    { label: '同乗者', group: 3, keys: ['people'], type: 'people', value: s(ev.TransportPassengers) },
+    { label: '許可願担当', group: 4, keys: ['kyoka'], type: 'people', value: docText(ev.KyokaNotRequired, ev.AdminKyoka) },
+    { label: '報告書担当', group: 4, keys: ['houkoku'], type: 'people', value: docText(ev.HoukokuNotRequired, ev.AdminHoukoku) },
+    { label: '備考', group: 5, keys: ['remarks'], type: 'text', value: s(ev.Remarks) },
+    { label: '関連ファイル', group: 5, keys: ['files'], type: 'links', value: filesText(ev) }
   ];
 }
 
@@ -234,6 +240,7 @@ function renderCard(ev, links, opts) {
   const counter = { n: 0 };
   const groups = [];
   rows.forEach((r, i) => {
+    if (!r.value && !marks[i]) return;   // 書かれていない項目は出さない
     let g = groups.find(x => x.no === r.group);
     if (!g) { g = { no: r.group, items: [] }; groups.push(g); }
     g.items.push(rowContainer(r, marks[i] || '', ids, counter));
@@ -283,7 +290,7 @@ export function buildUpdateCard(ev, before, changes, site, ids) {
   const marks = {};
   const kinds = [];
   rows.forEach((r, i) => {
-    if (!r.keys.some(k => changedKeys.has(k))) return;
+    if (!r.keys.some(k => changedKeys.has(k)) || prev[i].value === r.value) return;
     marks[i] = changeKind(prev[i].value, r.value);
     kinds.push(marks[i]);
   });

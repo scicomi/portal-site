@@ -1,6 +1,6 @@
 // 共通ユーティリティ
 
-export const CODE_VERSION = '2026-10-12-teams-4';
+export const CODE_VERSION = '2026-10-12-teams-5';
 
 const enc = new TextEncoder();
 

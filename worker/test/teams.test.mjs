@@ -31,17 +31,16 @@ test('日時の書き方: 年つき・曜日つき・複数日・時間だけ片
   assert.equal(dateTimeText(Object.assign({}, ev, { Date: '' })), '');
 });
 
-test('新規のカード(イベント): 見出しは種類と題名だけ。項目は区切り線で 3 つのかたまりに分け、小見出しは付けない', () => {
+test('新規のカード(イベント): 見出しは種類と題名だけ。項目は区切り線でかたまりに分け、小見出しは付けない。書かれていない項目は出さない', () => {
   const c = buildNewCard(ev, SITE);
   assert.equal(c.body[0].style, 'accent');
   assert.deepEqual(c.body[0].items.map(i => i.text), ['新しいイベントが登録されました', 'サイエンスショー']);
   assert.equal(c.body[0].items[1].size, 'ExtraLarge');
   assert.deepEqual(rows(c), {
-    'イベント日時': '2026年11月3日(火) 10:00 から 15:00', '集合・解散': 'ー', '場所': '○○小学校', '企画担当者': '山田',
-    '実験内容': '・スライム作り', '関連ファイル': 'ー', '許可願担当': '次郎', '報告書担当': 'ー'
+    '場所': '○○小学校', 'イベント日時': '2026年11月3日(火) 10:00 から 15:00', '企画担当者': '山田',
+    '実験内容': '・スライム作り', '許可願担当': '次郎'
   });
-  assert.deepEqual(Object.keys(rows(c)), ['イベント日時', '集合・解散', '場所', '企画担当者', '実験内容', '関連ファイル', '許可願担当', '報告書担当']);
-  assert.deepEqual(groupSizes(c), [4, 2, 2]);
+  assert.deepEqual(groupSizes(c), [3, 1, 1]);
   c.body.slice(1).filter(b => b.type === 'Container').forEach(g => {
     assert.equal(g.separator, true);
     assert.ok(g.items.every(i => i.type === 'Container'), '小見出しの文字(TextBlock)が混ざっていない');
@@ -52,15 +51,28 @@ test('新規のカード(イベント): 見出しは種類と題名だけ。項�
   assert.deepEqual(c.actions.map(a => a.title), ['ポータルで詳細を見る', '出欠を入力']);
 });
 
-test('新規のカード: 実験は 1 件ごとの箇条書き。書類が不要なら「不要」、空の項目は「ー」', () => {
+test('新規のカード: 実験は 1 件ごとの箇条書き。書類が不要なら「不要」。空の項目は出さない', () => {
   const two = Object.assign({}, ev, { PartsList: '[{"name":"スライム作り","presenters":["花子"]},{"name":"竜巻","presenters":[]},{"name":"","presenters":["x"]}]' });
   assert.equal(rows(buildNewCard(two, SITE))['実験内容'], '・スライム作り\n・竜巻');
   const c = buildNewCard(Object.assign({}, ev, { KyokaNotRequired: '1', HoukokuNotRequired: 'true', PlanLeader: '', PartsList: '[]' }), SITE);
   const r = rows(c);
   assert.equal(r['許可願担当'], '不要');
   assert.equal(r['報告書担当'], '不要');
-  assert.equal(r['企画担当者'], 'ー');
-  assert.equal(r['実験内容'], 'ー');
+  assert.ok(!('企画担当者' in r) && !('実験内容' in r), '空の項目は出さない');
+  assert.ok(Object.values(r).every(v => v !== 'ー'), '「ー」は出さない');
+});
+
+test('新規のカード(イベント): 書かれている項目をすべて、決めた順番で出す(対象・人数は出さない)', () => {
+  const full = Object.assign({}, ev, {
+    PlanName: '夏休み科学教室', Audience: '小学生 40名', GatherTime: '9:30', DismissTime: '16:00',
+    TransportMethod: '学校の車', TransportDriver: '田中', TransportPassengers: '高橋', AdminHoukoku: '三郎', Remarks: '駐車場は裏門',
+    Files: '[{"name":"資料.pdf","url":"https://example.com/a.pdf"}]'
+  });
+  const c = buildNewCard(full, SITE);
+  assert.deepEqual(Object.keys(rows(c)), ['企画名', '場所', 'イベント日時', '集合・解散', '企画担当者', '実験内容', '運搬方法', '運転者', '同乗者', '許可願担当', '報告書担当', '備考', '関連ファイル']);
+  assert.deepEqual(groupSizes(c), [5, 1, 3, 2, 2]);
+  assert.ok(!JSON.stringify(c).includes('小学生 40名') && !JSON.stringify(c).includes('対象'));
+  assert.deepEqual(diffTeams(ev, Object.assign({}, ev, { Audience: '30名' })), []);   // 対象・人数だけの変更は、通知の対象にしない
 });
 
 test('名前の横の学番: 一番小さい薄い文字を、間隔なしで添える。複数人は 1 人 1 行。学番が分からない人は名前だけ', () => {
@@ -105,7 +117,7 @@ test('新規のカード(ミーティング): 赤い枠。日時・場所・議�
   assert.deepEqual(rows(c), { '日時': '2026年11月3日(火) 10:00 から 15:00', '場所': '○○小学校', '議題': '議題1、議題2' });
   assert.deepEqual(groupSizes(c), [2, 1]);
   assert.equal(buildNewCard(Object.assign({}, m, { Category: 'admin' }), SITE).body[0].items[0].text, '幹部ミーティングが登録されました');
-  assert.equal(rows(buildNewCard(Object.assign({}, m, { Remarks: '' }), SITE))['議題'], 'ー');
+  assert.ok(!('議題' in rows(buildNewCard(Object.assign({}, m, { Remarks: '' }), SITE))), '空の議題は出さない');
 });
 
 test('ボタンのリンク: event を読ませ、id=ID~ を目印として添える', () => {
@@ -159,14 +171,14 @@ test('集合・解散と関連ファイル: 集合・解散は片方だけでも
   assert.ok(!('集合・解散' in rows(buildNewCard(Object.assign({}, e, { Category: 'general' }), SITE))));
 });
 
-test('変更のカード: 新規と同じ項目を全部並べ、変わった項目の横に(追記)(変更)(削除)。変更後の値だけ', () => {
+test('変更のカード: 新規と同じ項目(書かれているもの)を並べ、変わった項目の横に(追記)(変更)(削除)。変更後の値だけ', () => {
   const after = Object.assign({}, ev, { Location: '', AdminHoukoku: '三郎', Remarks: '駐車場は裏門', Date: '2026-11-10' });
   const c = buildUpdateCard(after, ev, diffTeams(ev, after), SITE);
   assert.equal(c.body[0].style, 'warning');
   assert.deepEqual(c.body[0].items.map(i => i.text), ['イベントの内容が更新されました', 'サイエンスショー']);   // 追記と削除と変更が混ざる
   assert.deepEqual(rows(c), {
-    'イベント日時(変更)': '2026年11月10日(火) 10:00 から 15:00', '集合・解散': 'ー', '場所(削除)': 'ー', '企画担当者': '山田',
-    '実験内容': '・スライム作り', '関連ファイル': 'ー', '許可願担当': '次郎', '報告書担当(追記)': '三郎', '備考(追記)': '駐車場は裏門'
+    '場所(削除)': 'ー', 'イベント日時(変更)': '2026年11月10日(火) 10:00 から 15:00', '企画担当者': '山田',
+    '実験内容': '・スライム作り', '許可願担当': '次郎', '報告書担当(追記)': '三郎', '備考(追記)': '駐車場は裏門'
   });
   assert.ok(!JSON.stringify(c).includes('○○小学校'), '変更前の値は出さない');
   // 印: 項目名のすぐ横に、色なしの一番小さい薄い文字で、括弧つき。項目名は青
@@ -175,7 +187,6 @@ test('変更のカード: 新規と同じ項目を全部並べ、変わった項
   assert.deepEqual([lab.items[0].color, lab.items[0].size], ['Accent', 'Small']);
   assert.equal(mk.spacing, 'None');
   assert.deepEqual([mk.items[0].text, mk.items[0].size, mk.items[0].isSubtle, mk.items[0].color], ['(削除)', 'Small', true, undefined]);
-  // 「そのほか」の項目(備考)は、最後のかたまり
   assert.equal(labelOf(rowParts(c).pop()), '備考');
   assert.equal(c.actions.length, 2);
 });
@@ -203,10 +214,14 @@ test('変更のカード: 題名の変更・運転者と同乗者・実験の追
   assert.equal(r['イベント名(変更)'], '科学まつり');
   assert.equal(r['運転者(追記)'], '田中 1AAJ1005');
   assert.equal(r['同乗者(追記)'], '高橋\n伊藤');
-  // 両方とも空になったら、1 行にして「削除」
+  // 空になった項目は、「ー」と「(削除)」で出す。変わっていない方には印を付けない
   const before2 = Object.assign({}, ev, { TransportDriver: '田中', TransportPassengers: '高橋' });
   const r2 = rows(buildUpdateCard(ev, before2, diffTeams(before2, ev), SITE));
-  assert.equal(r2['運転者・同乗者(削除)'], 'ー');
+  assert.deepEqual([r2['運転者(削除)'], r2['同乗者(削除)']], ['ー', 'ー']);
+  const after3 = Object.assign({}, before2, { TransportDriver: '佐藤' });
+  const r3 = rows(buildUpdateCard(after3, before2, diffTeams(before2, after3), SITE));
+  assert.equal(r3['運転者(変更)'], '佐藤');
+  assert.equal(r3['同乗者'], '高橋');
 });
 
 test('長い文章の折りたたみ: 3 行を超える、または 90 文字を超えると、先頭だけを出して「続きを表示」で全文を開く', () => {
