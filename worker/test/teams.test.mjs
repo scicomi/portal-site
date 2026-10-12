@@ -48,7 +48,7 @@ test('新規のカード(イベント): 見出しは種類と題名だけ。項�
   // 項目名は小さい青い文字。発表者は出さない
   rowParts(c).forEach(r => { assert.equal(r.items[0].size, 'Small'); assert.equal(r.items[0].color, 'Accent'); });
   assert.ok(!JSON.stringify(c).includes('花子'));
-  assert.deepEqual(c.actions.map(a => a.title), ['ポータルで詳細を見る', '出欠を入力']);
+  assert.deepEqual(c.actions.map(a => a.title), ['詳細を見る', '出欠を入力']);
 });
 
 test('新規のカード: 実験は 1 件ごとの箇条書き。書類が不要なら「不要」。空の項目は出さない', () => {
@@ -304,7 +304,7 @@ test('終了後のカード: 振り返りのお願い、日時、広報担当(�
   assert.equal(c.body[0].style, 'good');
   assert.deepEqual(c.body[0].items.map(i => i.text), ['振り返りを記入してください', 'サイエンスショー']);
   assert.deepEqual(rows(c), { 'イベント日時': '2026年11月3日(火) 10:00 から 15:00', 'Twitterの投稿担当': '山田 1AAJ1001', 'Instagramの投稿担当': '\u00a0', 'HPの投稿担当': '佐藤' });
-  assert.deepEqual(c.actions.map(a => a.title), ['振り返りを記入する', 'ポータルで詳細を見る']);
+  assert.deepEqual(c.actions.map(a => a.title), ['振り返りを記入する', '詳細を見る']);
   assert.equal(c.actions[0].url, SITE + 'events.html?event=ev_abc&tab=feedback');
   assert.ok(c.actions.every(a => !a.url.includes('~')), '変更の返信先を探す目印を付けない');
   assert.equal(c.msteams.width, 'Full');

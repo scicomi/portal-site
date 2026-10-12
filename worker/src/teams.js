@@ -148,7 +148,7 @@ export function eventLinks(site, ev) {
   const id = encodeURIComponent(s(ev.ID));
   const url = base + 'events.html?event=' + id + '&id=' + id + '~';
   return [
-    { type: 'Action.OpenUrl', title: 'ポータルで詳細を見る', url },
+    { type: 'Action.OpenUrl', title: '詳細を見る', url },
     { type: 'Action.OpenUrl', title: '出欠を入力', url, style: 'positive' }
   ];
 }
@@ -340,7 +340,7 @@ export function buildAfterCard(ev, site, channels, ids) {
   const id = encodeURIComponent(s(ev.ID));
   const links = [
     { type: 'Action.OpenUrl', title: '振り返りを記入する', url: base + 'events.html?event=' + id + '&tab=feedback', style: 'positive' },
-    { type: 'Action.OpenUrl', title: 'ポータルで詳細を見る', url: base + 'events.html?event=' + id }
+    { type: 'Action.OpenUrl', title: '詳細を見る', url: base + 'events.html?event=' + id }
   ];
   const pr = prAssignments(ev);
   const counter = { n: 0 };
