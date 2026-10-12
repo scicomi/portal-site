@@ -37,11 +37,11 @@ test('新規のカード(イベント): 見出しは種類と題名だけ。項�
   assert.deepEqual(c.body[0].items.map(i => i.text), ['新しいイベントが登録されました', 'サイエンスショー']);
   assert.equal(c.body[0].items[1].size, 'ExtraLarge');
   assert.deepEqual(rows(c), {
-    'イベント日時': '2026年11月3日(火) 10:00 から 15:00', '場所': '○○小学校', '企画担当者': '山田',
-    '実験内容': '・スライム作り', '許可願担当': '次郎', '報告書担当': 'ー'
+    'イベント日時': '2026年11月3日(火) 10:00 から 15:00', '集合・解散': 'ー', '場所': '○○小学校', '企画担当者': '山田',
+    '実験内容': '・スライム作り', '関連ファイル': 'ー', '許可願担当': '次郎', '報告書担当': 'ー'
   });
-  assert.deepEqual(Object.keys(rows(c)), ['イベント日時', '場所', '企画担当者', '実験内容', '許可願担当', '報告書担当']);
-  assert.deepEqual(groupSizes(c), [3, 1, 2]);
+  assert.deepEqual(Object.keys(rows(c)), ['イベント日時', '集合・解散', '場所', '企画担当者', '実験内容', '関連ファイル', '許可願担当', '報告書担当']);
+  assert.deepEqual(groupSizes(c), [4, 2, 2]);
   c.body.slice(1).filter(b => b.type === 'Container').forEach(g => {
     assert.equal(g.separator, true);
     assert.ok(g.items.every(i => i.type === 'Container'), '小見出しの文字(TextBlock)が混ざっていない');
@@ -137,14 +137,36 @@ test('追記・変更・削除の区別', () => {
   assert.equal(changeKind('', ''), '変更');
 });
 
+test('集合・解散と関連ファイル: 集合・解散は片方だけでもよい。ファイルはリンクで、リンクにできないものと書類(依頼書など)は出さない', () => {
+  const files = JSON.stringify([
+    { name: '資料[1].pdf', url: 'https://example.com/files/a b(1).pdf', size: 10, uploadedAt: 'x' },
+    { name: '壊れた', url: '' },
+    { name: '危険', url: 'javascript:alert(1)' }
+  ]);
+  const e = Object.assign({}, ev, { GatherTime: '9:30', DismissTime: '', Files: files, RequestDoc: '[{"name":"依頼書.pdf","url":"https://example.com/files/req.pdf"}]' });
+  const r = rows(buildNewCard(e, SITE));
+  assert.equal(r['集合・解散'], '集合 9:30');
+  assert.equal(r['関連ファイル'], '・[資料1.pdf](https://example.com/files/a%20b%281%29.pdf)');
+  assert.ok(!JSON.stringify(buildNewCard(e, SITE)).includes('req.pdf'));
+  assert.equal(rows(buildNewCard(Object.assign({}, e, { DismissTime: '12:30' }), SITE))['集合・解散'], '集合 9:30 / 解散 12:30');
+  // 変更: ファイルの追加は「追記」。アップロードの日時が変わっただけでは変更にしない
+  const before = Object.assign({}, e, { Files: '[]' });
+  const c = buildUpdateCard(e, before, diffTeams(before, e), SITE);
+  assert.equal(rows(c)['関連ファイル(追記)'], '・[資料1.pdf](https://example.com/files/a%20b%281%29.pdf)');
+  const same = Object.assign({}, e, { Files: files.replace('"x"', '"y"') });
+  assert.deepEqual(diffTeams(e, same), []);
+  // ミーティングには出さない
+  assert.ok(!('集合・解散' in rows(buildNewCard(Object.assign({}, e, { Category: 'general' }), SITE))));
+});
+
 test('変更のカード: 新規と同じ項目を全部並べ、変わった項目の横に(追記)(変更)(削除)。変更後の値だけ', () => {
   const after = Object.assign({}, ev, { Location: '', AdminHoukoku: '三郎', Remarks: '駐車場は裏門', Date: '2026-11-10' });
   const c = buildUpdateCard(after, ev, diffTeams(ev, after), SITE);
   assert.equal(c.body[0].style, 'warning');
   assert.deepEqual(c.body[0].items.map(i => i.text), ['イベントの内容が更新されました', 'サイエンスショー']);   // 追記と削除と変更が混ざる
   assert.deepEqual(rows(c), {
-    'イベント日時(変更)': '2026年11月10日(火) 10:00 から 15:00', '場所(削除)': 'ー', '企画担当者': '山田',
-    '実験内容': '・スライム作り', '許可願担当': '次郎', '報告書担当(追記)': '三郎', '備考(追記)': '駐車場は裏門'
+    'イベント日時(変更)': '2026年11月10日(火) 10:00 から 15:00', '集合・解散': 'ー', '場所(削除)': 'ー', '企画担当者': '山田',
+    '実験内容': '・スライム作り', '関連ファイル': 'ー', '許可願担当': '次郎', '報告書担当(追記)': '三郎', '備考(追記)': '駐車場は裏門'
   });
   assert.ok(!JSON.stringify(c).includes('○○小学校'), '変更前の値は出さない');
   // 印: 項目名のすぐ横に、色なしの一番小さい薄い文字で、括弧つき。項目名は青

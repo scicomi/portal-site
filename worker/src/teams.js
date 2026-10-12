@@ -24,7 +24,8 @@ const MEETING_NAMES = { general: '全体ミーティング', admin: '幹部ミ�
 // 通知の対象: 通知の判定に使う項目(eventNotify.js の WATCHED)に、カードに載せる書類担当を足したもの
 const DOC_FIELDS = [
   { key: 'kyoka',   cols: ['AdminKyoka', 'KyokaNotRequired'],     label: () => '許可願担当' },
-  { key: 'houkoku', cols: ['AdminHoukoku', 'HoukokuNotRequired'], label: () => '報告書担当' }
+  { key: 'houkoku', cols: ['AdminHoukoku', 'HoukokuNotRequired'], label: () => '報告書担当' },
+  { key: 'files',   cols: ['Files'],                              label: () => '関連ファイル' }
 ];
 export const TEAMS_FIELDS = WATCHED.concat(DOC_FIELDS);
 const SNAPSHOT_COLUMNS = Array.from(new Set(['ID', 'Category', 'MeetingNumber'].concat(TEAMS_FIELDS.flatMap(w => w.cols))));
@@ -75,6 +76,8 @@ function display(w, ev) {
   switch (w.key) {
     case 'date': return dateTimeText(Object.assign({}, ev, { TimeStart: '', TimeEnd: '' }));
     case 'parts': return partNames(ev).join(NL);
+    case 'files': return filesText(ev);
+    case 'gather': return gatherText(ev);
     case 'kyoka': return docText(ev.KyokaNotRequired, ev.AdminKyoka);
     case 'houkoku': return docText(ev.HoukokuNotRequired, ev.AdminHoukoku);
     case 'people': return [s(ev.TransportDriver) && '運転者: ' + s(ev.TransportDriver), s(ev.TransportPassengers) && '同乗者: ' + s(ev.TransportPassengers)].filter(Boolean).join(NL);
@@ -82,8 +85,27 @@ function display(w, ev) {
   }
 }
 
-// 比べるための値。実験は、実験名だけで比べる(発表者だけが変わっても「変更」にしない。カードに出さないため)
+// 関連ファイル(Files)のうち、リンクにできるもの [{ name, url }]
+function fileLinks(ev) {
+  return parseJsonList(ev.Files)
+    .map(f => ({ name: s(f && f.name), url: s(f && f.url) }))
+    .filter(f => /^https?:\/\//i.test(f.url));
+}
+
+// 関連ファイルの文(1 行 1 件。Teams の書き方でリンクにする)。名前の [ ] とURLの空白・) は、書き方を壊すので直す
+function filesText(ev) {
+  return fileLinks(ev).map((f, i) => '・[' + (f.name.replace(/[\[\]]/g, '') || 'ファイル ' + (i + 1)) + '](' + f.url.replace(/ /g, '%20').replace(/\(/g, '%28').replace(/\)/g, '%29') + ')').join(NL);
+}
+
+// 集合・解散(イベントのみ)。例: 集合 9:30 / 解散 12:30
+function gatherText(ev) {
+  return [s(ev.GatherTime) && '集合 ' + s(ev.GatherTime), s(ev.DismissTime) && '解散 ' + s(ev.DismissTime)].filter(Boolean).join(' / ');
+}
+
+// 比べるための値。実験は、実験名だけで比べる(発表者だけが変わっても「変更」にしない。カードに出さないため)。
+// ファイルは、名前とリンクだけで比べる(アップロードの日時などは見ない)
 function valueFor(w, ev) {
+  if (w.key === 'files') return filesText(ev);
   return w.key === 'parts' ? partNames(ev).join(NL) : fieldValue(w, ev);
 }
 
@@ -103,9 +125,11 @@ function cardRows(ev) {
   }
   return [
     { label: 'イベント日時', group: 1, keys: ['date', 'time'], type: 'text', value: dateTimeText(ev) },
+    { label: '集合・解散', group: 1, keys: ['gather'], type: 'text', value: gatherText(ev) },
     { label: '場所', group: 1, keys: ['location'], type: 'text', value: s(ev.Location) },
     { label: '企画担当者', group: 1, keys: ['leader'], type: 'people', value: s(ev.PlanLeader) },
     { label: '実験内容', group: 2, keys: ['parts'], type: 'list', value: partNames(ev).join(NL) },
+    { label: '関連ファイル', group: 2, keys: ['files'], type: 'links', value: filesText(ev) },
     { label: '許可願担当', group: 3, keys: ['kyoka'], type: 'people', value: docText(ev.KyokaNotRequired, ev.AdminKyoka) },
     { label: '報告書担当', group: 3, keys: ['houkoku'], type: 'people', value: docText(ev.HoukokuNotRequired, ev.AdminHoukoku) }
   ];
@@ -168,6 +192,7 @@ function valueBlocks(r, ids, counter) {
     const lines = s(r.value).split(NL).filter(Boolean);
     return [{ type: 'TextBlock', text: lines.length ? lines.map(l => '・' + l).join(NL) : 'ー', size: 'Medium', wrap: true, spacing: 'None' }];
   }
+  if (r.type === 'links') return [{ type: 'TextBlock', text: dash(r.value), size: 'Medium', wrap: true, spacing: 'None' }];
   if (r.type === 'people') {
     const names = splitNames(r.value);
     if (!names.length) return [{ type: 'TextBlock', text: 'ー', size: 'Medium', wrap: true, spacing: 'None' }];
