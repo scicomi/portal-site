@@ -21,7 +21,7 @@ import {
   pushEnabled, subscribePush, unsubscribePush, resubscribePush, pushStats, sendTestPush, drainPushOutboxSafe, batchSize
 } from './push.js';
 import { loadEventBefore, notifyEventSaved } from './eventNotify.js';
-import { enqueueTeamsNew, teamsNewDelaySec, drainTeamsSafe, teamsStatus, notifyTeamsNow } from './teams.js';
+import { enqueueTeamsNew, teamsNewDelaySec, drainTeamsSafe, drainTeamsAfterSafe, teamsStatus, notifyTeamsNow } from './teams.js';
 import { teamsConfigured } from './config.js';
 import { moveRecordToTrash, listTrash, restoreTrash, purgeTrash, purgeExpiredTrash, getTrashRow, TRASH_ADMIN_ONLY } from './trash.js';
 
@@ -62,6 +62,7 @@ export default {
     if (event.cron === PUSH_CRON) {
       ctx.waitUntil(drainPushOutboxSafe(env, batchSize(env)));
       ctx.waitUntil(drainTeamsSafe(env, 3));   // Teams の新規の通知(送信先が未設定なら何もしない)
+      ctx.waitUntil(drainTeamsAfterSafe(env, 3));   // Teams の、イベント終了の翌朝の通知(同上)
     } else ctx.waitUntil(runMaintenance(env));
   }
 };

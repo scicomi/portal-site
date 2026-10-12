@@ -168,6 +168,23 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     assert.deepEqual(rows(mtg), { '日時': '2099年11月5日(木) 18:00 から 19:30', '場所': '大教室', '議題': '議題1、議題2' });
     assert.equal((await status(mid)).state, 'sent');
     assert.equal((await drain()).length, 0, '送信待ちが残っていて、二重に送らない');
+
+    // 終了後の通知: 前日に終わったイベントに、翌朝の通知を 1 回だけ送る(Worker を TEAMS_AFTER_HOUR:0 で起動し、TEAMS_AFTER_TEST=1 で試す。
+    // 本番は朝 9 時以降。広報担当が決まっていないチャンネルは空欄)
+    if (process.env.TEAMS_AFTER_TEST === '1') {
+      const yesterday = new Date(Date.now() + 9 * 3600 * 1000 - 24 * 3600 * 1000).toISOString().slice(0, 10);
+      const aid = 'ev_teams_a_' + Date.now();
+      ev = null;
+      await save({ ID: aid, Title: '終了後の通知テスト', Category: 'normal', Date: yesterday, PrAssignments: { HP: LEADER } });
+      const afters = (await drain()).filter(b => b.kind === 'after' && b.eventKey === aid);
+      assert.equal(afters.length, 1);
+      const acard = afters[0].attachments[0].content;
+      assert.equal(acard.body[0].items[0].text, '振り返りを記入してください');
+      assert.equal(rows(afters[0])['HPの投稿担当'], LEADER + ' 9ZZT0001');
+      assert.equal(rows(afters[0])['Twitterの投稿担当'], ' ');   // 決まっていない担当は空欄
+      assert.equal((await drain()).filter(b => b.kind === 'after' && b.eventKey === aid).length, 0, '2 回は送らない');
+      await post({ action: 'delete', resource: 'events', token: member, id: aid });
+    }
   } finally {
     await post({ action: 'delete', resource: 'events', token: member, id });
     await post({ action: 'delete', resource: 'events', token: member, id: mid });

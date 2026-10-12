@@ -8,7 +8,7 @@
 // このファイルのうち、カードと差分の組み立て(buildNewCard から diffTeams まで)は D1 を使わないので、Node の単体テストから直接呼べる。
 
 import { WATCHED, fieldValue, isMeeting, eventDisplayName } from './eventNotify.js';
-import { teamsConfigured } from './config.js';
+import { teamsConfigured, getConfig, DEFAULT_CONFIG } from './config.js';
 import { parseJsonList, appendAuditLog } from './data.js';
 import { jstIso } from './util.js';
 
@@ -198,6 +198,7 @@ function valueBlocks(r, ids, counter) {
     const lines = s(r.value).split(NL).filter(Boolean);
     return [{ type: 'TextBlock', text: lines.length ? lines.map(l => '・' + l).join(NL) : 'ー', size: 'Medium', wrap: true, spacing: 'None' }];
   }
+  if (r.type === 'blank') return [{ type: 'TextBlock', text: NBSP, size: 'Medium', spacing: 'None' }];   // 空欄(決まっていない担当)
   if (r.type === 'links') return [{ type: 'TextBlock', text: dash(r.value), size: 'Medium', wrap: true, spacing: 'None' }];
   if (r.type === 'people') {
     const names = splitNames(r.value);
@@ -316,6 +317,100 @@ export function buildUpdateCard(ev, before, changes, site, ids) {
     style: 'warning', color: 'Warning', lead: what + 'の内容が' + verb + 'されました',
     marks, extras, ids
   });
+}
+
+// ---- イベント終了後の通知(終了の翌日の朝に 1 回): 振り返りの記入のお願いと、広報担当 ----
+
+// 広報担当のチャンネルの名前(設定 pr_channels と同じ並び)
+function prChannels(v) {
+  return s(v).split(',').map(s).filter(Boolean);
+}
+
+// 広報担当(イベントの PrAssignments: { チャンネル: 名前 })
+function prAssignments(ev) {
+  let a = ev.PrAssignments;
+  if (typeof a === 'string') { try { a = JSON.parse(a); } catch (_) { a = {}; } }
+  return a && typeof a === 'object' && !Array.isArray(a) ? a : {};
+}
+
+// 終了後のカード。channels: 広報担当のチャンネルの一覧。ボタンのリンクには、変更の返信先を探す目印(id=…~)を付けない
+// (付けると、あとの「変更」の返信が、この投稿を元の投稿と取り違える)
+export function buildAfterCard(ev, site, channels, ids) {
+  const base = (s(site) || DEFAULT_SITE_URL).replace(/\/?$/, '/');
+  const id = encodeURIComponent(s(ev.ID));
+  const links = [
+    { type: 'Action.OpenUrl', title: '振り返りを記入する', url: base + 'events.html?event=' + id + '&tab=feedback', style: 'positive' },
+    { type: 'Action.OpenUrl', title: 'ポータルで詳細を見る', url: base + 'events.html?event=' + id }
+  ];
+  const pr = prAssignments(ev);
+  const counter = { n: 0 };
+  const dateRow = { label: 'イベント日時', type: 'text', value: dateTimeText(ev) };
+  const prRows = channels.map(ch => {
+    const name = s(pr[ch]);
+    return { label: ch + 'の投稿担当', type: name ? 'people' : 'blank', value: name };
+  });
+  const body = [
+    header('good', 'Good', '振り返りを記入してください', eventDisplayName(ev)),
+    { type: 'Container', separator: true, spacing: 'Medium', items: [rowContainer(dateRow, '', ids, counter)] }
+  ];
+  if (prRows.length) body.push({ type: 'Container', separator: true, spacing: 'Medium', items: prRows.map(r => rowContainer(r, '', ids, counter)) });
+  return cardShell(body, links);
+}
+
+// 日本時間の今日から見た、前日の日付('yyyy-MM-dd')と、いまの時(0〜23)
+function jstNow(now) {
+  const iso = jstIso(now);
+  const prev = jstIso(new Date(now.getTime() - 24 * 3600 * 1000));
+  return { yesterday: prev.slice(0, 10), hour: parseInt(iso.slice(11, 13), 10) };
+}
+
+const AFTER_HOUR = 9;   // 終了の翌日の、この時(日本時間)になったら送る
+const afterHour = env => { const n = parseInt(env.TEAMS_AFTER_HOUR, 10); return n >= 0 && n <= 23 ? n : AFTER_HOUR; };   // ローカルの結合テストだけ TEAMS_AFTER_HOUR で縮める(本番では設定しない)
+
+// 1 分ごとの定期実行から: 前日に終わったイベントの、終了後の通知を送る(1 イベントに 1 回)。送った件数を返す
+export async function drainTeamsAfter(env, limit, now = new Date()) {
+  if (!teamsConfigured(env)) return 0;
+  const { yesterday, hour } = jstNow(now);
+  if (hour < afterHour(env)) return 0;
+  const t = Math.floor(now.getTime() / 1000);
+  // 終了日 = DateEnd があればそれ、なければ Date。ミーティングは対象外(振り返りがない)
+  const rows = (await env.DB.prepare(
+    "SELECT e.ID AS ID, a.Attempts AS Attempts, a.EventID AS Has FROM events e LEFT JOIN teams_after a ON a.EventID = e.ID "
+    + "WHERE e.Category NOT IN ('general', 'admin') "
+    + "AND substr(CASE WHEN e.DateEnd <> '' AND e.DateEnd > e.Date THEN e.DateEnd ELSE e.Date END, 1, 10) = ? "
+    + "AND (a.EventID IS NULL OR (a.State = 'retry' AND a.DueAt <= ?)) LIMIT ?"
+  ).bind(yesterday, t, limit || 3).all()).results || [];
+  let sent = 0;
+  for (const row of rows) {
+    const id = row.ID;
+    // 重なって動いた実行が同じイベントを送らないよう、先に行を作る(または期限を後ろにずらす)ことで確保する
+    const claim = row.Has
+      ? await env.DB.prepare("UPDATE teams_after SET DueAt = ? WHERE EventID = ? AND State = 'retry' AND DueAt <= ?").bind(t + CLAIM_SEC, id, t).run()
+      : await env.DB.prepare("INSERT INTO teams_after (EventID, State, DueAt, Attempts) VALUES (?, 'retry', ?, 0) ON CONFLICT(EventID) DO NOTHING").bind(id, t + CLAIM_SEC).run();
+    if (!claim.meta || claim.meta.changes !== 1) continue;
+    const ev = await env.DB.prepare('SELECT * FROM events WHERE ID = ?').bind(id).first();
+    if (!ev) continue;
+    try {
+      const channels = prChannels((await getConfig(env, 'pr_channels')) || DEFAULT_CONFIG.pr_channels);
+      const names = channels.map(ch => s(prAssignments(ev)[ch])).filter(Boolean).join(',');
+      const ids = await loadStudentIds(env, { PlanLeader: names });
+      await postToTeams(env, webhookBody('after', ev, buildAfterCard(ev, env.SITE_URL, channels, ids)));
+      await env.DB.prepare("UPDATE teams_after SET State = 'sent', SentAt = ? WHERE EventID = ?").bind(jstIso(now), id).run();
+      await appendAuditLog(env, 'teams_notify', id + ':after:auto', '', 'system');
+      sent++;
+    } catch (e) {
+      const attempts = (row.Attempts || 0) + 1;
+      const msg = String((e && e.message) || e).slice(0, 80);
+      if (attempts > RETRY_DELAYS_SEC.length) await env.DB.prepare("UPDATE teams_after SET State = 'failed', Attempts = ? WHERE EventID = ?").bind(attempts, id).run();
+      else await env.DB.prepare('UPDATE teams_after SET DueAt = ?, Attempts = ? WHERE EventID = ?').bind(t + RETRY_DELAYS_SEC[attempts - 1], attempts, id).run();
+      await appendAuditLog(env, 'teams_fail', id + ':after:auto: ' + msg + ' (' + attempts + ')', '', 'system');
+    }
+  }
+  return sent;
+}
+
+export async function drainTeamsAfterSafe(env, limit) {
+  try { return await drainTeamsAfter(env, limit); } catch (e) { console.error('drainTeamsAfter failed: ' + (e && e.stack || e)); return 0; }
 }
 
 // フローへ送る本文。eventKey と kind は Teams には表示されず、フローが読む

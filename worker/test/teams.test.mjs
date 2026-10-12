@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildNewCard, buildUpdateCard, diffTeams, dateTimeText, eventLinks, webhookBody, postToTeams, foldShort, splitNames, loadStudentIds, changeKind } from '../src/teams.js';
+import { buildAfterCard, drainTeamsAfter, buildNewCard, buildUpdateCard, diffTeams, dateTimeText, eventLinks, webhookBody, postToTeams, foldShort, splitNames, loadStudentIds, changeKind } from '../src/teams.js';
 import { teamsConfigured } from '../src/config.js';
 
 const SITE = 'https://scicomi.github.io/portal-site/';
@@ -296,4 +296,66 @@ test('送信の失敗: 理由に送信先の URL を含めない', async () => {
     globalThis.fetch = real;
   }
   await assert.rejects(postToTeams({}, {}), e => e.message === 'teams_disabled');
+});
+
+test('終了後のカード: 振り返りのお願い、日時、広報担当(チャンネルごと。決まっていなければ空欄)。目印は付けない', () => {
+  const e = Object.assign({}, ev, { PrAssignments: '{"Twitter":"山田","HP":"佐藤"}' });
+  const c = buildAfterCard(e, SITE, ['Twitter', 'Instagram', 'HP'], { '山田': '1AAJ1001' });
+  assert.equal(c.body[0].style, 'good');
+  assert.deepEqual(c.body[0].items.map(i => i.text), ['振り返りを記入してください', 'サイエンスショー']);
+  assert.deepEqual(rows(c), { 'イベント日時': '2026年11月3日(火) 10:00 から 15:00', 'Twitterの投稿担当': '山田 1AAJ1001', 'Instagramの投稿担当': '\u00a0', 'HPの投稿担当': '佐藤' });
+  assert.deepEqual(c.actions.map(a => a.title), ['振り返りを記入する', 'ポータルで詳細を見る']);
+  assert.equal(c.actions[0].url, SITE + 'events.html?event=ev_abc&tab=feedback');
+  assert.ok(c.actions.every(a => !a.url.includes('~')), '変更の返信先を探す目印を付けない');
+  assert.equal(c.msteams.width, 'Full');
+  // 広報担当が壊れた値でも、カードは作れる
+  assert.ok(buildAfterCard(Object.assign({}, ev, { PrAssignments: 'x' }), SITE, ['HP'], {}).body.length >= 2);
+});
+
+// D1 の代わり: 実行された文と、返す行を記録する
+function fakeAfterDb(candidates, evRow) {
+  const calls = [];
+  return { calls, DB: { prepare: sql => ({ bind: (...args) => {
+    calls.push({ sql, args });
+    return {
+      all: async () => ({ results: sql.includes('LEFT JOIN teams_after') ? candidates : [] }),
+      first: async () => (sql.startsWith('SELECT * FROM events') ? evRow : null),
+      run: async () => ({ meta: { changes: 1 } })
+    };
+  } }) } };
+}
+
+test('終了後の通知: 前日に終わったイベントを、翌朝 9 時から。1 回だけ。失敗は再試行', async () => {
+  const real = globalThis.fetch;
+  const sentBodies = [];
+  globalThis.fetch = async (url, init) => { sentBodies.push(JSON.parse(init.body)); return { ok: true, status: 202 }; };
+  try {
+    const mk = (cands, row) => Object.assign(fakeAfterDb(cands, row), { TEAMS_WEBHOOK_URL: 'https://example.test/x?sig=1', SITE_URL: SITE });
+    const jst = (iso) => new Date(iso + '+09:00');   // 日本時間の時刻
+    // 前日の日付は、日本時間で決める(UTC の日付とずれる朝 9 時でも、前日は 11/3)
+    const a = mk([{ ID: 'ev_abc', Attempts: null, Has: null }], Object.assign({}, ev));
+    assert.equal(await drainTeamsAfter(a, 3, jst('2026-11-04T09:00:00')), 1);
+    assert.equal(a.calls[0].args[0], '2026-11-03');
+    assert.ok(a.calls[0].sql.includes("NOT IN ('general', 'admin')"), 'ミーティングは対象外');
+    assert.equal(sentBodies.length, 1);
+    assert.equal(sentBodies[0].kind, 'after');
+    assert.equal(sentBodies[0].eventKey, 'ev_abc');
+    assert.ok(a.calls.some(c => c.sql.includes("INSERT INTO teams_after")), '送る前に行を作って確保する');
+    assert.ok(a.calls.some(c => c.sql.includes("State = 'sent'")));
+    // 朝 9 時より前は送らない。送信先が未設定でも送らない
+    assert.equal(await drainTeamsAfter(mk([{ ID: 'ev_abc' }], ev), 3, jst('2026-11-04T08:59:00')), 0);
+    assert.equal(await drainTeamsAfter({ DB: a.DB }, 3, jst('2026-11-04T10:00:00')), 0);
+    assert.equal(sentBodies.length, 1);
+    // 失敗: 状態は送信済みにならず、次の試行の時刻を後ろにずらす。3 回失敗したら諦める
+    globalThis.fetch = async () => ({ ok: false, status: 500 });
+    const f = mk([{ ID: 'ev_abc', Attempts: 0, Has: 'ev_abc' }], Object.assign({}, ev));
+    assert.equal(await drainTeamsAfter(f, 3, jst('2026-11-04T09:00:00')), 0);
+    assert.ok(f.calls.some(c => c.sql.startsWith('UPDATE teams_after SET DueAt = ?, Attempts = ?')));
+    assert.ok(!f.calls.some(c => c.sql.includes("State = 'sent'")));
+    const last = mk([{ ID: 'ev_abc', Attempts: 3, Has: 'ev_abc' }], Object.assign({}, ev));
+    await drainTeamsAfter(last, 3, jst('2026-11-04T09:00:00'));
+    assert.ok(last.calls.some(c => c.sql.includes("State = 'failed'")));
+  } finally {
+    globalThis.fetch = real;
+  }
 });
