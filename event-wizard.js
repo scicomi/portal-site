@@ -508,7 +508,7 @@ function genTimeOpts(startH, endH, withEmpty) {
     return html;
 }
 
-// ---- ウィザード・クイック作成の入力部品（HTML） ----
+// ---- ウィザードの入力部品（HTML） ----
 
 // 日付レンジピッカー（initDateRangePicker で駆動する）。idPrefix を渡すと各 input に id を付ける。
 function dateRangePickerHtml(date, dateEnd, idPrefix) {
@@ -573,8 +573,29 @@ function categoryBadgeHtml(catInfo) {
                 <div style="margin-bottom:12px;"><span class="cat-badge" style="background:${catInfo.bg};color:${catInfo.text};">${catInfo.short}</span></div>`;
 }
 
-function meetingWizardStepsHtml(e, steps, catInfo) {
-    return wizardStepHtml(0, steps, categoryBadgeHtml(catInfo) + `
+// 新規のミーティングの題名の初期値(種別を選ぶと、まだ書き換えていなければ、これに合わせる)
+const MEETING_DEFAULT_TITLES = { general: '全体会', admin: '幹部会' };
+
+// 種別を選んだとき(新規のミーティングだけ)。ミーティング名が初期値のままなら、種別の名前に合わせる
+function onWizardMeetingTypeChange(value) {
+    if (!MEETING_DEFAULT_TITLES[value]) return;
+    const titleEl = document.getElementById('wz-ev-title');
+    const old = MEETING_DEFAULT_TITLES[evWizardCategory];
+    evWizardCategory = value;
+    if (tempNewEvent) tempNewEvent.Category = value;
+    if (titleEl && (titleEl.value.trim() === '' || titleEl.value.trim() === old)) titleEl.value = MEETING_DEFAULT_TITLES[value];
+}
+
+function meetingWizardStepsHtml(e, steps, catInfo, isNew) {
+    const typeRow = isNew ? `
+                <div class="e1-group">
+                    <label class="e1-label">種別</label>
+                    <div class="qc-meeting-type-row">
+                        <label class="qc-meeting-type-option"><input type="radio" name="wz-ev-meeting-type" value="general"${e.Category === 'admin' ? '' : ' checked'} onchange="onWizardMeetingTypeChange(this.value)"> 全体会</label>
+                        <label class="qc-meeting-type-option"><input type="radio" name="wz-ev-meeting-type" value="admin"${e.Category === 'admin' ? ' checked' : ''} onchange="onWizardMeetingTypeChange(this.value)"> 幹部会</label>
+                    </div>
+                </div>` : '';
+    return wizardStepHtml(0, steps, categoryBadgeHtml(catInfo) + typeRow + `
                 <div class="flex-row">
                     <div class="e1-group" style="flex:0 0 100px;">
                         <label class="e1-label">回数</label>
@@ -733,6 +754,18 @@ function eventForWizard(editId, template) {
     };
 }
 
+// 真っさらな新規作成の初期値。ミーティングは、種別(全体会・幹部会)をウィザードで選ぶので、まず全体会にする
+function blankEventForWizard(category) {
+    const cat = category === 'meeting' ? 'general' : (category || 'normal');
+    return {
+        ID: genId('ev_'), Category: cat,
+        Title: isMeetingCategory(cat) ? MEETING_DEFAULT_TITLES[cat] : '',
+        Date: todayISO(), DateEnd: '',
+        Location: '', Audience: '', MeetingNumber: '', TimeStart: '', TimeEnd: '',
+        PartsList: [], Files: [], MeetingDocs: []
+    };
+}
+
 // 保存に失敗した入力内容を、ウィザードの初期値にする（一覧のイベントと配列を共有しないよう深いコピー）
 function restoredEventForWizard(item) {
     const e = JSON.parse(JSON.stringify(item));
@@ -740,15 +773,17 @@ function restoredEventForWizard(item) {
     return e;
 }
 
-// editId のみ: 既存イベントの編集。template のみ（editId 無し）: 複製して新規作成
-// （この場合だけは、クイック作成の「枠だけ」ではなく実験・担当などの詳細もこの場で全て入力する）。
-// 真っさらな新規作成はクイック作成（openQuickCreate）に一本化した。
+// editId のみ: 既存イベントの編集。template のみ（editId 無し）: 複製して新規作成。
+// blankCategory のみ: 真っさらな新規作成（常にこのウィザードで、全項目を一度に入れてから保存する。
+// 新規イベントは保存の数分後に Teams へ自動で通知されるので、枠だけの状態では保存させない）。
 // focusId: 開いた直後に、その入力欄があるステップへ移って入力欄にフォーカスする（詳細の「—」から直行する用）
 // restored: 保存に失敗したときの入力内容。これを初期値にして開き直す（persistEventFromWizard の「入力を開き直す」）
-function openEventWizard(editId, template, focusId, restored) {
-    const e = restored ? restoredEventForWizard(restored) : eventForWizard(editId, template);
+function openEventWizard(editId, template, focusId, restored, blankCategory) {
+    const e = restored ? restoredEventForWizard(restored) : blankCategory ? blankEventForWizard(blankCategory) : eventForWizard(editId, template);
     if (!e) return;
     const isEdit = !!editId;
+    // 新規の会議は、種別(全体会・幹部会)の選択を出す。保存に失敗して開き直した入力も、新規なら選べる
+    const isNew = !isEdit;
     editingEventId = editId || null;
     evWizardStep = 0;
     evWizardCategory = e.Category || 'normal';
@@ -759,8 +794,8 @@ function openEventWizard(editId, template, focusId, restored) {
 
     const isMeeting = isMeetingCategory(evWizardCategory);
     const steps = isMeeting ? EV_STEPS_MEETING : EV_STEPS_EVENT;
-    const catInfo = getEventCategory(evWizardCategory);
-    const stepsHtml = isMeeting ? meetingWizardStepsHtml(e, steps, catInfo) : eventWizardStepsHtml(e, steps, catInfo);
+    const catInfo = isMeeting && isNew ? { ...getEventCategory('general'), short: 'ミーティング' } : getEventCategory(evWizardCategory);
+    const stepsHtml = isMeeting ? meetingWizardStepsHtml(e, steps, catInfo, isNew) : eventWizardStepsHtml(e, steps, catInfo);
 
     const overlay = document.createElement('div');
     overlay.id = 'ev-wizard-overlay';
@@ -768,8 +803,8 @@ function openEventWizard(editId, template, focusId, restored) {
     overlay.innerHTML = `
         <div class="wizard-panel" role="dialog" aria-modal="true" style="max-width:560px;">
             <div class="wizard-header">
-                <h2 class="wizard-title">${isEdit ? 'イベントを編集' : 'イベントを複製して追加'}</h2>
-                <p class="wizard-subtitle">${isEdit ? escapeHtml(e.Title || '') : `「${escapeHtml((template || e).Title || '(無題)')}」の内容を引き継いで作成します`}</p>
+                <h2 class="wizard-title">${isEdit ? 'イベントを編集' : template ? 'イベントを複製して追加' : 'イベントを追加'}</h2>
+                <p class="wizard-subtitle">${isEdit ? escapeHtml(e.Title || '') : template ? `「${escapeHtml(template.Title || '(無題)')}」の内容を引き継いで作成します` : '内容を入力して、最後に保存してください'}</p>
             </div>
             <div class="wizard-progress">
                 ${steps.map((s, i) => `
@@ -1376,7 +1411,7 @@ document.addEventListener('keydown', e => {
 });
 
 // 日付変更時に期限表示を即時更新する（期限は自動計算のみ・表示専用スパン）。
-// 実際の保存値は saveEventFromWizard / saveQuickCreate で確定する。
+// 実際の保存値は saveEventFromWizard で確定する。
 // 許可願の期限が既に過ぎている場合は赤字で警告する。
 function updateDeadlines(dateInput) {
     const newDate = dateInput.value;
@@ -1395,16 +1430,6 @@ function updateDeadlines(dateInput) {
     }
     if (wzHoukoku) wzHoukoku.textContent = calc.houkoku || '---';
 
-    // クイック作成（日付の下の期限メモ）
-    const qcNote = document.getElementById('qc-deadline-note');
-    if (qcNote) {
-        if (isMeeting || !newDate) {
-            qcNote.innerHTML = '';
-        } else {
-            qcNote.innerHTML = `書類期限（自動計算）: 許可願 <strong class="${kyokaPast ? 'deadline-past' : ''}">${escapeHtml(calc.kyoka)}</strong> ／ 報告書 ${escapeHtml(calc.houkoku)}`
-                + (kyokaPast ? `<br><span class="deadline-past">開催日まで${Math.abs(CONFIG.DEADLINE_RULES.kyoka)}日を切っています。許可願を至急提出してください。</span>` : '');
-        }
-    }
 }
 
 // 時間セレクトの開始・終了を読む（未定なら両方空欄）。片方だけ・終了が開始以前ならエラーを表示して null を返す。
