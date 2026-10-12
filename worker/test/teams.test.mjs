@@ -19,7 +19,7 @@ const rowParts = card => card.body.slice(1).filter(b => b.type === 'Container').
 const labelOf = c => (c.items[0].type === 'ColumnSet' ? c.items[0].columns[0].items[0].text : c.items[0].text);
 const markOf = c => (c.items[0].type === 'ColumnSet' ? c.items[0].columns[1].items[0].text : '');
 const valueOf = c => c.items.slice(1).filter(b => b.type !== 'ActionSet' && b.isVisible !== false)
-  .map(b => (b.type === 'ColumnSet' ? b.columns.map(col => col.items[0].text).join(' ') : b.text)).join('\n');
+  .map(b => (b.type === 'ColumnSet' ? b.columns.map(col => col.items[0].text).join('').replace(/ /g, ' ') : b.text)).join('\n');
 const rows = card => Object.fromEntries(rowParts(card).map(c => [labelOf(c) + markOf(c), valueOf(c)]));
 const groupSizes = card => card.body.slice(1).filter(b => b.type === 'Container').map(g => g.items.length);
 
@@ -73,7 +73,8 @@ test('名前の横の学番: 一番小さい薄い文字を、間隔なしで添
   assert.equal(leader.type, 'ColumnSet');
   const [nameCol, idCol] = leader.columns;
   assert.equal(nameCol.items[0].size, 'Medium');
-  assert.equal(idCol.spacing, 'None');                       // 名前と学番の間を空けない
+  assert.equal(idCol.spacing, 'None');                       // 列の間隔は空けず、半角の空き(NBSP 1 つ)だけを置く
+  assert.equal(idCol.items[0].text, ' 1AAJ1001');
   assert.deepEqual([idCol.items[0].size, idCol.items[0].isSubtle], ['Small', true]);
   assert.equal(idCol.items[0].color, undefined);             // 色なし
   assert.deepEqual(splitNames('A,B、C，D, '), ['A', 'B', 'C', 'D']);

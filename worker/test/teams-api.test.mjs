@@ -59,7 +59,7 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     const h = c.items[0];
     const label = h.type === 'ColumnSet' ? h.columns[0].items[0].text + h.columns[1].items[0].text : h.text;
     const value = c.items.slice(1).filter(b => b.type !== 'ActionSet' && b.isVisible !== false)
-      .map(b => (b.type === 'ColumnSet' ? b.columns.map(col => col.items[0].text).join(' ') : b.text)).join('\n');
+      .map(b => (b.type === 'ColumnSet' ? b.columns.map(col => col.items[0].text).join('').replace(/ /g, ' ') : b.text)).join('\n');
     return [label, value];
   }));
   const status = id => post({ action: 'teamsStatus', token: member, eventId: id });

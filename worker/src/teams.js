@@ -30,6 +30,7 @@ export const TEAMS_FIELDS = WATCHED.concat(DOC_FIELDS);
 const SNAPSHOT_COLUMNS = Array.from(new Set(['ID', 'Category', 'MeetingNumber'].concat(TEAMS_FIELDS.flatMap(w => w.cols))));
 
 const s = v => (v === null || v === undefined ? '' : String(v)).trim();
+const NBSP = ' ';   // 名前と学番の間の半角の空き(先頭の通常の空白は、表示で消えるため)
 const NL = '\n';   // カードの値の中の改行(実験内容・発表者や、運転者・同乗者を 1 件ごとに分ける)
 const flag = v => { const t = s(v).toLowerCase(); return t !== '' && t !== '0' && t !== 'false'; };
 
@@ -177,7 +178,7 @@ function valueBlocks(r, ids, counter) {
       if (!sid) return Object.assign(name, { spacing: i ? 'Small' : 'None' });
       return { type: 'ColumnSet', spacing: i ? 'Small' : 'None', columns: [
         { type: 'Column', width: 'auto', items: [name] },
-        { type: 'Column', width: 'auto', spacing: 'None', verticalContentAlignment: 'Center', items: [{ type: 'TextBlock', text: sid, size: 'Small', isSubtle: true, wrap: false }] }
+        { type: 'Column', width: 'auto', spacing: 'None', verticalContentAlignment: 'Center', items: [{ type: 'TextBlock', text: NBSP + sid, size: 'Small', isSubtle: true, wrap: false }] }
       ] };
     });
   }
@@ -281,7 +282,7 @@ export function buildUpdateCard(ev, before, changes, site, ids) {
   const verb = kinds.length && kinds.every(k => k === '追記') ? '追記' : kinds.length && kinds.every(k => k === '変更') ? '変更' : '更新';
   return renderCard(ev, eventLinks(site, ev), {
     style: 'warning', color: 'Warning', lead: what + 'の内容が' + verb + 'されました',
-    marks, extras, ids, note: '印の付いた項目が、前回の通知から変わりました。'
+    marks, extras, ids
   });
 }
 
