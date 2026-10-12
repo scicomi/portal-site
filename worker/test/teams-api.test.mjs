@@ -55,10 +55,10 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     return received.slice(before).map(x => x.body);
   };
   // カードの項目を { '項目名(印)': '値' } にする。名前の横の学番は、空白でつなぐ。折りたたまれた文は先頭だけ
-  const rows = body => Object.fromEntries(body.attachments[0].content.body.slice(1).filter(b => b.type === 'Container').flatMap(g => g.items).map(c => {
+  const rows = body => Object.fromEntries(body.attachments[0].content.body.slice(1).filter(b => b.type === 'Container' && b.separator).flatMap(g => g.items).map(c => {
     const h = c.items[0];
     const label = h.type === 'ColumnSet' ? h.columns[0].items[0].text + h.columns[1].items[0].text : h.text;
-    const value = c.items.slice(1).filter(b => b.type !== 'ActionSet' && b.isVisible !== false)
+    const value = c.items.slice(1).filter(b => !b.selectAction && b.isVisible !== false)
       .map(b => (b.type === 'ColumnSet' ? b.columns.map(col => col.items[0].text).join('').replace(/ /g, ' ') : b.text)).join('\n');
     return [label, value];
   }));

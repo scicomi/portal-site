@@ -33,6 +33,7 @@ const SNAPSHOT_COLUMNS = Array.from(new Set(['ID', 'Category', 'MeetingNumber'].
 
 const s = v => (v === null || v === undefined ? '' : String(v)).trim();
 const NBSP = ' ';   // 名前と学番の間の半角の空き(先頭の通常の空白は、表示で消えるため)
+const FOLD_AFTER_LABEL = '実験内容';   // イベントのカードは、この項目までを見せて、残りを折りたたむ
 const NL = '\n';   // カードの値の中の改行(実験内容・発表者や、運転者・同乗者を 1 件ごとに分ける)
 const flag = v => { const t = s(v).toLowerCase(); return t !== '' && t !== '0' && t !== 'false'; };
 
@@ -179,16 +180,24 @@ export function foldShort(v) {
   return (head.length > FOLD_CHARS ? head.slice(0, FOLD_CHARS) : head) + '…';
 }
 
-// 折りたたみの部品: 先頭だけ / 全文(最初は隠す) / 「続きを表示」「閉じる」のボタン
+// 「続きを表示」「閉じる」: ボタンではなく、小さい青い文字のリンクに見せる(押すと、targets の表示を切り替える)。
+// 文字を、押せる枠(Container の selectAction)に入れている
+function toggleLink(id, title, targets, visible) {
+  return {
+    type: 'Container', id, spacing: 'Small', isVisible: visible,
+    selectAction: { type: 'Action.ToggleVisibility', targetElements: targets },
+    items: [{ type: 'TextBlock', text: title, size: 'Small', color: 'Accent', wrap: false }]
+  };
+}
+
+// 折りたたみの部品: 先頭だけ / 全文(最初は隠す) / 「続きを表示」「閉じる」のリンク
 function foldBlocks(n, value, short) {
   const ids = ['fs' + n, 'ff' + n, 'fo' + n, 'fc' + n];
   return [
     { type: 'TextBlock', id: ids[0], text: short, size: 'Medium', wrap: true, spacing: 'None' },
     { type: 'TextBlock', id: ids[1], text: value, size: 'Medium', wrap: true, spacing: 'None', isVisible: false },
-    { type: 'ActionSet', spacing: 'Small', actions: [
-      { type: 'Action.ToggleVisibility', id: ids[2], title: '続きを表示', targetElements: ids },
-      { type: 'Action.ToggleVisibility', id: ids[3], title: '閉じる', isVisible: false, targetElements: ids }
-    ] }
+    toggleLink(ids[2], '続きを表示', ids, true),
+    toggleLink(ids[3], '閉じる', ids, false)
   ];
 }
 
@@ -223,7 +232,7 @@ function valueBlocks(r, ids, counter) {
 function rowContainer(r, kind, ids, counter) {
   // 項目名は、小さい青い文字(Accent は、ライト・ダークのどちらのテーマでも読める色)。
   // 追記・変更の印は、色なしの小さい薄い文字を、括弧つきで、項目名のすぐ横に出す(列の間隔をなくして詰める)
-  const label = { type: 'TextBlock', text: r.label, size: 'Small', color: 'Accent', wrap: false };
+  const label = { type: 'TextBlock', text: r.label, size: 'Small', color: 'Attention', wrap: false };
   const head = kind
     ? { type: 'ColumnSet', columns: [
         { type: 'Column', width: 'auto', items: [label] },
@@ -240,16 +249,30 @@ function renderCard(ev, links, opts) {
   const ids = opts.ids || {};
   const counter = { n: 0 };
   const groups = [];
+  // イベントは、実験内容までを見せて、それより後ろの項目は「続きを表示」で開く。変わった項目(変更のカード)は、後ろでも見せる
+  const foldFrom = isMeeting(ev) ? -1 : rows.findIndex(r => r.label === FOLD_AFTER_LABEL);
   rows.forEach((r, i) => {
     if (!r.value && !marks[i]) return;   // 書かれていない項目は出さない
     let g = groups.find(x => x.no === r.group);
-    if (!g) { g = { no: r.group, items: [] }; groups.push(g); }
+    if (!g) { g = { no: r.group, items: [], fold: [] }; groups.push(g); }
     g.items.push(rowContainer(r, marks[i] || '', ids, counter));
+    g.fold.push(foldFrom >= 0 && i > foldFrom && !marks[i]);
   });
   const extras = opts.extras || [];
-  if (extras.length) groups.push({ no: 'extra', items: extras.map(x => rowContainer(x, x.kind, ids, counter)) });
+  if (extras.length) groups.push({ no: 'extra', items: extras.map(x => rowContainer(x, x.kind, ids, counter)), fold: extras.map(() => false) });
+  const hiddenIds = [];
+  const hide = c => { c.id = 'hid' + hiddenIds.length; c.isVisible = false; hiddenIds.push(c.id); };
   const body = [header(opts.style, opts.color, opts.lead, eventDisplayName(ev))]
-    .concat(groups.map(g => ({ type: 'Container', separator: true, spacing: 'Medium', items: g.items })));
+    .concat(groups.map(g => {
+      const c = { type: 'Container', separator: true, spacing: 'Medium', items: g.items };
+      if (g.fold.every(Boolean)) hide(c);   // かたまりの中身がすべて隠れるなら、区切り線ごと隠す
+      else g.items.forEach((it, k) => { if (g.fold[k]) hide(it); });
+      return c;
+    }));
+  if (hiddenIds.length) {
+    const targets = hiddenIds.concat(['hmo', 'hmc']);
+    body.push(toggleLink('hmo', '続きを表示', targets, true), toggleLink('hmc', '閉じる', targets, false));
+  }
   if (opts.note) body.push({ type: 'TextBlock', text: opts.note, size: 'Small', isSubtle: true, wrap: true, spacing: 'Medium' });
   return cardShell(body, links);
 }
@@ -261,7 +284,7 @@ export function buildNewCard(ev, site, ids) {
     const kind = MEETING_NAMES[s(ev.Category)] || 'ミーティング';
     return renderCard(ev, links, { style: 'attention', color: 'Attention', lead: kind + 'が登録されました', ids });
   }
-  return renderCard(ev, links, { style: 'accent', color: 'Accent', lead: '新しいイベントが登録されました', ids });
+  return renderCard(ev, links, { style: 'attention', color: 'Attention', lead: '新しいイベントが登録されました', ids });
 }
 
 // 前回 Teams へ送った内容(before)と今(after)の差。[{ w, label, from, to }]
@@ -350,7 +373,7 @@ export function buildAfterCard(ev, site, channels, ids) {
     return { label: ch + 'の投稿担当', type: name ? 'people' : 'blank', value: name };
   });
   const body = [
-    header('good', 'Good', '振り返りを記入してください', eventDisplayName(ev)),
+    header('accent', 'Accent', '振り返りを記入してください', eventDisplayName(ev)),
     { type: 'Container', separator: true, spacing: 'Medium', items: [rowContainer(dateRow, '', ids, counter)] }
   ];
   if (prRows.length) body.push({ type: 'Container', separator: true, spacing: 'Medium', items: prRows.map(r => rowContainer(r, '', ids, counter)) });

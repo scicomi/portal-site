@@ -15,13 +15,14 @@ const ev = {
 };
 
 // カードの項目を { '項目名(印)': '値' } にする。値は、名前と学番の間を空白でつなぐ。折りたたまれた文は先頭だけ
-const rowParts = card => card.body.slice(1).filter(b => b.type === 'Container').flatMap(g => g.items);
+const groupsOf = card => card.body.slice(1).filter(b => b.type === 'Container' && b.separator);   // 項目のかたまり(「続きを表示」のリンクは含めない)
+const rowParts = card => groupsOf(card).flatMap(g => g.items);
 const labelOf = c => (c.items[0].type === 'ColumnSet' ? c.items[0].columns[0].items[0].text : c.items[0].text);
 const markOf = c => (c.items[0].type === 'ColumnSet' ? c.items[0].columns[1].items[0].text : '');
-const valueOf = c => c.items.slice(1).filter(b => b.type !== 'ActionSet' && b.isVisible !== false)
+const valueOf = c => c.items.slice(1).filter(b => !b.selectAction && b.isVisible !== false)
   .map(b => (b.type === 'ColumnSet' ? b.columns.map(col => col.items[0].text).join('').replace(/ /g, ' ') : b.text)).join('\n');
 const rows = card => Object.fromEntries(rowParts(card).map(c => [labelOf(c) + markOf(c), valueOf(c)]));
-const groupSizes = card => card.body.slice(1).filter(b => b.type === 'Container').map(g => g.items.length);
+const groupSizes = card => groupsOf(card).map(g => g.items.length);
 
 test('日時の書き方: 年つき・曜日つき・複数日・時間だけ片方', () => {
   assert.equal(dateTimeText(ev), '2026年11月3日(火) 10:00 から 15:00');
@@ -33,7 +34,7 @@ test('日時の書き方: 年つき・曜日つき・複数日・時間だけ片
 
 test('新規のカード(イベント): 見出しは種類と題名だけ。項目は区切り線でかたまりに分け、小見出しは付けない。書かれていない項目は出さない', () => {
   const c = buildNewCard(ev, SITE);
-  assert.equal(c.body[0].style, 'accent');
+  assert.equal(c.body[0].style, 'attention');
   assert.deepEqual(c.body[0].items.map(i => i.text), ['新しいイベントが登録されました', 'サイエンスショー']);
   assert.equal(c.body[0].items[1].size, 'ExtraLarge');
   assert.deepEqual(rows(c), {
@@ -41,12 +42,12 @@ test('新規のカード(イベント): 見出しは種類と題名だけ。項�
     '実験内容': '・スライム作り', '許可願担当': '次郎'
   });
   assert.deepEqual(groupSizes(c), [3, 1, 1]);
-  c.body.slice(1).filter(b => b.type === 'Container').forEach(g => {
+  groupsOf(c).forEach(g => {
     assert.equal(g.separator, true);
     assert.ok(g.items.every(i => i.type === 'Container'), '小見出しの文字(TextBlock)が混ざっていない');
   });
   // 項目名は小さい青い文字。発表者は出さない
-  rowParts(c).forEach(r => { assert.equal(r.items[0].size, 'Small'); assert.equal(r.items[0].color, 'Accent'); });
+  rowParts(c).forEach(r => { assert.equal(r.items[0].size, 'Small'); assert.equal(r.items[0].color, 'Attention'); });
   assert.ok(!JSON.stringify(c).includes('花子'));
   assert.deepEqual(c.actions.map(a => a.title), ['詳細を見る', '出欠を入力']);
 });
@@ -184,7 +185,7 @@ test('変更のカード: 新規と同じ項目(書かれているもの)を並�
   // 印: 項目名のすぐ横に、色なしの一番小さい薄い文字で、括弧つき。項目名は青
   const place = rowParts(c).find(x => labelOf(x) === '場所');
   const [lab, mk] = place.items[0].columns;
-  assert.deepEqual([lab.items[0].color, lab.items[0].size], ['Accent', 'Small']);
+  assert.deepEqual([lab.items[0].color, lab.items[0].size], ['Attention', 'Small']);
   assert.equal(mk.spacing, 'None');
   assert.deepEqual([mk.items[0].text, mk.items[0].size, mk.items[0].isSubtle, mk.items[0].color], ['(削除)', 'Small', true, undefined]);
   assert.equal(labelOf(rowParts(c).pop()), '備考');
@@ -234,15 +235,16 @@ test('長い文章の折りたたみ: 3 行を超える、または 90 文字を
   const m = Object.assign({}, ev, { Category: 'general', Remarks: long, Location: '' });
   const c = buildNewCard(m, SITE);
   const agenda = rowParts(c).find(x => labelOf(x) === '議題');
-  const [shortB, fullB, set] = agenda.items.slice(1);
+  const [shortB, fullB, open, close] = agenda.items.slice(1);
   assert.equal(shortB.text, '1行目\n2行目\n3行目…');
   assert.equal(fullB.text, long);
   assert.equal(fullB.isVisible, false);
-  assert.equal(set.type, 'ActionSet');
-  const [open, close] = set.actions;
-  assert.deepEqual([open.type, open.title, close.title, close.isVisible], ['Action.ToggleVisibility', '続きを表示', '閉じる', false]);
-  assert.deepEqual(open.targetElements, [shortB.id, fullB.id, open.id, close.id]);
-  assert.deepEqual(close.targetElements, open.targetElements);
+  // 「続きを表示」「閉じる」は、ボタンではなく、小さい青い文字のリンク(押せる枠に入れた文字)
+  assert.deepEqual([open.type, open.selectAction.type, open.items[0].text, open.items[0].size, open.items[0].color], ['Container', 'Action.ToggleVisibility', '続きを表示', 'Small', 'Accent']);
+  assert.deepEqual([close.items[0].text, close.isVisible, close.selectAction.type], ['閉じる', false, 'Action.ToggleVisibility']);
+  assert.deepEqual(open.selectAction.targetElements, [shortB.id, fullB.id, open.id, close.id]);
+  assert.deepEqual(close.selectAction.targetElements, open.selectAction.targetElements);
+  assert.ok(!JSON.stringify(c).includes('ActionSet'), 'ボタン(ActionSet)は使わない');
   // 折りたたみが複数あっても、id は重ならない
   const after = Object.assign({}, ev, { Remarks: long, PlanLeader: 'あ'.repeat(5), Location: '1\n2\n3\n4' });
   const ids = JSON.stringify(buildUpdateCard(after, ev, diffTeams(ev, after), SITE)).match(/"id":"(f[sfoc]\d+)"/g);
@@ -301,7 +303,7 @@ test('送信の失敗: 理由に送信先の URL を含めない', async () => {
 test('終了後のカード: 振り返りのお願い、日時、広報担当(チャンネルごと。決まっていなければ空欄)。目印は付けない', () => {
   const e = Object.assign({}, ev, { PrAssignments: '{"Twitter":"山田","HP":"佐藤"}' });
   const c = buildAfterCard(e, SITE, ['Twitter', 'Instagram', 'HP'], { '山田': '1AAJ1001' });
-  assert.equal(c.body[0].style, 'good');
+  assert.equal(c.body[0].style, 'accent');
   assert.deepEqual(c.body[0].items.map(i => i.text), ['振り返りを記入してください', 'サイエンスショー']);
   assert.deepEqual(rows(c), { 'イベント日時': '2026年11月3日(火) 10:00 から 15:00', 'Twitterの投稿担当': '山田 1AAJ1001', 'Instagramの投稿担当': '\u00a0', 'HPの投稿担当': '佐藤' });
   assert.deepEqual(c.actions.map(a => a.title), ['振り返りを記入する', '詳細を見る']);
@@ -358,4 +360,31 @@ test('終了後の通知: 前日に終わったイベントを、翌朝 9 時か
   } finally {
     globalThis.fetch = real;
   }
+});
+
+test('イベントのカードの折りたたみ: 実験内容までを見せ、後ろは「続きを表示」で開く。変更のカードでは、変わった項目は後ろでも見せる', () => {
+  const full = Object.assign({}, ev, {
+    PlanName: '夏休み科学教室', TransportMethod: '学校の車', TransportDriver: '田中', AdminHoukoku: '三郎', Remarks: '駐車場は裏門',
+    Files: '[{"name":"資料.pdf","url":"https://example.com/a.pdf"}]'
+  });
+  const c = buildNewCard(full, SITE);
+  const hidden = x => x.isVisible === false;
+  const state = card => groupsOf(card).map(g => hidden(g) ? 'かたまりごと隠す' : g.items.map(i => (hidden(i) ? '隠' : '見') + labelOf(i)).join(' '));
+  assert.deepEqual(state(c), ['見企画名 見場所 見イベント日時 見企画担当者', '見実験内容', 'かたまりごと隠す', 'かたまりごと隠す', 'かたまりごと隠す']);
+  const [open, close] = c.body.slice(-2);
+  assert.deepEqual([open.items[0].text, open.isVisible, close.items[0].text, close.isVisible], ['続きを表示', true, '閉じる', false]);
+  const hiddenIds = groupsOf(c).filter(hidden).map(g => g.id);
+  assert.equal(hiddenIds.length, 3);
+  assert.deepEqual(open.selectAction.targetElements, hiddenIds.concat([open.id, close.id]));
+  assert.ok(c.body.indexOf(open) > c.body.indexOf(groupsOf(c)[4]), 'リンクは、項目のあとに置く');
+  // 隠すものがなければ、リンクも出さない
+  assert.ok(!JSON.stringify(buildNewCard(Object.assign({}, ev, { AdminKyoka: '' }), SITE)).includes('"id":"hmo"'));
+  // 変更のカード: 後ろの項目のうち、変わったもの(報告書担当)は見せ、変わっていないものは隠す。かたまりの中の一部だけ隠れるときは、その行だけを隠す
+  const after = Object.assign({}, full, { AdminHoukoku: '四郎' });
+  const u = buildUpdateCard(after, full, diffTeams(full, after), SITE);
+  assert.deepEqual(state(u), ['見企画名 見場所 見イベント日時 見企画担当者', '見実験内容', 'かたまりごと隠す', '隠許可願担当 見報告書担当', 'かたまりごと隠す']);
+  assert.equal(rows(u)['報告書担当(変更)'], '四郎');
+  // ミーティングは、折りたたまない(長い議題だけを折りたたむ)
+  const m = buildNewCard(Object.assign({}, ev, { Category: 'general', Remarks: '議題' }), SITE);
+  assert.ok(!JSON.stringify(m).includes('hid0'));
 });
