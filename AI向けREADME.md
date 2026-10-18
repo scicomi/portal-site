@@ -42,7 +42,7 @@ D1（データ・SQLite） ／ R2（ファイル・毎日のバックアップ�
 - 認証は「一般パスワード」「幹部パスワード」の 2 種類（共通パスワード方式。個人認証なし）
 - 本番の識別子: D1 `scicomi-portal`、R2 `scicomi-portal-files`、Worker `scicomi-portal`
 - 旧バックエンド(GAS)は削除済み(git の履歴には残っている)
-- **AI検索(Bot)は削除済み**(git の履歴には残っている)。Gemini は、これから作る「振り返りの要約」だけが使う。計画は [docs/13_reflection_summary_plan.md](docs/13_reflection_summary_plan.md)、実装の順序は [docs/14_reflection_summary_roadmap.md](docs/14_reflection_summary_roadmap.md)。`worker/wrangler.toml` の `GEMINI_ENABLED = "false"` の間は、`worker/src/gemini.js` がどこから呼ばれても Gemini へ送らない(全体の非常停止)。無料枠は送った入力が学習に使われ得るので、**このスイッチを人の了承なしに `"true"` にしない**。経緯は [docs/09_aibot_suspended.md](docs/09_aibot_suspended.md)
+- **AI検索(Bot)は削除済み**(git の履歴には残っている)。Gemini は「振り返りの要約」だけが使う(2026-10-18 から本番で稼働。§7 の「振り返りの要約」)。設計は [docs/13_reflection_summary_plan.md](docs/13_reflection_summary_plan.md)、実装と本番反映の記録は [docs/14_reflection_summary_roadmap.md](docs/14_reflection_summary_roadmap.md)。`worker/wrangler.toml` の `GEMINI_ENABLED` が全体のスイッチ(`"true"` 以外なら、`worker/src/gemini.js` がどこから呼ばれても Gemini へ送らない)。無料枠は送った入力が学習に使われ得るので、**このスイッチを人の了承なしに `"true"` にしない**(人に頼まれて `"false"` にして止めるのは、すぐ行ってよい。デプロイの了承は §0 のとおり得る)。経緯は [docs/09_aibot_suspended.md](docs/09_aibot_suspended.md)
 
 ### 主要ファイル
 
@@ -151,7 +151,7 @@ npx wrangler whoami     # ログインできているか確認（AI が実行し
    4. `git push`（フロントを更新）
 6. 本番の画面で、追加した項目が保存・表示できることを確認
 
-補足: 毎日のバックアップは `SELECT *` で全列を保存するので、列を足しても自動で含まれる。一方、復元スクリプト（`worker/scripts/restore.mjs`）は `tables.js` の列だけを書き戻すので、手順 2 を忘れると新しい列が復元されない。**新しいテーブルを足すときは**、バックアップの対象（`worker/src/maintenance.js` の `BACKUP_TABLES`）と、`restore.mjs` の `columnsOf` にも追加する。
+補足: 毎日のバックアップは `SELECT *` で全列を保存するので、列を足しても自動で含まれる。一方、復元スクリプト（`worker/scripts/restore.mjs`）は `tables.js` の列だけを書き戻すので、手順 2 を忘れると新しい列が復元されない。**新しいテーブルを足すときは**、バックアップの対象（`worker/src/maintenance.js` の `BACKUP_TABLES`）と、`restore.mjs` の `columnsOf` にも追加する。ただし、消えても作り直せる派生データのテーブル（`teams_notify` `teams_after` `reflection_summaries`）は、わざと入れていない。
 
 ### C. 選択肢・カテゴリ・色・期限ルールを変える
 
@@ -248,3 +248,10 @@ AI にはできない、または任せてはいけない作業。指示する�
 - **通知の画面側**(`pwa.js`): 状態は `pushState()`(未設定 / 非対応 / iPhone でホーム画面未追加 / ブロック中 / オン / オフ)。オンにする `enablePush()` は、ボタンの click の中で**最初に** `Notification.requestPermission()` を呼ぶ(間に別の await を入れると、iPhone は許可の確認を出さない)。画面を開くと `syncPushSubscription()` が 1 日 1 回・ログインし直したとき・名前を変えたときに登録を送り直し、サーバーの鍵が変わっていれば登録し直す。ログアウトは通知を解除してから行う(`app.js` の `handleLogout` → `disablePushOnLogout`)。Claude の内蔵ブラウザは通知を常に拒否するので、画面の確認は状態を差し替えて行い、実際の受信は実機で確かめる
 - **Teams への通知**(`worker/src/teams.js`。設計・Power Automate のフローの構造・本番の手順は [docs/12_teams_notify_plan.md](docs/12_teams_notify_plan.md)): 新規のイベントは保存の約 3 分後に自動で、変更は詳細ページのボタンで、前回送った内容(`teams_notify.Snapshot`)との差分を送る。送信先のフローの URL は Secret の `TEAMS_WEBHOOK_URL`(**AI は値を扱わない**。人が `wrangler secret put` で登録する。未登録なら機能ごと無効)。フローが失敗しても Webhook は 202 を返すので、成否は Worker から分からない。ボタンのリンクの `id=<ID>~` は、変更のときにフローが元の投稿を探す目印なので、形を変えるときはフローの式も直す。`teams_notify` はバックアップの対象外。結合テストは、先頭のコメントの手順(偽の受け口)で起動したときだけ動く。`npm test` はファイルを 1 つずつ動かす(パスワード変更のテストと並行できないため)
 - **イベントの通知**(`worker/src/eventNotify.js`): イベント・ミーティングの `save` で、追加と、決めた項目(`WATCHED`。イベント詳細のイベント名・企画名・企画担当者・場所・対象・人数・日程・時間・集合・解散・運搬・実験内容・発表者・備考)の変更を通知する。イベントに列を足して通知の対象にしたいときは `WATCHED` に足す。氏名や本文を含む項目は `show` を付けない(ロック画面に中身を出さない)。送るのは保存の約 3 分後で、まだ送っていない同じイベントの通知は 1 件にまとめる。削除の取り消し・ゴミ箱やバックアップからの復元では通知しない
+- **振り返りの要約（AI が生成）**（`worker/src/reflectionSummary.js` ほか。設計は docs/13、記録は docs/14）。実験・イベントの振り返り（`Positives` / `Reflections`）を Gemini の無料枠で要約し、`reflection_summaries` テーブルに保存する。守っていること:
+  - **送るのは本文と種類（良かった点／改善点）だけ**。`name` / `memberId` / 日時 / イベント名は送らない（`feedback.js`）。本文のメンバーの氏名（フルネーム、姓・名＋敬称）と連絡先は送る前に置き換える（`redact.js`）。敬称なしの姓・名だけや、子どもの名前は防げないので、入力欄の注意書きで補う。**置き換えの規則を緩めない**。送る列を増やすときは人に相談する
+  - モデルには一時的な番号（[F1]…）だけを渡し、本物の id への戻しはサーバーで行う。出力は型を検証し（`reflectionPrompt.js`）、崩れていれば保存しない。画面は `textContent` で描く
+  - 自動更新は 1 分ごとの定期実行で 1 件ずつ、1 日 20 件まで（設定 `reflection_summary_auto` で止められる）。画面の「まとめを作る」は 1 件 1 日 1 回。3 件未満では作らない
+  - `reflection_summaries` はバックアップの対象外（作り直せる）。中身の要約は個人情報を含み得るものとして扱い、AI が大量に読み出さない
+  - テストは `worker/test/reflection.test.mjs`（単体）と `summary-api.test.mjs`（偽の Gemini を使う結合テスト。起動手順はファイルの先頭）。**本物の Gemini に送るテストを書かない**
+  - 止め方: 自動更新だけなら設定ページ。全体は `GEMINI_ENABLED = "false"` で再デプロイ

@@ -1,6 +1,6 @@
 # 13 実験ネタの振り返りを AI で要約する(Amazon のレビュー要約風)設計
 
-状態: **設計のみ(未実装)**。既存コードの調査と実装の順序は [14_reflection_summary_roadmap.md](14_reflection_summary_roadmap.md)。参考記事: https://bxo.co.jp/magazine/16844
+状態: **実装済み・本番で稼働中(2026-10-18)**。最初は手動の「まとめを作る」だけで品質を見ている(自動更新は設定ページで「作らない」)。この文書は当初の設計で、実装で変えた点(テーブルの列、イベントのカードの位置、氏名の置き換えの規則など)と本番反映の記録は [14_reflection_summary_roadmap.md](14_reflection_summary_roadmap.md) が正。参考記事: https://bxo.co.jp/magazine/16844
 
 ## 1. やりたいこと
 
