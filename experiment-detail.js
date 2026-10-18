@@ -652,19 +652,19 @@ function slideKey(s) {
     return String((s && (s.driveId || s.url)) || '');
 }
 
-// 並び順 { key: 'name' | 'date', dir: 'asc' | 'desc' }。既定はアップロード日の新しい順。
+// 並び順 { key: 'name' | 'date' | 'size', dir: 'asc' | 'desc' }。既定はアップロード日の新しい順。
 // 以前の形（'asc' / 'desc' だけ）は、アップロード日の並びとして読む
 function getSlideSort() {
     let v = '';
     try { v = localStorage.getItem(SLIDE_SORT_KEY) || ''; } catch (_) { /* 読めなければ既定 */ }
     if (v === 'asc' || v === 'desc') v = 'date:' + v;
-    const m = /^(name|date):(asc|desc)$/.exec(v);
+    const m = /^(name|date|size):(asc|desc)$/.exec(v);
     return m ? { key: m[1], dir: m[2] } : { key: 'date', dir: 'desc' };
 }
 
-// 見出しを押したとき。同じ列なら向きを反転、別の列なら、その列の自然な向き（名前は昇順、日付は新しい順）から始める
+// 見出しを押したとき。同じ列なら向きを反転、別の列なら、その列の自然な向き（名前は昇順、日付は新しい順、サイズは大きい順）から始める
 function sortSlidesBy(key) {
-    if (key !== 'name' && key !== 'date') return;
+    if (key !== 'name' && key !== 'date' && key !== 'size') return;
     const cur = getSlideSort();
     const next = cur.key === key
         ? { key, dir: cur.dir === 'asc' ? 'desc' : 'asc' }
@@ -719,6 +719,13 @@ function renderSlides(order) {
             const c = String(a.s.name || '').localeCompare(String(b.s.name || ''), 'ja', { numeric: true, sensitivity: 'base' });
             return sign * c || a.i - b.i;
         }
+        if (sort.key === 'size') {
+            // サイズが分からないものは、向きに関わらず最後
+            const sz = s => { const n = Number(s && s.size); return n > 0 ? n : null; };
+            const za = sz(a.s), zb = sz(b.s);
+            if (za === null || zb === null) return (za === null) - (zb === null) || a.i - b.i;
+            return sign * (za - zb) || a.i - b.i;
+        }
         const ta = time(a.s), tb = time(b.s);
         if (ta === null || tb === null) return (ta === null) - (tb === null) || a.i - b.i;
         return sign * (ta - tb) || a.i - b.i;
@@ -727,9 +734,9 @@ function renderSlides(order) {
     const head = (key, label) => {
         const active = sort.key === key;
         const ariaSort = active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none';
-        const mark = active ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅';
+        const mark = active ? (sort.dir === 'asc' ? '▲' : '▼') : '';
         return `<th scope="col" class="slide-col-${key}" aria-sort="${ariaSort}">
-            <button type="button" class="slide-th-sort${active ? ' active' : ''}" data-action="expd-sort-slides" data-key="${key}">${label}<span class="slide-sort-mark" aria-hidden="true">${mark}</span></button>
+            <button type="button" class="slide-th-sort${active ? ' active' : ''}" data-action="expd-sort-slides" data-key="${key}">${label}${mark ? `<span class="slide-sort-mark" aria-hidden="true">${mark}</span>` : ''}</button>
         </th>`;
     };
 
@@ -747,7 +754,7 @@ function renderSlides(order) {
                 : escapeHtml(name)}</td>
             <td class="slide-col-date">${day ? `<span class="slide-day">${escapeHtml(day)}</span> <span class="slide-time">${escapeHtml(hm)}</span>` : '<span class="slide-time">不明</span>'}</td>
             <td class="slide-col-size">${escapeHtml(size || '—')}</td>
-            <td class="slide-col-edit"><button type="button" class="slide-edit" data-action="expd-edit-slide" data-key="${escapeAttr(slideKey(f))}" aria-label="${escapeAttr(name + ' の名前を変更・削除')}" title="名前を変更・削除">✎</button></td>
+            <td class="slide-col-edit"><button type="button" class="slide-edit" data-action="expd-slide-menu" data-key="${escapeAttr(slideKey(f))}" aria-haspopup="menu" aria-expanded="false" aria-label="${escapeAttr(name + ' のメニュー')}" title="メニュー">⋯</button></td>
         </tr>`;
     }).join('');
 
@@ -756,11 +763,98 @@ function renderSlides(order) {
             <thead><tr>
                 ${head('name', 'ファイル名')}
                 ${head('date', 'アップロード日')}
-                <th scope="col" class="slide-col-size">サイズ</th>
-                <th scope="col" class="slide-col-edit">編集</th>
+                ${head('size', 'サイズ')}
+                <th scope="col" class="slide-col-edit">操作</th>
             </tr></thead>
             <tbody>${rows}</tbody>
         </table>`;
+}
+
+// 「⋯」のメニュー(ダウンロード・名前の変更と削除)。同じ「⋯」をもう一度押すか、外を押す・Esc・スクロールで閉じる
+let slideMenuClose = null;
+function closeSlideMenu() { if (slideMenuClose) slideMenuClose(); }
+
+function openSlideMenu(btn) {
+    const reopen = btn.getAttribute('aria-expanded') === 'true';
+    closeSlideMenu();
+    if (reopen) return;
+    const key = btn.dataset.key;
+    const slide = getSlides(currentExp).find(s => slideKey(s) === key);
+    if (!slide) { toast('資料が見つかりません（すでに削除されています）', 'error'); renderSlides(); return; }
+
+    const menu = document.createElement('div');
+    menu.className = 'account-menu slide-menu';
+    menu.setAttribute('role', 'menu');
+    const items = [
+        { label: 'ダウンロード', run: () => downloadSlide(key), off: !safeHttpUrl(slide.url) },
+        { label: '名前の変更・削除', run: () => openSlideEdit(key) }
+    ];
+    items.forEach(it => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.setAttribute('role', 'menuitem');
+        b.className = 'account-menu-item' + (it.danger ? ' account-menu-danger' : '');
+        b.textContent = it.label;
+        b.disabled = !!it.off;
+        b.onclick = () => { closeSlideMenu(); it.run(); };
+        menu.appendChild(b);
+    });
+    document.body.appendChild(menu);
+
+    // ボタンの下に、右端をそろえて出す。画面からはみ出すときは上に出す
+    const r = btn.getBoundingClientRect();
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    menu.style.left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8)) + 'px';
+    menu.style.top = (r.bottom + mh + 8 > window.innerHeight && r.top - mh - 4 > 0 ? r.top - mh - 4 : r.bottom + 4) + 'px';
+    btn.setAttribute('aria-expanded', 'true');
+
+    const onDoc = ev => { if (!menu.contains(ev.target) && ev.target !== btn) closeSlideMenu(); };
+    const onKey = ev => {
+        if (ev.key === 'Escape') { ev.preventDefault(); closeSlideMenu(); btn.focus(); return; }
+        if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+        const els = Array.from(menu.querySelectorAll('button:not(:disabled)'));
+        const i = els.indexOf(document.activeElement);
+        ev.preventDefault();
+        els[(i + (ev.key === 'ArrowDown' ? 1 : -1) + els.length) % els.length].focus();
+    };
+    document.addEventListener('mousedown', onDoc, true);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', closeSlideMenu, true);
+    window.addEventListener('resize', closeSlideMenu);
+    slideMenuClose = () => {
+        document.removeEventListener('mousedown', onDoc, true);
+        document.removeEventListener('keydown', onKey);
+        window.removeEventListener('scroll', closeSlideMenu, true);
+        window.removeEventListener('resize', closeSlideMenu);
+        menu.remove();
+        btn.setAttribute('aria-expanded', 'false');
+        slideMenuClose = null;
+    };
+    const first = menu.querySelector('button:not(:disabled)');
+    if (first) first.focus();
+}
+
+// ダウンロード。PDF・画像はリンクを押すとブラウザ内で開いてしまうので、取得して、表示している名前で保存する。
+// 取得できないとき(通信エラーなど)は、元のリンクを新しいタブで開く
+async function downloadSlide(key) {
+    const slide = getSlides(currentExp).find(s => slideKey(s) === key);
+    const url = slide && safeHttpUrl(slide.url);
+    if (!url) { toast('資料が見つかりません（すでに削除されています）', 'error'); return; }
+    const name = slide.name || '資料';
+    toast('ダウンロードを準備しています', 'info');
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('http_' + res.status);
+        const href = URL.createObjectURL(await res.blob());
+        const a = document.createElement('a');
+        a.href = href; a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(href), 60000);
+    } catch (_) {
+        window.open(url, '_blank', 'noopener');
+    }
 }
 
 function openSlideUpload() {
@@ -884,7 +978,7 @@ async function uploadSlides(entries) {
     }
 }
 
-// 名前の変更（✎）。削除もこのダイアログから行う（一覧には削除ボタンを置かない）
+// 名前の変更(「⋯」のメニューから開く)。削除もこのダイアログからできる
 function openSlideEdit(key) {
     const slide = getSlides(currentExp).find(s => slideKey(s) === key);
     if (!slide) { toast('資料が見つかりません（すでに削除されています）', 'error'); renderSlides(); return; }
@@ -979,7 +1073,7 @@ registerActions({
     'expd-del-feedback': el => deleteFeedbackEntry(el.dataset.id, el.dataset.type),
     'expd-del-photo': (el, e) => { e.preventDefault(); deletePhoto(Number(el.dataset.index)); },
     'expd-del-video': el => deleteVideo(Number(el.dataset.index)),
-    'expd-edit-slide': el => openSlideEdit(el.dataset.key),
+    'expd-slide-menu': el => openSlideMenu(el),
     'expd-sort-slides': el => sortSlidesBy(el.dataset.key),
     'expd-play-video': el => playVideo(el, el.dataset.id)
 });

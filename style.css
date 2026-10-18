@@ -2834,6 +2834,7 @@ textarea:focus {
 .slide-col-date { width: 150px; }
 .slide-col-size { width: 80px; text-align: right; white-space: nowrap; color: var(--text-muted); }
 .slide-table th.slide-col-size { text-align: right; }
+.slide-col-size .slide-th-sort { justify-content: flex-end; }
 .slide-col-edit { width: 52px; text-align: center; }
 .slide-table th.slide-col-edit { text-align: center; }
 td.slide-col-name { overflow-wrap: anywhere; }
