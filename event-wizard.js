@@ -1068,7 +1068,7 @@ function wzRefreshFileList() {
                 <span class="file-name">${name}${statusLabel}</span>
                 <span class="file-size">${size}</span>
                 <div class="file-actions">
-                    ${!uploading && !failed && safeHttpUrl(f.url) ? `<a href="${escapeAttr(safeHttpUrl(f.url))}" target="_blank" rel="noopener" class="tbl-btn">開く</a>` : ''}
+                    ${!uploading && !failed && safeHttpUrl(f.url) ? `<a href="${escapeAttr(fileOpenUrl(safeHttpUrl(f.url)))}" target="_blank" rel="noopener" class="tbl-btn">開く</a>` : ''}
                     <button class="tbl-btn tbl-btn-danger" data-action="ew-remove-file" data-index="${i}" type="button">${uploading ? 'キャンセル' : '削除'}</button>
                 </div>
             </div>

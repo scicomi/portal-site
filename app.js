@@ -450,6 +450,20 @@ function safeHttpUrl(u) {
   return 'https://' + u;                            // スキーム無し → https を補う
 }
 
+// ファイルを開くときの URL。自分のファイル(API の /files/)の Word・Excel・PowerPoint は Office Online ビューアで開く。
+// それ以外(PDF・画像・外部リンク・ローカル開発の API など、Microsoft から届かないもの)は元の URL のまま。
+function fileOpenUrl(url) {
+  const u = String(url === null || url === undefined ? '' : url);
+  try {
+    const p = new URL(u);
+    if (!/^https?:$/.test(p.protocol)) return u;
+    if (p.origin !== new URL(API_URL).origin || p.pathname.indexOf('/files/') !== 0) return u;
+    if (/^(localhost|127\.|\[::1\]|10\.|192\.168\.)/i.test(p.host) || /\.(localhost|test)$/i.test(p.hostname)) return u;
+    if (!/\.(docx?|xlsx?|pptx?)$/i.test(p.pathname)) return u;
+    return 'https://view.officeapps.live.com/op/view.aspx?src=' + encodeURIComponent(p.href);
+  } catch (_) { return u; }
+}
+
 // 設定 site_links（JSON配列 [{label,url}]）を安全な配列へ正規化する。
 // 壊れた値・旧形式でもホームが落ちないよう、必ず配列を返し不正な行は落とす。
 function parseSiteLinks(raw) {

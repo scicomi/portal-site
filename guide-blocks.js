@@ -212,7 +212,7 @@
       this.wrap.innerHTML = '';
       if (this.data.url && /^https?:\/\//i.test(this.data.url)) {
         const a = el('a', 'gd-file');
-        a.href = this.data.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        a.href = (typeof fileOpenUrl === 'function') ? fileOpenUrl(this.data.url) : this.data.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
         a.innerHTML = '<span class="gd-file-icon">▤</span><span class="gd-file-name">' + escText(this.data.name || 'ファイル') + '</span><span class="gd-file-size">' + escText(this.sizeText()) + '</span>';
         this.wrap.append(a);
         return;

@@ -99,7 +99,7 @@ function initFileField(containerId, field) {
                 <span class="file-name">${escapeHtml(f.name || ('ファイル ' + (i + 1)))}${state}</span>
                 <span class="file-size">${f.size ? formatFileSize(f.size) : ''}</span>
                 <div class="file-actions">
-                    ${!f._uploading && !f._failed && url ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="tbl-btn">開く</a>` : ''}
+                    ${!f._uploading && !f._failed && url ? `<a href="${escapeAttr(fileOpenUrl(url))}" target="_blank" rel="noopener" class="tbl-btn">開く</a>` : ''}
                     <button type="button" class="tbl-btn tbl-btn-danger" data-ef-remove="${i}">${f._uploading ? 'キャンセル' : '削除'}</button>
                 </div>
             </div>`;

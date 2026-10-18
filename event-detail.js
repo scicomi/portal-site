@@ -616,7 +616,7 @@ function detailFileLinkHtml(f, i) {
     const name = escapeHtml(f.name || ('ファイル ' + (i + 1)));
     const size = f.size ? ' (' + formatFileSize(f.size) + ')' : '';
     return url
-        ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="file-link">${name}${size}</a>`
+        ? `<a href="${escapeAttr(fileOpenUrl(url))}" target="_blank" rel="noopener" class="file-link">${name}${size}</a>`
         : `<span class="file-link text-hint">${name} (リンク切れ)</span>`;
 }
 
@@ -627,7 +627,7 @@ function docSlotLabelHtml(f, label) {
     const url = safeHttpUrl(f.url);
     const title = escapeAttr(f.name || label);
     return url
-        ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="doc-slot-label doc-slot-link" title="${title}を開く">${label}</a>`
+        ? `<a href="${escapeAttr(fileOpenUrl(url))}" target="_blank" rel="noopener" class="doc-slot-label doc-slot-link" title="${title}を開く">${label}</a>`
         : `<span class="doc-slot-label" title="リンク切れ">${label}（リンク切れ）</span>`;
 }
 
@@ -757,7 +757,7 @@ function renderDetail() {
         const name = escapeHtml(f.name || ('ファイル ' + (i + 1)));
         const size = f.size ? ' (' + formatFileSize(f.size) + ')' : '';
         if (/^https?:\/\//i.test(url)) {
-            return `<a href="${escapeAttr(url)}" target="_blank" rel="noopener" class="file-link">${name}${size}</a>`;
+            return `<a href="${escapeAttr(fileOpenUrl(url))}" target="_blank" rel="noopener" class="file-link">${name}${size}</a>`;
         }
         return `<span class="file-link text-hint">${name} (リンク切れ)</span>`;
     }).join('');

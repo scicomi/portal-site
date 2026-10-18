@@ -255,3 +255,4 @@ AI にはできない、または任せてはいけない作業。指示する�
   - `reflection_summaries` はバックアップの対象外（作り直せる）。中身の要約は個人情報を含み得るものとして扱い、AI が大量に読み出さない
   - テストは `worker/test/reflection.test.mjs`（単体）と `summary-api.test.mjs`（偽の Gemini を使う結合テスト。起動手順はファイルの先頭）。**本物の Gemini に送るテストを書かない**
   - 止め方: 自動更新だけなら設定ページ。全体は `GEMINI_ENABLED = "false"` で再デプロイ
+- **Word・Excel・PowerPoint は Office Online ビューアで開く**(設計は [docs/15_office_preview_plan.md](docs/15_office_preview_plan.md))。ファイルのリンクは `app.js` の `fileOpenUrl(url)` を通す。自分の API の `/files/` にある `.doc(x)` `.xls(x)` `.ppt(x)` だけ `view.officeapps.live.com` の URL に変わり、それ以外(PDF・画像・外部リンク・ローカル開発の API)は元の URL のまま。保存データは変えない。ファイルの URL が Microsoft に渡る(個人情報入りの書類を含む。人は了承済み)。新しくファイルのリンクを作る画面を足すときは `fileOpenUrl` を通す。開けなくなったら `fileOpenUrl` が元の URL を返すだけにすれば、従来のダウンロードに戻る
