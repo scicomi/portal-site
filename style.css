@@ -4286,6 +4286,12 @@ mark.search-hit {
 .fb-kind-block { margin: 0 0 10px 6px; }
 .fb-kind-title { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; font-weight: 700; color: var(--text-muted); margin: 4px 0 6px; }
 .fb-kind-count { font-weight: 400; }
+.fb-kind-title.fb-positive { color: var(--success-color); }
+.fb-kind-title.fb-reflection { color: var(--warning-color); }
+.fb-venue-date { font-size: 0.78rem; font-weight: 400; color: var(--text-hint); margin-left: 8px; }
+.fb-entry-row { display: flex; align-items: flex-start; gap: 8px; }
+.fb-entry-row .fb-entry-text { flex: 1; }
+.fb-entry-name { font-size: 0.78rem; color: var(--text-hint); margin-left: 6px; }
 
 /* ホームのストレージ（D1・R2 の円グラフ） */
 .storage-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-lg); }

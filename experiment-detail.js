@@ -320,14 +320,14 @@ function renderFeedback() {
     const searching = !!pq;   // 検索中は、該当する行が隠れないよう全部開く
 
     // 開閉の見出し。開閉の状態は fbOpenState に覚えて、追加・削除で描き直しても変わらないようにする
-    const group = (key, level, labelHtml, count, defaultOpen, bodyHtml) => {
+    const group = (key, level, labelHtml, countText, defaultOpen, bodyHtml) => {
         const open = searching || (key in fbOpenState ? fbOpenState[key] : defaultOpen);
         return `
             <div class="fy-group ${level}">
                 <button type="button" class="fy-header ${level === 'fb-venue' ? 'fb-venue-header' : ''} ${open ? 'open' : ''}" aria-expanded="${open}" data-action="fb-group-toggle" data-key="${escapeAttr(key)}">
                     <span class="fy-toggle">${open ? '&#9660;' : '&#9654;'}</span>
                     <span class="fy-label">${labelHtml}</span>
-                    <span class="fy-count">${count}件</span>
+                    <span class="fy-count">${countText}</span>
                 </button>
                 <div class="fy-body ${open ? '' : 'hidden'}">${bodyHtml}</div>
             </div>`;
@@ -355,38 +355,34 @@ function renderFeedback() {
             const sub = (type, label, cls) => {
                 const list = v.list.filter(f => f.type === type);
                 if (!list.length) return '';
-                return `<div class="fb-kind-block"><div class="fb-kind-title ${cls}">${label}<span class="fb-kind-count">${list.length}件</span></div>${list.map(f => renderFeedbackEntry(f, true)).join('')}</div>`;
+                const mark = type === 'positive' ? '&#9675;' : '&#9651;';
+                return `<div class="fb-kind-block"><div class="fb-kind-title ${cls}">${mark} ${label}<span class="fb-kind-count">${list.length}件</span></div>${list.map(f => renderFeedbackEntry(f, true)).join('')}</div>`;
             };
+            const [, vm, vd] = (v.date || '').split('-');
+            const dateLabel = vd ? ` <span class="fb-venue-date">${Number(vm)}月${Number(vd)}日(${dayOfWeekJP(v.date)})</span>` : '';
             const inner = sub('positive', '良かった点', 'fb-positive') + sub('reflection', '改善点', 'fb-reflection');
-            return group(`v:${fy}:${vKey}`, 'fb-venue', escapeHtml(v.title || '実験全般'), v.list.length, false, inner);
+            return group(`v:${fy}:${vKey}`, 'fb-venue', escapeHtml(v.title || '実験全般') + dateLabel, `${v.list.length}件`, false, inner);
         }).join('');
 
-        return group(`y:${fy}`, 'fb-year', escapeHtml(fy), entries.length, isCurrentFy || fy === '日付なし', body);
+        const eventCount = venueList.filter(([k]) => k !== '__general').length;
+        return group(`y:${fy}`, 'fb-year', escapeHtml(fy), `イベント${eventCount}件`, isCurrentFy || fy === '日付なし', body);
     }).join('');
 }
 
 function renderFeedbackEntry(f, inVenue) {
-    const isPos = f.type === 'positive';
-    const icon = isPos ? '&#9675;' : '&#9651;';
-    const cls = isPos ? 'fb-positive' : 'fb-reflection';
-    const label = isPos ? '良かった点' : '改善点';
-    const dateStr = f.date ? `${f.date} (${dayOfWeekJP(f.date)})` : '';
-    const eventLink = inVenue ? ''   // 会場の見出しの下に置くので、会場名は繰り返さない
-        : f.eventTitle
-        ? `<span class="fb-event-tag">${escapeHtml(f.eventTitle)}</span>`
-        : '<span class="fb-event-tag fb-general">実験全般</span>';
+    const cls = f.type === 'positive' ? 'fb-positive' : 'fb-reflection';
+    // 会場の見出しの下に置くときは、種類・会場名・日付は見出しが示すので繰り返さない
+    const eventTag = inVenue ? ''
+        : (f.eventTitle ? `<span class="fb-event-tag">${escapeHtml(f.eventTitle)}</span>` : '<span class="fb-event-tag fb-general">実験全般</span>')
+            + (f.date ? `<span class="fb-date">${escapeHtml(f.date)} (${dayOfWeekJP(f.date)})</span>` : '');
 
     return `
         <div class="fb-entry ${cls}" data-fb-id="${escapeAttr(f.id || '')}">
-            <div class="fb-entry-header">
-                <span class="fb-icon">${icon}</span>
-                <span class="fb-label">${label}</span>
-                ${eventLink}
-                ${f.name ? `<span class="fb-event-tag fb-general">${escapeHtml(f.name)}</span>` : ''}
-                <span class="fb-date">${escapeHtml(dateStr)}</span>
+            ${eventTag ? `<div class="fb-entry-header">${eventTag}</div>` : ''}
+            <div class="fb-entry-row">
+                <span class="fb-entry-text">${escapeHtml(f.text || '')}${f.name ? ` <span class="fb-entry-name">${escapeHtml(f.name)}</span>` : ''}</span>
                 <button class="fb-del-btn" data-action="expd-del-feedback" data-id="${escapeAttr(f.id || '')}" data-type="${escapeAttr(f.type || '')}" title="削除">&#10005;</button>
             </div>
-            <div class="fb-entry-text">${escapeHtml(f.text || '')}</div>
         </div>
     `;
 }
