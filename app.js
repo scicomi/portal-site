@@ -1718,6 +1718,7 @@ function renderReflectionSummary(container, res, opts) {
   title.id = titleId;
   head.append(title, el('span', 'rsum-ai-badge', 'AI が生成'));
   card.append(head);
+  const bodyStart = card.childNodes.length;   // collapsible のとき、これ以降を開閉の中身にする
 
   const status = el('p', 'sr-only');   // 論点を押した結果を、画面の読み上げに伝える
   status.setAttribute('aria-live', 'polite');
@@ -1766,6 +1767,25 @@ function renderReflectionSummary(container, res, opts) {
     card.append(row);
   }
   card.append(el('p', 'rsum-note', 'AI が作った参考のまとめです。間違うことがあるので、下の振り返りの原文で確かめてください。'), status);
+  if (opts.collapsible) {
+    // 見出しを押して開閉する。論点を押したとき(強調)は、開いたままにする
+    const body = el('div', 'rsum-body');
+    body.hidden = true;
+    body.append(...Array.from(card.childNodes).slice(bodyStart));
+    const toggle = el('button', 'rsum-toggle');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-expanded', 'false');
+    const caret = el('span', 'fy-toggle', '▶');
+    toggle.append(caret, ...Array.from(head.childNodes));
+    head.append(toggle);
+    toggle.addEventListener('click', () => {
+      body.hidden = !body.hidden;
+      toggle.setAttribute('aria-expanded', String(!body.hidden));
+      caret.textContent = body.hidden ? '▶' : '▼';
+    });
+    card.append(body);
+    card.classList.add('rsum-collapsible');
+  }
   container.append(card);
 }
 
@@ -1783,8 +1803,9 @@ function highlightReflectionTopic(btn, topic, opts, card, status) {
   const ids = new Set(topic.entryIds || []);
   const hits = Array.from(root.querySelectorAll('[data-fb-id]')).filter(n => ids.has(n.dataset.fbId));
   hits.forEach(n => {
-    const body = n.closest('.fy-body.hidden');   // 閉じている年度は開く
-    if (body && body.previousElementSibling) toggleFyGroup(body.previousElementSibling);
+    // 閉じている年度・会場は、外側から順に開く
+    let body;
+    while ((body = n.closest('.fy-body.hidden')) && body.previousElementSibling) toggleFyGroup(body.previousElementSibling);
     n.classList.add('rsum-hit');
   });
   if (!hits.length) {

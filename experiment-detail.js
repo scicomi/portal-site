@@ -255,6 +255,7 @@ function refreshReflectionSummary() {
     mountReflectionSummary(document.getElementById('reflection-summary'), {
         targetType: 'experiments',
         id: currentExp.ID,
+        collapsible: true,
         root: () => document.getElementById('feedback-timeline'),
         prepare: () => {
             // 絞り込み・検索で、該当する振り返りが隠れていないようにする
@@ -264,6 +265,15 @@ function refreshReflectionSummary() {
         }
     });
 }
+
+// 振り返りの開閉の記憶(年度・会場の見出しの data-key → 開いているか)
+const fbOpenState = {};
+registerActions({
+    'fb-group-toggle': el => {
+        toggleFyGroup(el);
+        fbOpenState[el.dataset.key] = el.classList.contains('open');
+    }
+});
 
 function filterFeedback(type) {
     feedbackFilter = type;
@@ -307,33 +317,62 @@ function renderFeedback() {
 
     const fyKeys = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
     const currentFy = getFiscalYear(todayISO());
+    const searching = !!pq;   // 検索中は、該当する行が隠れないよう全部開く
+
+    // 開閉の見出し。開閉の状態は fbOpenState に覚えて、追加・削除で描き直しても変わらないようにする
+    const group = (key, level, labelHtml, count, defaultOpen, bodyHtml) => {
+        const open = searching || (key in fbOpenState ? fbOpenState[key] : defaultOpen);
+        return `
+            <div class="fy-group ${level}">
+                <button type="button" class="fy-header ${level === 'fb-venue' ? 'fb-venue-header' : ''} ${open ? 'open' : ''}" aria-expanded="${open}" data-action="fb-group-toggle" data-key="${escapeAttr(key)}">
+                    <span class="fy-toggle">${open ? '&#9660;' : '&#9654;'}</span>
+                    <span class="fy-label">${labelHtml}</span>
+                    <span class="fy-count">${count}件</span>
+                </button>
+                <div class="fy-body ${open ? '' : 'hidden'}">${bodyHtml}</div>
+            </div>`;
+    };
 
     container.innerHTML = fyKeys.map(fy => {
         const entries = grouped[fy];
         const isCurrentFy = fy === `${currentFy}年度`;
-        const open = isCurrentFy || fy === '日付なし';
-        return `
-            <div class="fy-group">
-                <button type="button" class="fy-header ${open ? 'open' : ''}" aria-expanded="${open}" data-action="fy-toggle">
-                    <span class="fy-toggle">${open ? '&#9660;' : '&#9654;'}</span>
-                    <span class="fy-label">${escapeHtml(fy)}</span>
-                    <span class="fy-count">${entries.length}件</span>
-                </button>
-                <div class="fy-body ${open ? '' : 'hidden'}">
-                    ${entries.map(f => renderFeedbackEntry(f)).join('')}
-                </div>
-            </div>
-        `;
+
+        // 会場(イベント)ごとに分ける。新しい会場が上、「実験全般」は最後
+        const venues = new Map();
+        entries.forEach(f => {
+            const vKey = f.eventId || f.eventTitle || '__general';
+            if (!venues.has(vKey)) venues.set(vKey, { title: f.eventTitle || '', date: f.date || '', list: [] });
+            const v = venues.get(vKey);
+            if ((f.date || '') > v.date) v.date = f.date;
+            v.list.push(f);
+        });
+        const venueList = [...venues.entries()].sort(([ka, a], [kb, b]) => {
+            if ((ka === '__general') !== (kb === '__general')) return ka === '__general' ? 1 : -1;
+            return (b.date || '').localeCompare(a.date || '');
+        });
+
+        const body = venueList.map(([vKey, v]) => {
+            const sub = (type, label, cls) => {
+                const list = v.list.filter(f => f.type === type);
+                if (!list.length) return '';
+                return `<div class="fb-kind-block"><div class="fb-kind-title ${cls}">${label}<span class="fb-kind-count">${list.length}件</span></div>${list.map(f => renderFeedbackEntry(f, true)).join('')}</div>`;
+            };
+            const inner = sub('positive', '良かった点', 'fb-positive') + sub('reflection', '改善点', 'fb-reflection');
+            return group(`v:${fy}:${vKey}`, 'fb-venue', escapeHtml(v.title || '実験全般'), v.list.length, false, inner);
+        }).join('');
+
+        return group(`y:${fy}`, 'fb-year', escapeHtml(fy), entries.length, isCurrentFy || fy === '日付なし', body);
     }).join('');
 }
 
-function renderFeedbackEntry(f) {
+function renderFeedbackEntry(f, inVenue) {
     const isPos = f.type === 'positive';
     const icon = isPos ? '&#9675;' : '&#9651;';
     const cls = isPos ? 'fb-positive' : 'fb-reflection';
     const label = isPos ? '良かった点' : '改善点';
     const dateStr = f.date ? `${f.date} (${dayOfWeekJP(f.date)})` : '';
-    const eventLink = f.eventTitle
+    const eventLink = inVenue ? ''   // 会場の見出しの下に置くので、会場名は繰り返さない
+        : f.eventTitle
         ? `<span class="fb-event-tag">${escapeHtml(f.eventTitle)}</span>`
         : '<span class="fb-event-tag fb-general">実験全般</span>';
 

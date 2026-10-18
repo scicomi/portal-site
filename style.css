@@ -4267,3 +4267,14 @@ mark.search-hit {
     min-height: var(--touch-min, 44px);
 }
 .push-box { max-width: min(480px, calc(100vw - 24px)); }
+
+/* 実験詳細の振り返り: AI のまとめの開閉、年度 > 会場 > 良かった点／改善点 */
+.rsum-collapsible .rsum-head { margin-bottom: 0; }
+.rsum-toggle { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; width: 100%; padding: 0; border: none; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.rsum-body { margin-top: 8px; }
+.fb-venue { margin: 6px 0 6px 12px; }
+.fb-venue-header { background: transparent; border: 1px solid var(--border-color); padding: 8px 12px; }
+.fb-venue-header .fy-label { font-size: 0.9rem; color: var(--text-color); }
+.fb-kind-block { margin: 0 0 10px 6px; }
+.fb-kind-title { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; font-weight: 700; color: var(--text-muted); margin: 4px 0 6px; }
+.fb-kind-count { font-weight: 400; }
