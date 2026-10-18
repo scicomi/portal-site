@@ -1311,6 +1311,14 @@ textarea:focus {
 .home-calendar .fc-daygrid-day-number {
     font-size: 0.75rem;
 }
+/* 前月・翌月の日付は薄くして、どこまでが今月か一目で分かるようにする */
+.home-calendar .fc-day-other {
+    background: light-dark(rgba(0, 0, 0, 0.045), rgba(255, 255, 255, 0.05));
+}
+.home-calendar .fc-day-other .fc-daygrid-day-top,
+.home-calendar .fc-day-other .fc-daygrid-day-events {
+    opacity: 0.45;
+}
 @media (max-width: 480px) {
     .home-calendar-card { padding: var(--space-sm); }
     .home-calendar .fc { font-size: 0.7rem; }
