@@ -106,6 +106,7 @@ export const TRASH_ITEM_RULES = {
   },
   experiments: {
     Photos:      { key: fileKey, label: fileLabel },
+    Slides:      { key: fileKey, label: fileLabel },
     Videos:      { key: idKey, label: v => str(v && (v.title || v.url)) || '動画' },
     Reflections: { key: idKey, label: e => snippet(e && e.text, 30) || '振り返り' },
     Positives:   { key: idKey, label: e => snippet(e && e.text, 30) || '良かった点' },

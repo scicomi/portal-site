@@ -45,6 +45,7 @@
                 <button class="expd-tab active" role="tab" aria-selected="true" data-tab="info" onclick="switchExpdTab(this)">実験情報</button>
                 <button class="expd-tab" role="tab" aria-selected="false" data-tab="feedback" onclick="switchExpdTab(this)">振り返り</button>
                 <button class="expd-tab" role="tab" aria-selected="false" data-tab="media" onclick="switchExpdTab(this)">メディア</button>
+                <button class="expd-tab" role="tab" aria-selected="false" data-tab="slides" onclick="switchExpdTab(this)">資料</button>
             </div>
 
             <!-- Tab: Info（使用物品・事前準備・発表の流れ・注意事項をここで表示） -->
@@ -102,6 +103,22 @@
                     <p class="expd-note">YouTubeのリンクを登録すると、実験ショーの様子をここで見返せます。サムネイルをクリックすると再生されます。</p>
                     <div id="expd-video-gallery" class="video-gallery"></div>
                     <button type="button" id="video-load-more" class="btn btn-secondary hidden" style="width:auto; padding:8px 24px; margin:16px auto 0;" onclick="showMoreVideos()">もっと見る</button>
+                </div>
+            </div>
+
+            <!-- Tab: Slides（発表用のパワポ・PDF。ファイルは R2 に保存し、パワポは Office Online ビューアで開く） -->
+            <div class="expd-tab-pane hidden" role="tabpanel" tabindex="0" data-tab-pane="slides">
+                <div class="expd-section">
+                    <div class="expd-section-header">
+                        <h2 class="expd-section-title">発表資料</h2>
+                        <button id="slide-add-btn" class="btn-primary-solid" style="width:auto; padding:6px 16px; font-size:0.85rem;" onclick="openSlideUpload()">＋ 資料を追加</button>
+                    </div>
+                    <p class="expd-note" id="slide-note">発表用のパワポ・PDFを置けます。名前を押すと、ダウンロードせずにブラウザで開きます。個人情報（名簿など）を含むファイルは置かないでください（リンクを知っていれば、ログインしなくても見られます）。</p>
+                    <div id="slide-uploading" class="slide-list"></div>
+                    <div id="expd-slide-list" class="slide-list">
+                        <p class="empty-state" style="padding:30px 20px;">資料はまだありません</p>
+                    </div>
+                    <input type="file" id="slide-file-input" accept=".ppt,.pptx,.pdf,.key,.odp" multiple style="display:none;" onchange="handleSlideSelect(this)">
                 </div>
             </div>
         </div>

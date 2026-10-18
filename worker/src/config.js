@@ -24,8 +24,9 @@ const DEADLINE_DAYS_MIN = 1;
 const DEADLINE_DAYS_MAX = 90;
 // 整数の設定の範囲 [最小, 最大]。trash_keep_days の画面(settings.js)は 1〜365 だが、
 // 0(削除した瞬間に期限切れ)は結合テストが期限切れの処理を確かめるのに使うので API では受け付ける
-// アップロードの上限(MB)の最大値。base64 で約 1.34 倍になっても、index.js の MAX_REQUEST_BYTES(28MB)に収まる値
-export const FILE_MAX_MB_LIMIT = 20;
+// アップロードの上限(MB)の最大値。生のバイナリで送る POST /upload(files.js の uploadFileRaw)の上限。
+// Cloudflare の無料プランはリクエスト本文が 100MB までなので、余裕を見た値。base64 の action 'uploadFile' は別に 20MB で抑える
+export const FILE_MAX_MB_LIMIT = 95;
 
 const INT_CONFIG_RANGES = {
   deadline_alert_danger: [0, 365],
@@ -40,7 +41,7 @@ export const DEFAULT_CONFIG = {
   admin_password: '',      // 機密(ハッシュのみ保存)
   gemini_api_key: '',      // 機密
   gemini_model: GEMINI_MODEL,
-  file_max_mb: 10,
+  file_max_mb: 50,
   backup_keep_count: 14,
   audit_keep_days: 365,
   trash_keep_days: 7,         // ゴミ箱に入れたものを完全に削除するまでの日数
@@ -166,7 +167,7 @@ export function validateConfigValue(key, value) {
       const days = Math.abs(parseInt(v.trim(), 10));
       return days >= DEADLINE_DAYS_MIN && days <= DEADLINE_DAYS_MAX ? '' : '日数は' + DEADLINE_DAYS_MIN + '〜' + DEADLINE_DAYS_MAX + 'で指定してください';
     }
-    case 'file_max_mb': {       // 0 にすると全アップロードが拒否されるため 1 以上。上限は index.js のリクエスト本文の上限に収まる値
+    case 'file_max_mb': {       // 0 にすると全アップロードが拒否されるため 1 以上。上限は Cloudflare のリクエスト本文の上限に収まる値
       const n = /^\d+$/.test(v.trim()) ? parseInt(v.trim(), 10) : NaN;
       return n >= 1 && n <= FILE_MAX_MB_LIMIT ? '' : '1〜' + FILE_MAX_MB_LIMIT + 'の整数を指定してください';
     }

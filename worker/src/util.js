@@ -1,6 +1,6 @@
 // 共通ユーティリティ
 
-export const CODE_VERSION = '2026-10-18-summary-4';
+export const CODE_VERSION = '2026-10-18-upload-1';
 
 const enc = new TextEncoder();
 
@@ -19,7 +19,7 @@ export function corsHeaders(request, env) {
   if (isAllowedOrigin(origin, env)) {
     h['Access-Control-Allow-Origin'] = origin;
     h['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS';
-    h['Access-Control-Allow-Headers'] = 'Content-Type';
+    h['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-File-Name';   // 後ろの 2 つは POST /upload(files.js の uploadFileRaw)が使う
     h['Access-Control-Max-Age'] = '86400';
   }
   return h;

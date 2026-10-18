@@ -55,9 +55,10 @@ const HOLIDAYS_CACHE_TTL_MS = (typeof CONFIG !== 'undefined' && CONFIG.HOLIDAYS_
 const RESOURCE_NAMES = (typeof CONFIG !== 'undefined' && CONFIG.RESOURCE_NAMES)
   || ['events', 'members', 'experiments'];
 
-// API 呼び出しのタイムアウト（ms）。通常は 30 秒、uploadFile（最大 10MB の base64）は 120 秒。
+// API 呼び出しのタイムアウト（ms）。通常は 30 秒。uploadFile は 120 秒に、1MB あたり 10 秒を足す（大きいファイルを遅い回線でも送れるように）。
 const API_TIMEOUT_MS = 30 * 1000;
 const API_UPLOAD_TIMEOUT_MS = 120 * 1000;
+const API_UPLOAD_TIMEOUT_PER_MB_MS = 10 * 1000;
 
 const ADMIN_TOKEN_KEY = (typeof CONFIG !== 'undefined' && CONFIG.ADMIN_TOKEN_KEY) || 'scicomi_admin_token';
 const ADMIN_TOKEN_TS_KEY = (typeof CONFIG !== 'undefined' && CONFIG.ADMIN_TOKEN_TS_KEY) || 'scicomi_admin_token_ts';
@@ -267,23 +268,64 @@ const api = {
     return res.item;
   },
 
-  async uploadFile(file) {
+  // ファイルを 1 つアップロードする。本文にファイルそのものを入れて POST /upload に送る(base64 にしないので、
+  // 大きいファイルも送れる。上限はサーバーの設定 file_max_mb)。進み具合は onProgress(0〜1)で受け取れる。
+  // fetch は送信の進み具合を取れないので XMLHttpRequest を使う。失敗の扱いは _postOnce と同じ。
+  uploadFile(file, opts) {
+    const onProgress = opts && typeof opts.onProgress === 'function' ? opts.onProgress : null;
+    const payload = { action: 'uploadFile' };   // エラーログの記録用
+    const started = Date.now();
+    const timeoutMs = API_UPLOAD_TIMEOUT_MS + Math.ceil((file.size || 0) / (1024 * 1024)) * API_UPLOAD_TIMEOUT_PER_MB_MS;
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const base64 = reader.result.split(',')[1];
-          const res = await this._post({
-            action: 'uploadFile',
-            token: this.getToken(),
-            file: { name: file.name, mimeType: file.type || 'application/octet-stream', base64 }
-          });
-          if (!res.success) throw new Error(res.detail || res.error || 'upload failed');   // detail: サーバーの説明(サイズ超過など)
-          resolve(res.file);
-        } catch (e) { reject(e); }
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', API_URL.replace(/\/+$/, '') + '/upload');
+      xhr.timeout = timeoutMs;
+      xhr.setRequestHeader('Authorization', 'Bearer ' + this.getToken());
+      xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name || 'file'));
+      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+      if (onProgress && xhr.upload) {
+        xhr.upload.onprogress = ev => { if (ev.lengthComputable && ev.total > 0) onProgress(ev.loaded / ev.total); };
+      }
+      const networkError = timedOut => {
+        this._logErr(payload, 'NETWORK_UNREACHABLE', { ms: Date.now() - started, status: xhr.status, exc: timedOut ? ('timeout ' + timeoutMs + 'ms') : 'xhr error' });
+        const err = new Error('NETWORK_UNREACHABLE');
+        err.code = 'NETWORK_UNREACHABLE';
+        if (timedOut) err.timedOut = true;
+        reject(err);
       };
-      reader.onerror = () => reject(new Error('ファイル読み込みエラー'));
-      reader.readAsDataURL(file);
+      xhr.onerror = () => networkError(false);
+      xhr.ontimeout = () => networkError(true);
+      xhr.onload = () => {
+        // 100MB を超える本文は、Cloudflare が Worker に届く前に 413 で断る(本文は JSON でない)
+        if (xhr.status === 413) {
+          const err = new Error('ファイルが大きすぎるため、アップロードできません。');   // humanizeApiError は既定で message を出す
+          err.code = 'file_too_large';
+          reject(err);
+          return;
+        }
+        let res;
+        try { res = JSON.parse(xhr.responseText); } catch (_) {
+          this._logErr(payload, 'BAD_RESPONSE', { ms: Date.now() - started, status: xhr.status, body: String(xhr.responseText || '').replace(/\s+/g, ' ').slice(0, 150) });
+          const err = new Error('BAD_RESPONSE');
+          err.code = 'BAD_RESPONSE';
+          reject(err);
+          return;
+        }
+        if (!res.success && res.error === 'unauthorized') {
+          this._logErr(payload, 'unauthorized', { ms: Date.now() - started });
+          reject(this._handleUnauthorized());
+          return;
+        }
+        if (!res.success) {
+          const err = new Error(res.detail || res.error || 'upload failed');   // detail: サーバーの説明(サイズ超過など)
+          err.code = res.error || '';
+          reject(err);
+          return;
+        }
+        if (onProgress) onProgress(1);
+        resolve(res.file);
+      };
+      xhr.send(file);
     });
   },
 
@@ -504,12 +546,28 @@ const api = {
   },
   errorLogText() { return JSON.stringify(this.getErrorLog(), null, 1); },
 
+  // トークンが失効していたとき: ログイン情報とキャッシュを消して、再ログインの画面を出す。投げるエラーを返す
+  _handleUnauthorized() {
+    this.clearToken();
+    this.clearAdminToken();   // メンバーとして失効したなら管理者モードも引き継がない
+    this.clearAllCache();
+    if (typeof showPasswordModal === 'function') {
+      showPasswordModal(() => location.reload(), humanizeApiError({ code: 'unauthorized' }));
+    } else {
+      location.reload();
+    }
+    const err = new Error('unauthorized');
+    err.code = 'unauthorized';
+    err.handled = true;
+    return err;
+  },
+
   async _postOnce(payload) {
     let res, text;
     const started = Date.now();
-    // 回線が半死のときに応答待ちで固まらないよう、タイムアウトを設ける（通常 30 秒、ファイルアップロードは 120 秒）。
+    // 回線が半死のときに応答待ちで固まらないよう、タイムアウトを設ける（30 秒。ファイルのアップロードは uploadFile が別に持つ）。
     // タイムアウトは通信断（NETWORK_UNREACHABLE）と同じ扱い。読み取り系は自動リトライされる。
-    const timeoutMs = (payload && payload.action === 'uploadFile') ? API_UPLOAD_TIMEOUT_MS : API_TIMEOUT_MS;
+    const timeoutMs = API_TIMEOUT_MS;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -537,18 +595,7 @@ const api = {
       const parsed = JSON.parse(text);
       if (!parsed.success && parsed.error === 'unauthorized') {
         this._logErr(payload, 'unauthorized', { ms: Date.now() - started });
-        this.clearToken();
-        this.clearAdminToken();   // メンバーとして失効したなら管理者モードも引き継がない
-        this.clearAllCache();
-        if (typeof showPasswordModal === 'function') {
-          showPasswordModal(() => location.reload(), humanizeApiError({ code: 'unauthorized' }));
-        } else {
-          location.reload();
-        }
-        const err = new Error('unauthorized');
-        err.code = 'unauthorized';
-        err.handled = true;
-        throw err;
+        throw this._handleUnauthorized();
       }
       return parsed;
     } catch (e) {

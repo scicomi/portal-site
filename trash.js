@@ -14,7 +14,7 @@ const TRASH_RESOURCE_LABELS = { events: 'イベント', members: 'メンバー',
 const TRASH_FIELD_LABELS = {
     Files: '関連ファイル', RequestDoc: '依頼書', KyokaDoc: '活動許可願', HoukokuDoc: '活動報告書',
     MeetingDocs: '関連資料', Minutes: '議事録',
-    Photos: '写真', Videos: '動画', Reflections: '振り返り', Positives: '良かった点', Sections: 'セクション'
+    Photos: '写真', Slides: '資料', Videos: '動画', Reflections: '振り返り', Positives: '良かった点', Sections: 'セクション'
 };
 const TRASH_ERRORS = {
     already_exists: '同じものがすでにあるため戻せません。',

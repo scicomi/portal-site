@@ -588,14 +588,15 @@ test('保存: 長すぎる値は too_large で拒否する(上限内の長い文
   assert.equal((await res.json()).error, 'too_large');
 });
 
-test('入力の検証: 設定値は文字列だけ・アップロード上限は 20MB まで・ファイルの種類は type/subtype の形だけ', async () => {
+test('入力の検証: 設定値は文字列だけ・アップロード上限は 95MB まで・ファイルの種類は type/subtype の形だけ', async () => {
   const set = (key, value) => post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key, value });
   let r = await set('password', {});
   assert.equal(r.success, false);
   assert.equal(r.error, 'invalid_value');
   assert.equal((await set('welcome_message', ['a'])).error, 'invalid_value');
-  assert.equal((await set('file_max_mb', '21')).error, 'invalid_value');
-  assert.equal((await set('file_max_mb', '20')).success, true);
+  assert.equal((await set('file_max_mb', '96')).error, 'invalid_value');
+  assert.equal((await set('file_max_mb', '0')).error, 'invalid_value');
+  assert.equal((await set('file_max_mb', '95')).success, true);
   assert.equal((await set('file_max_mb', '10')).success, true);
 
   const upload = mimeType => post({ action: 'uploadFile', token: member, file: { name: 'a.png', mimeType, base64: Buffer.from('x').toString('base64') } });
@@ -687,6 +688,117 @@ test('ファイル: アップロード → 公開 URL で取得(ログイン不�
   assert.equal((await post({ action: 'deleteFile', token: adminMember, adminToken: admin, driveId: html.file.driveId })).success, true);
   assert.equal((await fetch(up.file.url.replace(/^https?:\/\/[^/]+/, BASE))).status, 404);
   assert.equal((await fetch(BASE + '/files/..%2Fsecret')).status, 404);
+});
+
+// POST /upload: 本文がファイルそのもの(base64 にしない)。トークンは Authorization、名前は X-File-Name
+function rawUpload(body, { token, name, rawName, type } = {}) {
+  const h = { 'Content-Type': type || 'application/octet-stream' };
+  if (token !== undefined) h.Authorization = 'Bearer ' + token;
+  if (name !== undefined) h['X-File-Name'] = encodeURIComponent(name);
+  if (rawName !== undefined) h['X-File-Name'] = rawName;
+  return fetch(BASE + '/upload', { method: 'POST', headers: h, body }).then(r => r.json());
+}
+
+test('ファイル(生のバイナリ): POST /upload → 公開 URL で同じ中身 → 種類と名前の扱い', async () => {
+  const bytes = Buffer.from([0, 1, 2, 250, 251, 252, 253, 254, 255]);
+  const up = await rawUpload(bytes, { token: member, name: '発表 資料.pptx', type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+  assert.equal(up.success, true);
+  assert.equal(up.file.name, '発表 資料.pptx');
+  assert.equal(up.file.size, bytes.length);
+  assert.match(up.file.driveId, /^[0-9a-f]{32}\.pptx$/);
+  assert.ok(up.file.url.endsWith('/files/' + up.file.driveId));
+  assert.ok(up.file.uploadedAt);
+  const got = await fetch(up.file.url.replace(/^https?:\/\/[^/]+/, BASE));
+  assert.equal(got.status, 200);
+  assert.deepEqual(Buffer.from(await got.arrayBuffer()), bytes);
+  // パワポはダウンロード扱い(従来どおり)。名前は元のまま
+  assert.equal(got.headers.get('content-disposition'), "attachment; filename*=UTF-8''" + encodeURIComponent('発表 資料.pptx'));
+
+  // PDF はブラウザ内表示。HTML はダウンロード扱い
+  const pdf = await rawUpload(Buffer.from('%PDF-1.4'), { token: member, name: 'a.pdf', type: 'application/pdf' });
+  const pr = await fetch(pdf.file.url.replace(/^https?:\/\/[^/]+/, BASE));
+  assert.equal(pr.headers.get('content-type'), 'application/pdf');
+  assert.match(pr.headers.get('content-disposition'), /^inline/);
+  const html = await rawUpload(Buffer.from('<script>1</script>'), { token: member, name: 'x.html', type: 'text/html' });
+  const hr = await fetch(html.file.url.replace(/^https?:\/\/[^/]+/, BASE));
+  assert.equal(hr.headers.get('content-type'), 'application/octet-stream');
+  assert.match(hr.headers.get('content-disposition'), /^attachment/);
+
+  for (const f of [up.file, pdf.file, html.file]) {
+    assert.equal((await post({ action: 'deleteFile', token: adminMember, adminToken: admin, driveId: f.driveId })).success, true);
+  }
+});
+
+test('ファイル(生のバイナリ): 認証・名前・大きさの検証', async () => {
+  const one = Buffer.from('x');
+  assert.equal((await rawUpload(one, { name: 'a.txt' })).error, 'unauthorized');
+  assert.equal((await rawUpload(one, { token: 'x.y', name: 'a.txt' })).error, 'unauthorized');
+  assert.equal((await rawUpload(one, { token: member })).error, 'invalid_file');                       // 名前なし
+  assert.equal((await rawUpload(one, { token: member, rawName: '%E0%A4%A' })).error, 'invalid_file');  // 不正な %
+  assert.equal((await rawUpload(Buffer.alloc(0), { token: member, name: 'empty.txt' })).error, 'invalid_file');
+  // GET は受け付けない(API と同じく 405)
+  assert.equal((await fetch(BASE + '/upload')).status, 405);
+
+  const set = (key, value) => post({ action: 'adminSetConfig', token: adminMember, adminToken: admin, key, value });
+  assert.equal((await set('file_max_mb', '1')).success, true);
+  try {
+    const big = await rawUpload(Buffer.alloc(1024 * 1024 + 1), { token: member, name: 'big.bin' });
+    assert.equal(big.error, 'file_too_large');
+    assert.match(big.detail, /1MB/);
+    const ok = await rawUpload(Buffer.alloc(1024 * 1024), { token: member, name: 'ok.bin' });
+    assert.equal(ok.success, true);   // ちょうど上限は通る
+    await post({ action: 'deleteFile', token: adminMember, adminToken: admin, driveId: ok.file.driveId });
+  } finally {
+    assert.equal((await set('file_max_mb', '10')).success, true);
+  }
+  // 上限 10MB を超える大きさ(25MB)も、設定を上げれば通る(base64 の方式では送れなかった大きさ)
+  assert.equal((await set('file_max_mb', '30')).success, true);
+  try {
+    const big = Buffer.alloc(25 * 1024 * 1024, 7);
+    const up = await rawUpload(big, { token: member, name: 'big.pptx' });
+    assert.equal(up.success, true);
+    assert.equal(up.file.size, big.length);
+    const got = await fetch(up.file.url.replace(/^https?:\/\/[^/]+/, BASE));
+    assert.equal(Number(got.headers.get('content-length')), big.length);
+    await got.arrayBuffer();
+    await post({ action: 'deleteFile', token: adminMember, adminToken: admin, driveId: up.file.driveId });
+    // base64 の action 'uploadFile' は、設定が大きくても 20MB で抑える(本文の上限 28MB に収めるため)
+    const legacy = await post({ action: 'uploadFile', token: member, file: { name: 'big.bin', mimeType: 'application/octet-stream', base64: Buffer.alloc(20 * 1024 * 1024 + 1).toString('base64') } });
+    assert.equal(legacy.error, 'file_too_large');
+    assert.match(legacy.detail, /20MB/);
+  } finally {
+    assert.equal((await set('file_max_mb', '10')).success, true);
+  }
+});
+
+test('CORS: /upload のプリフライトは Authorization と X-File-Name を許す', async () => {
+  const res = await fetch(BASE + '/upload', { method: 'OPTIONS', headers: { Origin: 'https://scicomi.github.io', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'authorization,x-file-name,content-type' } });
+  assert.equal(res.status, 204);
+  const allow = (res.headers.get('access-control-allow-headers') || '').toLowerCase();
+  for (const h of ['authorization', 'x-file-name', 'content-type']) assert.ok(allow.includes(h), h);
+});
+
+test('実験の発表資料(Slides): 保存できて、外すとゴミ箱に入り、戻せる', async () => {
+  const id = 'ex_test_slides_' + Date.now();
+  const s1 = { name: 'a.pptx', url: 'https://example.com/files/s1.pptx', driveId: 's1.pptx', size: 1, uploadedAt: '2026-10-18T00:00:00.000Z' };
+  const s2 = { name: 'b.pdf', url: 'https://example.com/files/s2.pdf', driveId: 's2.pdf', size: 1, uploadedAt: '2026-10-18T00:00:00.000Z' };
+  let r = await post({ action: 'save', resource: 'experiments', token: member, item: { ID: id, Name: '資料のテスト', Slides: JSON.stringify([s1, s2]) } });
+  assert.equal(r.success, true);
+  try {
+    assert.deepEqual(JSON.parse(r.item.Slides), [s1, s2]);
+    r = await post({ action: 'save', resource: 'experiments', token: member, item: { ID: id, Slides: JSON.stringify([s2]), _baseUpdatedAt: r.item.UpdatedAt } });
+    assert.equal(r.success, true);
+    const t = (await post({ action: 'listTrash', token: member })).items.find(x => x.recordId === id && x.field === 'Slides');
+    assert.ok(t, 'ゴミ箱に入る');
+    assert.equal(t.label, 'a.pptx');
+    assert.equal((await post({ action: 'restoreTrash', token: member, id: t.id })).success, true);
+    const back = (await post({ action: 'list', resource: 'experiments', token: member })).items.find(x => x.ID === id);
+    assert.deepEqual(JSON.parse(back.Slides).map(x => x.driveId).sort(), ['s1.pptx', 's2.pdf']);
+  } finally {
+    await post({ action: 'delete', resource: 'experiments', id, token: member });
+    const left = (await post({ action: 'listTrash', token: member })).items.filter(x => x.recordId === id);
+    for (const t of left) await post({ action: 'purgeTrash', token: member, id: t.id });
+  }
 });
 
 // AI検索(Bot)は削除した。Gemini へ文章を送る入口(geminiProxy / geminiGenerate / geminiUsage)が無いことを確認する。

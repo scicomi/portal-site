@@ -2812,6 +2812,29 @@ textarea:focus {
 }
 .sfb-date { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; }
 
+/* ========== 発表資料（実験詳細の「資料」タブ。行は .file-item を使う） ========== */
+.slide-list { display: flex; flex-direction: column; gap: 6px; }
+.slide-list:empty { display: none; }
+.slide-item { flex-wrap: wrap; padding: 8px 12px; margin-top: 0; font-size: 0.9rem; }
+.slide-item .slide-name { color: var(--primary-color); text-decoration: none; font-weight: 600; }
+.slide-item .slide-name:hover { text-decoration: underline; }
+.slide-action {
+    display: inline-flex; align-items: center; min-height: 32px; padding: 0 10px;
+    border: 1px solid var(--border-input); border-radius: 6px; background: var(--surface);
+    color: var(--text-color); font-size: 0.8rem; font-family: inherit; text-decoration: none; cursor: pointer;
+}
+.slide-action:hover { background: var(--bg-muted); }
+.slide-delete { color: var(--danger-color); }
+.slide-progress { width: 120px; height: 8px; accent-color: var(--primary-color); }
+#slide-uploading:not(:empty) { margin-bottom: 6px; }
+@media (hover: none) {
+    .slide-action { min-height: var(--touch-min); }
+}
+@media (max-width: 600px) {
+    .slide-item .file-name { flex-basis: 100%; white-space: normal; word-break: break-all; }
+    .slide-progress { flex: 1; }
+}
+
 /* ========== Photo Gallery ========== */
 .photo-gallery {
     display: grid;

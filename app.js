@@ -436,7 +436,7 @@ function formatFileSize(bytes) {
 // 取得できていなければ config.js の既定値。
 function getFileMaxMB() {
   const n = CONFIG.FILE_UPLOAD && parseInt(CONFIG.FILE_UPLOAD.maxSizeMB, 10);
-  return n >= 1 ? n : 10;
+  return n >= 1 ? n : 50;
 }
 
 // 後方互換: スキーム省略の既存データ（例 "docs.google.com/.."）は https:// を補ってリンク可能に保つ。

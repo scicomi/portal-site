@@ -52,7 +52,7 @@ const CONFIG = {
 
   // ===== Phase 2: ファイルアップロード =====
   FILE_UPLOAD: {
-    maxSizeMB: 10
+    maxSizeMB: 50   // サーバーの設定 file_max_mb の既定値と同じ。取得できたらその値で上書きされる（app.js の applySiteSettings）
   },
 
   // ===== リソース名一覧（api.js が参照） =====

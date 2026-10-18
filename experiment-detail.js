@@ -169,6 +169,7 @@ function renderPage() {
     if (!summaryMounted) { summaryMounted = true; refreshReflectionSummary(); }   // キャッシュ → 最新の 2 回描くので、読み込みは 1 回だけ
     renderPhotos();
     renderVideos();
+    renderSlides();
     populateEventDropdown();
 }
 
@@ -601,6 +602,148 @@ async function executeDeletePhoto(photo) {
     }
 }
 
+// ---- 発表資料（パワポ・PDF。Slides 列。形は Photos と同じ { name, url, driveId, size, uploadedAt }） ----
+
+const SLIDE_LIMIT = 30;
+
+function getSlides(exp) {
+    return parseJsonArray((exp || currentExp).Slides);
+}
+
+// 追加日（日本時間の YYYY-MM-DD）。uploadedAt が無い・不正なら空
+function slideDateText(s) {
+    const ms = Date.parse(s && s.uploadedAt);
+    if (!isFinite(ms)) return '';
+    const p = jstParts(ms);
+    return p.y + '-' + String(p.m).padStart(2, '0') + '-' + String(p.d).padStart(2, '0');
+}
+
+function renderSlides() {
+    const list = document.getElementById('expd-slide-list');
+    if (!list || !currentExp) return;
+    const slides = getSlides();
+    if (slides.length === 0) {
+        list.innerHTML = '<p class="empty-state" style="padding:30px 20px;">資料はまだありません</p>';
+        return;
+    }
+    list.innerHTML = slides.map((f, i) => {
+        const url = safeHttpUrl(f && f.url);
+        const name = (f && f.name) || '資料';
+        const meta = [formatFileSize(f && f.size), slideDateText(f)].filter(Boolean).join('・');
+        // 名前のリンクは fileOpenUrl を通す（パワポは Office Online ビューア、PDF はブラウザで開く）。
+        // ビューアで開けない大きさ・形式のときのために、元のファイルのリンクも出す
+        return `
+        <div class="file-item slide-item">
+            ${url
+                ? `<a class="file-name slide-name" href="${escapeAttr(fileOpenUrl(url))}" target="_blank" rel="noopener" title="${escapeAttr(name)}">${escapeHtml(name)}</a>`
+                : `<span class="file-name">${escapeHtml(name)}</span>`}
+            ${meta ? `<span class="file-size">${escapeHtml(meta)}</span>` : ''}
+            <span class="file-actions">
+                ${url ? `<a class="slide-action" href="${escapeAttr(url)}" target="_blank" rel="noopener" aria-label="${escapeAttr(name + ' をダウンロード')}">ダウンロード</a>` : ''}
+                <button type="button" class="slide-action slide-delete" data-action="expd-del-slide" data-index="${i}" aria-label="${escapeAttr(name + ' を削除')}">削除</button>
+            </span>
+        </div>`;
+    }).join('');
+}
+
+function openSlideUpload() {
+    if (getSlides(currentExp).length >= SLIDE_LIMIT) { toast(`資料は最大${SLIDE_LIMIT}件までです`, 'error'); return; }
+    document.getElementById('slide-file-input').click();
+}
+
+// アップロード中の 1 件の行（進み具合を出す）。戻り値の set(割合) で更新し、remove() で消す
+function addSlideUploadingRow(file) {
+    const wrap = document.getElementById('slide-uploading');
+    const row = document.createElement('div');
+    row.className = 'file-item uploading slide-item';
+    row.innerHTML = `<span class="file-name"></span><span class="file-size"></span>
+        <progress class="slide-progress" max="100" value="0"></progress>`;
+    row.querySelector('.file-name').textContent = file.name;
+    row.querySelector('.file-size').textContent = formatFileSize(file.size);
+    const bar = row.querySelector('progress');
+    bar.setAttribute('aria-label', file.name + ' のアップロード');
+    wrap.appendChild(row);
+    return {
+        set: ratio => { bar.value = Math.round(Math.max(0, Math.min(1, ratio)) * 100); },
+        remove: () => row.remove()
+    };
+}
+
+async function handleSlideSelect(input) {
+    const files = Array.from(input.files);
+    input.value = '';
+    if (!files.length) return;
+
+    const remaining = SLIDE_LIMIT - getSlides(currentExp).length;
+    if (files.length > remaining) toast(`資料は最大${SLIDE_LIMIT}件までのため、${Math.max(0, remaining)}件だけアップロードします`, 'info');
+    const toUpload = files.slice(0, Math.max(0, remaining));
+
+    const uploaded = [];
+    for (const file of toUpload) {
+        if (file.size > getFileMaxMB() * 1024 * 1024) { toast(file.name + ' は' + getFileMaxMB() + 'MBを超えています', 'error'); continue; }
+        const row = addSlideUploadingRow(file);
+        try {
+            const result = await api.uploadFile(file, { onProgress: row.set });
+            uploaded.push({ name: file.name, url: result.url, driveId: result.driveId, size: result.size || file.size, uploadedAt: result.uploadedAt || new Date().toISOString() });
+        } catch (e) {
+            if (!e.handled) toast('アップロード失敗: ' + file.name + '（' + humanizeApiError(e) + '）', 'error');
+        } finally {
+            row.remove();
+        }
+    }
+    if (uploaded.length === 0) return;
+
+    try {
+        // 件数の上限は、保存の直前の最新の記録に対して判定する（写真と同じ）。新しいものほど上に出す
+        let accepted = [];
+        await persistCurrentExp(draft => {
+            const room = SLIDE_LIMIT - getSlides(draft).length;
+            accepted = uploaded.slice(0, Math.max(0, room));
+            if (accepted.length === 0) return false;
+            draft.Slides = JSON.stringify(accepted.slice().reverse().concat(getSlides(draft)));
+        });
+        const rejected = uploaded.filter(p => accepted.indexOf(p) < 0);
+        if (rejected.length) deleteStoredFiles(rejected.map(p => p.driveId));
+        if (accepted.length === 0) { toast(`資料は最大${SLIDE_LIMIT}件までです`, 'error'); return; }
+        renderSlides();
+        toast(rejected.length ? `資料は最大${SLIDE_LIMIT}件までのため、${accepted.length}件だけ保存しました` : '資料を保存しました', rejected.length ? 'info' : 'success');
+    } catch (e) {
+        toast('保存失敗: ' + humanizeApiError(e), 'error');
+        // 競合で保存されなかったときだけ、記録に載らなかったアップロード済みファイルを消す（写真と同じ理由）
+        if (isConflictError(e)) deleteStoredFiles(uploaded.map(p => p.driveId));
+    }
+}
+
+function deleteSlide(index) {
+    const slide = getSlides(currentExp)[index];
+    if (!slide) return;
+    const name = slide.name || '';
+    showConfirmDialog({
+        title: '資料を削除',
+        message: (name ? `「${name}」を削除します。` : 'この資料を削除します。') + TRASH_KEEP_NOTE,
+        okLabel: '削除する',
+        danger: true,
+        onOk: () => executeDeleteSlide(slide)
+    });
+}
+
+async function executeDeleteSlide(slide) {
+    try {
+        const saved = await persistCurrentExp(draft => {
+            const slides = getSlides(draft);
+            const idx = slides.findIndex(p => _samePhoto(p, slide));   // 同一判定は写真と同じ（driveId、無ければ url と名前）
+            if (idx < 0) return false;
+            slides.splice(idx, 1);
+            draft.Slides = JSON.stringify(slides);
+        });
+        if (!saved) { toast('資料が見つかりません（すでに削除されています）', 'error'); renderSlides(); return; }
+        renderSlides();
+        toast('資料をゴミ箱に移動しました', 'success');   // 実体（R2）はゴミ箱の期限まで残る
+    } catch (e) {
+        toast('削除失敗: ' + humanizeApiError(e), 'error');
+    }
+}
+
 // ---- Video Gallery（YouTubeリンクを登録し、実験ショーの様子を見返す） ----
 
 // 何十件登録されても一度に全部のサムネイル・iframeを読み込まないよう、表示件数をページングする
@@ -612,6 +755,7 @@ registerActions({
     'expd-del-feedback': el => deleteFeedbackEntry(el.dataset.id, el.dataset.type),
     'expd-del-photo': (el, e) => { e.preventDefault(); deletePhoto(Number(el.dataset.index)); },
     'expd-del-video': el => deleteVideo(Number(el.dataset.index)),
+    'expd-del-slide': el => deleteSlide(Number(el.dataset.index)),
     'expd-play-video': el => playVideo(el, el.dataset.id)
 });
 

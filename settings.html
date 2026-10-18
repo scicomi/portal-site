@@ -59,6 +59,30 @@
                 </div>
             </div>
 
+            <!-- ファイルのアップロード -->
+            <div class="settings-section collapsed">
+                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h2>ファイルのアップロード</h2>
+                        <p class="settings-section-desc">1 つのファイルの大きさの上限を設定します（書類・写真・発表資料のすべてに効きます）。</p>
+                    </div>
+                    <span class="settings-section-chevron">&#9662;</span>
+                </div>
+                <div class="settings-card">
+                    <div class="e1-group">
+                        <label class="e1-label">1 ファイルの上限</label>
+                        <p class="settings-hint">1〜95MB。ファイルは Cloudflare R2（無料枠 10GB）に保存されます。大きくすると、無料枠に早く近づきます。使用量は Cloudflare ダッシュボードの R2 で確認できます。</p>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <input type="number" id="cfg-file-max-mb" class="e1-input" min="1" max="95" style="width:100px;">
+                            <span class="text-label">MB</span>
+                        </div>
+                    </div>
+                    <div style="margin-top:8px;">
+                        <button class="btn btn-primary-solid" onclick="saveFileMaxMb(this)" style="width:auto;padding:8px 20px;">上限を保存</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- ゴミ箱 -->
             <div class="settings-section collapsed">
                 <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">

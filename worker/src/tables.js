@@ -21,7 +21,7 @@ export const RESOURCES = {
     idPrefix: 'ex_',
     jsonFields: [],
     adminOnly: false,
-    columns: ["ID", "Name", "Category", "Materials", "Preparation", "Flow", "Notes", "SlidesURL", "Sections", "Photos", "Videos", "Reflections", "Positives", "Active", "CreatedAt", "UpdatedAt"]
+    columns: ["ID", "Name", "Category", "Materials", "Preparation", "Flow", "Notes", "SlidesURL", "Sections", "Photos", "Videos", "Slides", "Reflections", "Positives", "Active", "CreatedAt", "UpdatedAt"]
   },
   guides: {
     table: 'guides',

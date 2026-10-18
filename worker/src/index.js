@@ -14,7 +14,7 @@ import {
   listResource, listAllData, saveResource, deleteResource, ConflictError,
   listEventVotes, voteDeadlinePassed, upsertVote, appendAuditLog, ID_PATTERN
 } from './data.js';
-import { uploadFile, deleteFile, serveFile } from './files.js';
+import { uploadFile, uploadFileRaw, deleteFile, serveFile } from './files.js';
 import { runMaintenance } from './maintenance.js';
 import {
   pushEnabled, subscribePush, unsubscribePush, resubscribePush, pushStats, sendTestPush, drainPushOutboxSafe, batchSize
@@ -38,6 +38,10 @@ export default {
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request, env) });
       if (url.pathname.startsWith('/files/') && (request.method === 'GET' || request.method === 'HEAD')) {
         return await serveFile(env, request);
+      }
+      // ファイルのアップロード(本文がファイルそのもの)。JSON の本文の上限(MAX_REQUEST_BYTES)より大きいファイルを受け取るため、別の入口にする
+      if (url.pathname === '/upload' && request.method === 'POST') {
+        return jsonResponse(await handleUpload(env, request), request, env);
       }
       // API は POST のみ(本文の JSON で action を受け取る)。トークンを URL に載せる GET は受け付けない
       if (request.method === 'POST') {
@@ -67,6 +71,22 @@ export default {
     } else ctx.waitUntil(runMaintenance(env));
   }
 };
+
+// POST /upload。トークンは Authorization ヘッダーで受け取る(URL に載せない)
+async function handleUpload(env, request) {
+  const m = /^Bearer\s+(\S+)$/.exec(request.headers.get('Authorization') || '');
+  const token = m ? m[1] : '';
+  try {
+    if (!(await checkAuth(env, token))) return { success: false, error: 'unauthorized' };
+    const result = await uploadFileRaw(env, request);
+    await appendAuditLog(env, 'uploadFile', (result.name || '') + ' (' + (result.driveId || '') + ')', token, 'member');
+    return { success: true, file: result };
+  } catch (err) {
+    if (err instanceof ApiError) return { success: false, error: err.code, detail: err.detail || undefined };
+    console.error('upload failed: ' + (err && err.stack || err));
+    return { success: false, error: 'internal_error' };
+  }
+}
 
 const versionInfo = () => ({ success: true, version: CODE_VERSION, serverTime: new Date().toISOString() });
 

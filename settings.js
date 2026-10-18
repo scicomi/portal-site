@@ -80,6 +80,9 @@ async function loadSettings() {
         document.getElementById('cfg-deadline-kyoka').value = kyokaDays;
         document.getElementById('cfg-deadline-houkoku').value = houkokuDays;
 
+        // ファイルのアップロードの上限
+        document.getElementById('cfg-file-max-mb').value = cfg.file_max_mb != null && cfg.file_max_mb !== '' ? parseInt(cfg.file_max_mb, 10) : FILE_MAX_MB_DEFAULT;
+
         // ゴミ箱の保管日数
         document.getElementById('cfg-trash-keep-days').value = cfg.trash_keep_days != null && cfg.trash_keep_days !== '' ? parseInt(cfg.trash_keep_days, 10) : 7;
 
@@ -266,6 +269,29 @@ async function loadPushStats() {
     } catch (e) {
         if (!e.handled) el.textContent = '読み込めませんでした: ' + humanizeApiError(e);
     }
+}
+
+// --- ファイルのアップロードの上限（worker/src/config.js の FILE_MAX_MB_LIMIT・既定値と同じ値にすること） ---
+
+const FILE_MAX_MB_LIMIT = 95;
+const FILE_MAX_MB_DEFAULT = 50;
+
+async function saveFileMaxMb(btn) {
+    const raw = String(document.getElementById('cfg-file-max-mb').value || '').trim();
+    const n = /^\d+$/.test(raw) ? parseInt(raw, 10) : NaN;
+    if (isNaN(n) || n < 1 || n > FILE_MAX_MB_LIMIT) {
+        toast('上限は1〜' + FILE_MAX_MB_LIMIT + 'の整数で入力してください', 'error');
+        return;
+    }
+    await _withBusyBtn(btn, async () => {
+        try {
+            await api.adminSetConfig('file_max_mb', String(n));
+            CONFIG.FILE_UPLOAD.maxSizeMB = n;   // この画面のアップロード前の確認にも、すぐ反映する
+            toast('アップロードの上限を保存しました', 'success');
+        } catch (e) {
+            toast('保存失敗: ' + humanizeApiError(e), 'error');
+        }
+    });
 }
 
 // --- ゴミ箱の保管日数 ---
