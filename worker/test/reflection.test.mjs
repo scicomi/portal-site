@@ -185,13 +185,13 @@ test('response: 正常な出力を、id つきの保存する形にする', () =
     improve: '一部に、説明が長いという声。',
     topics: [
       { label: '反応が良い', type: 'positive', count: 2, refs: ['F1', 'F3'] },
-      { label: '説明が長い', type: 'improve', count: 1, refs: ['F2'] }
+      { label: '説明が長い', type: 'improve', count: 2, refs: ['F2', 'F4'] }
     ]
-  }), ['a', 'b', 'c']);
+  }), ['a', 'b', 'c', 'd']);
   assert.equal(r.ok, true);
   assert.deepEqual(r.summary.topics, [
     { label: '反応が良い', type: 'positive', count: 2, entryIds: ['a', 'c'] },
-    { label: '説明が長い', type: 'improve', count: 1, entryIds: ['b'] }
+    { label: '説明が長い', type: 'improve', count: 2, entryIds: ['b', 'd'] }
   ]);
 });
 
@@ -200,16 +200,35 @@ test('response: コードブロックで返されても読める', () => {
   assert.equal(parseReflectionResponse(text, ['a']).ok, true);
 });
 
-test('response: 実在しない番号は捨て、根拠が無くなった論点は出さない', () => {
+test('response: 実在しない番号は捨て、根拠が 2 件に満たない論点は出さない', () => {
   const r = parseReflectionResponse(reply({
     positive: 'x', improve: 'y',
     topics: [
-      { label: '一部だけ実在', type: 'positive', count: 3, refs: ['F1', 'F9', 'X'] },
+      { label: '一部だけ実在', type: 'positive', count: 4, refs: ['F1', 'F2', 'F9', 'X'] },
+      { label: '1 件だけ残る', type: 'positive', count: 2, refs: ['F1', 'F99'] },
       { label: '全部が架空', type: 'improve', count: 1, refs: ['F99'] }
     ]
   }), ['a', 'b']);
   assert.equal(r.ok, true);
-  assert.deepEqual(r.summary.topics, [{ label: '一部だけ実在', type: 'positive', count: 1, entryIds: ['a'] }]);
+  assert.deepEqual(r.summary.topics, [{ label: '一部だけ実在', type: 'positive', count: 2, entryIds: ['a', 'b'] }]);
+});
+
+test('response: 1 件だけの意見は論点(チップ)にしない', () => {
+  const r = parseReflectionResponse(reply({
+    positive: 'x', improve: '一部に、看板が小さいという声もある。',
+    topics: [{ label: '看板が小さい', type: 'improve', count: 1, refs: ['F3'] }]
+  }), ['a', 'b', 'c']);
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.summary.topics, []);
+});
+
+test('prompt: 1 件だけの意見の書き方と、論点の作り方を指示している', () => {
+  const sp = buildReflectionPrompt(ENTRIES).systemPrompt;
+  assert.ok(sp.includes('「一部に」で始まる文'));
+  assert.ok(sp.includes('「多い」「目立つ」「求められている」'));
+  assert.ok(sp.includes('2 件以上の振り返りが同じことを言っている論点だけ'));
+  assert.ok(sp.includes('漏れなくすべて'));
+  assert.ok(sp.includes('別の話題を 1 つの論点に混ぜない'));
 });
 
 test('response: 同じ id(fb_legacy)が 2 つの番号にあっても、id は 1 つにまとめ、件数は番号で数える', () => {

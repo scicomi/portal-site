@@ -7,7 +7,8 @@
 export const MAX_ENTRIES = 60;          // 1 回に送る件数の上限(新しい順)
 export const MAX_TOTAL_CHARS = 12000;   // 1 回に送る本文の合計文字数の上限
 export const MAX_ENTRY_CHARS = 2000;    // 1 件の本文の上限(超えた分は切る)
-export const MAX_TOPICS = 6;
+export const MAX_TOPICS = 6;            // 論点のチップの上限(スマホで並べられる数。少数の意見を論点に格上げしないため)
+export const MIN_TOPIC_COUNT = 2;       // 論点にする最小の件数(1 件だけの意見はチップにしない)
 export const MAX_SUMMARY_CHARS = 300;   // positive / improve のそれぞれ
 export const MAX_LABEL_CHARS = 24;
 
@@ -22,12 +23,17 @@ export const REFLECTION_SYSTEM_PROMPT = [
   '{"positive": 良かった点のまとめ(1〜3 文), "improve": 改善点のまとめ(1〜3 文), "topics": [{"label": 論点の短い見出し, "type": "positive" か "improve", "count": refs の数, "refs": ["F1", ...]}]}',
   '',
   '守ること:',
-  '- 2 人以上が書いていることを優先してまとめる。1 件だけの意見は「一部に」などと明示する',
+  '- positive / improve の本文は、2 件以上の振り返りに共通して書かれていることを中心にまとめる',
+  '- 1 件の振り返りにしか書かれていない意見は、大勢の意見のように書いてはいけない。書くときは必ず「一部に」で始まる文にし、'
+    + '1 件だけの意見どうしは「ほかに、一部に〜という声もある」のように 1 文にまとめる。'
+    + '1 件だけの意見について「多い」「目立つ」「求められている」「評価された」「声が上がった」などの言い方をしない',
   '- 書かれていないことを足さない。推測で補わない',
   '- 個人名・連絡先が本文に含まれていても、出力には書かない(〈メンバー〉〈連絡先〉は置き換え済みの印)',
   '- positive / improve はそれぞれ ' + MAX_SUMMARY_CHARS + ' 文字以内。該当する振り返りが無ければ空文字',
-  '- topics は多く挙がった順に最大 ' + MAX_TOPICS + ' 件。label は ' + MAX_LABEL_CHARS + ' 文字以内',
-  '- refs には、その論点の根拠になった振り返りの番号を、重複なく入れる。count は refs の数と同じにする'
+  '- topics には、' + MIN_TOPIC_COUNT + ' 件以上の振り返りが同じことを言っている論点だけを入れる(1 件だけの意見は topics にしない)。'
+    + '多く挙がった順に最大 ' + MAX_TOPICS + ' 件。label は ' + MAX_LABEL_CHARS + ' 文字以内',
+  '- 1 つの論点には、同じことを言っている振り返りだけを入れる。別の話題を 1 つの論点に混ぜない',
+  '- refs には、その論点に当てはまる振り返りの番号を、言い方が違っても漏れなくすべて、重複なく入れる。count は refs の数と同じにする'
 ].join('\n');
 
 // Gemini の responseSchema(OpenAPI の一部。generationConfig.responseSchema に渡す)
@@ -133,7 +139,7 @@ export function parseReflectionResponse(data, refs) {
       const id = refs[n - 1];
       if (ids.indexOf(id) < 0) ids.push(id);
     }
-    if (!nums.size) continue;   // 根拠が 1 つも残らない論点は出さない
+    if (nums.size < MIN_TOPIC_COUNT) continue;   // 実在する根拠が 2 件に満たない論点は出さない(1 件だけの意見をチップにしない)
     out.push({ label: t.label.trim(), type: t.type, count: nums.size, entryIds: ids });
   }
   return { ok: true, summary: { positive: positive.trim(), improve: improve.trim(), topics: out } };
