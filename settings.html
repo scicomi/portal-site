@@ -64,24 +64,24 @@
                 <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
                     <div>
                         <h2>ストレージの上限</h2>
-                        <p class="settings-section-desc">ホームの円グラフで「全体」とする大きさです。Cloudflare のプランを変えたら合わせてください。</p>
+                        <p class="settings-section-desc">ホームの円グラフで「全体」とする大きさです。空欄なら Cloudflare のプランから自動で決まるので、通常は入力不要です。</p>
                     </div>
                     <span class="settings-section-chevron">&#9662;</span>
                 </div>
                 <div class="settings-card">
                     <div class="e1-group">
                         <label class="e1-label">D1（データ）の上限</label>
-                        <p class="settings-hint">無料プランは 1 データベース 500MB。有料プランは Cloudflare の料金表で確認してください（1GB = 1024MB）。</p>
+                        <p class="settings-hint">空欄＝自動（無料プランは 500MB、Workers Paid は 10GB）。数字を入れると、それを優先します（1GB = 1024MB）。</p>
                         <div style="display:flex;gap:8px;align-items:center;">
-                            <input type="number" id="cfg-storage-d1-mb" class="e1-input" min="1" style="width:140px;">
+                            <input type="number" id="cfg-storage-d1-mb" class="e1-input" min="1" placeholder="自動" style="width:140px;">
                             <span class="text-label">MB</span>
                         </div>
                     </div>
                     <div class="e1-group">
                         <label class="e1-label">R2（ファイル）の上限</label>
-                        <p class="settings-hint">無料枠は 10GB（= 10240MB）。これを超えると課金されることがあります。</p>
+                        <p class="settings-hint">空欄＝自動（10GB = 10240MB。Workers Paid は超えた分が従量課金）。数字を入れると、それを優先します。</p>
                         <div style="display:flex;gap:8px;align-items:center;">
-                            <input type="number" id="cfg-storage-r2-mb" class="e1-input" min="1" style="width:140px;">
+                            <input type="number" id="cfg-storage-r2-mb" class="e1-input" min="1" placeholder="自動" style="width:140px;">
                             <span class="text-label">MB</span>
                         </div>
                     </div>

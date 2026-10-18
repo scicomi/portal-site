@@ -84,8 +84,8 @@ async function loadSettings() {
         document.getElementById('cfg-file-max-mb').value = cfg.file_max_mb != null && cfg.file_max_mb !== '' ? parseInt(cfg.file_max_mb, 10) : FILE_MAX_MB_DEFAULT;
 
         // ストレージの上限
-        document.getElementById('cfg-storage-d1-mb').value = cfg.storage_d1_limit_mb || 500;
-        document.getElementById('cfg-storage-r2-mb').value = cfg.storage_r2_limit_mb || 10240;
+        document.getElementById('cfg-storage-d1-mb').value = cfg.storage_d1_limit_mb || '';
+        document.getElementById('cfg-storage-r2-mb').value = cfg.storage_r2_limit_mb || '';
 
         // ゴミ箱の保管日数
         document.getElementById('cfg-trash-keep-days').value = cfg.trash_keep_days != null && cfg.trash_keep_days !== '' ? parseInt(cfg.trash_keep_days, 10) : 7;
@@ -303,18 +303,19 @@ async function saveFileMaxMb(btn) {
 async function saveStorageLimits(btn) {
     const read = id => {
         const raw = String(document.getElementById(id).value || '').trim();
+        if (raw === '') return '';   // 空欄は自動
         const n = /^\d+$/.test(raw) ? parseInt(raw, 10) : NaN;
         return (isNaN(n) || n < 1 || n > 10485760) ? NaN : n;
     };
     const d1 = read('cfg-storage-d1-mb'), r2 = read('cfg-storage-r2-mb');
     if (isNaN(d1) || isNaN(r2)) {
-        toast('上限は1以上の整数（MB）で入力してください', 'error');
+        toast('上限は空欄（自動）か、1以上の整数（MB）で入力してください', 'error');
         return;
     }
     await _withBusyBtn(btn, async () => {
         try {
-            await api.adminSetConfig('storage_d1_limit_mb', String(d1));
-            await api.adminSetConfig('storage_r2_limit_mb', String(r2));
+            await api.adminSetConfig('storage_d1_limit_mb', d1 === '' ? '' : String(d1));
+            await api.adminSetConfig('storage_r2_limit_mb', r2 === '' ? '' : String(r2));
             toast('ストレージの上限を保存しました', 'success');
         } catch (e) {
             toast('保存失敗: ' + humanizeApiError(e), 'error');

@@ -1075,12 +1075,18 @@ test('getStorageUsage: メンバーが D1・R2 の使用量と上限を取れ、
   const r = await post({ action: 'getStorageUsage', token: member });
   assert.equal(r.success, true);
   assert.ok(r.usage.d1.used > 0);
+  // この環境には CF_API_TOKEN が無いので、プランを取得できず、無料プランの上限(安全側)で表示する
+  assert.equal(r.usage.limitSource, 'fallback');
   assert.equal(r.usage.d1.limit, 500 * 1024 * 1024);
   assert.ok(r.usage.r2.files >= 0 && r.usage.r2.backups >= 0 && r.usage.r2.count >= 0);
   assert.equal(r.usage.r2.limit, 10240 * 1024 * 1024);
   // 上限を変えたら、測定の覚え(キャッシュ)の期間中でも、すぐ反映される
   assert.equal((await post({ action: 'adminSetConfig', token: member, adminToken: admin, key: 'storage_d1_limit_mb', value: '1024' })).success, true);
-  assert.equal((await post({ action: 'getStorageUsage', token: member })).usage.d1.limit, 1024 * 1024 * 1024);
+  const man = (await post({ action: 'getStorageUsage', token: member })).usage;
+  assert.equal(man.d1.limit, 1024 * 1024 * 1024);
+  assert.equal(man.limitSource, 'fallback');   // R2 が自動のままなので、manual にはならない
   assert.equal((await post({ action: 'adminSetConfig', token: member, adminToken: admin, key: 'storage_d1_limit_mb', value: '0' })).success, false);
-  await post({ action: 'adminSetConfig', token: member, adminToken: admin, key: 'storage_d1_limit_mb', value: '500' });
+  // 空欄に戻すと自動(ここでは取得できないので無料プランの上限)に戻る
+  assert.equal((await post({ action: 'adminSetConfig', token: member, adminToken: admin, key: 'storage_d1_limit_mb', value: '' })).success, true);
+  assert.equal((await post({ action: 'getStorageUsage', token: member })).usage.d1.limit, 500 * 1024 * 1024);
 });

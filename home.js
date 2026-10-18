@@ -642,6 +642,15 @@ function storageCard(title, parts, used, limit, note) {
         </div>`;
 }
 
+// 上限の決まり方の説明(自動・手動・取得できず無料プランの上限)
+function storageLimitNote(u) {
+    const planName = u.plan === 'paid' ? 'Workers Paid' : u.plan === 'free' ? '無料プラン' : '';
+    const text = u.limitSource === 'manual' ? '上限: 設定ページで指定した値'
+        : u.limitSource === 'auto' ? `上限: ${planName}の上限（Cloudflare から自動取得）`
+        : '上限: プランを自動で取得できないため、無料プランの上限で表示しています（幹部に連絡してください）';
+    return `<p class="storage-note storage-limit-note storage-limit-${escapeAttr(u.limitSource)}">${escapeHtml(text)}</p>`;
+}
+
 async function loadStorageUsage() {
     const box = document.getElementById('storage-charts');
     if (!box) return;
@@ -653,7 +662,7 @@ async function loadStorageUsage() {
         const r2 = storageCard('R2（ファイル）',
             [{ name: 'ファイル', value: u.r2.files, cls: 'storage-used' }, { name: 'バックアップ', value: u.r2.backups, cls: 'storage-used2' }],
             u.r2.files + u.r2.backups, u.r2.limit, u.r2.count + '件' + (u.r2.truncated ? '以上（数えきれていません）' : ''));
-        box.innerHTML = d1 + r2;
+        box.innerHTML = d1 + r2 + storageLimitNote(u);
     } catch (e) {
         // 付け足しの表示なので、取れなくても他の画面は使える
         console.warn('ストレージの使用量を読み込めませんでした:', e);
