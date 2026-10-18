@@ -291,6 +291,7 @@ async function saveFileMaxMb(btn) {
         try {
             await api.adminSetConfig('file_max_mb', String(n));
             CONFIG.FILE_UPLOAD.maxSizeMB = n;   // この画面のアップロード前の確認にも、すぐ反映する
+            invalidateSettingsCache();          // 他のページが古い上限(10 分のキャッシュ)で断らないように
             toast('アップロードの上限を保存しました', 'success');
         } catch (e) {
             toast('保存失敗: ' + humanizeApiError(e), 'error');
