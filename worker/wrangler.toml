@@ -12,7 +12,8 @@ ALLOWED_ORIGINS = "https://scicomi.github.io"
 PBKDF2_ITERATIONS = "100000"
 # Gemini の有効/無効(全体の非常停止)。"true" 以外は Gemini へ一切送信しない(src/gemini.js の geminiInvoke が見る)。
 # 無料枠は送った入力が学習に使われ得るので、人の了承なしに "true" にしない。経緯は docs/09_aibot_suspended.md、用途は docs/13_reflection_summary_plan.md。
-GEMINI_ENABLED = "false"
+# 2026-10-18 に人の承認を得て "true" にした(振り返りの要約。docs/14 の Phase 5 段階 C)。問題が出たら "false" にして再デプロイする
+GEMINI_ENABLED = "true"
 # プッシュ通知(Web Push)の公開鍵(秘密ではない)。秘密鍵は Secret の VAPID_PRIVATE_KEY。
 # 作り方: node scripts/gen-vapid.mjs --remote(秘密鍵は画面に出さず Secret に登録し、公開鍵だけを表示する)。空なら通知は無効
 VAPID_PUBLIC_KEY = "BLzG1xbX4m_8AHiIqkTuxuhA8JVaWpOk1QMjCVlF4SrDqI5dbVUcPgRQxWc9TtQ96gYSOFbRIJH1V2UaOO249KI"
