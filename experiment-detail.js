@@ -605,43 +605,91 @@ async function executeDeletePhoto(photo) {
 // ---- 発表資料（パワポ・PDF。Slides 列。形は Photos と同じ { name, url, driveId, size, uploadedAt }） ----
 
 const SLIDE_LIMIT = 30;
+const SLIDE_NAME_MAX = 120;
+const SLIDE_SORT_KEY = 'scicomi_slide_sort';   // 並び順（'desc' 新しい順 / 'asc' 古い順）。端末ごとの好み
 
 function getSlides(exp) {
     return parseJsonArray((exp || currentExp).Slides);
 }
 
-// 追加日（日本時間の YYYY-MM-DD）。uploadedAt が無い・不正なら空
+// 資料の同一判定のキー（並びが変わっても正しい 1 件を指せるよう、位置ではなく実体で探す。写真の _samePhoto と同じ考え方）
+function slideKey(s) {
+    return String((s && (s.driveId || s.url)) || '');
+}
+
+function getSlideSort() {
+    try { return localStorage.getItem(SLIDE_SORT_KEY) === 'asc' ? 'asc' : 'desc'; } catch (_) { return 'desc'; }
+}
+
+function toggleSlideSort() {
+    const next = getSlideSort() === 'asc' ? 'desc' : 'asc';
+    try { localStorage.setItem(SLIDE_SORT_KEY, next); } catch (_) { /* 保存できなくても、この表示では切り替える */ }
+    renderSlides(next);
+}
+
+// アップロード日時（日本時間の YYYY-MM-DD HH:mm）。uploadedAt が無い・不正なら空
 function slideDateText(s) {
     const ms = Date.parse(s && s.uploadedAt);
     if (!isFinite(ms)) return '';
     const p = jstParts(ms);
-    return p.y + '-' + String(p.m).padStart(2, '0') + '-' + String(p.d).padStart(2, '0');
+    const z = n => String(n).padStart(2, '0');
+    return p.y + '-' + z(p.m) + '-' + z(p.d) + ' ' + z(p.hh) + ':' + z(p.mm);
 }
 
-function renderSlides() {
+// 拡張子（小文字、ドット付き）。無ければ空
+function slideExt(name) {
+    const m = /\.[A-Za-z0-9]{1,8}$/.exec(String(name || ''));
+    return m ? m[0].toLowerCase() : '';
+}
+
+// 入力された名前を整える。空なら元の名前。拡張子を消してしまっても、元の拡張子を付け直す（開き方の判定に使うため）
+function normalizeSlideName(input, original) {
+    let name = String(input || '').replace(/[\r\n\t]+/g, ' ').trim();
+    if (!name) return String(original || '資料');
+    const ext = slideExt(original);
+    if (ext && slideExt(name) !== ext) name += ext;
+    if (name.length > SLIDE_NAME_MAX) name = name.slice(0, SLIDE_NAME_MAX - ext.length) + ext;
+    return name;
+}
+
+function renderSlides(order) {
     const list = document.getElementById('expd-slide-list');
     if (!list || !currentExp) return;
+    const sort = order || getSlideSort();
+    const sortBtn = document.getElementById('slide-sort-btn');
     const slides = getSlides();
+    if (sortBtn) {
+        sortBtn.textContent = sort === 'asc' ? '古い順 ▲' : '新しい順 ▼';
+        sortBtn.setAttribute('aria-label', '並び順: ' + (sort === 'asc' ? '古い順' : '新しい順') + '（押すと切り替え）');
+        sortBtn.classList.toggle('hidden', slides.length < 2);
+    }
     if (slides.length === 0) {
         list.innerHTML = '<p class="empty-state" style="padding:30px 20px;">資料はまだありません</p>';
         return;
     }
-    list.innerHTML = slides.map((f, i) => {
+    // アップロード日時で並べる（日時が無いものは最後。同じなら保存されている順）
+    const time = s => { const t = Date.parse(s && s.uploadedAt); return isFinite(t) ? t : null; };
+    const sorted = slides.map((s, i) => ({ s, i })).sort((a, b) => {
+        const ta = time(a.s), tb = time(b.s);
+        if (ta === null || tb === null) return (ta === null) - (tb === null) || a.i - b.i;
+        return (sort === 'asc' ? ta - tb : tb - ta) || a.i - b.i;
+    }).map(x => x.s);
+
+    list.innerHTML = sorted.map(f => {
         const url = safeHttpUrl(f && f.url);
         const name = (f && f.name) || '資料';
-        const meta = [formatFileSize(f && f.size), slideDateText(f)].filter(Boolean).join('・');
-        // 名前のリンクは fileOpenUrl を通す（パワポは Office Online ビューア、PDF はブラウザで開く）。
-        // ビューアで開けない大きさ・形式のときのために、元のファイルのリンクも出す
+        const date = slideDateText(f);
+        const size = formatFileSize(f && f.size);
+        // 名前のリンクは fileOpenUrl を通す（パワポは Office Online ビューア、PDF はブラウザで開く）
         return `
         <div class="file-item slide-item">
-            ${url
-                ? `<a class="file-name slide-name" href="${escapeAttr(fileOpenUrl(url))}" target="_blank" rel="noopener" title="${escapeAttr(name)}">${escapeHtml(name)}</a>`
-                : `<span class="file-name">${escapeHtml(name)}</span>`}
-            ${meta ? `<span class="file-size">${escapeHtml(meta)}</span>` : ''}
-            <span class="file-actions">
-                ${url ? `<a class="slide-action" href="${escapeAttr(url)}" target="_blank" rel="noopener" aria-label="${escapeAttr(name + ' をダウンロード')}">ダウンロード</a>` : ''}
-                <button type="button" class="slide-action slide-delete" data-action="expd-del-slide" data-index="${i}" aria-label="${escapeAttr(name + ' を削除')}">削除</button>
+            <span class="slide-main">
+                ${url
+                    ? `<a class="file-name slide-name" href="${escapeAttr(fileOpenUrl(url))}" target="_blank" rel="noopener" title="${escapeAttr(name)}">${escapeHtml(name)}</a>`
+                    : `<span class="file-name">${escapeHtml(name)}</span>`}
+                <span class="slide-meta">アップロード日 <span class="slide-date">${date ? escapeHtml(date) : '不明'}</span>${size ? `<span class="slide-size">${escapeHtml(size)}</span>` : ''}</span>
             </span>
+            <button type="button" class="slide-edit" data-action="expd-edit-slide" data-key="${escapeAttr(slideKey(f))}" aria-label="${escapeAttr(name + ' の名前を変更')}" title="名前を変更">✎</button>
         </div>`;
     }).join('');
 }
@@ -651,17 +699,79 @@ function openSlideUpload() {
     document.getElementById('slide-file-input').click();
 }
 
+// 資料タブのダイアログ（アップロード前の名前の確認・名前の変更）の共通部分。閉じる関数を返す
+function openSlideDialog(title, bodyHtml) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const titleId = 'slide-dialog-title-' + Date.now();
+    overlay.innerHTML = `
+        <div class="modal-content" style="max-width:520px;" role="dialog" aria-modal="true" aria-labelledby="${titleId}">
+            <div class="modal-header"><h2 id="${titleId}"></h2></div>
+            <div class="modal-body">${bodyHtml}</div>
+        </div>`;
+    overlay.querySelector('h2').textContent = title;
+    document.body.appendChild(overlay);
+    let cleanup = () => {};
+    const close = () => { cleanup(); overlay.remove(); };
+    bindOverlayClose(overlay, close);
+    cleanup = bindModalEscape(overlay, close) || (() => {});
+    trapFocus(overlay.querySelector('.modal-content'));
+    return { overlay, close };
+}
+
+// ファイルを選んだら、アップロードの前に名前を確かめて変えられるダイアログを出す
+function handleSlideSelect(input) {
+    const files = Array.from(input.files);
+    input.value = '';
+    if (!files.length) return;
+
+    const remaining = SLIDE_LIMIT - getSlides(currentExp).length;
+    if (remaining <= 0) { toast(`資料は最大${SLIDE_LIMIT}件までです`, 'error'); return; }
+    if (files.length > remaining) toast(`資料は最大${SLIDE_LIMIT}件までのため、先頭の${remaining}件だけアップロードします`, 'info');
+    const maxBytes = getFileMaxMB() * 1024 * 1024;
+    const picked = files.slice(0, remaining);
+    const ok = picked.filter(f => f.size <= maxBytes);
+    picked.filter(f => f.size > maxBytes).forEach(f => toast(f.name + ' は' + getFileMaxMB() + 'MBを超えているため、アップロードできません', 'error'));
+    if (!ok.length) return;
+
+    const rows = ok.map((f, i) => `
+        <div class="e1-group slide-name-row">
+            <label class="e1-label">ファイル名${ok.length > 1 ? `（${i + 1}）` : ''}</label>
+            <input type="text" class="e1-input" data-index="${i}" maxlength="${SLIDE_NAME_MAX}">
+            <p class="settings-hint slide-name-hint"></p>
+        </div>`).join('');
+    const dlg = openSlideDialog('資料をアップロード', `
+        <p class="expd-note" style="margin-top:0;">表示する名前を変えられます（あとからでも変えられます）。拡張子は自動で付きます。</p>
+        ${rows}
+        <div class="action-buttons">
+            <button type="button" class="btn btn-text" data-role="cancel">キャンセル</button>
+            <button type="button" class="btn btn-primary-solid" style="width:auto;" data-role="ok">アップロード${ok.length > 1 ? `（${ok.length}件）` : ''}</button>
+        </div>`);
+    const inputs = Array.from(dlg.overlay.querySelectorAll('input[data-index]'));
+    inputs.forEach((el, i) => {
+        el.value = ok[i].name;
+        el.closest('.slide-name-row').querySelector('.slide-name-hint').textContent = '元のファイル: ' + ok[i].name + '（' + formatFileSize(ok[i].size) + '）';
+    });
+    dlg.overlay.querySelector('[data-role="cancel"]').onclick = dlg.close;
+    dlg.overlay.querySelector('[data-role="ok"]').onclick = () => {
+        const names = inputs.map((el, i) => normalizeSlideName(el.value, ok[i].name));
+        dlg.close();
+        uploadSlides(ok.map((file, i) => ({ file, name: names[i] })));
+    };
+    setTimeout(() => { if (inputs[0]) { inputs[0].focus(); inputs[0].select(); } }, 50);
+}
+
 // アップロード中の 1 件の行（進み具合を出す）。戻り値の set(割合) で更新し、remove() で消す
-function addSlideUploadingRow(file) {
+function addSlideUploadingRow(name, size) {
     const wrap = document.getElementById('slide-uploading');
     const row = document.createElement('div');
     row.className = 'file-item uploading slide-item';
     row.innerHTML = `<span class="file-name"></span><span class="file-size"></span>
         <progress class="slide-progress" max="100" value="0"></progress>`;
-    row.querySelector('.file-name').textContent = file.name;
-    row.querySelector('.file-size').textContent = formatFileSize(file.size);
+    row.querySelector('.file-name').textContent = name;
+    row.querySelector('.file-size').textContent = formatFileSize(size);
     const bar = row.querySelector('progress');
-    bar.setAttribute('aria-label', file.name + ' のアップロード');
+    bar.setAttribute('aria-label', name + ' のアップロード');
     wrap.appendChild(row);
     return {
         set: ratio => { bar.value = Math.round(Math.max(0, Math.min(1, ratio)) * 100); },
@@ -669,24 +779,15 @@ function addSlideUploadingRow(file) {
     };
 }
 
-async function handleSlideSelect(input) {
-    const files = Array.from(input.files);
-    input.value = '';
-    if (!files.length) return;
-
-    const remaining = SLIDE_LIMIT - getSlides(currentExp).length;
-    if (files.length > remaining) toast(`資料は最大${SLIDE_LIMIT}件までのため、${Math.max(0, remaining)}件だけアップロードします`, 'info');
-    const toUpload = files.slice(0, Math.max(0, remaining));
-
+async function uploadSlides(entries) {
     const uploaded = [];
-    for (const file of toUpload) {
-        if (file.size > getFileMaxMB() * 1024 * 1024) { toast(file.name + ' は' + getFileMaxMB() + 'MBを超えています', 'error'); continue; }
-        const row = addSlideUploadingRow(file);
+    for (const { file, name } of entries) {
+        const row = addSlideUploadingRow(name, file.size);
         try {
             const result = await api.uploadFile(file, { onProgress: row.set });
-            uploaded.push({ name: file.name, url: result.url, driveId: result.driveId, size: result.size || file.size, uploadedAt: result.uploadedAt || new Date().toISOString() });
+            uploaded.push({ name, url: result.url, driveId: result.driveId, size: result.size || file.size, uploadedAt: result.uploadedAt || new Date().toISOString() });
         } catch (e) {
-            if (!e.handled) toast('アップロード失敗: ' + file.name + '（' + humanizeApiError(e) + '）', 'error');
+            if (!e.handled) toast('アップロード失敗: ' + name + '（' + humanizeApiError(e) + '）', 'error');
         } finally {
             row.remove();
         }
@@ -694,13 +795,13 @@ async function handleSlideSelect(input) {
     if (uploaded.length === 0) return;
 
     try {
-        // 件数の上限は、保存の直前の最新の記録に対して判定する（写真と同じ）。新しいものほど上に出す
+        // 件数の上限は、保存の直前の最新の記録に対して判定する（写真と同じ）
         let accepted = [];
         await persistCurrentExp(draft => {
             const room = SLIDE_LIMIT - getSlides(draft).length;
             accepted = uploaded.slice(0, Math.max(0, room));
             if (accepted.length === 0) return false;
-            draft.Slides = JSON.stringify(accepted.slice().reverse().concat(getSlides(draft)));
+            draft.Slides = JSON.stringify(getSlides(draft).concat(accepted));
         });
         const rejected = uploaded.filter(p => accepted.indexOf(p) < 0);
         if (rejected.length) deleteStoredFiles(rejected.map(p => p.driveId));
@@ -714,8 +815,62 @@ async function handleSlideSelect(input) {
     }
 }
 
-function deleteSlide(index) {
-    const slide = getSlides(currentExp)[index];
+// 名前の変更（✎）。削除もこのダイアログから行う（一覧には削除ボタンを置かない）
+function openSlideEdit(key) {
+    const slide = getSlides(currentExp).find(s => slideKey(s) === key);
+    if (!slide) { toast('資料が見つかりません（すでに削除されています）', 'error'); renderSlides(); return; }
+    const dlg = openSlideDialog('資料の名前を変更', `
+        <div class="e1-group">
+            <label class="e1-label">ファイル名</label>
+            <input type="text" class="e1-input" data-role="name" maxlength="${SLIDE_NAME_MAX}">
+            <p class="settings-hint">拡張子は自動で付きます。${escapeHtml(slideDateText(slide) ? 'アップロード日 ' + slideDateText(slide) : '')}</p>
+        </div>
+        <div class="action-buttons slide-edit-actions">
+            <button type="button" class="btn btn-text slide-edit-delete" data-role="delete">この資料を削除</button>
+            <span class="slide-edit-spacer"></span>
+            <button type="button" class="btn btn-text" data-role="cancel">キャンセル</button>
+            <button type="button" class="btn btn-primary-solid" style="width:auto;" data-role="ok">保存</button>
+        </div>`);
+    const input = dlg.overlay.querySelector('[data-role="name"]');
+    input.value = slide.name || '';
+    dlg.overlay.querySelector('[data-role="cancel"]').onclick = dlg.close;
+    dlg.overlay.querySelector('[data-role="delete"]').onclick = () => { dlg.close(); deleteSlide(key); };
+    const okBtn = dlg.overlay.querySelector('[data-role="ok"]');
+    const submit = async () => {
+        const name = normalizeSlideName(input.value, slide.name);
+        if (name === slide.name) { dlg.close(); return; }
+        okBtn.disabled = true;
+        okBtn.textContent = '保存中...';
+        try {
+            const saved = await persistCurrentExp(draft => {
+                const slides = getSlides(draft);
+                const target = slides.find(s => slideKey(s) === key);
+                if (!target) return false;
+                target.name = name;
+                draft.Slides = JSON.stringify(slides);
+            });
+            if (!saved) { toast('資料が見つかりません（すでに削除されています）', 'error'); dlg.close(); renderSlides(); return; }
+            dlg.close();
+            renderSlides();
+            toast('名前を変更しました', 'success');
+        } catch (e) {
+            toast('保存失敗: ' + humanizeApiError(e), 'error');
+            okBtn.disabled = false;
+            okBtn.textContent = '保存';
+        }
+    };
+    okBtn.onclick = submit;
+    input.addEventListener('keydown', ev => { if (ev.key === 'Enter' && !ev.isComposing) { ev.preventDefault(); submit(); } });
+    setTimeout(() => {
+        input.focus();
+        // 拡張子の手前までを選んでおく（名前だけを打ち直しやすいように）
+        const ext = slideExt(input.value);
+        input.setSelectionRange(0, input.value.length - ext.length);
+    }, 50);
+}
+
+function deleteSlide(key) {
+    const slide = getSlides(currentExp).find(s => slideKey(s) === key);
     if (!slide) return;
     const name = slide.name || '';
     showConfirmDialog({
@@ -723,15 +878,15 @@ function deleteSlide(index) {
         message: (name ? `「${name}」を削除します。` : 'この資料を削除します。') + TRASH_KEEP_NOTE,
         okLabel: '削除する',
         danger: true,
-        onOk: () => executeDeleteSlide(slide)
+        onOk: () => executeDeleteSlide(key)
     });
 }
 
-async function executeDeleteSlide(slide) {
+async function executeDeleteSlide(key) {
     try {
         const saved = await persistCurrentExp(draft => {
             const slides = getSlides(draft);
-            const idx = slides.findIndex(p => _samePhoto(p, slide));   // 同一判定は写真と同じ（driveId、無ければ url と名前）
+            const idx = slides.findIndex(s => slideKey(s) === key);
             if (idx < 0) return false;
             slides.splice(idx, 1);
             draft.Slides = JSON.stringify(slides);
@@ -755,7 +910,7 @@ registerActions({
     'expd-del-feedback': el => deleteFeedbackEntry(el.dataset.id, el.dataset.type),
     'expd-del-photo': (el, e) => { e.preventDefault(); deletePhoto(Number(el.dataset.index)); },
     'expd-del-video': el => deleteVideo(Number(el.dataset.index)),
-    'expd-del-slide': el => deleteSlide(Number(el.dataset.index)),
+    'expd-edit-slide': el => openSlideEdit(el.dataset.key),
     'expd-play-video': el => playVideo(el, el.dataset.id)
 });
 

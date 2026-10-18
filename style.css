@@ -2813,25 +2813,38 @@ textarea:focus {
 .sfb-date { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; }
 
 /* ========== 発表資料（実験詳細の「資料」タブ。行は .file-item を使う） ========== */
+.slide-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.slide-sort {
+    min-height: 32px; padding: 0 12px; border: 1px solid var(--border-input); border-radius: 6px;
+    background: var(--surface); color: var(--text-color); font-size: 0.8rem; font-family: inherit; cursor: pointer;
+}
+.slide-sort:hover { background: var(--bg-muted); }
 .slide-list { display: flex; flex-direction: column; gap: 6px; }
 .slide-list:empty { display: none; }
-.slide-item { flex-wrap: wrap; padding: 8px 12px; margin-top: 0; font-size: 0.9rem; }
+.slide-item { padding: 8px 8px 8px 12px; margin-top: 0; font-size: 0.9rem; }
+.slide-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .slide-item .slide-name { color: var(--primary-color); text-decoration: none; font-weight: 600; }
 .slide-item .slide-name:hover { text-decoration: underline; }
-.slide-action {
-    display: inline-flex; align-items: center; min-height: 32px; padding: 0 10px;
-    border: 1px solid var(--border-input); border-radius: 6px; background: var(--surface);
-    color: var(--text-color); font-size: 0.8rem; font-family: inherit; text-decoration: none; cursor: pointer;
+.slide-meta { color: var(--text-muted); font-size: 0.8rem; }
+.slide-date, .slide-size { white-space: nowrap; }
+.slide-size::before { content: '・'; }
+.slide-edit {
+    flex-shrink: 0; width: 36px; height: 36px; border: none; border-radius: 6px; background: none;
+    color: var(--text-label); font-size: 1rem; cursor: pointer;
 }
-.slide-action:hover { background: var(--bg-muted); }
-.slide-delete { color: var(--danger-color); }
+.slide-edit:hover { background: var(--bg-muted); color: var(--text-color); }
 .slide-progress { width: 120px; height: 8px; accent-color: var(--primary-color); }
 #slide-uploading:not(:empty) { margin-bottom: 6px; }
+.slide-name-hint { margin: 4px 0 0; word-break: break-all; }
+.slide-edit-actions { align-items: center; }
+.slide-edit-spacer { flex: 1; }
+.slide-edit-delete { color: var(--danger-color); }
 @media (hover: none) {
-    .slide-action { min-height: var(--touch-min); }
+    .slide-edit { width: var(--touch-min); height: var(--touch-min); }
+    .slide-sort { min-height: var(--touch-min); }
 }
 @media (max-width: 600px) {
-    .slide-item .file-name { flex-basis: 100%; white-space: normal; word-break: break-all; }
+    .slide-item .file-name { white-space: normal; word-break: break-all; }
     .slide-progress { flex: 1; }
 }
 
