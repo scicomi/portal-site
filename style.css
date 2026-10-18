@@ -3755,14 +3755,27 @@ button.person-chip.is-link:focus-visible { outline: 2px solid var(--primary-colo
 
 /* 開催回の選択: 前・次の開催回へ移るボタン */
 .occ-picker-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.occ-nav-btn {
-    width: 36px; height: 36px; border-radius: var(--radius-full); box-sizing: border-box;
-    border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-primary);
-    font-size: 1.3rem; line-height: 1; cursor: pointer; padding: 0 0 2px;
+
+/* 日付順で前後のイベント・ミーティングへ移る矢印（詳細ページの最上段） */
+.adj-nav { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.adj-btn {
+    flex: 1 1 0; min-width: 0; max-width: 50%; box-sizing: border-box;
+    display: flex; flex-direction: column; gap: 2px; padding: 8px 14px;
+    border: 1px solid var(--border-color); border-radius: 10px;
+    background: var(--card-bg); color: var(--text-primary);
+    font: inherit; text-align: left; cursor: pointer;
 }
-.occ-nav-btn:hover:not(:disabled) { border-color: var(--primary-light); color: var(--primary-color); background: var(--primary-subtle); }
-.occ-nav-btn:disabled { opacity: 0.35; cursor: default; }
-.occ-nav-btn:focus-visible { outline: 3px solid var(--primary-color); outline-offset: 2px; }
+.adj-btn--next { align-items: flex-end; text-align: right; }
+.adj-btn:hover:not(.is-disabled) { border-color: var(--primary-light); background: var(--primary-subtle); }
+.adj-btn:focus-visible { outline: 3px solid var(--primary-color); outline-offset: 2px; }
+.adj-btn.is-disabled { opacity: 0.35; cursor: default; }
+.adj-label { color: var(--primary-color); font-size: 0.9rem; font-weight: 600; }
+.adj-sub { max-width: 100%; color: var(--text-muted); font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 600px) {
+    .adj-nav { gap: 8px; }
+    .adj-btn { padding: 8px 10px; }
+    .adj-name { display: none; }
+}
 .doc-slot-main { all: unset; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .doc-slot-main:focus-visible, .doc-slot-inline:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; border-radius: var(--radius-full); }
 .doc-slot-inline { cursor: pointer; }

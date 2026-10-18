@@ -381,21 +381,76 @@ function renderOccPicker() {
         const label = `${n}回目　${compactOccDate(e.Date)}(${dayOfWeekJP(e.Date)})${up ? '・開催予定' : ''}`;
         return `<option value="${escapeAttr(e.ID)}" ${e.ID === currentEvent().ID ? 'selected' : ''}>${escapeHtml(label)}</option>`;
     }).join('');
-    // 前（日付が古い側）・次（新しい側）の開催回へ移るボタン。端では無効にする
-    const idx = asc.findIndex(x => x.ID === currentEvent().ID);
-    const prev = asc[idx - 1], next = asc[idx + 1];
-    const navBtn = (target, dir, arrow, label) => `<button type="button" class="occ-nav-btn" ${target ? `data-action="es-select-occ" data-id="${escapeAttr(target.ID)}" title="${label}（${escapeAttr(compactOccDate(target.Date))}）"` : 'disabled'} aria-label="${label}の開催回へ">${arrow}</button>`;
     box.innerHTML = `<div class="occ-picker-row">
-        ${navBtn(prev, 'prev', '&#8249;', '前')}
         <select class="occ-select" aria-label="開催回を選ぶ" data-change-action="es-select-occ">${options}</select>
-        ${navBtn(next, 'next', '&#8250;', '次')}
     </div>`;
+}
+
+// 日付順（同日は開始時刻・名前順）で、全イベント・ミーティングを 1 本に並べたときの前後へ移る矢印。シリーズ・種類をまたぐ。
+// 行き先の種類で「イベント」「ミーティング」の文言を変える。端では無効にして位置を動かさない
+function adjacentOrder() {
+    return allEventsData.filter(e => e.Date).sort((a, b) =>
+        (a.Date || '').localeCompare(b.Date || '')
+        || (a.TimeStart || '').localeCompare(b.TimeStart || '')
+        || (a.Title || '').localeCompare(b.Title || '')
+        || String(a.ID).localeCompare(String(b.ID)));
+}
+
+// 行き先の名前。ミーティングは「第N回 名前」、イベントは「名前 N回目」（同じシリーズの中での順番）
+function adjacentName(ev) {
+    const base = String(ev.Title || '').replace(/^第\d+回\s*/, '') || seriesKeyOf(ev);
+    if (isMeetingCategory(ev.Category)) return ev.MeetingNumber ? `第${ev.MeetingNumber}回 ${base}` : base;
+    const key = seriesKeyOf(ev);
+    const same = allEventsData.filter(e => e.Date && seriesKeyOf(e) === key)
+        .sort((a, b) => (a.Date || '').localeCompare(b.Date || ''));
+    const n = same.findIndex(e => e.ID === ev.ID) + 1;
+    return same.length > 1 && n > 0 ? `${base} ${n}回目` : base;
+}
+
+function renderAdjacentNav() {
+    const box = document.getElementById('series-adjacent');
+    const cur = currentEvent();
+    if (!box || !cur) return;
+    const all = adjacentOrder();
+    const idx = all.findIndex(e => e.ID === cur.ID);
+    const side = (target, dir) => {
+        const kind = target ? (isMeetingCategory(target.Category) ? 'ミーティング' : 'イベント') : 'イベント';
+        const label = `${dir === 'prev' ? '前の' : '次の'}${kind}`;
+        const arrow = dir === 'prev' ? '&larr;' : '&rarr;';
+        const head = dir === 'prev' ? `${arrow} ${label}` : `${label} ${arrow}`;
+        if (!target) return `<span class="adj-btn adj-btn--${dir} is-disabled" aria-disabled="true"><span class="adj-label">${head}</span></span>`;
+        return `<button type="button" class="adj-btn adj-btn--${dir}" data-action="es-goto-event" data-id="${escapeAttr(target.ID)}" aria-label="${escapeAttr(label + ': ' + adjacentName(target))}">
+            <span class="adj-label">${head}</span>
+            <span class="adj-sub"><span class="adj-date">${escapeHtml(compactOccDate(target.Date))}</span><span class="adj-name"> ${escapeHtml(adjacentName(target))}</span></span>
+        </button>`;
+    };
+    box.innerHTML = side(idx > 0 ? all[idx - 1] : null, 'prev') + side(idx >= 0 ? all[idx + 1] || null : null, 'next');
+}
+
+// 前後のイベント・ミーティングへ移る。別のシリーズなら表示するシリーズごと切り替える
+function gotoEvent(id) {
+    const ev = allEventsData.find(e => e.ID === id);
+    if (!ev) return;
+    const newKey = seriesKeyOf(ev);
+    if (newKey === seriesKey) { selectOccurrence(id); }
+    else {
+        seriesKey = newKey;
+        currentEventId = id;
+        seriesFbFilter = 'all';
+        filterSeries();
+        syncSeriesUrl();
+        // 「シリーズ全体」の会場タブは移動先で内容が変わるので、概要へ戻す
+        if (document.querySelector('.scope-tab.active')?.dataset.zone === 'series') activateSeriesTab('summary');
+        renderAll();
+    }
+    window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
 }
 
 // タブ直下の対象範囲バー。「シリーズ全体」を見ているときだけ、全何回を対象にしているかを示す
 // （「この回」のときは、ヘッダーカードの開催回プルダウンが現在の回を示すので、バーは出さない）。
 function renderScopeContext() {
     renderOccPicker();
+    renderAdjacentNav();
     const box = document.getElementById('series-scope-ctx');
     if (!box) return;
     const zone = document.querySelector('.scope-tab.active')?.dataset.zone || 'occ';
@@ -1070,6 +1125,7 @@ registerActions({
     'es-teams-send': el => sendTeamsNotify(el.dataset.id),
     'es-file-pick': el => el.closest('[data-drop-field]').querySelector('[data-ef-input]').click(),
     'es-file-remove': el => removeDetailFile(el.dataset.field, Number(el.dataset.index)),
+    'es-goto-event': el => gotoEvent(el.dataset.id),
     'es-select-occ': el => selectOccurrence(el.dataset.id || el.value),   // 開催回プルダウンは value（data-id でも受け付ける）
     'es-open-occ': el => openOccurrence(el.dataset.id),
     'es-attendance-filter': el => switchAttendanceFilter(el.dataset.key),

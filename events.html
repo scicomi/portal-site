@@ -98,9 +98,8 @@
 
         <!-- ===== シリーズ詳細モード ===== -->
         <div id="series-view" class="hidden">
-            <div style="margin-bottom: 16px; display:flex; gap:16px;">
-                <a href="events.html" class="back-link">&larr; イベント一覧へ</a>
-            </div>
+            <!-- 日付順で前後のイベント・ミーティングへ移る（種類をまたぐ） -->
+            <nav id="series-adjacent" class="adj-nav" aria-label="前後のイベント・ミーティング"></nav>
 
             <div id="series-loading" class="loading-text">読み込み中</div>
 
