@@ -64,19 +64,9 @@ const CONFIG = {
   ADMIN_TOKEN_TTL_MS: 180 * 24 * 60 * 60 * 1000, // 180日（サーバー側 worker/src/auth.js の ADMIN_SESSION_TTL_MS と一致させること）
 
   // ===== 機能フラグ =====
-  // BOT: AI検索(Gemini)。無料枠は入力が学習に使われるため停止中。再開手順は docs/09_aibot_suspended.md。
-  //      サーバー側の GEMINI_ENABLED(worker/wrangler.toml)も同時に切り替えること。
-  //      こちらは画面を隠すだけで、実際の遮断はサーバー側が行う。
-  FEATURES: {
-    BOT: false
-  },
-
-  // ===== Gemini API (Bot用 — APIキー・モデルはサーバー側 Config で管理) =====
-  // ※ 使用モデルはサーバーの設定（gemini_model。設定ページで変更）が正で、フロントでは持たない。
-  GEMINI: {
-    DAILY_LIMIT: 1500,  // API初回呼出前の表示用フォールバック。実際の上限はサーバー(GEMINI_DAILY_LIMIT)が正で、bot.js 起動時に上書きされる。
-    USAGE_KEY: 'scicomi_bot_usage'
-  },
+  // NAV_ITEMS の項目に feature: '名前' を付けると、ここで true にしたときだけメニューに出る(今は該当なし)。
+  // 振り返りの要約(Gemini)の入口は画面に出さず、サーバー側の GEMINI_ENABLED(worker/wrangler.toml)が止める。
+  FEATURES: {},
 
   // ===== 広報媒体（サーバー設定 pr_channels から上書きされる） =====
   PR_CHANNELS: ['Twitter', 'Instagram', 'HP'],
@@ -107,7 +97,6 @@ const CONFIG = {
     { href: 'events.html',       label: 'イベント',       page: 'events' },
     { href: 'members.html',      label: 'メンバー',     page: 'members' },
     { href: 'experiments.html', label: '実験ネタ',   page: 'experiments' },
-    { href: 'bot.html',         label: 'AI検索',     page: 'bot', feature: 'BOT' },
     // group を持つ項目は、NAV_GROUPS の見出しのドロップダウンにまとまる（位置は最初の項目の場所）
     { href: 'guide.html',       label: 'ガイド',     page: 'guide' },
     // 「管理」ドロップダウン。メンバーにはゴミ箱だけ、管理者ログイン時はパスワード・設定も出る

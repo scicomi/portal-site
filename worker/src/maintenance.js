@@ -11,7 +11,7 @@ import { getConfigInt } from './config.js';
 import { trimAuditLog, appendAuditLog } from './data.js';
 import { purgeExpiredTrash } from './trash.js';
 import { purgeOldAuthFail } from './auth.js';
-import { purgeExpiredCache } from './gemini.js';
+import { purgeExpiredCache } from './cache.js';
 import { jstDate } from './util.js';
 import { purgePush } from './push.js';
 

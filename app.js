@@ -977,9 +977,8 @@ function bindNavGroups(header) {
   header.querySelector('.app-nav').addEventListener('scroll', closeAll);
 }
 
-// ヘッダーは折り返しや管理者バッジの有無で実際の高さが変わる。AI検索ページ（bot.html）は
-// ヘッダーの下でぴったりビューポート高に収まるチャットレイアウトのため、固定px値ではなく
-// 実測値を --header-h に反映する（ズレるとページがビューポートより少しはみ出す）。
+// ヘッダーは折り返しや管理者バッジの有無で実際の高さが変わる。ヘッダーの下に固定する要素（ガイドの目次など）が
+// ずれないよう、固定px値ではなく実測値を --header-h に反映する。
 function syncHeaderHeightVar() {
   const header = document.querySelector('.app-header');
   if (!header) return;

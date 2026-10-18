@@ -42,7 +42,7 @@ D1（データ・SQLite） ／ R2（ファイル・毎日のバックアップ�
 - 認証は「一般パスワード」「幹部パスワード」の 2 種類（共通パスワード方式。個人認証なし）
 - 本番の識別子: D1 `scicomi-portal`、R2 `scicomi-portal-files`、Worker `scicomi-portal`
 - 旧バックエンド(GAS)は削除済み(git の履歴には残っている)
-- **AI検索(`bot.html` / Gemini)は停止中**。無料枠は入力が学習に使われるため。`config.js` の `FEATURES.BOT` と `worker/wrangler.toml` の `GEMINI_ENABLED` で無効化している。再開手順は [docs/09_aibot_suspended.md](docs/09_aibot_suspended.md)
+- **AI検索(Bot)は削除済み**(git の履歴には残っている)。Gemini は、これから作る「振り返りの要約」だけが使う。計画は [docs/13_reflection_summary_plan.md](docs/13_reflection_summary_plan.md)、実装の順序は [docs/14_reflection_summary_roadmap.md](docs/14_reflection_summary_roadmap.md)。`worker/wrangler.toml` の `GEMINI_ENABLED = "false"` の間は、`worker/src/gemini.js` がどこから呼ばれても Gemini へ送らない(全体の非常停止)。無料枠は送った入力が学習に使われ得るので、**このスイッチを人の了承なしに `"true"` にしない**。経緯は [docs/09_aibot_suspended.md](docs/09_aibot_suspended.md)
 
 ### 主要ファイル
 

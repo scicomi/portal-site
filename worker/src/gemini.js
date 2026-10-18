@@ -1,4 +1,9 @@
-// Gemini 連携(旧 GAS の Gemini 連携の移植)。
+// Gemini API の呼び出しの共通部分(旧 GAS の Gemini 連携の移植を、振り返りの要約用に整理したもの)。
+// 設計は docs/13_reflection_summary_plan.md、整理の経緯は docs/14_reflection_summary_roadmap.md。
+//
+// - 全体の非常停止: env.GEMINI_ENABLED が "true" 以外なら、どの呼び出し元からでも Gemini へ送らない(geminiInvoke の先頭)
+// - API キーは URL ではなくヘッダー(x-goog-api-key)で送る
+// - fetch にはタイムアウトがあり、成功以外の抜け方では日次の使用量の予約を必ず返す
 //
 // モデル名は年々変わり、いつか廃止される。コード変更なしで自己修復するため、
 //   1) config の gemini_model を最優先で使う(管理画面から手動切替も可)
@@ -8,14 +13,30 @@
 import { getConfig, setConfig, getSecret, GEMINI_MODEL, GEMINI_DAILY_LIMIT } from './config.js';
 import { hmacHex } from './auth.js';
 import { jstDate, jstIso, sleep } from './util.js';
-import { buildBotSystemPrompt } from './botPrompt.js';
+import { cacheGet, cachePut, cacheIncr } from './cache.js';
 
 const DEPRECATED_MODELS = {
   'gemini-2.0-flash-lite': 1, 'gemini-2.0-flash': 1, 'gemini-1.5-flash': 1,
   'gemini-1.5-flash-latest': 1, 'gemini-1.5-pro': 1, 'gemini-1.0-pro': 1
 };
 
-const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const DEFAULT_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const DEFAULT_TIMEOUT_MS = 20000;   // 1 回の呼び出しの待ち時間の上限
+const USER_RATE_LIMIT_PER_MIN = 12;  // 画面のボタンからの呼び出しの、セッション 1 つあたりの毎分の上限
+
+// 送り先。ローカルの結合テストだけ、.dev.vars の GEMINI_API_BASE で偽の受け口(http://127.0.0.1 / localhost)に向けられる。
+// 本番には設定しない(設定されても、ローカル以外の宛先は無視する)
+function apiBase(env) {
+  const b = String((env && env.GEMINI_API_BASE) || '').trim();
+  if (/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/.test(b)) return b.replace(/\/+$/, '');
+  return DEFAULT_API_BASE;
+}
+
+function requestHeaders(apiKey, json) {
+  const h = { 'x-goog-api-key': apiKey };
+  if (json) h['Content-Type'] = 'application/json';
+  return h;
+}
 
 // ---- 日次使用量 ----
 
@@ -47,29 +68,6 @@ function logGeminiError(apiKey, code, text) {
   let s = String(text || '').slice(0, 500);
   if (apiKey) s = s.split(apiKey).join('***');
   console.error('gemini ' + code + ': ' + s);
-}
-
-// ---- kv_cache(セッション単位の毎分制限・モデル一覧のキャッシュ) ----
-
-async function cacheGet(env, key) {
-  const row = await env.DB.prepare('SELECT V FROM kv_cache WHERE K = ? AND Exp > ?').bind(key, Math.floor(Date.now() / 1000)).first();
-  return row ? row.V : null;
-}
-
-async function cachePut(env, key, value, ttlSec) {
-  await env.DB.prepare('INSERT INTO kv_cache (K, V, Exp) VALUES (?, ?, ?) ON CONFLICT(K) DO UPDATE SET V = excluded.V, Exp = excluded.Exp')
-    .bind(key, value, Math.floor(Date.now() / 1000) + ttlSec).run();
-}
-
-async function cacheIncr(env, key, ttlSec) {
-  const row = await env.DB.prepare(
-    'INSERT INTO kv_cache (K, V, Exp) VALUES (?, \'1\', ?) ON CONFLICT(K) DO UPDATE SET V = CAST(V AS INTEGER) + 1 RETURNING V'
-  ).bind(key, Math.floor(Date.now() / 1000) + ttlSec).first();
-  return row ? parseInt(row.V, 10) : 1;
-}
-
-export async function purgeExpiredCache(env) {
-  await env.DB.prepare('DELETE FROM kv_cache WHERE Exp < ?').bind(Math.floor(Date.now() / 1000)).run();
 }
 
 // ---- 429 の解析 ----
@@ -105,7 +103,10 @@ async function listGeminiModels(env, apiKey) {
   try {
     const cached = await cacheGet(env, 'gemini_models_cache');
     if (cached) { try { return JSON.parse(cached); } catch (_) {} }
-    const res = await fetch(API_BASE + '/models?pageSize=200&key=' + encodeURIComponent(apiKey));
+    const res = await fetch(apiBase(env) + '/models?pageSize=200', {
+      headers: requestHeaders(apiKey, false),
+      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS)
+    });
     if (!res.ok) return [];
     const data = await res.json();
     const models = (data.models || [])
@@ -147,51 +148,73 @@ async function resolveGeminiModel(env, apiKey) {
   return GEMINI_MODEL;   // 最後の保険
 }
 
-// ---- 呼び出しの共有コア(意図解析プロキシ・文章生成の両方が使う) ----
+// ---- 呼び出しの共有コア ----
 // 成功: { success:true, data, model, usage, limit } / 失敗: { success:false, error, ... }
-// opts: { token, systemPrompt, userText, wantJson }
+// opts: {
+//   caller:       'user'(画面のボタン。セッション単位の毎分の制限がかかる) / 'cron'(定期実行。呼び出し側が自分の上限を持つ),
+//   token:        caller が 'user' のときのセッションのトークン(毎分の制限の区別に使う),
+//   systemPrompt, userText, wantJson, responseSchema(任意), timeoutMs(任意)
+// }
 
 export async function geminiInvoke(env, opts) {
+  // 全体の非常停止。画面の action からでも、定期実行からでも、ここを必ず通る
+  if (!env || env.GEMINI_ENABLED !== 'true') return { success: false, error: 'feature_disabled' };
+
   const apiKey = ((await getSecret(env, 'gemini_api_key')) || '').trim();
   if (!apiKey) return { success: false, error: 'gemini_key_not_configured' };
 
-  // セッション単位の毎分レート制限(1 セッションが全体枠を使い切るのを防ぐ)
-  const th = opts.token ? (await hmacHex(env, opts.token)).slice(0, 16) : 'anon';
-  const minute = jstIso().slice(0, 16).replace(/[-T:]/g, '');
-  const rlCount = await cacheIncr(env, 'gemini_rl_' + th + '_' + minute, 120);
-  if (rlCount > 12) {
-    return { success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute', retrySec: 30,
-      detail: '短時間に送信が集中したため、このセッションを一時的に制限しました。' };
+  // 画面のボタンからの呼び出しだけ、セッション単位の毎分の制限(1 セッションが全体の枠を使い切るのを防ぐ)
+  if (opts.caller !== 'cron') {
+    const th = opts.token ? (await hmacHex(env, opts.token)).slice(0, 16) : 'anon';
+    const minute = jstIso().slice(0, 16).replace(/[-T:]/g, '');
+    const rlCount = await cacheIncr(env, 'gemini_rl_' + th + '_' + minute, 120);
+    if (rlCount > USER_RATE_LIMIT_PER_MIN) {
+      return { success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute', retrySec: 30,
+        detail: '短時間に送信が集中したため、このセッションを一時的に制限しました。' };
+    }
   }
 
-  // 日次使用量: 先に 1 回分を予約し、成功以外で抜けるときは返却する
+  // 日次使用量: 先に 1 回分を予約し、成功以外のどんな抜け方でも返却する
   const today = jstDate();
   const reserved = await geminiUsageReserve(env, today, GEMINI_DAILY_LIMIT);
   if (reserved === null) {
     return { success: false, error: 'RATE_LIMIT_DAILY', scope: 'day', usage: GEMINI_DAILY_LIMIT, limit: GEMINI_DAILY_LIMIT };
   }
-  const r = await geminiCall(env, apiKey, opts);
-  if (!r.success) {
-    await geminiUsageRelease(env, today);
-    return r;
+  let succeeded = false;
+  try {
+    const r = await geminiCall(env, apiKey, opts);
+    if (!r.success) return r;
+    succeeded = true;
+    return Object.assign(r, { usage: reserved, limit: GEMINI_DAILY_LIMIT });
+  } finally {
+    if (!succeeded) await geminiUsageRelease(env, today);
   }
-  return Object.assign(r, { usage: reserved, limit: GEMINI_DAILY_LIMIT });
 }
 
 // Gemini API の呼び出し本体(再試行・モデル再検出を含む)。使用量の管理は呼び出し元(geminiInvoke)が行う。
 async function geminiCall(env, apiKey, opts) {
   let model = await resolveGeminiModel(env, apiKey);
   const payload = { contents: [{ role: 'user', parts: [{ text: opts.userText }] }] };
-  if (opts.wantJson) payload.generationConfig = { responseMimeType: 'application/json' };
+  if (opts.wantJson || opts.responseSchema) {
+    payload.generationConfig = { responseMimeType: 'application/json' };
+    if (opts.responseSchema) payload.generationConfig.responseSchema = opts.responseSchema;
+  }
   if (opts.systemPrompt) payload.systemInstruction = { parts: [{ text: opts.systemPrompt }] };
+  const timeoutMs = opts.timeoutMs > 0 ? opts.timeoutMs : DEFAULT_TIMEOUT_MS;
+  const base = apiBase(env);
 
   const maxAttempts = 3;   // 過負荷再試行 + モデル再検出のための余裕
   let last429 = null;
   let rediscovered = false;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const url = API_BASE + '/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey);
+    const url = base + '/models/' + model + ':generateContent';
     try {
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: requestHeaders(apiKey, true),
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(timeoutMs)
+      });
       const code = res.status;
       if (code === 200) {
         const data = await res.json();
@@ -234,6 +257,11 @@ async function geminiCall(env, apiKey, opts) {
       }
       return { success: false, error: 'API_ERROR_' + code };
     } catch (e) {
+      // 待ち時間の上限に達したときは、再試行しない(合計の待ち時間が長くなりすぎるため)
+      if (e && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
+        logGeminiError(apiKey, 'timeout', String(timeoutMs) + 'ms');
+        return { success: false, error: 'TIMEOUT' };
+      }
       if (attempt < maxAttempts - 1) { await sleep(1500); continue; }
       logGeminiError(apiKey, 'fetch', String(e && e.stack || e));
       return { success: false, error: 'NETWORK_ERROR' };
@@ -241,38 +269,4 @@ async function geminiCall(env, apiKey, opts) {
   }
   if (last429) return { success: false, error: 'RATE_LIMIT_MINUTE', scope: 'minute', retrySec: last429.retrySec || 30 };
   return { success: false, error: 'NETWORK_ERROR' };
-}
-
-// 意図解析プロキシ(質問文 → 検索クエリ JSON)。送るのは質問文だけで、データ本文は送らない。
-export async function handleGeminiProxy(env, body) {
-  let message = body.message || '';
-  if (!message) return { success: false, error: 'empty_message' };
-  if (message.length > 2000) message = message.slice(0, 2000);   // 過大入力を切り詰め
-  // システムプロンプトはサーバー側で固定生成(クライアント指定の prompt は信用しない)
-  return geminiInvoke(env, { token: body.token, systemPrompt: buildBotSystemPrompt(), userText: message, wantJson: true });
-}
-
-// 文章生成(要約など)。クライアントが実験/イベントの本文を context として渡す。
-// 担当者名・名簿は含めないが、備考・振り返りなどの自由記述はそのまま含まれる(書かれた名前も届く)。
-export async function handleGeminiGenerate(env, body) {
-  const apiKey = ((await getSecret(env, 'gemini_api_key')) || '').trim();
-  if (!apiKey) return { success: false, error: 'gemini_key_not_configured' };
-
-  const instruction = String(body.instruction || '').slice(0, 1000);
-  const context = String(body.context || '').slice(0, 12000);   // コンテキスト上限(コスト・悪用対策)
-  if (!context.trim()) return { success: false, error: 'empty_context' };
-
-  const sys = 'あなたは大学のサイエンスコミュニケーターサークルの記録アシスタントです。'
-    + '与えられた「資料」だけを根拠に、日本語で分かりやすく回答・要約してください。'
-    + '資料に書かれていないことは推測せず、その旨を述べてください。'
-    + '万一、個人名やメールアドレス等の個人情報が含まれていても、出力には含めないでください。'
-    + '出力は簡潔に、必要に応じて箇条書きを使ってください(Markdown見出しは使わない)。';
-  const userText = '【依頼】\n' + (instruction || 'この内容を要約してください。') + '\n\n【資料】\n' + context;
-
-  const r = await geminiInvoke(env, { token: body.token, systemPrompt: sys, userText, wantJson: false });
-  if (!r.success) return r;
-  let text = '';
-  try { text = (r.data.candidates[0].content.parts[0].text || '').trim(); } catch (_) { text = ''; }
-  if (!text) return { success: false, error: 'EMPTY_RESPONSE' };
-  return { success: true, text, usage: r.usage, limit: r.limit };
 }

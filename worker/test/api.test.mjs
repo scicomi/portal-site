@@ -689,13 +689,12 @@ test('ファイル: アップロード → 公開 URL で取得(ログイン不�
   assert.equal((await fetch(BASE + '/files/..%2Fsecret')).status, 404);
 });
 
-// AI検索は停止中(wrangler.toml の GEMINI_ENABLED = "false")。キーの有無にかかわらず Gemini へ送らないことを確認する。
-// 再開するときは GEMINI_ENABLED を "true" にし、このテストを「キー未設定なら gemini_key_not_configured」に戻す(docs/09_aibot_suspended.md)。
-test('Gemini: 停止中は feature_disabled を返し、認証なしは拒否される', async () => {
-  assert.equal((await post({ action: 'geminiProxy', message: 'こんにちは' })).error, 'unauthorized');
-  assert.equal((await post({ action: 'geminiProxy', token: member, message: 'こんにちは' })).error, 'feature_disabled');
-  assert.equal((await post({ action: 'geminiGenerate', token: member, instruction: 'x', context: 'y' })).error, 'feature_disabled');
-  assert.equal((await post({ action: 'geminiUsage', token: member })).error, 'feature_disabled');
+// AI検索(Bot)は削除した。Gemini へ文章を送る入口(geminiProxy / geminiGenerate / geminiUsage)が無いことを確認する。
+// 振り返りの要約の入口は docs/14_reflection_summary_roadmap.md の Phase 3 で足す(そのテストもそこで書く)。
+test('Gemini: 削除した入口は unknown action を返す', async () => {
+  for (const action of ['geminiProxy', 'geminiGenerate', 'geminiUsage']) {
+    assert.equal((await post({ action, token: member, message: 'こんにちは', instruction: 'x', context: 'y' })).error, 'unknown action: ' + action);
+  }
 });
 
 test('後始末: 作成したテストデータを削除できる', async () => {

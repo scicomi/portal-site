@@ -64,7 +64,7 @@ API のURL: `https://scicomi-portal.scicomi.workers.dev`(`config.js` の `API_UR
 
 ## ページ構成
 
-11ページ構成(誰でも使う9ページ＋管理者専用の2ページ。AI検索は停止中)：
+10ページ構成(誰でも使う8ページ＋管理者専用の2ページ)：
 
 | ページ | URL | 役割 |
 |---|---|---|
@@ -75,7 +75,6 @@ API のURL: `https://scicomi-portal.scicomi.workers.dev`(`config.js` の `API_UR
 | 実験ネタ | `experiments.html` | フィルタ式（工作/実験ショー/その他）の実験データベース |
 | ガイド | `guide.html` | Notion 風の手順書・マニュアル集（書類の書き方、活動ガイド、領収書の渡し方など）。ページを入れ子にでき、閲覧画面の文字をそのままクリックして書き換える（編集専用ページはない。「/」でブロックを選ぶ。少し待つと自動保存。Ctrl+Z で元に戻せる。Tab で入れ子にでき、トグルの中に画像・番号付きリストなども入れられる。左のページ一覧は、ドラッグ、または「･･･」メニューの上へ/下へで順番を入れ替えられる）。`?p=<ID>` で 1 ページを開く。閲覧は一般メンバーも可、作成・編集・削除は幹部のみ（サーバーでも制限している）。エディタは `vendor/editorjs/`（Editor.js・Apache-2.0 / MIT。取得元と版は同フォルダの README.md） |
 | 実験の詳細 | `experiment-detail.html` | `?id=<ID>` で実験1件の詳細（使用物品・手順・写真・動画・振り返り）。実験ネタ一覧の各行から開く |
-| AI検索 | `bot.html` | **停止中**（無料枠の学習利用を避けるため）。コードは残してあり、再開手順は [docs/09_aibot_suspended.md](docs/09_aibot_suspended.md) |
 | ゴミ箱 | `trash.html` | 削除したもの・外したファイルの一覧。メンバー全員が復元・完全削除できる(下の「ゴミ箱」) |
 | パスワード一覧 | `passwords.html` | 管理者専用 |
 | 設定 | `settings.html` | 管理者専用 |
@@ -94,7 +93,7 @@ API のURL: `https://scicomi-portal.scicomi.workers.dev`(`config.js` の `API_UR
 portal-site/
 ├── index.html / events.html / members.html /
 │   experiments.html / experiment-detail.html / guide.html / trash.html /
-│   bot.html / passwords.html / settings.html   # 各ページ
+│   passwords.html / settings.html   # 各ページ
 ├── style.css / guide.css  # 共通スタイル / ガイドページ用スタイル
 ├── icon.png / title.png   # ヘッダーのアイコンとタイトル画像
 ├── vendor/editorjs/   # ガイドのエディタ(配布ファイルそのまま。直接編集しない)
@@ -103,7 +102,7 @@ portal-site/
 ├── app.js             # 共通ロジック（認証/ナビ/同期/トースト/ユーティリティ）
 ├── home.js / script.js / members.js / experiments.js / experiment-detail.js /
 │   event-detail.js / event-wizard.js / event-fields.js / passwords.js /
-│   settings.js / trash.js / guide.js / guide-blocks.js / bot.js /
+│   settings.js / trash.js / guide.js / guide-blocks.js /
 │   search.js / vote-widget.js              # ページごとのロジック
 ├── pwa.js / sw.js / manifest.webmanifest   # PWA(ホーム画面に追加・プッシュ通知)。sw.js は画面をキャッシュしない
 ├── icons/            # PWA のアイコン(元画像は icon_PWA.png)
@@ -304,16 +303,16 @@ Invoke-RestMethod -Method Post -Uri https://scicomi-portal.scicomi.workers.dev -
 - 「他の人が先に更新しました」と出たときは、最新の内容を読み込み直して、もう一度保存する（上の「同時編集について」）。
 - Workers の無料枠を超えると、D1 がエラーを返す（上の「サーバーでエラーが起きました」）。
 
-### Bot（Gemini）が「レート制限／無料枠の上限」になる
+### Gemini が「レート制限／無料枠の上限」になる
 
-APIキーを設定しても Bot が AI 回答にならず「キーワード検索に切り替えます」となる場合、ほとんどは **Gemini 無料枠の上限（429）** が原因。キー自体が無効なら別メッセージ（`APIキーが無効です`）になるので、429 = **キーは有効だが回数制限に当たっている**。
+AI検索(Bot)は削除した。Gemini は、今後作る「振り返りの要約」([docs/13_reflection_summary_plan.md](docs/13_reflection_summary_plan.md)、実装の順序は [docs/14_reflection_summary_roadmap.md](docs/14_reflection_summary_roadmap.md))だけが使う予定で、**まだ画面からは呼ばれない**。`worker/wrangler.toml` の `GEMINI_ENABLED` が `"false"` の間は、キーを入れても Gemini へは何も送られない。
 
-- 無料枠の上限は **APIキー単位ではなくプロジェクト単位**。このサイトは**1本のサーバー側キーを全メンバーで共有**するため、同時に数人が Bot を使うとすぐ「1分あたり」の上限に達する。
-- 1日の上限はサイト全体で 1,500 回（Bot ページ上部のゲージで確認できる）。Google 側の1日上限は太平洋時間0時（日本時間 約17時）にリセットされる。
-- **使用モデル**は設定ページの「使用モデル」で切り替えられる。モデルが廃止されて 404 になった場合は、サーバーが利用可能なモデルを自動検出して切り替える（コード変更不要）。既定は `gemini-2.5-flash-lite`。
-- 「1分あたり」の 429 は自動で数十秒待って1回だけ再試行される。「1日あたり」は当日は回復しないので、キーワード検索に切り替わる。
-- 頻発する場合は、Google AI Studio でキーの残量・無料枠を確認する。無料枠が出ない地域・アカウントなら、請求先を有効化すると上限が大幅に上がる。
-- Bot は未設定でもキーワード検索で動く。
+429(レート制限)の意味と、サーバーの動き:
+
+- キーは有効だが回数制限に当たっている。無料枠の上限は **APIキー単位ではなくプロジェクト単位**で、このサイトは1本のサーバー側キーを全員で共有する。
+- サーバー側の1日の上限は 1,500 回(日本時間 0 時にリセット)。Google 側の1日上限は太平洋時間 0 時(日本時間 約17時)にリセットされる。
+- 使用モデルは設定ページで切り替えられる。廃止されて 404 になった場合は、サーバーが使えるモデルを自動検出して切り替える。
+- 「1分あたり」の 429 は数十秒待って再試行される。「1日あたり」は当日は回復しない。
 
 ### 旧 GAS へ戻したい（緊急時のみ）
 

@@ -10,7 +10,8 @@ workers_dev = true
 ALLOWED_ORIGINS = "https://scicomi.github.io"
 # パスワードのハッシュ反復回数(PBKDF2-SHA256)。無料枠の CPU 時間に収まらない場合は下げる。
 PBKDF2_ITERATIONS = "100000"
-# AI検索(Gemini)の有効/無効。"true" 以外は Gemini へ一切送信しない。再開手順は docs/09_aibot_suspended.md。
+# Gemini の有効/無効(全体の非常停止)。"true" 以外は Gemini へ一切送信しない(src/gemini.js の geminiInvoke が見る)。
+# 無料枠は送った入力が学習に使われ得るので、人の了承なしに "true" にしない。経緯は docs/09_aibot_suspended.md、用途は docs/13_reflection_summary_plan.md。
 GEMINI_ENABLED = "false"
 # プッシュ通知(Web Push)の公開鍵(秘密ではない)。秘密鍵は Secret の VAPID_PRIVATE_KEY。
 # 作り方: node scripts/gen-vapid.mjs --remote(秘密鍵は画面に出さず Secret に登録し、公開鍵だけを表示する)。空なら通知は無効

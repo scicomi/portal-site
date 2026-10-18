@@ -3,18 +3,17 @@
 // 旧 GAS の doGet / doPost の置き換え(GAS は削除済みで git の履歴にだけ残る)。クライアント(api.js)との互換のため、
 // 「単一のエンドポイントに action を POST する」方式と JSON の形・エラーコードをそのまま維持する。
 
-import { CODE_VERSION, corsHeaders, jsonResponse, jstDate, ApiError } from './util.js';
+import { CODE_VERSION, corsHeaders, jsonResponse, ApiError } from './util.js';
 import { getResource } from './tables.js';
 import {
   checkAuth, checkAdmin, generateToken, verifyPassword,
   clientIp, beginAuthAttempt, delayAfterAuthFail, clearAuthAttempt
 } from './auth.js';
-import { publicConfig, adminConfig, adminSetConfig, GEMINI_DAILY_LIMIT } from './config.js';
+import { publicConfig, adminConfig, adminSetConfig } from './config.js';
 import {
   listResource, listAllData, saveResource, deleteResource, ConflictError,
   listEventVotes, voteDeadlinePassed, upsertVote, appendAuditLog, ID_PATTERN
 } from './data.js';
-import { handleGeminiProxy, handleGeminiGenerate, geminiUsageGet } from './gemini.js';
 import { uploadFile, deleteFile, serveFile } from './files.js';
 import { runMaintenance } from './maintenance.js';
 import {
@@ -248,15 +247,6 @@ async function handlePost(env, ctx, request, body) {
       if (!(await checkAdmin(env, body.adminToken))) return { success: false, error: 'admin_required' };
       await appendAuditLog(env, 'deleteFile', body.driveId || '', body.adminToken, 'admin');
       return { success: await deleteFile(env, body.driveId || '') };
-    }
-
-    // --- Gemini ---
-    // 停止中は、キーの有無にかかわらず Gemini へ送らない(再開: wrangler.toml の GEMINI_ENABLED)
-    if (String(action).indexOf('gemini') === 0 && env.GEMINI_ENABLED !== 'true') return { success: false, error: 'feature_disabled' };
-    if (action === 'geminiProxy') return handleGeminiProxy(env, Object.assign({}, body, { token }));
-    if (action === 'geminiGenerate') return handleGeminiGenerate(env, Object.assign({}, body, { token }));
-    if (action === 'geminiUsage') {
-      return { success: true, usage: await geminiUsageGet(env, jstDate()), limit: GEMINI_DAILY_LIMIT };
     }
 
     // --- 設定 ---
