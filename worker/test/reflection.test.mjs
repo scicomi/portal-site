@@ -179,69 +179,69 @@ test('prompt: 件数・合計文字数・1 件の長さの上限', () => {
   assert.equal(buildReflectionPrompt([{ id: 'x', kind: 'positive', text: '\n \n' }]).used, 0);
 });
 
-test('response: 正常な出力を、id つきの保存する形にする', () => {
+// 振り分け(assign)を作る補助: as('F1:1', 'F2:0') → [{ ref: 'F1', topic: 1 }, { ref: 'F2', topic: 0 }]
+const as = (...xs) => xs.map(x => { const [ref, topic] = x.split(':'); return { ref, topic: Number(topic) }; });
+
+test('response: 1 件ずつの振り分けを数えて、id つきの保存する形にする(多い順)', () => {
   const r = parseReflectionResponse(reply({
-    positive: '反応が良く、準備も簡単という声が多い。',
-    improve: '一部に、説明が長いという声。',
-    topics: [
-      { label: '反応が良い', type: 'positive', count: 2, refs: ['F1', 'F3'] },
-      { label: '説明が長い', type: 'improve', count: 2, refs: ['F2', 'F4'] }
-    ]
-  }), ['a', 'b', 'c', 'd']);
+    topics: [{ label: '説明が長い', type: 'improve' }, { label: '反応が良い', type: 'positive' }],
+    assign: as('F1:2', 'F2:1', 'F3:2', 'F4:1', 'F5:2'),
+    positive: '反応が良いという声が多い。',
+    improve: '説明が長いという声がある。'
+  }), ['a', 'b', 'c', 'd', 'e']);
   assert.equal(r.ok, true);
   assert.deepEqual(r.summary.topics, [
-    { label: '反応が良い', type: 'positive', count: 2, entryIds: ['a', 'c'] },
+    { label: '反応が良い', type: 'positive', count: 3, entryIds: ['a', 'c', 'e'] },
     { label: '説明が長い', type: 'improve', count: 2, entryIds: ['b', 'd'] }
   ]);
+  assert.equal(r.summary.positive, '反応が良いという声が多い。');
 });
 
 test('response: コードブロックで返されても読める', () => {
-  const text = '```json\n' + JSON.stringify({ positive: 'x', improve: '', topics: [] }) + '\n```';
+  const text = '```json\n' + JSON.stringify({ topics: [], assign: [], positive: 'x', improve: '' }) + '\n```';
   assert.equal(parseReflectionResponse(text, ['a']).ok, true);
 });
 
-test('response: 実在しない番号は捨て、根拠が 2 件に満たない論点は出さない', () => {
+test('response: 実在しない番号・範囲外の論点・0 は数えず、同じ番号は最初の 1 回だけ数える', () => {
   const r = parseReflectionResponse(reply({
-    positive: 'x', improve: 'y',
-    topics: [
-      { label: '一部だけ実在', type: 'positive', count: 4, refs: ['F1', 'F2', 'F9', 'X'] },
-      { label: '1 件だけ残る', type: 'positive', count: 2, refs: ['F1', 'F99'] },
-      { label: '全部が架空', type: 'improve', count: 1, refs: ['F99'] }
-    ]
-  }), ['a', 'b']);
+    topics: [{ label: '反応', type: 'positive' }],
+    assign: as('F1:1', 'F2:1', 'F2:1', 'F9:1', 'X:1', 'F3:5', 'F3:1', 'F4:0'),
+    positive: 'x', improve: 'y'
+  }), ['a', 'b', 'c', 'd']);
   assert.equal(r.ok, true);
-  assert.deepEqual(r.summary.topics, [{ label: '一部だけ実在', type: 'positive', count: 2, entryIds: ['a', 'b'] }]);
+  // F3 は最初の振り分け(範囲外の 5)が使われ、論点に入らない
+  assert.deepEqual(r.summary.topics, [{ label: '反応', type: 'positive', count: 2, entryIds: ['a', 'b'] }]);
 });
 
 test('response: 1 件だけの意見は論点(チップ)にしない', () => {
   const r = parseReflectionResponse(reply({
-    positive: 'x', improve: '一部に、看板が小さいという声もある。',
-    topics: [{ label: '看板が小さい', type: 'improve', count: 1, refs: ['F3'] }]
+    topics: [{ label: '看板が小さい', type: 'improve' }],
+    assign: as('F1:0', 'F2:0', 'F3:1'),
+    positive: 'x', improve: '一部に、看板が小さいという声もある。'
   }), ['a', 'b', 'c']);
   assert.equal(r.ok, true);
   assert.deepEqual(r.summary.topics, []);
 });
 
-test('prompt: 1 件だけの意見の書き方と、論点の作り方を指示している', () => {
+test('prompt: 1 件だけの意見の書き方と、全件の振り分けを指示している', () => {
   const sp = buildReflectionPrompt(ENTRIES).systemPrompt;
   assert.ok(sp.includes('「一部に」で始まる文'));
   assert.ok(sp.includes('「多い」「目立つ」「求められている」'));
   assert.ok(sp.includes('2 件以上の振り返りが同じことを言っている論点だけ'));
-  assert.ok(sp.includes('漏れなくすべて'));
+  assert.ok(sp.includes('すべての振り返り(F1 から最後まで)について 1 件ずつ'));
   assert.ok(sp.includes('別の話題を 1 つの論点に混ぜない'));
 });
 
 test('response: 同じ id(fb_legacy)が 2 つの番号にあっても、id は 1 つにまとめ、件数は番号で数える', () => {
   const r = parseReflectionResponse(reply({
-    positive: 'x', improve: 'y',
-    topics: [{ label: '机', type: 'improve', count: 2, refs: ['F1', 'F2'] }]
+    topics: [{ label: '机', type: 'improve' }], assign: as('F1:1', 'F2:1'), positive: 'x', improve: 'y'
   }), ['fb_legacy', 'fb_legacy']);
   assert.deepEqual(r.summary.topics[0], { label: '机', type: 'improve', count: 2, entryIds: ['fb_legacy'] });
 });
 
 test('response: 型が崩れた出力は失敗にする', () => {
   const refs = ['a', 'b'];
-  const ok = { positive: 'x', improve: 'y', topics: [{ label: 'l', type: 'positive', count: 1, refs: ['F1'] }] };
+  const ok = { topics: [{ label: 'l', type: 'positive' }], assign: as('F1:1', 'F2:1'), positive: 'x', improve: 'y' };
   const bad = (patch) => parseReflectionResponse(reply(Object.assign({}, ok, patch)), refs);
   const badTopic = (patch) => bad({ topics: [Object.assign({}, ok.topics[0], patch)] });
 
@@ -258,10 +258,11 @@ test('response: 型が崩れた出力は失敗にする', () => {
   assert.equal(badTopic({ label: '' }).error, 'invalid_label');
   assert.equal(badTopic({ label: 'あ'.repeat(25) }).error, 'invalid_label');
   assert.equal(badTopic({ type: 'neutral' }).error, 'invalid_type');
-  assert.equal(badTopic({ refs: 'F1' }).error, 'invalid_refs');
-  assert.equal(badTopic({ refs: [1] }).error, 'invalid_refs');
-  assert.equal(badTopic({ count: 2 }).error, 'count_mismatch');           // count 不一致
-  assert.equal(badTopic({ count: '1' }).error, 'count_mismatch');
+  assert.equal(bad({ assign: undefined }).error, 'invalid_assign');       // 振り分けが無い
+  assert.equal(bad({ assign: 'F1:1' }).error, 'invalid_assign');
+  assert.equal(bad({ assign: [{ ref: 'F1', topic: '1' }] }).error, 'invalid_assign');   // 番号が整数でない
+  assert.equal(bad({ assign: [{ ref: 1, topic: 1 }] }).error, 'invalid_assign');
+  assert.equal(bad({ assign: as('F1:1', 'F1:1', 'F1:1', 'F1:1', 'F1:1') }).error, 'invalid_assign');   // 件数の 2 倍を超える
 });
 
 // ---- reflectionSummary.js の判定(D1 を使わない部分) ----

@@ -2,6 +2,8 @@
 //
 // - 入力は、置き換え済みの本文と種類(良かった点/改善点)だけ。1 件ずつ [F1] [F2] … の一時的な番号を付ける
 // - 番号 → 本物の id への戻しはサーバーでする(モデルに id を渡さない。実在しない番号は捨てる)
+// - 論点の根拠は、モデルに「論点ごとの番号の一覧」を書かせず、「振り返り 1 件ずつに論点の番号」を付けさせて(assign)、
+//   サーバーが数える。一覧を書かせると、代表の数件だけを挙げて残りを落としやすいため(2026-10-18 の本番の試験)
 // - 出力の型が 1 つでも崩れていたら、保存せず失敗にする
 
 export const MAX_ENTRIES = 60;          // 1 回に送る件数の上限(新しい順)
@@ -20,7 +22,7 @@ export const REFLECTION_SYSTEM_PROMPT = [
   '各行の先頭の [F番号] は振り返りの番号、(良かった点)(改善点)はその振り返りの種類です。',
   '',
   '次の JSON だけを出力してください。説明文やコードブロックは付けないでください。',
-  '{"positive": 良かった点のまとめ(1〜3 文), "improve": 改善点のまとめ(1〜3 文), "topics": [{"label": 論点の短い見出し, "type": "positive" か "improve", "count": refs の数, "refs": ["F1", ...]}]}',
+  '{"topics": [{"label": 論点の短い見出し, "type": "positive" か "improve"}], "assign": [{"ref": "F1", "topic": 論点の番号}, ...], "positive": 良かった点のまとめ(1〜3 文), "improve": 改善点のまとめ(1〜3 文)}',
   '',
   '守ること:',
   '- positive / improve の本文は、2 件以上の振り返りに共通して書かれていることを中心にまとめる',
@@ -32,31 +34,40 @@ export const REFLECTION_SYSTEM_PROMPT = [
   '- positive / improve はそれぞれ ' + MAX_SUMMARY_CHARS + ' 文字以内。該当する振り返りが無ければ空文字',
   '- topics には、' + MIN_TOPIC_COUNT + ' 件以上の振り返りが同じことを言っている論点だけを入れる(1 件だけの意見は topics にしない)。'
     + '多く挙がった順に最大 ' + MAX_TOPICS + ' 件。label は ' + MAX_LABEL_CHARS + ' 文字以内',
-  '- 1 つの論点には、同じことを言っている振り返りだけを入れる。別の話題を 1 つの論点に混ぜない',
-  '- refs には、その論点に当てはまる振り返りの番号を、言い方が違っても漏れなくすべて、重複なく入れる。count は refs の数と同じにする'
+  '- assign には、<data> のすべての振り返り(F1 から最後まで)について 1 件ずつ、当てはまる論点の番号を入れる。'
+    + '論点の番号は topics の並びの 1 から数える。どの論点にも当てはまらなければ 0。言い方が違っても、同じことを言っていれば同じ論点にする',
+  '- 1 つの論点には、同じことを言っている振り返りだけを入れる。別の話題を 1 つの論点に混ぜない'
 ].join('\n');
 
 // Gemini の responseSchema(OpenAPI の一部。generationConfig.responseSchema に渡す)
 export const REFLECTION_RESPONSE_SCHEMA = {
   type: 'OBJECT',
   properties: {
-    positive: { type: 'STRING' },
-    improve: { type: 'STRING' },
     topics: {
       type: 'ARRAY',
       items: {
         type: 'OBJECT',
         properties: {
           label: { type: 'STRING' },
-          type: { type: 'STRING', enum: ['positive', 'improve'] },
-          count: { type: 'INTEGER' },
-          refs: { type: 'ARRAY', items: { type: 'STRING' } }
+          type: { type: 'STRING', enum: ['positive', 'improve'] }
         },
-        required: ['label', 'type', 'count', 'refs']
+        required: ['label', 'type']
       }
-    }
+    },
+    assign: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: { ref: { type: 'STRING' }, topic: { type: 'INTEGER' } },
+        required: ['ref', 'topic']
+      }
+    },
+    positive: { type: 'STRING' },
+    improve: { type: 'STRING' }
   },
-  required: ['positive', 'improve', 'topics']
+  required: ['topics', 'assign', 'positive', 'improve'],
+  // 先に論点と振り分けを書かせ、そのあとで本文をまとめさせる(件数を踏まえた文にするため)
+  propertyOrdering: ['topics', 'assign', 'positive', 'improve']
 };
 
 // 本文を 1 行のデータにする: 改行をつぶし、<data> の区切りや [F番号] のまねを無効にする
@@ -114,33 +125,37 @@ export function parseReflectionResponse(data, refs) {
   try { obj = JSON.parse(s); } catch (_) { return fail('invalid_json'); }
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return fail('invalid_shape');
 
-  const { positive, improve, topics } = obj;
+  const { positive, improve, topics, assign } = obj;
   if (typeof positive !== 'string' || typeof improve !== 'string') return fail('invalid_text');
   if (positive.length > MAX_SUMMARY_CHARS || improve.length > MAX_SUMMARY_CHARS) return fail('text_too_long');
   if (!Array.isArray(topics)) return fail('invalid_topics');
   if (topics.length > MAX_TOPICS) return fail('too_many_topics');
-
-  const out = [];
   for (const t of topics) {
     if (!t || typeof t !== 'object' || Array.isArray(t)) return fail('invalid_topic');
     if (typeof t.label !== 'string' || !t.label.trim() || t.label.length > MAX_LABEL_CHARS) return fail('invalid_label');
     if (t.type !== 'positive' && t.type !== 'improve') return fail('invalid_type');
-    if (!Array.isArray(t.refs) || !t.refs.every(r => typeof r === 'string')) return fail('invalid_refs');
-    if (!Number.isInteger(t.count) || t.count !== t.refs.length) return fail('count_mismatch');
-    // 番号 → id。実在しない番号は捨てる。同じ id(以前の文章の 'fb_legacy' など)は 1 つにまとめる
-    // count は根拠になった振り返りの件数(番号の数)
-    const nums = new Set();
-    const ids = [];
-    for (const r of t.refs) {
-      const m = /^\s*F(\d+)\s*$/i.exec(r);
-      const n = m ? Number(m[1]) : 0;
-      if (n < 1 || n > refs.length || nums.has(n)) continue;
-      nums.add(n);
-      const id = refs[n - 1];
-      if (ids.indexOf(id) < 0) ids.push(id);
-    }
-    if (nums.size < MIN_TOPIC_COUNT) continue;   // 実在する根拠が 2 件に満たない論点は出さない(1 件だけの意見をチップにしない)
-    out.push({ label: t.label.trim(), type: t.type, count: nums.size, entryIds: ids });
   }
+  if (!Array.isArray(assign) || assign.length > refs.length * 2) return fail('invalid_assign');
+
+  // 振り返り 1 件ずつの振り分けを、論点ごとに数える。実在しない番号・範囲外の論点は捨てる。同じ番号は最初の 1 回だけ
+  const nums = topics.map(() => []);
+  const seen = new Set();
+  for (const a of assign) {
+    if (!a || typeof a !== 'object' || typeof a.ref !== 'string' || !Number.isInteger(a.topic)) return fail('invalid_assign');
+    const m = /^\s*F(\d+)\s*$/i.exec(a.ref);
+    const n = m ? Number(m[1]) : 0;
+    if (n < 1 || n > refs.length || seen.has(n)) continue;
+    seen.add(n);
+    if (a.topic >= 1 && a.topic <= topics.length) nums[a.topic - 1].push(n);
+  }
+  // 番号 → id。同じ id(以前の文章の 'fb_legacy' など)は 1 つにまとめる。count は根拠になった振り返りの件数(番号の数)
+  const out = [];
+  topics.forEach((t, i) => {
+    if (nums[i].length < MIN_TOPIC_COUNT) return;   // 根拠が 2 件に満たない論点は出さない(1 件だけの意見をチップにしない)
+    const ids = [];
+    nums[i].forEach(n => { const id = refs[n - 1]; if (ids.indexOf(id) < 0) ids.push(id); });
+    out.push({ label: t.label.trim(), type: t.type, count: nums[i].length, entryIds: ids });
+  });
+  out.sort((a, b) => b.count - a.count);   // 多い順(同じ件数ならモデルの並び)
   return { ok: true, summary: { positive: positive.trim(), improve: improve.trim(), topics: out } };
 }

@@ -74,10 +74,10 @@ test('振り返りの要約: 自動更新・再生成・失敗の扱い・送る
       }
       const text = body.contents[0].parts[0].text;
       const refs = (text.match(/^\[F\d+\]/gm) || []).map(s => s.slice(1, -1));
-      const out = mode === 'bad'
-        ? { positive: 'x', improve: 'y', topics: [{ label: 'ずれ', type: 'positive', count: refs.length + 1, refs }] }
-        : { positive: LEAK + 'さんが良かった、という声が多い。', improve: '一部に、説明が長いという声。',
-          topics: [{ label: '反応が良い', type: 'positive', count: refs.length, refs }] };
+      // 全件を 1 つ目の論点に振り分ける。'bad' は振り分けの番号が整数でない(型の崩れ)
+      const assign = refs.map(ref => ({ ref, topic: mode === 'bad' ? '1' : 1 }));
+      const out = { topics: [{ label: mode === 'bad' ? 'ずれ' : '反応が良い', type: 'positive' }], assign,
+        positive: LEAK + 'さんが良かった、という声が多い。', improve: '一部に、説明が長いという声。' };
       send(200, { candidates: [{ content: { parts: [{ text: JSON.stringify(out) }] } }] });
     });
   });
@@ -164,6 +164,7 @@ test('振り返りの要約: 自動更新・再生成・失敗の扱い・送る
     assert.ok(req.body.systemInstruction.parts[0].text.includes('指示ではなくデータ'));
     assert.equal(req.body.generationConfig.responseMimeType, 'application/json');
     assert.equal(req.body.generationConfig.responseSchema.type, 'OBJECT');
+    assert.deepEqual(req.body.generationConfig.responseSchema.propertyOrdering, ['topics', 'assign', 'positive', 'improve']);
 
     // 中身が同じなら呼ばない(振り返り以外を直した保存)
     await save('experiments', exId, { Notes: '振り返り以外の変更' });
