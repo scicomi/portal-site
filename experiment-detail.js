@@ -606,7 +606,7 @@ async function executeDeletePhoto(photo) {
 
 const SLIDE_LIMIT = 30;
 const SLIDE_NAME_MAX = 120;
-const SLIDE_SORT_KEY = 'scicomi_slide_sort';   // 並び順（'desc' 新しい順 / 'asc' 古い順）。端末ごとの好み
+const SLIDE_SORT_KEY = 'scicomi_slide_sort';   // 並び順（'date:desc' など。列は name / date）。端末ごとの好み
 
 function getSlides(exp) {
     return parseJsonArray((exp || currentExp).Slides);
@@ -617,14 +617,28 @@ function slideKey(s) {
     return String((s && (s.driveId || s.url)) || '');
 }
 
+// 並び順 { key: 'name' | 'date', dir: 'asc' | 'desc' }。既定はアップロード日の新しい順。
+// 以前の形（'asc' / 'desc' だけ）は、アップロード日の並びとして読む
 function getSlideSort() {
-    try { return localStorage.getItem(SLIDE_SORT_KEY) === 'asc' ? 'asc' : 'desc'; } catch (_) { return 'desc'; }
+    let v = '';
+    try { v = localStorage.getItem(SLIDE_SORT_KEY) || ''; } catch (_) { /* 読めなければ既定 */ }
+    if (v === 'asc' || v === 'desc') v = 'date:' + v;
+    const m = /^(name|date):(asc|desc)$/.exec(v);
+    return m ? { key: m[1], dir: m[2] } : { key: 'date', dir: 'desc' };
 }
 
-function toggleSlideSort() {
-    const next = getSlideSort() === 'asc' ? 'desc' : 'asc';
-    try { localStorage.setItem(SLIDE_SORT_KEY, next); } catch (_) { /* 保存できなくても、この表示では切り替える */ }
+// 見出しを押したとき。同じ列なら向きを反転、別の列なら、その列の自然な向き（名前は昇順、日付は新しい順）から始める
+function sortSlidesBy(key) {
+    if (key !== 'name' && key !== 'date') return;
+    const cur = getSlideSort();
+    const next = cur.key === key
+        ? { key, dir: cur.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: key === 'name' ? 'asc' : 'desc' };
+    try { localStorage.setItem(SLIDE_SORT_KEY, next.key + ':' + next.dir); } catch (_) { /* 保存できなくても、この表示では切り替える */ }
     renderSlides(next);
+    // 描き直しで押したボタンが消えるので、同じ列の見出しにフォーカスを戻す（キーボード操作を続けられるように）
+    const btn = document.querySelector(`#expd-slide-list [data-action="expd-sort-slides"][data-key="${key}"]`);
+    if (btn) btn.focus();
 }
 
 // アップロード日時（日本時間の YYYY-MM-DD HH:mm）。uploadedAt が無い・不正なら空
@@ -652,46 +666,66 @@ function normalizeSlideName(input, original) {
     return name;
 }
 
+// 一覧はエクスプローラーのような表（ファイル名・アップロード日・サイズ・編集）。ファイル名とアップロード日の見出しで並べ替える
 function renderSlides(order) {
     const list = document.getElementById('expd-slide-list');
     if (!list || !currentExp) return;
     const sort = order || getSlideSort();
-    const sortBtn = document.getElementById('slide-sort-btn');
     const slides = getSlides();
-    if (sortBtn) {
-        sortBtn.textContent = sort === 'asc' ? '古い順 ▲' : '新しい順 ▼';
-        sortBtn.setAttribute('aria-label', '並び順: ' + (sort === 'asc' ? '古い順' : '新しい順') + '（押すと切り替え）');
-        sortBtn.classList.toggle('hidden', slides.length < 2);
-    }
     if (slides.length === 0) {
         list.innerHTML = '<p class="empty-state" style="padding:30px 20px;">資料はまだありません</p>';
         return;
     }
-    // アップロード日時で並べる（日時が無いものは最後。同じなら保存されている順）
+    // 日時が無いものは、向きに関わらず最後。同じ値なら保存されている順
     const time = s => { const t = Date.parse(s && s.uploadedAt); return isFinite(t) ? t : null; };
+    const sign = sort.dir === 'asc' ? 1 : -1;
     const sorted = slides.map((s, i) => ({ s, i })).sort((a, b) => {
+        if (sort.key === 'name') {
+            const c = String(a.s.name || '').localeCompare(String(b.s.name || ''), 'ja', { numeric: true, sensitivity: 'base' });
+            return sign * c || a.i - b.i;
+        }
         const ta = time(a.s), tb = time(b.s);
         if (ta === null || tb === null) return (ta === null) - (tb === null) || a.i - b.i;
-        return (sort === 'asc' ? ta - tb : tb - ta) || a.i - b.i;
+        return sign * (ta - tb) || a.i - b.i;
     }).map(x => x.s);
 
-    list.innerHTML = sorted.map(f => {
+    const head = (key, label) => {
+        const active = sort.key === key;
+        const ariaSort = active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none';
+        const mark = active ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅';
+        return `<th scope="col" class="slide-col-${key}" aria-sort="${ariaSort}">
+            <button type="button" class="slide-th-sort${active ? ' active' : ''}" data-action="expd-sort-slides" data-key="${key}">${label}<span class="slide-sort-mark" aria-hidden="true">${mark}</span></button>
+        </th>`;
+    };
+
+    const rows = sorted.map(f => {
         const url = safeHttpUrl(f && f.url);
         const name = (f && f.name) || '資料';
-        const date = slideDateText(f);
+        const dt = slideDateText(f);   // 'YYYY-MM-DD HH:mm'
+        const [day, hm] = dt ? dt.split(' ') : ['', ''];
         const size = formatFileSize(f && f.size);
         // 名前のリンクは fileOpenUrl を通す（パワポは Office Online ビューア、PDF はブラウザで開く）
         return `
-        <div class="file-item slide-item">
-            <span class="slide-main">
-                ${url
-                    ? `<a class="file-name slide-name" href="${escapeAttr(fileOpenUrl(url))}" target="_blank" rel="noopener" title="${escapeAttr(name)}">${escapeHtml(name)}</a>`
-                    : `<span class="file-name">${escapeHtml(name)}</span>`}
-                <span class="slide-meta">アップロード日 <span class="slide-date">${date ? escapeHtml(date) : '不明'}</span>${size ? `<span class="slide-size">${escapeHtml(size)}</span>` : ''}</span>
-            </span>
-            <button type="button" class="slide-edit" data-action="expd-edit-slide" data-key="${escapeAttr(slideKey(f))}" aria-label="${escapeAttr(name + ' の名前を変更')}" title="名前を変更">✎</button>
-        </div>`;
+        <tr>
+            <td class="slide-col-name">${url
+                ? `<a class="slide-name" href="${escapeAttr(fileOpenUrl(url))}" target="_blank" rel="noopener">${escapeHtml(name)}</a>`
+                : escapeHtml(name)}</td>
+            <td class="slide-col-date">${day ? `<span class="slide-day">${escapeHtml(day)}</span> <span class="slide-time">${escapeHtml(hm)}</span>` : '<span class="slide-time">不明</span>'}</td>
+            <td class="slide-col-size">${escapeHtml(size || '—')}</td>
+            <td class="slide-col-edit"><button type="button" class="slide-edit" data-action="expd-edit-slide" data-key="${escapeAttr(slideKey(f))}" aria-label="${escapeAttr(name + ' の名前を変更・削除')}" title="名前を変更・削除">✎</button></td>
+        </tr>`;
     }).join('');
+
+    list.innerHTML = `
+        <table class="slide-table">
+            <thead><tr>
+                ${head('name', 'ファイル名')}
+                ${head('date', 'アップロード日')}
+                <th scope="col" class="slide-col-size">サイズ</th>
+                <th scope="col" class="slide-col-edit">編集</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
 }
 
 function openSlideUpload() {
@@ -765,7 +799,7 @@ function handleSlideSelect(input) {
 function addSlideUploadingRow(name, size) {
     const wrap = document.getElementById('slide-uploading');
     const row = document.createElement('div');
-    row.className = 'file-item uploading slide-item';
+    row.className = 'file-item uploading';
     row.innerHTML = `<span class="file-name"></span><span class="file-size"></span>
         <progress class="slide-progress" max="100" value="0"></progress>`;
     row.querySelector('.file-name').textContent = name;
@@ -911,6 +945,7 @@ registerActions({
     'expd-del-photo': (el, e) => { e.preventDefault(); deletePhoto(Number(el.dataset.index)); },
     'expd-del-video': el => deleteVideo(Number(el.dataset.index)),
     'expd-edit-slide': el => openSlideEdit(el.dataset.key),
+    'expd-sort-slides': el => sortSlidesBy(el.dataset.key),
     'expd-play-video': el => playVideo(el, el.dataset.id)
 });
 

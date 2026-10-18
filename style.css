@@ -2812,39 +2812,61 @@ textarea:focus {
 }
 .sfb-date { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; }
 
-/* ========== 発表資料（実験詳細の「資料」タブ。行は .file-item を使う） ========== */
+/* ========== 発表資料（実験詳細の「資料」タブ。エクスプローラーのような表。アップロード中の行は .file-item） ========== */
 .slide-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.slide-sort {
-    min-height: 32px; padding: 0 12px; border: 1px solid var(--border-input); border-radius: 6px;
-    background: var(--surface); color: var(--text-color); font-size: 0.8rem; font-family: inherit; cursor: pointer;
-}
-.slide-sort:hover { background: var(--bg-muted); }
-.slide-list { display: flex; flex-direction: column; gap: 6px; }
 .slide-list:empty { display: none; }
-.slide-item { padding: 8px 8px 8px 12px; margin-top: 0; font-size: 0.9rem; }
-.slide-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.slide-item .slide-name { color: var(--primary-color); text-decoration: none; font-weight: 600; }
-.slide-item .slide-name:hover { text-decoration: underline; }
-.slide-meta { color: var(--text-muted); font-size: 0.8rem; }
-.slide-date, .slide-size { white-space: nowrap; }
-.slide-size::before { content: '・'; }
+.slide-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; table-layout: fixed; }
+.slide-table th {
+    text-align: left; font-size: 0.8rem; font-weight: 600; color: var(--text-label);
+    padding: 0 8px; border-bottom: 2px solid var(--border-color); white-space: nowrap;
+}
+.slide-table td { padding: 8px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+.slide-table tbody tr:last-child td { border-bottom: none; }
+.slide-table tbody tr:hover td { background: var(--bg-subtle); }
+.slide-col-date { width: 150px; }
+.slide-col-size { width: 80px; text-align: right; white-space: nowrap; color: var(--text-muted); }
+.slide-table th.slide-col-size { text-align: right; }
+.slide-col-edit { width: 52px; text-align: center; }
+.slide-table th.slide-col-edit { text-align: center; }
+td.slide-col-name { overflow-wrap: anywhere; }
+td.slide-col-date { color: var(--text-muted); font-size: 0.85rem; }
+.slide-day, .slide-time { white-space: nowrap; }
+.slide-th-sort {
+    display: inline-flex; text-align: left; align-items: center; gap: 4px; min-height: 36px; padding: 0; border: none; background: none;
+    color: inherit; font: inherit; cursor: pointer;
+}
+.slide-th-sort:hover, .slide-th-sort.active { color: var(--primary-color); }
+.slide-sort-mark { font-size: 0.75rem; }
+.slide-name { color: var(--primary-color); text-decoration: none; font-weight: 600; }
+.slide-name:hover { text-decoration: underline; }
 .slide-edit {
-    flex-shrink: 0; width: 36px; height: 36px; border: none; border-radius: 6px; background: none;
+    width: 36px; height: 36px; border: none; border-radius: 6px; background: none;
     color: var(--text-label); font-size: 1rem; cursor: pointer;
 }
 .slide-edit:hover { background: var(--bg-muted); color: var(--text-color); }
+.slide-list .file-item { margin-top: 0; }
 .slide-progress { width: 120px; height: 8px; accent-color: var(--primary-color); }
-#slide-uploading:not(:empty) { margin-bottom: 6px; }
+#slide-uploading:not(:empty) { margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
 .slide-name-hint { margin: 4px 0 0; word-break: break-all; }
 .slide-edit-actions { align-items: center; }
 .slide-edit-spacer { flex: 1; }
 .slide-edit-delete { color: var(--danger-color); }
 @media (hover: none) {
     .slide-edit { width: var(--touch-min); height: var(--touch-min); }
-    .slide-sort { min-height: var(--touch-min); }
+    .slide-th-sort { min-height: var(--touch-min); }
 }
 @media (max-width: 600px) {
-    .slide-item .file-name { white-space: normal; word-break: break-all; }
+    .slide-table { font-size: 0.85rem; }
+    /* 表に幅を回すため、資料タブの中だけ枠の内側の余白をなくす */
+    [data-tab-pane="slides"] .expd-section { padding-left: 0; padding-right: 0; }
+    .slide-table th, .slide-table td { padding-left: 4px; padding-right: 4px; }
+    .slide-col-date { width: 72px; }
+    .slide-col-size { width: 50px; }
+    .slide-col-edit { width: 36px; }
+    .slide-time { display: block; }
+    .slide-table th { font-size: 0.75rem; white-space: normal; }
+    .slide-th-sort { display: inline; }
+    .slide-sort-mark { font-size: 0.7rem; }
     .slide-progress { flex: 1; }
 }
 
