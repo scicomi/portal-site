@@ -622,14 +622,16 @@ function storagePieSvg(slices, label) {
     return `<svg viewBox="0 0 120 120" class="storage-pie" role="img" aria-label="${escapeAttr(label)}">${arcs}</svg>`;
 }
 
-function storageCard(title, parts, used, limit, note) {
+function formatCount(n) { return isFinite(n) ? Math.round(n).toLocaleString('ja-JP') : '-'; }
+
+function storageCard(title, parts, used, limit, note, fmt = formatBytes) {
     const pct = limit > 0 ? used / limit * 100 : 0;
     const level = pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : 'ok';
     const free = Math.max(0, limit - used);
     const slices = parts.map(x => ({ value: x.value, cls: x.cls })).concat([{ value: free, cls: 'storage-free' }]);
-    const legend = parts.map(x => `<li><span class="storage-dot ${x.cls}"></span>${escapeHtml(x.name)}<b>${formatBytes(x.value)}</b></li>`).join('')
-        + `<li><span class="storage-dot storage-free"></span>空き<b>${formatBytes(free)}</b></li>`;
-    const label = `${title}: 上限 ${formatBytes(limit)} のうち ${formatBytes(used)} を使用（${pct.toFixed(1)}%）`;
+    const legend = parts.map(x => `<li><span class="storage-dot ${x.cls}"></span>${escapeHtml(x.name)}<b>${fmt(x.value)}</b></li>`).join('')
+        + `<li><span class="storage-dot storage-free"></span>空き<b>${fmt(free)}</b></li>`;
+    const label = `${title}: 上限 ${fmt(limit)} のうち ${fmt(used)} を使用（${pct.toFixed(1)}%）`;
     return `
         <div class="storage-item storage-${level}">
             <h3 class="storage-title">${escapeHtml(title)}</h3>
@@ -637,9 +639,18 @@ function storageCard(title, parts, used, limit, note) {
                 <div class="storage-pie-wrap">${storagePieSvg(slices, label)}<span class="storage-pct">${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%</span></div>
                 <ul class="storage-legend">${legend}</ul>
             </div>
-            <p class="storage-sum">${formatBytes(used)} / ${formatBytes(limit)}</p>
+            <p class="storage-sum">${fmt(used)} / ${fmt(limit)}</p>
             ${note ? `<p class="storage-note">${escapeHtml(note)}</p>` : ''}
         </div>`;
+}
+
+// Workers のリクエスト数・D1 の読み書き行数(無料プランは今日の分、Paid は今月の分)。取得できないときは出さない
+function activityCards(a) {
+    if (!a) return '';
+    const when = a.period === 'month' ? '今月' : '今日';
+    const note = a.period === 'month' ? 'Workers Paid に含まれる量に対する、今月の合計' : '無料枠の 1 日の上限に対する、今日の合計（日本時間の 9 時にリセット）';
+    const one = (title, x) => storageCard(`${title}（${when}）`, [{ name: when + 'の合計', value: x.used, cls: 'storage-used' }], x.used, x.limit, note, formatCount);
+    return one('Workers のリクエスト', a.requests) + one('D1 の読み取り行数', a.rowsRead) + one('D1 の書き込み行数', a.rowsWritten);
 }
 
 // 上限の決まり方の説明(自動・手動・取得できず無料プランの上限)
@@ -662,7 +673,7 @@ async function loadStorageUsage() {
         const r2 = storageCard('R2（ファイル）',
             [{ name: 'ファイル', value: u.r2.files, cls: 'storage-used' }, { name: 'バックアップ', value: u.r2.backups, cls: 'storage-used2' }],
             u.r2.files + u.r2.backups, u.r2.limit, u.r2.count + '件' + (u.r2.truncated ? '以上（数えきれていません）' : ''));
-        box.innerHTML = d1 + r2 + storageLimitNote(u);
+        box.innerHTML = d1 + r2 + activityCards(u.activity) + storageLimitNote(u);
     } catch (e) {
         // 付け足しの表示なので、取れなくても他の画面は使える
         console.warn('ストレージの使用量を読み込めませんでした:', e);

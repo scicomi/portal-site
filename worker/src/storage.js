@@ -10,6 +10,7 @@
 
 import { getConfig } from './config.js';
 import { cacheGet, cachePut } from './cache.js';
+import { fetchActivity } from './usage.js';
 
 const CACHE_KEY = 'storage_usage';
 const PLAN_CACHE_KEY = 'storage_plan';
@@ -52,7 +53,7 @@ async function fetchPlan(env) {
 }
 
 // 'free' | 'paid' | null(取得できない・未設定)。結果は覚える
-async function currentPlan(env) {
+export async function currentPlan(env) {
   const cached = await cacheGet(env, PLAN_CACHE_KEY);
   if (cached) return cached === 'unknown' ? null : cached;
   let plan = null;
@@ -111,6 +112,7 @@ export async function getStorageUsage(env) {
   // 上限は測定の覚えとは別に毎回決める(設定を変えたらすぐ反映する。プランは 1 日覚える)
   const lim = await resolveLimits(env);
   return {
+    activity: await fetchActivity(env, lim.plan),   // null = 取得できない(トークン未登録など)
     d1: { used: base.d1Used, limit: lim.d1Mb * MB },
     r2: { files: base.r2.files, backups: base.r2.backups, count: base.r2.count, truncated: base.r2.truncated, limit: lim.r2Mb * MB },
     limitSource: lim.source,   // 'manual'(設定の数字) | 'auto'(プランから) | 'fallback'(取得できず無料プランの上限)

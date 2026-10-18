@@ -1,6 +1,6 @@
 // 共通ユーティリティ
 
-export const CODE_VERSION = '2026-10-18-storage-3';
+export const CODE_VERSION = '2026-10-18-storage-4';
 
 const enc = new TextEncoder();
 
