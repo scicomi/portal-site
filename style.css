@@ -4286,3 +4286,26 @@ mark.search-hit {
 .fb-kind-block { margin: 0 0 10px 6px; }
 .fb-kind-title { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; font-weight: 700; color: var(--text-muted); margin: 4px 0 6px; }
 .fb-kind-count { font-weight: 400; }
+
+/* ホームのストレージ（D1・R2 の円グラフ） */
+.storage-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-lg); }
+.storage-title { margin: 0 0 8px; font-size: 0.95rem; font-weight: 700; }
+.storage-body { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.storage-pie-wrap { position: relative; width: 112px; height: 112px; flex: none; }
+.storage-pie { width: 100%; height: 100%; display: block; }
+.storage-pct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.95rem; }
+.storage-pie .storage-used { stroke: var(--primary-light); }
+.storage-pie .storage-used2 { stroke: light-dark(#e0a33a, #c9923a); }
+.storage-pie .storage-free { stroke: var(--border-color); }
+.storage-warn .storage-pie .storage-used { stroke: light-dark(#d98a00, #e0a33a); }
+.storage-danger .storage-pie .storage-used { stroke: light-dark(#c62828, #ef6a6a); }
+.storage-legend { list-style: none; margin: 0; padding: 0; font-size: 0.82rem; display: grid; gap: 4px; }
+.storage-legend li { display: flex; align-items: center; gap: 6px; }
+.storage-legend b { margin-left: auto; padding-left: 12px; font-weight: 600; }
+.storage-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.storage-dot.storage-used { background: var(--primary-light); }
+.storage-dot.storage-used2 { background: light-dark(#e0a33a, #c9923a); }
+.storage-dot.storage-free { background: var(--border-color); }
+.storage-sum { margin: 8px 0 0; font-size: 0.85rem; font-weight: 600; }
+.storage-note { margin: 2px 0 0; font-size: 0.78rem; color: var(--text-muted); }
+.storage-about { margin: var(--space-lg) 0 0; padding-top: var(--space-md); border-top: 1px solid var(--border-subtle); font-size: 0.8rem; line-height: 1.7; color: var(--text-muted); }

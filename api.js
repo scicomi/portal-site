@@ -359,6 +359,13 @@ const api = {
     return res.trashId || true;
   },
 
+  // ---- ストレージの使用量(ホームの円グラフ) ----
+  async getStorageUsage() {
+    const res = await this._post({ action: 'getStorageUsage', token: this.getToken() });
+    if (!res.success) throw apiFailure(res, 'getStorageUsage failed');
+    return res.usage;
+  },
+
   // ---- ゴミ箱 ----
   // パスワード一覧の分は、管理者トークンがあるときだけ返る。
   async listTrash() {

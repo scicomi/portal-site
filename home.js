@@ -38,6 +38,7 @@ async function init() {
     });
     renderWelcome();
     renderSiteLinks();
+    loadStorageUsage();
 
     updateSyncStatus(cachedEv ? 'cached' : 'initial-loading', cachedEv ? cachedEv.timestamp : null);
 
@@ -596,4 +597,66 @@ function renderSiteLinks() {
         </a>`;
     }).join('');
     section.style.display = '';
+}
+
+// ---- ストレージ（D1・R2 の使用量の円グラフ。上限は設定 storage_*_limit_mb） ----
+
+function formatBytes(n) {
+    if (!isFinite(n) || n < 0) return '-';
+    if (n >= 1024 ** 3) return (n / 1024 ** 3).toFixed(2) + ' GB';
+    if (n >= 1024 ** 2) return (n / 1024 ** 2).toFixed(1) + ' MB';
+    return Math.round(n / 1024) + ' KB';
+}
+
+// 円グラフ(SVG)。slices: [{ value, cls }]。全体が 1 つの値でも描けるよう、円周の弧で描く
+function storagePieSvg(slices, label) {
+    const total = slices.reduce((a, x) => a + x.value, 0) || 1;
+    const R = 50, C = 2 * Math.PI * R;
+    let offset = 0;
+    const arcs = slices.filter(x => x.value > 0).map(x => {
+        const len = C * x.value / total;
+        const a = `<circle class="${x.cls}" cx="60" cy="60" r="${R}" fill="none" stroke-width="22" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 60 60)"></circle>`;
+        offset += len;
+        return a;
+    }).join('');
+    return `<svg viewBox="0 0 120 120" class="storage-pie" role="img" aria-label="${escapeAttr(label)}">${arcs}</svg>`;
+}
+
+function storageCard(title, parts, used, limit, note) {
+    const pct = limit > 0 ? used / limit * 100 : 0;
+    const level = pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : 'ok';
+    const free = Math.max(0, limit - used);
+    const slices = parts.map(x => ({ value: x.value, cls: x.cls })).concat([{ value: free, cls: 'storage-free' }]);
+    const legend = parts.map(x => `<li><span class="storage-dot ${x.cls}"></span>${escapeHtml(x.name)}<b>${formatBytes(x.value)}</b></li>`).join('')
+        + `<li><span class="storage-dot storage-free"></span>空き<b>${formatBytes(free)}</b></li>`;
+    const label = `${title}: 上限 ${formatBytes(limit)} のうち ${formatBytes(used)} を使用（${pct.toFixed(1)}%）`;
+    return `
+        <div class="storage-item storage-${level}">
+            <h3 class="storage-title">${escapeHtml(title)}</h3>
+            <div class="storage-body">
+                <div class="storage-pie-wrap">${storagePieSvg(slices, label)}<span class="storage-pct">${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%</span></div>
+                <ul class="storage-legend">${legend}</ul>
+            </div>
+            <p class="storage-sum">${formatBytes(used)} / ${formatBytes(limit)}</p>
+            ${note ? `<p class="storage-note">${escapeHtml(note)}</p>` : ''}
+        </div>`;
+}
+
+async function loadStorageUsage() {
+    const box = document.getElementById('storage-charts');
+    if (!box) return;
+    try {
+        const u = await api.getStorageUsage();
+        const d1 = u.d1.used == null
+            ? '<div class="storage-item"><h3 class="storage-title">D1（データ）</h3><p class="storage-note">使用量を取得できませんでした</p></div>'
+            : storageCard('D1（データ）', [{ name: '使用中', value: u.d1.used, cls: 'storage-used' }], u.d1.used, u.d1.limit, '');
+        const r2 = storageCard('R2（ファイル）',
+            [{ name: 'ファイル', value: u.r2.files, cls: 'storage-used' }, { name: 'バックアップ', value: u.r2.backups, cls: 'storage-used2' }],
+            u.r2.files + u.r2.backups, u.r2.limit, u.r2.count + '件' + (u.r2.truncated ? '以上（数えきれていません）' : ''));
+        box.innerHTML = d1 + r2;
+    } catch (e) {
+        // 付け足しの表示なので、取れなくても他の画面は使える
+        console.warn('ストレージの使用量を読み込めませんでした:', e);
+        box.innerHTML = '<p class="empty-state" style="padding:10px 0;">読み込めませんでした</p>';
+    }
 }

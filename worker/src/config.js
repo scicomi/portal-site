@@ -44,6 +44,8 @@ export const DEFAULT_CONFIG = {
   file_max_mb: 50,
   backup_keep_count: 14,
   audit_keep_days: 365,
+  storage_d1_limit_mb: 500,   // ホームの円グラフの D1 の上限(MB)。Cloudflare のプランに合わせて変える(無料: 1 データベース 500MB)
+  storage_r2_limit_mb: 10240, // 同じく R2 の上限(MB)。無料枠は 10GB
   trash_keep_days: 7,         // ゴミ箱に入れたものを完全に削除するまでの日数
   // --- 表示・運用カスタム(settings.js が読み書き。一部はメンバーにも公開) ---
   welcome_message: '',
@@ -170,6 +172,11 @@ export function validateConfigValue(key, value) {
     case 'file_max_mb': {       // 0 にすると全アップロードが拒否されるため 1 以上。上限は Cloudflare のリクエスト本文の上限に収まる値
       const n = /^\d+$/.test(v.trim()) ? parseInt(v.trim(), 10) : NaN;
       return n >= 1 && n <= FILE_MAX_MB_LIMIT ? '' : '1〜' + FILE_MAX_MB_LIMIT + 'の整数を指定してください';
+    }
+    case 'storage_d1_limit_mb':
+    case 'storage_r2_limit_mb': {   // 1MB〜10TB(円グラフの割り算で 0 にならない範囲)
+      const n = /^\d+$/.test(v.trim()) ? parseInt(v.trim(), 10) : NaN;
+      return n >= 1 && n <= 10485760 ? '' : '1〜10485760(MB)の整数を指定してください';
     }
     case 'deadline_alert_danger':
     case 'deadline_alert_warning':

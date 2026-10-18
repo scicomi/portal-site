@@ -23,6 +23,7 @@ import { loadEventBefore, notifyEventSaved } from './eventNotify.js';
 import { enqueueTeamsNew, teamsNewDelaySec, drainTeamsSafe, drainTeamsAfterSafe, teamsStatus, notifyTeamsNow } from './teams.js';
 import { teamsConfigured } from './config.js';
 import { SUMMARY_TARGETS, markSummaryDirty, drainSummariesSafe, getReflectionSummary, regenerateReflectionSummary } from './reflectionSummary.js';
+import { getStorageUsage } from './storage.js';
 import { moveRecordToTrash, listTrash, restoreTrash, purgeTrash, purgeExpiredTrash, getTrashRow, TRASH_ADMIN_ONLY } from './trash.js';
 
 // リクエスト本文の上限。最大のものはファイルのアップロード(base64 で元の約 1.34 倍。上限は設定 file_max_mb)
@@ -276,6 +277,9 @@ async function handlePost(env, ctx, request, body) {
       await appendAuditLog(env, 'deleteFile', body.driveId || '', body.adminToken, 'admin');
       return { success: await deleteFile(env, body.driveId || '') };
     }
+
+    // --- ストレージの使用量(メンバーも可。数字だけで、中身は含まない) ---
+    if (action === 'getStorageUsage') return { success: true, usage: await getStorageUsage(env) };
 
     // --- 設定 ---
     // 公開設定(メンバーも可・表示系のみ。機密値は含めない)

@@ -107,6 +107,15 @@
                 <div id="site-links-list" class="site-link-grid"></div>
             </div>
         </section>
+
+        <!-- ストレージ（D1・R2 の使用量。上限は設定画面で変えられる） -->
+        <section class="dash-section" id="storage-section">
+            <h2 class="page-header">ストレージ</h2>
+            <div class="dash-card">
+                <div id="storage-charts" class="storage-charts"><p class="empty-state" style="padding:10px 0;">読み込み中…</p></div>
+                <p class="storage-about"><b>このサイトについて</b> : フロントエンドはGitHub、バックエンドはCloudflare（Workers / D1 / R2）のサーバーレス構成で構築しています。<br>※ストレージの上限を超える場合は有料プランへの切り替えが必要です。</p>
+            </div>
+        </section>
     </main>
 
     <script src="config.js"></script>

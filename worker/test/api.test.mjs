@@ -1069,3 +1069,18 @@ test('プッシュ通知: イベントの追加・編集で、送信待ちに積
     rx.server.close();
   }
 });
+
+test('getStorageUsage: メンバーが D1・R2 の使用量と上限を取れ、上限の設定が反映される', async () => {
+  assert.equal((await post({ action: 'getStorageUsage', token: 'bad' })).error, 'unauthorized');
+  const r = await post({ action: 'getStorageUsage', token: member });
+  assert.equal(r.success, true);
+  assert.ok(r.usage.d1.used > 0);
+  assert.equal(r.usage.d1.limit, 500 * 1024 * 1024);
+  assert.ok(r.usage.r2.files >= 0 && r.usage.r2.backups >= 0 && r.usage.r2.count >= 0);
+  assert.equal(r.usage.r2.limit, 10240 * 1024 * 1024);
+  // 上限を変えたら、測定の覚え(キャッシュ)の期間中でも、すぐ反映される
+  assert.equal((await post({ action: 'adminSetConfig', token: member, adminToken: admin, key: 'storage_d1_limit_mb', value: '1024' })).success, true);
+  assert.equal((await post({ action: 'getStorageUsage', token: member })).usage.d1.limit, 1024 * 1024 * 1024);
+  assert.equal((await post({ action: 'adminSetConfig', token: member, adminToken: admin, key: 'storage_d1_limit_mb', value: '0' })).success, false);
+  await post({ action: 'adminSetConfig', token: member, adminToken: admin, key: 'storage_d1_limit_mb', value: '500' });
+});
