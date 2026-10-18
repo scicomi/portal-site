@@ -692,13 +692,30 @@ function slideExt(name) {
 }
 
 // 入力された名前を整える。空なら元の名前。拡張子を消してしまっても、元の拡張子を付け直す（開き方の判定に使うため）
+// 画面で編集するのは拡張子を除いた名前だけ。拡張子は元のものを必ず付け直す
+function slideExtRaw(name) {
+    const m = /\.[A-Za-z0-9]{1,8}$/.exec(String(name || ''));
+    return m ? m[0] : '';
+}
+
+function slideBaseName(name) {
+    const s = String(name || '');
+    return s.slice(0, s.length - slideExtRaw(s).length);
+}
+
 function normalizeSlideName(input, original) {
-    let name = String(input || '').replace(/[\r\n\t]+/g, ' ').trim();
+    const name = String(input || '').replace(/[\r\n\t]+/g, ' ').trim();
     if (!name) return String(original || '資料');
-    const ext = slideExt(original);
-    if (ext && slideExt(name) !== ext) name += ext;
-    if (name.length > SLIDE_NAME_MAX) name = name.slice(0, SLIDE_NAME_MAX - ext.length) + ext;
-    return name;
+    const ext = slideExtRaw(original);
+    return name.slice(0, SLIDE_NAME_MAX - ext.length) + ext;
+}
+
+// 名前の入力欄の右に、変えられない拡張子を並べる
+function slideNameFieldHtml(attrs) {
+    return `<div class="slide-name-field" style="display:flex;align-items:center;gap:6px;">
+        <input type="text" class="e1-input" style="flex:1;min-width:0;" ${attrs}>
+        <span class="slide-name-ext" style="flex:none;color:var(--text-muted);"></span>
+    </div>`;
 }
 
 // 一覧はエクスプローラーのような表（ファイル名・アップロード日・サイズ・編集）。ファイル名とアップロード日の見出しで並べ替える
@@ -770,7 +787,7 @@ function renderSlides(order) {
         </table>`;
 }
 
-// 「⋯」のメニュー(ダウンロード・名前の変更と削除)。同じ「⋯」をもう一度押すか、外を押す・Esc・スクロールで閉じる
+// 「⋯」のメニュー(ダウンロード・名前の変更・削除)。同じ「⋯」をもう一度押すか、外を押す・Esc・スクロールで閉じる
 let slideMenuClose = null;
 function closeSlideMenu() { if (slideMenuClose) slideMenuClose(); }
 
@@ -787,7 +804,8 @@ function openSlideMenu(btn) {
     menu.setAttribute('role', 'menu');
     const items = [
         { label: 'ダウンロード', run: () => downloadSlide(key), off: !safeHttpUrl(slide.url) },
-        { label: '名前の変更・削除', run: () => openSlideEdit(key) }
+        { label: '名前の変更', run: () => openSlideEdit(key) },
+        { label: '削除', run: () => deleteSlide(key), danger: true }
     ];
     items.forEach(it => {
         const b = document.createElement('button');
@@ -900,11 +918,11 @@ function handleSlideSelect(input) {
     const rows = ok.map((f, i) => `
         <div class="e1-group slide-name-row">
             <label class="e1-label">ファイル名${ok.length > 1 ? `（${i + 1}）` : ''}</label>
-            <input type="text" class="e1-input" data-index="${i}" maxlength="${SLIDE_NAME_MAX}">
+            ${slideNameFieldHtml(`data-index="${i}" maxlength="${SLIDE_NAME_MAX - slideExtRaw(ok[i].name).length}"`)}
             <p class="settings-hint slide-name-hint"></p>
         </div>`).join('');
     const dlg = openSlideDialog('資料をアップロード', `
-        <p class="expd-note" style="margin-top:0;">表示する名前を変えられます（あとからでも変えられます）。拡張子は自動で付きます。</p>
+        <p class="expd-note" style="margin-top:0;">表示する名前を変えられます（あとからでも変えられます）。拡張子は変えられません。</p>
         ${rows}
         <div class="action-buttons">
             <button type="button" class="btn btn-text" data-role="cancel">キャンセル</button>
@@ -912,7 +930,8 @@ function handleSlideSelect(input) {
         </div>`);
     const inputs = Array.from(dlg.overlay.querySelectorAll('input[data-index]'));
     inputs.forEach((el, i) => {
-        el.value = ok[i].name;
+        el.value = slideBaseName(ok[i].name);
+        el.closest('.slide-name-field').querySelector('.slide-name-ext').textContent = slideExtRaw(ok[i].name);
         el.closest('.slide-name-row').querySelector('.slide-name-hint').textContent = '元のファイル: ' + ok[i].name + '（' + formatFileSize(ok[i].size) + '）';
     });
     dlg.overlay.querySelector('[data-role="cancel"]').onclick = dlg.close;
@@ -978,26 +997,24 @@ async function uploadSlides(entries) {
     }
 }
 
-// 名前の変更(「⋯」のメニューから開く)。削除もこのダイアログからできる
+// 名前の変更(「⋯」のメニューから開く)。拡張子は変えられない
 function openSlideEdit(key) {
     const slide = getSlides(currentExp).find(s => slideKey(s) === key);
     if (!slide) { toast('資料が見つかりません（すでに削除されています）', 'error'); renderSlides(); return; }
     const dlg = openSlideDialog('資料の名前を変更', `
         <div class="e1-group">
             <label class="e1-label">ファイル名</label>
-            <input type="text" class="e1-input" data-role="name" maxlength="${SLIDE_NAME_MAX}">
-            <p class="settings-hint">拡張子は自動で付きます。${escapeHtml(slideDateText(slide) ? 'アップロード日 ' + slideDateText(slide) : '')}</p>
+            ${slideNameFieldHtml(`data-role="name" maxlength="${SLIDE_NAME_MAX - slideExtRaw(slide.name).length}"`)}
+            <p class="settings-hint">拡張子は変えられません。${escapeHtml(slideDateText(slide) ? 'アップロード日 ' + slideDateText(slide) : '')}</p>
         </div>
         <div class="action-buttons slide-edit-actions">
-            <button type="button" class="btn btn-text slide-edit-delete" data-role="delete">この資料を削除</button>
-            <span class="slide-edit-spacer"></span>
             <button type="button" class="btn btn-text" data-role="cancel">キャンセル</button>
             <button type="button" class="btn btn-primary-solid" style="width:auto;" data-role="ok">保存</button>
         </div>`);
     const input = dlg.overlay.querySelector('[data-role="name"]');
-    input.value = slide.name || '';
+    input.value = slideBaseName(slide.name);
+    dlg.overlay.querySelector('.slide-name-ext').textContent = slideExtRaw(slide.name);
     dlg.overlay.querySelector('[data-role="cancel"]').onclick = dlg.close;
-    dlg.overlay.querySelector('[data-role="delete"]').onclick = () => { dlg.close(); deleteSlide(key); };
     const okBtn = dlg.overlay.querySelector('[data-role="ok"]');
     const submit = async () => {
         const name = normalizeSlideName(input.value, slide.name);
@@ -1026,9 +1043,7 @@ function openSlideEdit(key) {
     input.addEventListener('keydown', ev => { if (ev.key === 'Enter' && !ev.isComposing) { ev.preventDefault(); submit(); } });
     setTimeout(() => {
         input.focus();
-        // 拡張子の手前までを選んでおく（名前だけを打ち直しやすいように）
-        const ext = slideExt(input.value);
-        input.setSelectionRange(0, input.value.length - ext.length);
+        input.select();
     }, 50);
 }
 

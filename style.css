@@ -2857,9 +2857,6 @@ td.slide-col-date { color: var(--text-muted); font-size: 0.85rem; }
 .slide-progress { width: 120px; height: 8px; accent-color: var(--primary-color); }
 #slide-uploading:not(:empty) { margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
 .slide-name-hint { margin: 4px 0 0; word-break: break-all; }
-.slide-edit-actions { align-items: center; }
-.slide-edit-spacer { flex: 1; }
-.slide-edit-delete { color: var(--danger-color); }
 @media (hover: none) {
     .slide-edit { width: var(--touch-min); height: var(--touch-min); }
     .slide-th-sort { min-height: var(--touch-min); }
