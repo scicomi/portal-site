@@ -9,6 +9,7 @@ import {
   buildReflectionPrompt, parseReflectionResponse,
   MAX_ENTRIES, MAX_TOTAL_CHARS, MAX_ENTRY_CHARS, MAX_TOPICS
 } from '../src/reflectionPrompt.js';
+import { summaryAction, MIN_ENTRIES, REGEN_GROWTH } from '../src/reflectionSummary.js';
 
 const fb = (id, text, extra) => Object.assign({ id, text, memberId: 'm_' + id, name: '架空 太郎', createdAt: '' }, extra);
 
@@ -242,4 +243,20 @@ test('response: 型が崩れた出力は失敗にする', () => {
   assert.equal(badTopic({ refs: [1] }).error, 'invalid_refs');
   assert.equal(badTopic({ count: 2 }).error, 'count_mismatch');           // count 不一致
   assert.equal(badTopic({ count: '1' }).error, 'count_mismatch');
+});
+
+// ---- reflectionSummary.js の判定(D1 を使わない部分) ----
+
+test('自動更新の判定: 3 件未満は作らない・同じ入力は呼ばない・3 件以上増えたら作り直す', () => {
+  assert.equal(MIN_ENTRIES, 3);
+  assert.equal(REGEN_GROWTH, 3);
+  const row = { Summary: '{"positive":""}', InputHash: 'h1', EntryCount: 3 };
+  assert.equal(summaryAction(null, 2, 'h'), 'skip');               // 3 件未満で、要約も無い
+  assert.equal(summaryAction(row, 2, 'h2'), 'clear');              // 3 件未満に減った → 消す
+  assert.equal(summaryAction(null, 3, 'h'), 'generate');           // 初めて 3 件
+  assert.equal(summaryAction({ Summary: '', EntryCount: 0 }, 3, 'h'), 'generate');
+  assert.equal(summaryAction(row, 3, 'h1'), 'skip');               // 入力が同じ
+  assert.equal(summaryAction(row, 5, 'h2'), 'stale');              // 1〜2 件の増加・編集 → 作らない(古い表示)
+  assert.equal(summaryAction(row, 3, 'h2'), 'stale');
+  assert.equal(summaryAction(row, 6, 'h2'), 'generate');           // 3 件以上増えた
 });

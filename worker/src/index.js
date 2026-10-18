@@ -22,6 +22,7 @@ import {
 import { loadEventBefore, notifyEventSaved } from './eventNotify.js';
 import { enqueueTeamsNew, teamsNewDelaySec, drainTeamsSafe, drainTeamsAfterSafe, teamsStatus, notifyTeamsNow } from './teams.js';
 import { teamsConfigured } from './config.js';
+import { SUMMARY_TARGETS, markSummaryDirty, drainSummariesSafe, getReflectionSummary, regenerateReflectionSummary } from './reflectionSummary.js';
 import { moveRecordToTrash, listTrash, restoreTrash, purgeTrash, purgeExpiredTrash, getTrashRow, TRASH_ADMIN_ONLY } from './trash.js';
 
 // リクエスト本文の上限。最大のものはファイルのアップロード(base64 で元の約 1.34 倍。上限は設定 file_max_mb)
@@ -62,6 +63,7 @@ export default {
       ctx.waitUntil(drainPushOutboxSafe(env, batchSize(env)));
       ctx.waitUntil(drainTeamsSafe(env, 3));   // Teams の新規の通知(送信先が未設定なら何もしない)
       ctx.waitUntil(drainTeamsAfterSafe(env, 3));   // Teams の、イベント終了の翌朝の通知(同上)
+      ctx.waitUntil(drainSummariesSafe(env, 1));    // 振り返りの要約の自動更新(GEMINI_ENABLED が "true" でなければ何もしない)
     } else ctx.waitUntil(runMaintenance(env));
   }
 };
@@ -193,6 +195,12 @@ async function handlePost(env, ctx, request, body) {
           await appendAuditLog(env, 'teams_fail', 'enqueue ' + saved.item.ID + ': ' + String((e && e.message) || e).slice(0, 100), '', 'system');
         }));
       }
+      // 振り返りの要約に、自動更新の判定の目印を付ける(作るかどうかは定期実行が決める)
+      if ((resource === 'events' || resource === 'experiments') && !isRestore) {
+        ctx.waitUntil(markSummaryDirty(env, resource, saved.item.ID).catch(e => {
+          console.error('summary mark failed: ' + (e && e.stack || e));
+        }));
+      }
       return { success: true, item: saved.item };
     }
 
@@ -289,6 +297,18 @@ async function handlePost(env, ctx, request, body) {
       const r = await notifyTeamsNow(env, String(body.eventId));
       if (r.success && r.sent) await appendAuditLog(env, 'teams_notify', body.eventId + ':' + r.kind + ':button', token, 'member');
       if (!r.success && r.error === 'teams_failed') await appendAuditLog(env, 'teams_fail', body.eventId + ':button: ' + (r.detail || ''), token, 'member');
+      return r;
+    }
+
+    // --- 振り返りの要約(実験・イベントの詳細ページ)。GEMINI_ENABLED が "true" でなければ enabled: false / feature_disabled ---
+    if (action === 'getReflectionSummary' || action === 'regenerateReflectionSummary') {
+      const type = String(body.targetType || '');
+      const id = String(body.id || '');
+      if (SUMMARY_TARGETS.indexOf(type) < 0) return { success: false, error: 'invalid_target' };
+      if (!ID_PATTERN.test(id)) return { success: false, error: 'invalid_id' };
+      if (action === 'getReflectionSummary') return await getReflectionSummary(env, type, id);
+      const r = await regenerateReflectionSummary(env, type, id, token);
+      if (r.success && !r.unchanged) await appendAuditLog(env, 'summary_regenerate', type + ':' + id, token, 'member');
       return r;
     }
 

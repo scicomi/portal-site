@@ -134,7 +134,7 @@ npx wrangler whoami     # ログインできているか確認（AI が実行し
 
 **順番が重要。** DB を先に変え、API を次に、画面を最後に出す。古いフロントと新しい API が一時的に混ざっても壊れないようにするため。
 
-1. `worker/migrations/` に**新しい番号のファイル**を作る（既存のマイグレーションは絶対に編集しない。番号は `ls worker/migrations` の最後 + 1。この文書を書いた時点の最新は 0006 なので、次は 0007 — 増えたら実際のフォルダを見ること）。
+1. `worker/migrations/` に**新しい番号のファイル**を作る（既存のマイグレーションは絶対に編集しない。番号は `ls worker/migrations` の最後 + 1。この文書を更新した時点の最新は 0009 なので、次は 0010 — 増えたら実際のフォルダを見ること）。
    例: `0007_add_event_parking.sql`
    ```sql
    ALTER TABLE events ADD COLUMN Parking TEXT NOT NULL DEFAULT '';
