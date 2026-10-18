@@ -2423,6 +2423,95 @@ textarea:focus {
     line-height: 1.6;
 }
 
+/* ========== 振り返りのまとめ（AI が生成。app.js の renderReflectionSummary） ========== */
+.rsum-container { margin-bottom: 14px; }
+.rsum-card {
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--primary-light);
+    border-radius: 8px;
+    background: var(--bg-subtle);
+    padding: 12px 16px;
+}
+.rsum-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 8px; }
+.rsum-title { margin: 0; font-size: 1rem; font-weight: 700; color: var(--text-color); }
+.rsum-ai-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 8px;
+    background: var(--primary-subtle);
+    color: light-dark(#3b3591, #b9b4ff);
+}
+.rsum-line {
+    display: grid;
+    grid-template-columns: 6.5em 1fr;   /* 「良かった点」「改善点」の本文の書き出しをそろえる */
+    gap: 8px;
+    align-items: baseline;
+    margin: 0 0 6px;
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+.rsum-kind { justify-self: start; font-size: 0.75rem; font-weight: 700; padding: 1px 8px; border-radius: 8px; white-space: nowrap; }
+.rsum-positive .rsum-kind { background: var(--success-bg-alt); color: var(--success-text-alt); }
+.rsum-improve .rsum-kind { background: var(--warning-bg); color: var(--warning-text); }
+.rsum-text { color: var(--text-color); word-break: break-word; }
+@media (max-width: 480px) {
+    .rsum-card { padding: 12px; }
+    .rsum-line { grid-template-columns: 1fr; gap: 2px; margin-bottom: 8px; }   /* 狭い画面は、種類の札の下に本文 */
+}
+.rsum-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 6px; }
+.rsum-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;   /* 指で押しやすい大きさ */
+    padding: 4px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    background: var(--surface);
+    color: var(--text-color);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.rsum-chip:hover { background: var(--primary-subtle); border-color: var(--primary-light); }
+.rsum-chip:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+/* 種類の印（良かった点 = 緑 / 改善点 = 黄）。色だけに頼らないよう、読み上げは aria-label、見た目は丸と形で分ける */
+.rsum-chip::before { content: ''; width: 8px; height: 8px; flex-shrink: 0; }
+.rsum-chip-positive::before { background: var(--success-color); border-radius: 50%; }
+.rsum-chip-improve::before { background: var(--warning-color); transform: rotate(45deg); }
+.rsum-chip[aria-pressed="true"] { background: var(--primary-color); border-color: var(--primary-color); color: #fff; }
+.rsum-chip-count {
+    font-size: 0.75rem;
+    font-weight: 700;
+    min-width: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: var(--border-light);
+    color: var(--text-body);
+    text-align: center;
+}
+.rsum-chip[aria-pressed="true"]::before { background: #fff; }
+.rsum-chip[aria-pressed="true"] .rsum-chip-count { background: rgba(255, 255, 255, 0.25); color: #fff; }
+.rsum-meta, .rsum-empty { margin: 6px 0 0; font-size: 0.8rem; color: var(--text-muted); }
+.rsum-stale { margin: 4px 0 0; font-size: 0.8rem; color: var(--warning-text); }
+.rsum-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.rsum-regen { width: auto; min-height: 44px; padding: 6px 16px; font-size: 0.85rem; }
+.rsum-actions-hint { font-size: 0.75rem; color: var(--text-hint); }
+.rsum-note { margin: 10px 0 0; font-size: 0.75rem; color: var(--text-hint); }
+/* 入力欄の近くの注意書き（個人名・連絡先を書かない） */
+.rsum-privacy-note {
+    margin: 6px 0 10px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: var(--warning-bg);
+    color: var(--warning-text);
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+/* 論点のチップを押したとき、根拠になった振り返りの行 */
+.rsum-hit { outline: 2px solid var(--primary-light); outline-offset: 2px; background: var(--primary-subtle) !important; border-radius: 4px; }
+
 /* ========== Event Feedback Sections ========== */
 .exp-fb-card {
     background: var(--bg-subtle);

@@ -71,6 +71,7 @@ function showLoadMessage(html) {
 async function init() {
     bindOverlayClose(document.getElementById('feedback-modal'), closeFeedbackModal);
     bindOverlayClose(document.getElementById('video-modal'), closeVideoModal);
+    document.getElementById('fb-privacy-note').textContent = REFLECTION_PRIVACY_NOTE;
 
     // 振り返り検索（デバウンスは search.js。候補リストが無いのでサジェストは出ない）
     attachSearchBox(document.getElementById('feedback-search'), {
@@ -165,6 +166,7 @@ function renderPage() {
 
     renderEventsSection();
     renderFeedback();
+    if (!summaryMounted) { summaryMounted = true; refreshReflectionSummary(); }   // キャッシュ → 最新の 2 回描くので、読み込みは 1 回だけ
     renderPhotos();
     renderVideos();
     populateEventDropdown();
@@ -245,6 +247,23 @@ function getAllFeedback() {
     return [...pos, ...ref].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
 
+// 振り返りのまとめ(AI)。振り返りを追加・削除したあとにも呼んで、「古い」の表示を最新にする
+let summaryMounted = false;
+function refreshReflectionSummary() {
+    if (!currentExp) return;
+    mountReflectionSummary(document.getElementById('reflection-summary'), {
+        targetType: 'experiments',
+        id: currentExp.ID,
+        root: () => document.getElementById('feedback-timeline'),
+        prepare: () => {
+            // 絞り込み・検索で、該当する振り返りが隠れていないようにする
+            const search = document.getElementById('feedback-search');
+            if (search && search.value) search.value = '';
+            filterFeedback('all');
+        }
+    });
+}
+
 function filterFeedback(type) {
     feedbackFilter = type;
     document.querySelectorAll('[data-fb]').forEach(c => {
@@ -318,7 +337,7 @@ function renderFeedbackEntry(f) {
         : '<span class="fb-event-tag fb-general">実験全般</span>';
 
     return `
-        <div class="fb-entry ${cls}">
+        <div class="fb-entry ${cls}" data-fb-id="${escapeAttr(f.id || '')}">
             <div class="fb-entry-header">
                 <span class="fb-icon">${icon}</span>
                 <span class="fb-label">${label}</span>
@@ -393,6 +412,7 @@ async function saveFeedback() {
         });
         closeFeedbackModal();
         renderFeedback();
+        refreshReflectionSummary();
         toast('振り返りを保存しました', 'success');
     } catch (e) {
         toast('保存失敗: ' + humanizeApiError(e), 'error', 5000);
@@ -437,6 +457,7 @@ async function executeDeleteFeedbackEntry(fbId, type) {
         });
         if (!saved) { toast('エントリが見つかりません', 'error'); return; }
         renderFeedback();
+        refreshReflectionSummary();
         toast('ゴミ箱に移動しました', 'success');
     } catch (e) {
         toast('削除失敗: ' + humanizeApiError(e), 'error');

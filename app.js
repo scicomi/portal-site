@@ -1650,6 +1650,155 @@ function sanitizeRichHtml(html, policy = RICH_POLICY) {
   return doc.body.innerHTML;
 }
 
+// ====== 振り返りの要約（AI が生成）。実験詳細・イベント詳細の両方から使う ======
+// 設計は docs/13_reflection_summary_plan.md と docs/14_reflection_summary_roadmap.md。
+// サーバーの GEMINI_ENABLED がオフ、または振り返りが 3 件未満のときは、カードを出さない。
+// AI の文章は必ず textContent で入れる（innerHTML に入れない）。失敗しても、振り返りの一覧はそのまま使える。
+
+const REFLECTION_PRIVACY_NOTE = '個人名（参加者・子ども・保護者）や連絡先は書かないでください。振り返りは AI の要約に使われます（メンバーの名前は伏せて送ります）。';
+
+// 振り返りの入力欄の近くに常に出す注意書き
+function reflectionPrivacyNoteHtml() {
+  return `<p class="rsum-privacy-note">${escapeHtml(REFLECTION_PRIVACY_NOTE)}</p>`;
+}
+
+const _reflectionSummaryCache = {};   // 'targetType:id' → 最後に受け取った結果（描き直しのたびに空のカードを出さないため）
+
+// container: カードを置く要素
+// opts: { targetType: 'experiments' | 'events', id, root: () => 振り返りの一覧の要素(各行に data-fb-id),
+//         prepare: () => 絞り込み・検索を解く(任意。論点を押したとき、該当する行が隠れていないように) }
+async function mountReflectionSummary(container, opts) {
+  if (!container || !opts || !opts.id) return;
+  const key = opts.targetType + ':' + opts.id;
+  const seq = (container._rsumSeq || 0) + 1;   // 別の回へ切り替えたあとに、前の回の結果で描かないため
+  container._rsumSeq = seq;
+  if (_reflectionSummaryCache[key]) renderReflectionSummary(container, _reflectionSummaryCache[key], opts);
+  else container.classList.add('hidden');
+  try {
+    const res = await api.getReflectionSummary(opts.targetType, opts.id);
+    _reflectionSummaryCache[key] = res;
+    if (container._rsumSeq === seq) renderReflectionSummary(container, res, opts);
+  } catch (e) {
+    // 要約は付け足しの機能なので、取れなくても知らせない(一覧は普通に使える)
+    console.warn('振り返りのまとめを読み込めませんでした:', e);
+  }
+}
+
+function renderReflectionSummary(container, res, opts) {
+  container.textContent = '';
+  if (!res || !res.enabled || !(res.entryCount >= res.minEntries)) { container.classList.add('hidden'); return; }
+  container.classList.remove('hidden');
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  };
+  const s = res.summary;
+  const card = el('section', 'rsum-card');
+  const titleId = 'rsum-title-' + opts.targetType + '-' + opts.id;
+  card.setAttribute('aria-labelledby', titleId);
+
+  const head = el('div', 'rsum-head');
+  const title = el('h3', 'rsum-title', '振り返りのまとめ');
+  title.id = titleId;
+  head.append(title, el('span', 'rsum-ai-badge', 'AI が生成'));
+  card.append(head);
+
+  const status = el('p', 'sr-only');   // 論点を押した結果を、画面の読み上げに伝える
+  status.setAttribute('aria-live', 'polite');
+
+  if (s) {
+    [['positive', '良かった点', s.positive], ['improve', '改善点', s.improve]].forEach(([kind, label, text]) => {
+      if (!text) return;
+      const p = el('p', 'rsum-line rsum-' + kind);
+      p.append(el('span', 'rsum-kind', label), el('span', 'rsum-text', text));
+      card.append(p);
+    });
+    const topics = Array.isArray(s.topics) ? s.topics : [];
+    if (topics.length) {
+      const chips = el('div', 'rsum-chips');
+      chips.setAttribute('role', 'group');
+      chips.setAttribute('aria-label', '論点（押すと、該当する振り返りを強調します）');
+      topics.forEach(t => {
+        const b = el('button', 'rsum-chip rsum-chip-' + (t.type === 'positive' ? 'positive' : 'improve'));
+        b.type = 'button';
+        b.setAttribute('aria-pressed', 'false');
+        b.append(el('span', 'rsum-chip-label', t.label), el('span', 'rsum-chip-count', String(t.count)));
+        b.setAttribute('aria-label', (t.type === 'positive' ? '良かった点' : '改善点') + '：' + t.label + '（' + t.count + '件）');
+        b.addEventListener('click', () => highlightReflectionTopic(b, t, opts, card, status));
+        chips.append(b);
+      });
+      card.append(chips);
+    }
+    const meta = el('p', 'rsum-meta');
+    const when = String(res.generatedAt || '').replace('T', ' ').slice(0, 16);
+    meta.textContent = res.sourceCount + ' 件の振り返りから作成' + (when ? '（' + when + '）' : '');
+    card.append(meta);
+    if (res.stale) card.append(el('p', 'rsum-stale', 'このあと振り返りが増えた・変わったため、内容が古い可能性があります。'));
+  } else {
+    card.append(el('p', 'rsum-empty', res.autoEnabled === false
+      ? 'まだまとめがありません（自動では作らない設定です）。'
+      : 'まだまとめがありません。少したつと自動で作られます。'));
+  }
+
+  if (res.canRegenerate && (!s || res.stale)) {
+    const label = s ? 'まとめを作り直す' : 'まとめを作る';
+    const btn = el('button', 'btn btn-secondary rsum-regen', label);
+    btn.type = 'button';
+    btn.addEventListener('click', () => regenerateReflectionSummaryFromCard(container, opts, btn, label));
+    const row = el('div', 'rsum-actions');
+    row.append(btn, el('span', 'rsum-actions-hint', '1 日 1 回まで'));
+    card.append(row);
+  }
+  card.append(el('p', 'rsum-note', 'AI が作った参考のまとめです。間違うことがあるので、下の振り返りの原文で確かめてください。'), status);
+  container.append(card);
+}
+
+// 論点のチップ: 押すと、根拠になった振り返りの行を強調して、最初の行まで移動する。もう一度押すと解除
+function highlightReflectionTopic(btn, topic, opts, card, status) {
+  const wasPressed = btn.getAttribute('aria-pressed') === 'true';
+  card.querySelectorAll('.rsum-chip').forEach(b => b.setAttribute('aria-pressed', 'false'));
+  const root0 = opts.root && opts.root();
+  if (root0) root0.querySelectorAll('.rsum-hit').forEach(n => n.classList.remove('rsum-hit'));
+  if (wasPressed) { status.textContent = '強調を解除しました'; return; }
+  btn.setAttribute('aria-pressed', 'true');
+  if (opts.prepare) opts.prepare();   // 一覧を描き直すことがあるので、行はこのあとで探す
+  const root = opts.root && opts.root();
+  if (!root) return;
+  const ids = new Set(topic.entryIds || []);
+  const hits = Array.from(root.querySelectorAll('[data-fb-id]')).filter(n => ids.has(n.dataset.fbId));
+  hits.forEach(n => {
+    const body = n.closest('.fy-body.hidden');   // 閉じている年度は開く
+    if (body && body.previousElementSibling) toggleFyGroup(body.previousElementSibling);
+    n.classList.add('rsum-hit');
+  });
+  if (!hits.length) {
+    status.textContent = '';
+    toast('該当する振り返りが見つかりません（削除・編集された可能性があります）', 'info');
+    return;
+  }
+  status.textContent = '「' + topic.label + '」に当てはまる振り返り ' + hits.length + ' 件を強調しました';
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  hits[0].scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+}
+
+async function regenerateReflectionSummaryFromCard(container, opts, btn, label) {
+  btn.disabled = true;
+  btn.textContent = '作成中…';
+  try {
+    const res = await api.regenerateReflectionSummary(opts.targetType, opts.id);
+    _reflectionSummaryCache[opts.targetType + ':' + opts.id] = res;
+    renderReflectionSummary(container, res, opts);
+    toast(res.unchanged ? '振り返りが変わっていないため、今のまとめのままです' : 'まとめを作りました', 'success');
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = label;
+    if (!e.handled) toast('まとめを作れませんでした: ' + humanizeApiError(e), 'error', 6000);
+    mountReflectionSummary(container, opts);   // 「1 日 1 回」を使ったかどうかで、ボタンの出し方が変わる
+  }
+}
+
 // ====== 起動共通 ======
 
 async function bootPage(activePage, onAuthReady) {

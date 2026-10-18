@@ -1249,6 +1249,7 @@ function renderReflectionTab() {
     box.innerHTML = `
         <div class="detail-section-card" id="series-detail-feedback">
             <h3 class="detail-section-title">この回の振り返りを記入</h3>
+            ${reflectionPrivacyNoteHtml()}
             ${!isMeeting && parts.filter(p => p.name).length > 0 ? `
             <div id="series-exp-feedback">
                 ${parts.filter(p => p.name).map(p => `
@@ -1343,6 +1344,15 @@ function renderResultsPane() {
     pane.innerHTML = resultsGrandTab === 'venue'
         ? renderVenueResultsHtml()
         : renderExpResultsHtml(resultsGrandTab.slice(4));
+    // 会場・運営の振り返りのまとめ(AI)。実験ごとの振り返りのまとめは、実験ページに出す
+    const ev = currentEvent();
+    if (resultsGrandTab === 'venue' && ev) {
+        mountReflectionSummary(document.getElementById('reflection-summary-event'), {
+            targetType: 'events',
+            id: ev.ID,
+            root: () => document.getElementById('series-results-pane')
+        });
+    }
 }
 
 // 振り返りを書いた本人(または、名前なしの以前の記入)だけが、編集・削除できる
@@ -1353,7 +1363,7 @@ function canModifyFeedback(en) {
 
 // 1 人分ずつの行。名前を添え、直せる記入には編集・削除ボタンを付ける(actions を渡したときだけ)
 function feedbackLinesHtml(entries, actions) {
-    return `<span class="sfb-lines">${entries.map(en => `<span class="sfb-line">
+    return `<span class="sfb-lines">${entries.map(en => `<span class="sfb-line" data-fb-id="${escapeAttr(en.id || '')}">
             <span class="sfb-line-text">${escapeHtml(en.text || '')}</span>
             ${en.name ? `<span class="sfb-author">（${escapeHtml(en.name)}）</span>` : ''}
             ${actions && canModifyFeedback(en) ? `<span class="sfb-line-actions">
@@ -1403,9 +1413,11 @@ function renderVenueResultsHtml() {
             </div>`;
         }).filter(Boolean);
 
-    return occs.length > 0
+    // まとめのカードは renderResultsPane が中身を入れる(3 件未満・停止中は出さない)
+    const summaryBox = ev0 ? '<div id="reflection-summary-event" class="rsum-container hidden"></div>' : '';
+    return summaryBox + (occs.length > 0
         ? occs.join('')
-        : '<div class="empty-state" style="padding:30px 20px;">この回の会場・運営の成果・振り返りはまだありません<div class="empty-hint">「振り返りを記入」タブから記入できます</div></div>';
+        : '<div class="empty-state" style="padding:30px 20px;">この回の会場・運営の成果・振り返りはまだありません<div class="empty-hint">「振り返りを記入」タブから記入できます</div></div>');
 }
 
 // 実験ごと: 実験レコード（Positives/Reflections 履歴JSON）から、選んでいる開催回の分だけをまとめて表示する
@@ -1537,6 +1549,7 @@ function openFeedbackEdit(evId, field, entryId) {
         <div class="modal-content" style="max-width:460px;" role="dialog" aria-modal="true" aria-labelledby="fb-edit-title">
             <h2 id="fb-edit-title" style="margin-top:0;">振り返りを編集（${label}）</h2>
             <textarea class="e1-input" id="fb-edit-text" rows="5" aria-label="振り返りの内容">${escapeHtml(en.text || '')}</textarea>
+            ${reflectionPrivacyNoteHtml()}
             <div class="action-buttons" style="margin-top:16px;">
                 <button type="button" class="btn btn-secondary" style="width:auto;" data-close>キャンセル</button>
                 <button type="button" class="btn btn-primary-solid" style="width:auto;" id="fb-edit-save">保存</button>

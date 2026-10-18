@@ -382,6 +382,21 @@ const api = {
     return res;
   },
 
+  // ---- 振り返りの要約（AI が生成。実験・イベントの詳細ページ。サーバーの GEMINI_ENABLED がオフなら { enabled: false }） ----
+  // targetType: 'experiments' | 'events'。{ enabled, entryCount, minEntries, summary, sourceCount, generatedAt, stale, state, canRegenerate }
+  async getReflectionSummary(targetType, id) {
+    const res = await this._post({ action: 'getReflectionSummary', token: this.getToken(), targetType, id });
+    if (!res.success) throw apiFailure(res, 'getReflectionSummary failed');
+    return res;
+  },
+
+  // その場で作り直す（1 件 1 日 1 回）。返す形は getReflectionSummary と同じ（中身が変わっていなければ unchanged: true）
+  async regenerateReflectionSummary(targetType, id) {
+    const res = await this._post({ action: 'regenerateReflectionSummary', token: this.getToken(), targetType, id });
+    if (!res.success) throw apiFailure(res, 'regenerateReflectionSummary failed');
+    return res;
+  },
+
   // ---- ガイド（閲覧はメンバーも可、書き込みは管理者のみ） ----
   // 保存には管理者トークンが要る（save は管理者トークンを送らないので、専用の関数にしてある）。
   async saveGuide(item) {
@@ -602,6 +617,26 @@ function humanizeApiError(e) {
       return '通知を送れませんでした。' + (e.detail ? '（' + e.detail + '）' : '');
     case 'teams_failed':
       return 'Teams に送れませんでした。しばらく待ってから、もう一度お試しください。続く場合は、管理者に連絡してください。' + (e.detail ? '（' + e.detail + '）' : '');
+    // 振り返りの要約（AI）
+    case 'regenerate_limit':
+      return 'まとめの作り直しは、1 件につき 1 日 1 回までです。明日もう一度お試しください。';
+    case 'not_enough_entries':
+      return 'まとめは、振り返りが 3 件以上になると作れます。';
+    case 'invalid_output':
+      return 'AI の返事が正しい形ではなかったため、まとめを作れませんでした。明日もう一度お試しください。';
+    case 'RATE_LIMIT_MINUTE':
+    case 'MODEL_OVERLOADED':
+      return 'AI が混み合っています。1 分ほど待ってから、もう一度お試しください。';
+    case 'RATE_LIMIT_DAILY':
+      return 'AI の今日の利用上限（無料枠）に達しました。明日もう一度お試しください。';
+    case 'TIMEOUT':
+    case 'NETWORK_ERROR':
+      return 'AI からの返事がありませんでした。しばらく待ってから、もう一度お試しください。';
+    case 'gemini_key_not_configured':
+    case 'API_KEY_INVALID':
+    case 'API_FORBIDDEN':
+    case 'MODEL_NOT_FOUND':
+      return 'AI の設定に問題があるため、まとめを作れません。管理者に連絡してください。';
     case 'BAD_RESPONSE':
       return 'サーバーからの応答を解釈できませんでした。' + (e.detail ? '（' + e.detail + '…）' : '');
     default:

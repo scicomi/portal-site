@@ -68,6 +68,7 @@
                         <h2 class="expd-section-title">振り返り</h2>
                         <button class="btn-primary-solid" style="width:auto; padding:6px 16px; font-size:0.85rem;" onclick="openAddFeedback()">＋ 振り返りを追加</button>
                     </div>
+                    <div id="reflection-summary" class="rsum-container hidden"></div>
                     <div class="expd-feedback-filters">
                         <button class="filter-chip active" data-fb="all" aria-pressed="true" onclick="filterFeedback('all')">全て</button>
                         <button class="filter-chip" data-fb="positive" aria-pressed="false" onclick="filterFeedback('positive')">良かった点</button>
@@ -151,6 +152,7 @@
                     <div class="e1-group">
                         <label class="e1-label">内容 *</label>
                         <textarea id="fb-text" class="e1-input" rows="4" placeholder="振り返りの内容"></textarea>
+                        <p id="fb-privacy-note" class="rsum-privacy-note"></p>
                     </div>
                     <div class="action-buttons">
                         <button class="btn btn-text" onclick="closeFeedbackModal()">キャンセル</button>

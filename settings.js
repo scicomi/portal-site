@@ -70,6 +70,8 @@ async function loadSettings() {
             modelSel.add(new Option(cur, cur));
         }
         modelSel.value = cur;
+        // 振り返りのまとめ(AI)の自動更新
+        document.getElementById('cfg-summary-auto').value = cfg.reflection_summary_auto === 'false' ? 'false' : 'true';
 
 
         // 書類期限ルール（サーバーに保存されていない場合はCONFIGのデフォルト値を使用）
