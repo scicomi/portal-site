@@ -5,9 +5,10 @@
 document.addEventListener('DOMContentLoaded', () => {
     // アコーディオン見出し: 見出し(h2)の中身をボタンに入れる。role="button" の中の見出しは、見出しとして扱われないため。
     // ボタンなので Enter / Space で開閉でき、開閉状態は aria-expanded で支援技術へ伝わる(マウスのクリックは行全体の onclick が受ける)
-    document.querySelectorAll('.settings-section-header').forEach(h => {
-        const section = h.closest('.settings-section');
-        const title = h.querySelector('h2');
+    // 大枠(.settings-group・h2)と、その中の項目(.settings-section・h3)のどちらにも付ける
+    document.querySelectorAll('.settings-group-header, .settings-section-header').forEach(h => {
+        const section = h.closest('.settings-section, .settings-group');
+        const title = h.querySelector('h2, h3');
         if (!title) return;
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -23,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // セクション見出しタップで開閉（見出し内のリンク・ボタン等の誤爆は無いのでシンプルに丸ごとトグル）
 function toggleSettingsSection(headerEl) {
-    const section = headerEl.closest('.settings-section');
+    const section = headerEl.closest('.settings-section, .settings-group');
     if (!section) return;
     const collapsed = section.classList.toggle('collapsed');
     const btn = headerEl.querySelector('.settings-toggle-btn');

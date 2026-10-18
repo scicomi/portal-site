@@ -1847,11 +1847,41 @@ textarea:focus {
     cursor: pointer;
     user-select: none;
 }
-.settings-section-header h2 {
+.settings-section-header h2,
+.settings-section-header h3,
+.settings-group-header h2 {
     color: var(--primary-color);
     font-size: 1.15rem;
     font-weight: 700;
     margin: 0 0 4px 0;
+}
+/* 大枠(.settings-group): 中に項目(.settings-section)を入れるトグル。項目より一段大きく、中身は左に線を引いて字下げする */
+.settings-group {
+    margin-bottom: 20px;
+}
+.settings-group-header {
+    padding: 14px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
+}
+.settings-group-header h2 { font-size: 1.3rem; }
+.settings-group-body {
+    margin: 16px 0 0 12px;
+    padding-left: 16px;
+    border-left: 3px solid var(--border-color);
+}
+.settings-group.collapsed .settings-group-body { display: none; }
+.settings-group.collapsed .settings-section-chevron { transform: rotate(-90deg); }
+@media (max-width: 600px) {
+    .settings-group-header { padding: 12px 16px; }
+    .settings-group-body { margin-left: 4px; padding-left: 10px; }
 }
 .settings-toggle-btn {
     background: none; border: 0; padding: 0;

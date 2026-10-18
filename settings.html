@@ -25,276 +25,336 @@
         <div id="settings-loading" class="loading-text">読み込み中</div>
         <div id="settings-content" style="display:none;">
 
-            <!-- 書類期限設定 -->
-            <div class="settings-section collapsed">
-                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+            <!-- 大枠: 運用ルール -->
+            <div class="settings-group collapsed">
+                <div class="settings-group-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
                     <div>
-                        <h2>書類期限の設定</h2>
-                        <p class="settings-section-desc">イベントの書類提出期限を自動計算する際のルールを設定します。</p>
+                        <h2>運用ルール</h2>
+                        <p class="settings-section-desc">日々の運用で決める値です。</p>
                     </div>
                     <span class="settings-section-chevron">&#9662;</span>
                 </div>
-                <div class="settings-card">
-                    <div class="settings-row-grid">
-                        <div class="e1-group">
-                            <label class="e1-label">許可願の期限</label>
-                            <p class="settings-hint">イベント日の何日前？（例: 10 → 10日前）</p>
-                            <div style="display:flex;gap:8px;align-items:center;">
-                                <input type="number" id="cfg-deadline-kyoka" class="e1-input" min="1" max="90" style="width:100px;">
-                                <span class="text-label">日前</span>
+                <div class="settings-group-body">
+                    <!-- 書類期限設定 -->
+                    <div class="settings-section collapsed">
+                        <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+                            <div>
+                                <h3>書類期限の設定</h3>
+                                <p class="settings-section-desc">イベントの書類提出期限を自動計算する際のルールを設定します。</p>
+                            </div>
+                            <span class="settings-section-chevron">&#9662;</span>
+                        </div>
+                        <div class="settings-card">
+                            <div class="settings-row-grid">
+                                <div class="e1-group">
+                                    <label class="e1-label">許可願の期限</label>
+                                    <p class="settings-hint">イベント日の何日前？（例: 10 → 10日前）</p>
+                                    <div style="display:flex;gap:8px;align-items:center;">
+                                        <input type="number" id="cfg-deadline-kyoka" class="e1-input" min="1" max="90" style="width:100px;">
+                                        <span class="text-label">日前</span>
+                                    </div>
+                                </div>
+                                <div class="e1-group">
+                                    <label class="e1-label">報告書の期限</label>
+                                    <p class="settings-hint">イベント日の何日後？（例: 7 → 7日後）</p>
+                                    <div style="display:flex;gap:8px;align-items:center;">
+                                        <input type="number" id="cfg-deadline-houkoku" class="e1-input" min="1" max="90" style="width:100px;">
+                                        <span class="text-label">日後</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin-top:8px;">
+                                <button class="btn btn-primary-solid" onclick="saveDeadlineRules(this)" style="width:auto;padding:8px 20px;">期限ルールを保存</button>
                             </div>
                         </div>
-                        <div class="e1-group">
-                            <label class="e1-label">報告書の期限</label>
-                            <p class="settings-hint">イベント日の何日後？（例: 7 → 7日後）</p>
-                            <div style="display:flex;gap:8px;align-items:center;">
-                                <input type="number" id="cfg-deadline-houkoku" class="e1-input" min="1" max="90" style="width:100px;">
-                                <span class="text-label">日後</span>
+                    </div>
+
+                    <!-- ゴミ箱 -->
+                    <div class="settings-section collapsed">
+                        <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+                            <div>
+                                <h3>ゴミ箱</h3>
+                                <p class="settings-section-desc">削除したものを、完全に削除するまで保管しておく日数を設定します。</p>
+                            </div>
+                            <span class="settings-section-chevron">&#9662;</span>
+                        </div>
+                        <div class="settings-card">
+                            <div class="e1-group">
+                                <label class="e1-label">保管日数</label>
+                                <p class="settings-hint">この日数が過ぎたものは、毎日 03:00 ごろに完全に削除されます（ファイルも消えます）。変更は、これから削除するものに反映されます。</p>
+                                <div style="display:flex;gap:8px;align-items:center;">
+                                    <input type="number" id="cfg-trash-keep-days" class="e1-input" min="1" max="365" style="width:100px;">
+                                    <span class="text-label">日</span>
+                                </div>
+                            </div>
+                            <div style="margin-top:8px;">
+                                <button class="btn btn-primary-solid" onclick="saveTrashKeepDays(this)" style="width:auto;padding:8px 20px;">保管日数を保存</button>
                             </div>
                         </div>
                     </div>
-                    <div style="margin-top:8px;">
-                        <button class="btn btn-primary-solid" onclick="saveDeadlineRules(this)" style="width:auto;padding:8px 20px;">期限ルールを保存</button>
-                    </div>
-                </div>
-            </div>
 
-            <!-- ストレージの上限 -->
-            <div class="settings-section collapsed">
-                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
-                    <div>
-                        <h2>ストレージの上限</h2>
-                        <p class="settings-section-desc">ホームの円グラフで「全体」とする大きさです。空欄なら Cloudflare のプランから自動で決まるので、通常は入力不要です。</p>
-                    </div>
-                    <span class="settings-section-chevron">&#9662;</span>
-                </div>
-                <div class="settings-card">
-                    <div class="e1-group">
-                        <label class="e1-label">D1（データ）の上限</label>
-                        <p class="settings-hint">空欄＝自動（無料プランは 500MB、Workers Paid は 10GB）。数字を入れると、それを優先します（1GB = 1024MB）。</p>
-                        <div style="display:flex;gap:8px;align-items:center;">
-                            <input type="number" id="cfg-storage-d1-mb" class="e1-input" min="1" placeholder="自動" style="width:140px;">
-                            <span class="text-label">MB</span>
+                    <!-- 広報媒体設定 -->
+                    <div class="settings-section collapsed">
+                        <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+                            <div>
+                                <h3>広報媒体</h3>
+                                <p class="settings-section-desc">イベントごとの広報担当を記録する媒体名を管理します。</p>
+                            </div>
+                            <span class="settings-section-chevron">&#9662;</span>
                         </div>
-                    </div>
-                    <div class="e1-group">
-                        <label class="e1-label">R2（ファイル）の上限</label>
-                        <p class="settings-hint">空欄＝自動（10GB = 10240MB。Workers Paid は超えた分が従量課金）。数字を入れると、それを優先します。</p>
-                        <div style="display:flex;gap:8px;align-items:center;">
-                            <input type="number" id="cfg-storage-r2-mb" class="e1-input" min="1" placeholder="自動" style="width:140px;">
-                            <span class="text-label">MB</span>
-                        </div>
-                    </div>
-                    <div style="margin-top:8px;">
-                        <button class="btn btn-primary-solid" onclick="saveStorageLimits(this)" style="width:auto;padding:8px 20px;">上限を保存</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ファイルのアップロード -->
-            <div class="settings-section collapsed">
-                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
-                    <div>
-                        <h2>ファイルのアップロード</h2>
-                        <p class="settings-section-desc">1 つのファイルの大きさの上限を設定します（書類・写真・発表資料のすべてに効きます）。</p>
-                    </div>
-                    <span class="settings-section-chevron">&#9662;</span>
-                </div>
-                <div class="settings-card">
-                    <div class="e1-group">
-                        <label class="e1-label">1 ファイルの上限</label>
-                        <p class="settings-hint">1〜95MB。ファイルは Cloudflare R2（無料枠 10GB）に保存されます。大きくすると、無料枠に早く近づきます。使用量は Cloudflare ダッシュボードの R2 で確認できます。</p>
-                        <div style="display:flex;gap:8px;align-items:center;">
-                            <input type="number" id="cfg-file-max-mb" class="e1-input" min="1" max="95" style="width:100px;">
-                            <span class="text-label">MB</span>
-                        </div>
-                    </div>
-                    <div style="margin-top:8px;">
-                        <button class="btn btn-primary-solid" onclick="saveFileMaxMb(this)" style="width:auto;padding:8px 20px;">上限を保存</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ゴミ箱 -->
-            <div class="settings-section collapsed">
-                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
-                    <div>
-                        <h2>ゴミ箱</h2>
-                        <p class="settings-section-desc">削除したものを、完全に削除するまで保管しておく日数を設定します。</p>
-                    </div>
-                    <span class="settings-section-chevron">&#9662;</span>
-                </div>
-                <div class="settings-card">
-                    <div class="e1-group">
-                        <label class="e1-label">保管日数</label>
-                        <p class="settings-hint">この日数が過ぎたものは、毎日 03:00 ごろに完全に削除されます（ファイルも消えます）。変更は、これから削除するものに反映されます。</p>
-                        <div style="display:flex;gap:8px;align-items:center;">
-                            <input type="number" id="cfg-trash-keep-days" class="e1-input" min="1" max="365" style="width:100px;">
-                            <span class="text-label">日</span>
-                        </div>
-                    </div>
-                    <div style="margin-top:8px;">
-                        <button class="btn btn-primary-solid" onclick="saveTrashKeepDays(this)" style="width:auto;padding:8px 20px;">保管日数を保存</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- プッシュ通知 -->
-            <div class="settings-section collapsed">
-                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
-                    <div>
-                        <h2>プッシュ通知</h2>
-                        <p class="settings-section-desc">イベント・ミーティングの追加と変更を、通知をオンにしたメンバーのスマホに知らせます。</p>
-                    </div>
-                    <span class="settings-section-chevron">&#9662;</span>
-                </div>
-                <div class="settings-card">
-                    <div class="e1-group">
-                        <label class="e1-label">登録されている端末</label>
-                        <p id="cfg-push-stats" class="settings-hint">読み込み中...</p>
-                    </div>
-                    <div class="e1-group">
-                        <label class="e1-label">自動で通知する</label>
-                        <p class="settings-hint">追加したとき・イベント名、日程、場所、担当、備考などを変えたときに通知します（保存の約3分後。続けて保存した分は1件にまとまります）。メンバーの名前は通知に載りません。</p>
-                        <div style="display:flex;gap:8px;">
-                            <select id="cfg-push-events" class="e1-input" style="flex:1;">
-                                <option value="true">通知する</option>
-                                <option value="false">通知しない</option>
-                            </select>
-                            <button class="btn btn-primary-solid" onclick="saveSettingField('push_events_enabled','cfg-push-events', this)" style="width:auto;padding:8px 20px;">保存</button>
+                        <div class="settings-card">
+                            <div class="e1-group">
+                                <label class="e1-label">広報媒体リスト</label>
+                                <p class="settings-hint">カンマ区切りで入力してください（例: Twitter,Instagram,HP）</p>
+                                <div style="display:flex;gap:8px;">
+                                    <input type="text" id="cfg-pr-channels" class="e1-input" placeholder="Twitter,Instagram,HP" style="flex:1;">
+                                    <button class="btn btn-primary-solid" onclick="saveSettingField('pr_channels','cfg-pr-channels', this)" style="width:auto;padding:8px 20px;">保存</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- パスワード管理 -->
-            <div class="settings-section collapsed">
-                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+            <!-- 大枠: 画面・コンテンツ -->
+            <div class="settings-group collapsed">
+                <div class="settings-group-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
                     <div>
-                        <h2>パスワード管理</h2>
-                        <p class="settings-section-desc">サービスおよび管理者のログインパスワードを管理します。</p>
+                        <h2>画面・コンテンツ</h2>
+                        <p class="settings-section-desc">ホームなどに表示する内容を管理します。</p>
                     </div>
                     <span class="settings-section-chevron">&#9662;</span>
                 </div>
-                <div class="settings-card">
-                    <div class="e1-group">
-                        <label class="e1-label">サービスパスワード</label>
-                        <p class="settings-hint">メンバー全員が使うログインパスワード</p>
-                        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-                            <span class="text-label" style="font-size:0.9rem;">現在:</span>
-                            <span id="cfg-password-current" class="text-label" style="font-size:0.9rem;"></span>
+                <div class="settings-group-body">
+                    <!-- リンク集 -->
+                    <div class="settings-section collapsed">
+                        <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+                            <div>
+                                <h3>リンク集</h3>
+                                <p class="settings-section-desc">ホーム画面の最下部に並べる外部リンク（SNS・公式サイトなど）を登録します。</p>
+                            </div>
+                            <span class="settings-section-chevron">&#9662;</span>
                         </div>
-                        <div style="display:flex;gap:8px;">
-                            <input type="password" id="cfg-password-new" class="e1-input" placeholder="新しいパスワード（10文字以上）" autocomplete="new-password" style="flex:1;">
-                            <button class="btn btn-secondary" onclick="toggleVisibility('cfg-password-new')" style="width:auto;padding:8px 12px;" title="表示切替">&#128065;</button>
-                            <button class="btn btn-primary-solid" onclick="savePassword('password', this)" style="width:auto;padding:8px 20px;">変更</button>
-                        </div>
-                    </div>
-
-                    <hr class="divider">
-
-                    <div class="e1-group">
-                        <label class="e1-label">幹部パスワード</label>
-                        <p class="settings-hint">管理者認証に使うパスワード</p>
-                        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-                            <span class="text-label" style="font-size:0.9rem;">現在:</span>
-                            <span id="cfg-admin-password-current" class="text-label" style="font-size:0.9rem;"></span>
-                        </div>
-                        <div style="display:flex;gap:8px;">
-                            <input type="password" id="cfg-admin-password-new" class="e1-input" placeholder="新しい幹部パスワード（10文字以上）" autocomplete="new-password" style="flex:1;">
-                            <button class="btn btn-secondary" onclick="toggleVisibility('cfg-admin-password-new')" style="width:auto;padding:8px 12px;" title="表示切替">&#128065;</button>
-                            <button class="btn btn-primary-solid" onclick="savePassword('admin_password', this)" style="width:auto;padding:8px 20px;">変更</button>
+                        <div class="settings-card">
+                            <div class="e1-group">
+                                <label class="e1-label">リンク一覧</label>
+                                <p class="settings-hint">表示名とURLの組を登録します。並べた順にホーム画面へ表示されます。空欄の行は保存時に無視されます。</p>
+                                <div id="cfg-links-rows" class="cfg-link-rows"></div>
+                                <div style="display:flex;gap:8px;margin-top:12px;">
+                                    <button class="btn btn-secondary" onclick="addSiteLinkRow()" style="width:auto;padding:8px 20px;">行を追加</button>
+                                    <button class="btn btn-primary-solid" onclick="saveSiteLinks(this)" style="width:auto;padding:8px 20px;">リンク集を保存</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Gemini API設定 -->
-            <div class="settings-section collapsed">
-                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+            <!-- 大枠: 通知・連携 -->
+            <div class="settings-group collapsed">
+                <div class="settings-group-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
                     <div>
-                        <h2>Gemini API設定</h2>
-                        <p class="settings-section-desc">実験・イベントの振り返りの要約（AI のまとめ）に使います。無料枠のキーでは、送った文章が Google の学習に使われることがあります。振り返りに個人名や連絡先を書かない運用が前提です（メンバーの名前は伏せて送りますが、子どもの名前などは防げません）。サーバー側のスイッチ（GEMINI_ENABLED）が「false」の間は、キーを入れても使われず、まとめも表示されません。</p>
+                        <h2>通知・連携</h2>
+                        <p class="settings-section-desc">メンバーへの通知と、外部サービスとの連携を設定します。</p>
                     </div>
                     <span class="settings-section-chevron">&#9662;</span>
                 </div>
-                <div class="settings-card">
-                    <div class="e1-group">
-                        <label class="e1-label">APIキー</label>
-                        <div style="display:flex;gap:8px;">
-                            <input type="password" id="cfg-gemini-key" class="e1-input" placeholder="AIza..." style="flex:1;">
-                            <button class="btn btn-secondary" onclick="toggleVisibility('cfg-gemini-key')" style="width:auto;padding:8px 12px;" title="表示切替">&#128065;</button>
-                            <button class="btn btn-primary-solid" onclick="saveSecret('gemini_api_key','cfg-gemini-key', this)" style="width:auto;padding:8px 20px;">保存</button>
+                <div class="settings-group-body">
+                    <!-- プッシュ通知 -->
+                    <div class="settings-section collapsed">
+                        <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+                            <div>
+                                <h3>プッシュ通知</h3>
+                                <p class="settings-section-desc">イベント・ミーティングの追加と変更を、通知をオンにしたメンバーのスマホに知らせます。</p>
+                            </div>
+                            <span class="settings-section-chevron">&#9662;</span>
+                        </div>
+                        <div class="settings-card">
+                            <div class="e1-group">
+                                <label class="e1-label">登録されている端末</label>
+                                <p id="cfg-push-stats" class="settings-hint">読み込み中...</p>
+                            </div>
+                            <div class="e1-group">
+                                <label class="e1-label">自動で通知する</label>
+                                <p class="settings-hint">追加したとき・イベント名、日程、場所、担当、備考などを変えたときに通知します（保存の約3分後。続けて保存した分は1件にまとまります）。メンバーの名前は通知に載りません。</p>
+                                <div style="display:flex;gap:8px;">
+                                    <select id="cfg-push-events" class="e1-input" style="flex:1;">
+                                        <option value="true">通知する</option>
+                                        <option value="false">通知しない</option>
+                                    </select>
+                                    <button class="btn btn-primary-solid" onclick="saveSettingField('push_events_enabled','cfg-push-events', this)" style="width:auto;padding:8px 20px;">保存</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="e1-group">
-                        <label class="e1-label">使用モデル</label>
-                        <p class="settings-hint">「レート制限」が頻発する場合、無料枠に余裕のあるモデルへ切り替えてください。<br>
-                        ※ 指定したモデルが将来廃止された場合は、サーバーが利用可能なモデルを自動検出して切り替えます（コード変更不要）。空欄相当でも自動選択されます。</p>
-                        <div style="display:flex;gap:8px;">
-                            <select id="cfg-gemini-model" class="e1-input" style="flex:1;">
-                                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite（軽量・推奨）</option>
-                                <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite（新しめ・軽量）</option>
-                                <option value="gemini-2.5-flash">gemini-2.5-flash（高精度）</option>
-                                <option value="gemini-3.5-flash">gemini-3.5-flash（最新）</option>
-                                <option value="gemini-2.0-flash-lite" disabled>gemini-2.0-flash-lite（廃止・使用不可）</option>
-                                <option value="gemini-2.0-flash" disabled>gemini-2.0-flash（廃止・使用不可）</option>
-                            </select>
-                            <button class="btn btn-primary-solid" onclick="saveSettingField('gemini_model','cfg-gemini-model', this)" style="width:auto;padding:8px 20px;">保存</button>
+
+                    <!-- Gemini API設定 -->
+                    <div class="settings-section collapsed">
+                        <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+                            <div>
+                                <h3>Gemini API設定</h3>
+                                <p class="settings-section-desc">実験・イベントの振り返りの要約（AI のまとめ）に使います。無料枠のキーでは、送った文章が Google の学習に使われることがあります。振り返りに個人名や連絡先を書かない運用が前提です（メンバーの名前は伏せて送りますが、子どもの名前などは防げません）。サーバー側のスイッチ（GEMINI_ENABLED）が「false」の間は、キーを入れても使われず、まとめも表示されません。</p>
+                            </div>
+                            <span class="settings-section-chevron">&#9662;</span>
                         </div>
-                    </div>
-                    <div class="e1-group">
-                        <label class="e1-label" for="cfg-summary-auto">振り返りのまとめを自動で作る</label>
-                        <p class="settings-hint">振り返りが 3 件以上になったとき・前回から 3 件以上増えたときに、最後の保存の約10分後に作り直します（1 日 20 件まで）。「作らない」にしても、詳細ページの「まとめを作る」ボタン（1 件 1 日 1 回）は使えます。AI 全体を止めるときは GEMINI_ENABLED を「false」にします。</p>
-                        <div style="display:flex;gap:8px;">
-                            <select id="cfg-summary-auto" class="e1-input" style="flex:1;">
-                                <option value="true">自動で作る</option>
-                                <option value="false">作らない（ボタンだけ）</option>
-                            </select>
-                            <button class="btn btn-primary-solid" onclick="saveSettingField('reflection_summary_auto','cfg-summary-auto', this)" style="width:auto;padding:8px 20px;">保存</button>
+                        <div class="settings-card">
+                            <div class="e1-group">
+                                <label class="e1-label">APIキー</label>
+                                <div style="display:flex;gap:8px;">
+                                    <input type="password" id="cfg-gemini-key" class="e1-input" placeholder="AIza..." style="flex:1;">
+                                    <button class="btn btn-secondary" onclick="toggleVisibility('cfg-gemini-key')" style="width:auto;padding:8px 12px;" title="表示切替">&#128065;</button>
+                                    <button class="btn btn-primary-solid" onclick="saveSecret('gemini_api_key','cfg-gemini-key', this)" style="width:auto;padding:8px 20px;">保存</button>
+                                </div>
+                            </div>
+                            <div class="e1-group">
+                                <label class="e1-label">使用モデル</label>
+                                <p class="settings-hint">「レート制限」が頻発する場合、無料枠に余裕のあるモデルへ切り替えてください。<br>
+                                ※ 指定したモデルが将来廃止された場合は、サーバーが利用可能なモデルを自動検出して切り替えます（コード変更不要）。空欄相当でも自動選択されます。</p>
+                                <div style="display:flex;gap:8px;">
+                                    <select id="cfg-gemini-model" class="e1-input" style="flex:1;">
+                                        <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite（軽量・推奨）</option>
+                                        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite（新しめ・軽量）</option>
+                                        <option value="gemini-2.5-flash">gemini-2.5-flash（高精度）</option>
+                                        <option value="gemini-3.5-flash">gemini-3.5-flash（最新）</option>
+                                        <option value="gemini-2.0-flash-lite" disabled>gemini-2.0-flash-lite（廃止・使用不可）</option>
+                                        <option value="gemini-2.0-flash" disabled>gemini-2.0-flash（廃止・使用不可）</option>
+                                    </select>
+                                    <button class="btn btn-primary-solid" onclick="saveSettingField('gemini_model','cfg-gemini-model', this)" style="width:auto;padding:8px 20px;">保存</button>
+                                </div>
+                            </div>
+                            <div class="e1-group">
+                                <label class="e1-label" for="cfg-summary-auto">振り返りのまとめを自動で作る</label>
+                                <p class="settings-hint">振り返りが 3 件以上になったとき・前回から 3 件以上増えたときに、最後の保存の約10分後に作り直します（1 日 20 件まで）。「作らない」にしても、詳細ページの「まとめを作る」ボタン（1 件 1 日 1 回）は使えます。AI 全体を止めるときは GEMINI_ENABLED を「false」にします。</p>
+                                <div style="display:flex;gap:8px;">
+                                    <select id="cfg-summary-auto" class="e1-input" style="flex:1;">
+                                        <option value="true">自動で作る</option>
+                                        <option value="false">作らない（ボタンだけ）</option>
+                                    </select>
+                                    <button class="btn btn-primary-solid" onclick="saveSettingField('reflection_summary_auto','cfg-summary-auto', this)" style="width:auto;padding:8px 20px;">保存</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- 広報媒体設定 -->
-            <div class="settings-section collapsed">
-                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+            <!-- 大枠: セキュリティ -->
+            <div class="settings-group collapsed">
+                <div class="settings-group-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
                     <div>
-                        <h2>広報媒体</h2>
-                        <p class="settings-section-desc">イベントごとの広報担当を記録する媒体名を管理します。</p>
+                        <h2>セキュリティ</h2>
+                        <p class="settings-section-desc">ログインに使うパスワードを管理します。</p>
                     </div>
                     <span class="settings-section-chevron">&#9662;</span>
                 </div>
-                <div class="settings-card">
-                    <div class="e1-group">
-                        <label class="e1-label">広報媒体リスト</label>
-                        <p class="settings-hint">カンマ区切りで入力してください（例: Twitter,Instagram,HP）</p>
-                        <div style="display:flex;gap:8px;">
-                            <input type="text" id="cfg-pr-channels" class="e1-input" placeholder="Twitter,Instagram,HP" style="flex:1;">
-                            <button class="btn btn-primary-solid" onclick="saveSettingField('pr_channels','cfg-pr-channels', this)" style="width:auto;padding:8px 20px;">保存</button>
+                <div class="settings-group-body">
+                    <!-- パスワード管理 -->
+                    <div class="settings-section collapsed">
+                        <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+                            <div>
+                                <h3>パスワード管理</h3>
+                                <p class="settings-section-desc">サービスおよび管理者のログインパスワードを管理します。</p>
+                            </div>
+                            <span class="settings-section-chevron">&#9662;</span>
+                        </div>
+                        <div class="settings-card">
+                            <div class="e1-group">
+                                <label class="e1-label">サービスパスワード</label>
+                                <p class="settings-hint">メンバー全員が使うログインパスワード</p>
+                                <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                                    <span class="text-label" style="font-size:0.9rem;">現在:</span>
+                                    <span id="cfg-password-current" class="text-label" style="font-size:0.9rem;"></span>
+                                </div>
+                                <div style="display:flex;gap:8px;">
+                                    <input type="password" id="cfg-password-new" class="e1-input" placeholder="新しいパスワード（10文字以上）" autocomplete="new-password" style="flex:1;">
+                                    <button class="btn btn-secondary" onclick="toggleVisibility('cfg-password-new')" style="width:auto;padding:8px 12px;" title="表示切替">&#128065;</button>
+                                    <button class="btn btn-primary-solid" onclick="savePassword('password', this)" style="width:auto;padding:8px 20px;">変更</button>
+                                </div>
+                            </div>
+
+                            <hr class="divider">
+
+                            <div class="e1-group">
+                                <label class="e1-label">幹部パスワード</label>
+                                <p class="settings-hint">管理者認証に使うパスワード</p>
+                                <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                                    <span class="text-label" style="font-size:0.9rem;">現在:</span>
+                                    <span id="cfg-admin-password-current" class="text-label" style="font-size:0.9rem;"></span>
+                                </div>
+                                <div style="display:flex;gap:8px;">
+                                    <input type="password" id="cfg-admin-password-new" class="e1-input" placeholder="新しい幹部パスワード（10文字以上）" autocomplete="new-password" style="flex:1;">
+                                    <button class="btn btn-secondary" onclick="toggleVisibility('cfg-admin-password-new')" style="width:auto;padding:8px 12px;" title="表示切替">&#128065;</button>
+                                    <button class="btn btn-primary-solid" onclick="savePassword('admin_password', this)" style="width:auto;padding:8px 20px;">変更</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- リンク集 -->
-            <div class="settings-section collapsed">
-                <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+            <!-- 大枠: ストレージ・ファイル -->
+            <div class="settings-group collapsed">
+                <div class="settings-group-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
                     <div>
-                        <h2>リンク集</h2>
-                        <p class="settings-section-desc">ホーム画面の最下部に並べる外部リンク（SNS・公式サイトなど）を登録します。</p>
+                        <h2>ストレージ・ファイル</h2>
+                        <p class="settings-section-desc">ファイルの大きさとストレージの上限を設定します。</p>
                     </div>
                     <span class="settings-section-chevron">&#9662;</span>
                 </div>
-                <div class="settings-card">
-                    <div class="e1-group">
-                        <label class="e1-label">リンク一覧</label>
-                        <p class="settings-hint">表示名とURLの組を登録します。並べた順にホーム画面へ表示されます。空欄の行は保存時に無視されます。</p>
-                        <div id="cfg-links-rows" class="cfg-link-rows"></div>
-                        <div style="display:flex;gap:8px;margin-top:12px;">
-                            <button class="btn btn-secondary" onclick="addSiteLinkRow()" style="width:auto;padding:8px 20px;">行を追加</button>
-                            <button class="btn btn-primary-solid" onclick="saveSiteLinks(this)" style="width:auto;padding:8px 20px;">リンク集を保存</button>
+                <div class="settings-group-body">
+                    <!-- ファイルのアップロード -->
+                    <div class="settings-section collapsed">
+                        <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+                            <div>
+                                <h3>ファイルのアップロード</h3>
+                                <p class="settings-section-desc">1 つのファイルの大きさの上限を設定します（書類・写真・発表資料のすべてに効きます）。</p>
+                            </div>
+                            <span class="settings-section-chevron">&#9662;</span>
+                        </div>
+                        <div class="settings-card">
+                            <div class="e1-group">
+                                <label class="e1-label">1 ファイルの上限</label>
+                                <p class="settings-hint">1〜95MB。ファイルは Cloudflare R2（無料枠 10GB）に保存されます。大きくすると、無料枠に早く近づきます。使用量は Cloudflare ダッシュボードの R2 で確認できます。</p>
+                                <div style="display:flex;gap:8px;align-items:center;">
+                                    <input type="number" id="cfg-file-max-mb" class="e1-input" min="1" max="95" style="width:100px;">
+                                    <span class="text-label">MB</span>
+                                </div>
+                            </div>
+                            <div style="margin-top:8px;">
+                                <button class="btn btn-primary-solid" onclick="saveFileMaxMb(this)" style="width:auto;padding:8px 20px;">上限を保存</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ストレージの上限 -->
+                    <div class="settings-section collapsed">
+                        <div class="settings-section-header" role="button" tabindex="0" onclick="toggleSettingsSection(this)">
+                            <div>
+                                <h3>ストレージの上限</h3>
+                                <p class="settings-section-desc">ホームの円グラフで「全体」とする大きさです。空欄なら Cloudflare のプランから自動で決まるので、通常は入力不要です。</p>
+                            </div>
+                            <span class="settings-section-chevron">&#9662;</span>
+                        </div>
+                        <div class="settings-card">
+                            <div class="e1-group">
+                                <label class="e1-label">D1（データ）の上限</label>
+                                <p class="settings-hint">空欄＝自動（無料プランは 500MB、Workers Paid は 10GB）。数字を入れると、それを優先します（1GB = 1024MB）。</p>
+                                <div style="display:flex;gap:8px;align-items:center;">
+                                    <input type="number" id="cfg-storage-d1-mb" class="e1-input" min="1" placeholder="自動" style="width:140px;">
+                                    <span class="text-label">MB</span>
+                                </div>
+                            </div>
+                            <div class="e1-group">
+                                <label class="e1-label">R2（ファイル）の上限</label>
+                                <p class="settings-hint">空欄＝自動（10GB = 10240MB。Workers Paid は超えた分が従量課金）。数字を入れると、それを優先します。</p>
+                                <div style="display:flex;gap:8px;align-items:center;">
+                                    <input type="number" id="cfg-storage-r2-mb" class="e1-input" min="1" placeholder="自動" style="width:140px;">
+                                    <span class="text-label">MB</span>
+                                </div>
+                            </div>
+                            <div style="margin-top:8px;">
+                                <button class="btn btn-primary-solid" onclick="saveStorageLimits(this)" style="width:auto;padding:8px 20px;">上限を保存</button>
+                            </div>
                         </div>
                     </div>
                 </div>
