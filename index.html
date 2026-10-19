@@ -108,18 +108,18 @@
             </div>
         </section>
 
-        <!-- ストレージ（D1・R2 の使用量。上限は設定画面で変えられる） -->
+        <!-- 使用量（D1・R2・Workers・Gemini API。ストレージの上限は設定画面で変えられる） -->
         <!-- メンバーの日常の用事ではないので閉じた状態で出し、開いたときに初めて使用量を読み込む(home.js の toggleStorageSection) -->
         <section class="dash-section" id="storage-section">
             <h2 class="page-header">
                 <button type="button" class="dash-card-toggle" aria-expanded="false" aria-controls="storage-body" onclick="toggleStorageSection(this)">
-                    <span class="dash-card-toggle-label">ストレージ</span>
+                    <span class="dash-card-toggle-label">使用量</span>
                     <span class="dash-card-toggle-icon" aria-hidden="true">&#9662;</span>
                 </button>
             </h2>
             <div class="dash-card hidden" id="storage-body">
                 <div id="storage-charts" class="storage-charts"><p class="empty-state" style="padding:10px 0;">読み込み中…</p></div>
-                <p class="storage-about"><b>このサイトについて</b> : フロントエンドはGitHub、バックエンドはCloudflare（Workers / D1 / R2）のサーバーレス構成で構築しています。<br>※ストレージの上限を超える場合はクレジットカードの登録が必須です。</p>
+                <p class="storage-about"><b>このサイトについて</b> : フロントエンドはGitHub、バックエンドはCloudflare（Workers / D1 / R2）のサーバーレス構成で構築しています。<br>※使用量の上限を超える場合はクレジットカードの登録が必須です。</p>
             </div>
         </section>
     </main>

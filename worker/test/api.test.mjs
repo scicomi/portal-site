@@ -1080,6 +1080,9 @@ test('getStorageUsage: メンバーが D1・R2 の使用量と上限を取れ、
   assert.equal(r.usage.d1.limit, 500 * 1024 * 1024);
   assert.ok(r.usage.r2.files >= 0 && r.usage.r2.backups >= 0 && r.usage.r2.count >= 0);
   assert.equal(r.usage.r2.limit, 10240 * 1024 * 1024);
+  // Gemini の今日の呼び出し回数(アプリ側の 1 日の上限に対する数)。npm run dev は GEMINI_ENABLED:false で起動する
+  assert.ok(r.usage.gemini.used >= 0 && r.usage.gemini.limit > 0);
+  assert.equal(typeof r.usage.gemini.enabled, 'boolean');
   // 上限を変えたら、測定の覚え(キャッシュ)の期間中でも、すぐ反映される
   assert.equal((await post({ action: 'adminSetConfig', token: member, adminToken: admin, key: 'storage_d1_limit_mb', value: '1024' })).success, true);
   const man = (await post({ action: 'getStorageUsage', token: member })).usage;

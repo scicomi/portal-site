@@ -598,7 +598,7 @@ function renderSiteLinks() {
     section.style.display = '';
 }
 
-// ---- ストレージ（D1・R2 の使用量の円グラフ。上限は設定 storage_*_limit_mb） ----
+// ---- ストレージ（D1・R2 などの使用量の横棒グラフ。ストレージの上限は設定 storage_*_limit_mb） ----
 
 function formatBytes(n) {
     if (!isFinite(n) || n < 0) return '-';
@@ -607,38 +607,29 @@ function formatBytes(n) {
     return Math.round(n / 1024) + ' KB';
 }
 
-// 円グラフ(SVG)。slices: [{ value, cls }]。全体が 1 つの値でも描けるよう、円周の弧で描く
-function storagePieSvg(slices, label) {
-    const total = slices.reduce((a, x) => a + x.value, 0) || 1;
-    const R = 50, C = 2 * Math.PI * R;
-    let offset = 0;
-    const arcs = slices.filter(x => x.value > 0).map(x => {
-        const len = C * x.value / total;
-        const a = `<circle class="${x.cls}" cx="60" cy="60" r="${R}" fill="none" stroke-width="22" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 60 60)"></circle>`;
-        offset += len;
-        return a;
-    }).join('');
-    return `<svg viewBox="0 0 120 120" class="storage-pie" role="img" aria-label="${escapeAttr(label)}">${arcs}</svg>`;
-}
-
 function formatCount(n) { return isFinite(n) ? Math.round(n).toLocaleString('ja-JP') : '-'; }
 
+// 横棒グラフ。parts は 1 本の棒に積み上げる内訳(R2 のファイルとバックアップなど)で、残りは空き。1 つだけなら凡例は出さない
 function storageCard(title, parts, used, limit, note, fmt = formatBytes) {
     const pct = limit > 0 ? used / limit * 100 : 0;
     const level = pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : 'ok';
     const free = Math.max(0, limit - used);
-    const slices = parts.map(x => ({ value: x.value, cls: x.cls })).concat([{ value: free, cls: 'storage-free' }]);
-    const legend = parts.map(x => `<li><span class="storage-dot ${x.cls}"></span>${escapeHtml(x.name)}<b>${fmt(x.value)}</b></li>`).join('')
-        + `<li><span class="storage-dot storage-free"></span>空き<b>${fmt(free)}</b></li>`;
+    const total = Math.max(limit, used) || 1;
+    const segs = parts.filter(x => x.value > 0)
+        .map(x => `<span class="storage-seg ${x.cls}" style="width:${(x.value / total * 100).toFixed(2)}%"></span>`).join('');
+    const pctText = pct < 10 ? pct.toFixed(1) : String(Math.round(pct));
+    const legend = parts.length > 1
+        ? `<ul class="storage-legend">${parts.map(x => `<li><span class="storage-dot ${x.cls}"></span>${escapeHtml(x.name)}<b>${fmt(x.value)}</b></li>`).join('')}<li><span class="storage-dot storage-free"></span>空き<b>${fmt(free)}</b></li></ul>`
+        : '';
     const label = `${title}: 上限 ${fmt(limit)} のうち ${fmt(used)} を使用（${pct.toFixed(1)}%）`;
     return `
         <div class="storage-item storage-${level}">
-            <h3 class="storage-title">${escapeHtml(title)}</h3>
-            <div class="storage-body">
-                <div class="storage-pie-wrap">${storagePieSvg(slices, label)}<span class="storage-pct">${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%</span></div>
-                <ul class="storage-legend">${legend}</ul>
+            <div class="storage-head">
+                <h3 class="storage-title">${escapeHtml(title)}</h3>
+                <span class="storage-sum">${fmt(used)} / ${fmt(limit)}（${pctText}%）</span>
             </div>
-            <p class="storage-sum">${fmt(used)} / ${fmt(limit)}</p>
+            <div class="storage-bar" role="img" aria-label="${escapeAttr(label)}">${segs}</div>
+            ${legend}
             ${note ? `<p class="storage-note">${escapeHtml(note)}</p>` : ''}
         </div>`;
 }
@@ -652,6 +643,15 @@ function activityCards(a) {
     return one('Workers のリクエスト', a.requests) + one('D1 の読み取り行数', a.rowsRead) + one('D1 の書き込み行数', a.rowsWritten);
 }
 
+// Gemini API の今日の呼び出し回数(日本時間 0 時にリセット)。上限はこのサイトが自分で決めている 1 日の回数
+function geminiCard(g) {
+    if (!g) return '';
+    const note = g.enabled
+        ? '振り返りの要約で使った回数（日本時間の 0 時にリセット）'
+        : '現在は停止中です（振り返りの要約は使えません）';
+    return storageCard('Gemini API（今日）', [{ name: '今日の呼び出し', value: g.used, cls: 'storage-used' }], g.used, g.limit, note, formatCount);
+}
+
 // 上限の決まり方の説明(自動・手動・取得できず無料プランの上限)
 function storageLimitNote(u) {
     const planName = u.plan === 'paid' ? 'Workers Paid' : u.plan === 'free' ? '無料プラン' : '';
@@ -661,7 +661,7 @@ function storageLimitNote(u) {
     return `<p class="storage-note storage-limit-note storage-limit-${escapeAttr(u.limitSource)}">${escapeHtml(text)}</p>`;
 }
 
-// ホームのストレージ欄の開閉。閉じた状態で始まり、初めて開いたときに使用量を読み込む
+// ホームの使用量欄の開閉。閉じた状態で始まり、初めて開いたときに使用量を読み込む
 let storageLoaded = false;
 function toggleStorageSection(btn) {
     const body = document.getElementById(btn.getAttribute('aria-controls'));
@@ -685,7 +685,7 @@ async function loadStorageUsage() {
         const r2 = storageCard('R2（ファイル）',
             [{ name: 'ファイル', value: u.r2.files, cls: 'storage-used' }, { name: 'バックアップ', value: u.r2.backups, cls: 'storage-used2' }],
             u.r2.files + u.r2.backups, u.r2.limit, u.r2.count + '件' + (u.r2.truncated ? '以上（数えきれていません）' : ''));
-        box.innerHTML = d1 + r2 + activityCards(u.activity) + storageLimitNote(u);
+        box.innerHTML = d1 + r2 + activityCards(u.activity) + geminiCard(u.gemini) + storageLimitNote(u);
     } catch (e) {
         // 付け足しの表示なので、取れなくても他の画面は使える
         console.warn('ストレージの使用量を読み込めませんでした:', e);

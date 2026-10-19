@@ -8,9 +8,11 @@
 //   2. Secret の CF_API_TOKEN と CF_ACCOUNT_ID があれば、Cloudflare の API でプランを読み、PLAN_LIMITS_MB の表で決める(1 日 1 回)
 //   3. 読めなければ、無料プランの上限(安全側)。画面に「自動で取得できない」と出す
 
-import { getConfig } from './config.js';
+import { getConfig, GEMINI_DAILY_LIMIT } from './config.js';
 import { cacheGet, cachePut } from './cache.js';
 import { fetchActivity } from './usage.js';
+import { geminiUsageGet } from './gemini.js';
+import { jstDate } from './util.js';
 
 const CACHE_KEY = 'storage_usage';
 const PLAN_CACHE_KEY = 'storage_plan';
@@ -101,6 +103,16 @@ async function r2Size(env) {
   return { files, backups, count, truncated };
 }
 
+// Gemini の今日(日本時間)の呼び出し回数。アプリ側の 1 日の上限(GEMINI_DAILY_LIMIT)に対する数。取れなければ null
+async function geminiToday(env) {
+  try {
+    return { used: await geminiUsageGet(env, jstDate()), limit: GEMINI_DAILY_LIMIT, enabled: env.GEMINI_ENABLED === 'true' };
+  } catch (e) {
+    console.error('gemini usage read failed: ' + String((e && e.message) || e));
+    return null;
+  }
+}
+
 export async function getStorageUsage(env) {
   let base = null;
   const cached = await cacheGet(env, CACHE_KEY);
@@ -113,6 +125,7 @@ export async function getStorageUsage(env) {
   const lim = await resolveLimits(env);
   return {
     activity: await fetchActivity(env, lim.plan),   // null = 取得できない(トークン未登録など)
+    gemini: await geminiToday(env),   // null = 取得できない
     d1: { used: base.d1Used, limit: lim.d1Mb * MB },
     r2: { files: base.r2.files, backups: base.r2.backups, count: base.r2.count, truncated: base.r2.truncated, limit: lim.r2Mb * MB },
     limitSource: lim.source,   // 'manual'(設定の数字) | 'auto'(プランから) | 'fallback'(取得できず無料プランの上限)
