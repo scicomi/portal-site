@@ -638,17 +638,14 @@ function storageCard(title, parts, used, limit, note, fmt = formatBytes) {
 function activityCards(a) {
     if (!a) return '';
     const when = a.period === 'month' ? '今月' : '本日';
-    const note = a.period === 'month' ? 'Workers Paid に含まれる量に対する、今月の合計' : '無料枠の 1 日の上限に対する、本日の合計（日本時間の 9 時にリセット）';
-    const one = (title, x) => storageCard(`${title}（${when}）`, [{ name: when + 'の合計', value: x.used, cls: 'storage-used' }], x.used, x.limit, note, formatCount);
+    const one = (title, x) => storageCard(`${title}（${when}）`, [{ name: when + 'の合計', value: x.used, cls: 'storage-used' }], x.used, x.limit, '', formatCount);
     return one('Workers のリクエスト', a.requests) + one('D1 の読み取り行数', a.rowsRead) + one('D1 の書き込み行数', a.rowsWritten);
 }
 
 // Gemini API の今日の呼び出し回数(日本時間 0 時にリセット)。上限はこのサイトが自分で決めている 1 日の回数
 function geminiCard(g) {
     if (!g) return '';
-    const note = g.enabled
-        ? '振り返りの要約で使った回数（日本時間の 0 時にリセット）'
-        : '現在は停止中です（振り返りの要約は使えません）';
+    const note = g.enabled ? '' : '現在は停止中です（振り返りの要約は使えません）';
     return storageCard('Gemini API（本日）', [{ name: '本日の呼び出し', value: g.used, cls: 'storage-used' }], g.used, g.limit, note, formatCount);
 }
 
@@ -656,7 +653,7 @@ function geminiCard(g) {
 function storageLimitNote(u) {
     const planName = u.plan === 'paid' ? 'Workers Paid' : u.plan === 'free' ? '無料プラン' : '';
     const text = u.limitSource === 'manual' ? '上限: 設定ページで指定した値'
-        : u.limitSource === 'auto' ? `上限: ${planName}の上限（Cloudflare から自動取得）`
+        : u.limitSource === 'auto' ? `上限: ${planName}の上限`
         : '上限: プランを自動で取得できないため、無料プランの上限で表示しています（幹部に連絡してください）';
     return `<p class="storage-note storage-limit-note storage-limit-${escapeAttr(u.limitSource)}">${escapeHtml(text)}</p>`;
 }
