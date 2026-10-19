@@ -749,6 +749,8 @@ function renderHeader(activePage) {
       ${navHtml}
     </nav>
   `;
+  header.removeAttribute('data-prerendered');
+  if (window.SciHeaderCache) SciHeaderCache.save(isAdmin, header.innerHTML);   // theme-init.js: 次のページ移動で先に描く
   syncHeaderHeightVar();
   bindNavGroups(header);
   bindAccountMenu(header);
