@@ -34,7 +34,7 @@
 > 4. **権限フィルタは既にサーバー側で担保済み** — トークンゲート（gas/Code.gs の
 >    `isAdminOnlyResource` + HMAC トークン）によりクライアントは閲覧可能なデータしか
 >    持たない。クライアント側の残タスクは検索履歴の扱いのみ（段階9参照）。
-> 5. **検索結果件数表示・空状態ヒントは実装済み** — `renderEvents()`（script.js）の
+> 5. **検索結果件数表示・空状態ヒントは実装済み** — `renderEvents()`（events.js）の
 >    見出し件数と empty-state。段階6・10は差分だけ実装する。
 
 ---
@@ -44,7 +44,7 @@
 新規ファイル **`search.js`**（`app.js` の後、各ページ JS の前に読み込む）に共通ロジックを集約する。
 
 ```
-config.js → api.js → app.js → search.js → (script.js | members.js | experiments.js | ...)
+config.js → api.js → app.js → search.js → (events.js | members.js | experiments.js | ...)
 ```
 
 `search.js` が提供するもの:
@@ -59,7 +59,7 @@ config.js → api.js → app.js → search.js → (script.js | members.js | expe
 | `debounce(fn, ms)` | 汎用（現状リポジトリに存在しないため新設） |
 
 各ページはフィールド定義（重み付け）だけを渡す。イベント固有の PartsList 展開などは
-呼び出し側（script.js）に残し、エンジンは汎用に保つ。
+呼び出し側（events.js）に残し、エンジンは汎用に保つ。
 
 ---
 
@@ -67,7 +67,7 @@ config.js → api.js → app.js → search.js → (script.js | members.js | expe
 
 ### 現状
 ```javascript
-// script.js:198
+// events.js:198
 function onSearchChange() {
     filterState.keyword = (document.getElementById('event-search').value || '').toLowerCase();
     renderEvents();
@@ -102,7 +102,7 @@ function searchNormalize(text) {
 
 適用（events の例）:
 ```javascript
-// script.js: applyFilters 内
+// events.js: applyFilters 内
 if (filterState.keyword) {
     if (!searchNormalize(eventSearchText(e)).includes(searchNormalize(filterState.keyword))) return false;
 }
@@ -127,7 +127,7 @@ assertEq(searchNormalize('  foo　 bar '), 'foo bar');
 
 ### 現状
 ```javascript
-// script.js:223
+// events.js:223
 function eventSearchText(e) {
     const parts = [e.Title, e.Location, e.Audience, e.Remarks, e.Belongings, e.Admin_Kyoka, e.Admin_Houkoku];
     // PartsList（実験名・発表者）もパースして追加済み
@@ -136,7 +136,7 @@ function eventSearchText(e) {
 ```
 対象フィールドは既に広い（旧メモの「フィールド不足」という指摘は誤り）。
 問題は **全フィールドが等価** なことと、**ヒット後も日付順のみでソート**されること
-（script.js `renderEvents()` のソートは Date 比較のみ）。
+（events.js `renderEvents()` のソートは Date 比較のみ）。
 
 ### 改善案
 フィールドごとに重みを持たせ、「完全一致 > 前方一致 > 部分一致」の倍率を掛ける。
@@ -156,7 +156,7 @@ function scoreFieldValue(normValue, normQuery, weight) {
 }
 
 // 各ページのフィールド定義（呼び出し側が渡す）
-// script.js
+// events.js
 const EVENT_FIELD_SPEC = [
     { key: 'title',    weight: 100, get: e => [e.Title] },
     { key: 'location', weight: 80,  get: e => [e.Location] },
@@ -299,14 +299,14 @@ function buildSuggestions(partial, sources, history) {
 
 ### 現状
 ```javascript
-// script.js:41 — `/` で検索窓フォーカス（実装済み）
+// events.js:41 — `/` で検索窓フォーカス（実装済み）
 if (e.key === '/' && document.getElementById('event-search')) { ... }
 ```
-`n`（新規作成）・`Esc`（モーダル閉じ）・`Ctrl+S`（保存）も実装済み（script.js:25-45）。
+`n`（新規作成）・`Esc`（モーダル閉じ）・`Ctrl+S`（保存）も実装済み（events.js:25-45）。
 サジェストが無いため ↓↑ 操作は存在しない。**members / experiments 等には `/` すら無い。**
 
 ### 改善案
-グローバルハンドラ（script.js:25）は「INPUT 内では早期 return」する設計なので、
+グローバルハンドラ（events.js:25）は「INPUT 内では早期 return」する設計なので、
 サジェスト操作は **input 自身の keydown リスナー**として `attachSearchBox()` 内に実装する
 （既存ハンドラと衝突しない）。
 
@@ -353,7 +353,7 @@ input.addEventListener('keydown', (e) => {
 
 ### 現状
 - 件数表示: **実装済み**（`renderEvents()` の見出し「今後の日程 (N件)」）
-- 空状態ヒント: **実装済み**（script.js:444-457、members/experiments も同様）
+- 空状態ヒント: **実装済み**（events.js:444-457、members/experiments も同様）
 - ハイライト・マッチ理由表示: なし。どのフィールドに引っかかったか分からない。
 
 ### 改善案
@@ -364,7 +364,7 @@ input.addEventListener('keydown', (e) => {
    — グループ化の代替としてこちらを採用
 3. 件数見出しに検索中である旨を反映（「検索結果 (N件)」）
 
-**XSS 注意**: 本リポジトリは `escapeHtml` を徹底している（script.js:61 のコメント参照）。
+**XSS 注意**: 本リポジトリは `escapeHtml` を徹底している（events.js:61 のコメント参照）。
 ハイライトは「生テキストをセグメント分割 → 各セグメントを escapeHtml → マッチ部だけ
 `<mark>` で包む」順で行い、escape 済み文字列への正規表現置換はしない。
 
@@ -410,7 +410,7 @@ mark.search-hit { background: #fff3bf; text-decoration: underline; text-underlin
 ## 段階7: フィルタとの深い統合
 
 ### 現状
-実は **基本統合は済んでいる**: `applyFilters()`（script.js:237）はカテゴリ・期間・キーワードを
+実は **基本統合は済んでいる**: `applyFilters()`（events.js:237）はカテゴリ・期間・キーワードを
 同時適用する。不足しているのは:
 
 - 検索状態が URL に残らない（リロード・共有で消える）
@@ -425,7 +425,7 @@ mark.search-hit { background: #fff3bf; text-decoration: underline; text-underlin
 
 ### コード例
 ```javascript
-// script.js
+// events.js
 function syncFilterToUrl() {
     const p = new URLSearchParams();
     if (filterState.keyword) p.set('q', filterState.keyword);
@@ -442,7 +442,7 @@ function restoreFilterFromUrl() {   // init() 冒頭で呼ぶ
     if (p.get('period')) onPeriodFilter(p.get('period'));
 }
 ```
-※ 既存の `?action=new` / `?edit=` / `?event=` パラメータ処理（script.js:96-156）と
+※ 既存の `?action=new` / `?edit=` / `?event=` パラメータ処理（events.js:96-156）と
 干渉しないよう、`redirectLegacyEventParam()` の後に実行する。
 
 ### 実装難度: ⭐⭐（1日。既存 URL パラメータとの共存確認が本体）
@@ -461,7 +461,7 @@ function restoreFilterFromUrl() {   // init() 冒頭で呼ぶ
 2. **haystack を毎回再計算**: `eventSearchText()` は 1 キーストロークごとに全イベント分
    実行され、PartsList の `JSON.parse` まで毎回走る。
 3. **`occurrenceInfo()` が O(n²)**: `renderEvents()` の行生成ごとに全 eventsData を filter +
-   sort する（script.js:13-22）。**検索と無関係に、現状最大のレンダリングコスト。**
+   sort する（events.js:13-22）。**検索と無関係に、現状最大のレンダリングコスト。**
 
 ### 改善案（規模認識が前提）
 本システムは学生団体のポータルで、イベント数は数百件オーダー。**Web Worker と転置
@@ -497,7 +497,7 @@ function createSearcher(getData, fieldSpec) {
 }
 ```
 ```javascript
-// script.js
+// events.js
 const eventSearcher = createSearcher(() => eventsData, EVENT_FIELD_SPEC);
 // refreshData() 成功時と保存/削除後に eventSearcher.invalidate();
 

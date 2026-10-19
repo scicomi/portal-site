@@ -186,7 +186,7 @@
                 document.title = 'イベント詳細 | SciComi Site';
             }
             // 解析中に書き込めば DOMContentLoaded より前に実行される（動的追加だと間に合わない）
-            document.write('<script src="' + (isDetail ? 'event-detail.js' : 'script.js') + '"><\/script>');
+            document.write('<script src="' + (isDetail ? 'event-detail.js' : 'events.js') + '"><\/script>');
         })();
     </script>
 </body>

@@ -12,7 +12,7 @@
 │ config.js  (設定)       │ ←────── │ Code.gs       │    │ 4シート      │
 │ api.js     (通信)       │         │               │    │ Events       │
 │ app.js     (共通)       │         │ RESOURCE_     │    │ Members      │
-│ script.js  (イベント)   │         │ REGISTRY で   │    │ Experiments  │
+│ events.js  (イベント)   │         │ REGISTRY で   │    │ Experiments  │
 │ members.js (メンバー)   │         │ リソース管理  │    │ Config       │
 │ experiments.js (実験)   │         └──────────────┘    └──────────────┘
 │ home.js    (ホーム)     │
@@ -64,7 +64,7 @@ GAS との HTTP 通信を全て担当する。ページ固有のロジックは�
 - トースト通知（UNDO 対応の5秒ディレイ付き）
 - XSS対策ヘルパー（escapeHtml / escapeAttr）
 
-### 4. ページレイヤー (script.js, members.js, experiments.js, home.js)
+### 4. ページレイヤー (events.js, members.js, experiments.js, home.js)
 
 各ページの CRUD ロジックと DOM 操作。
 - `loadEvents()` / `renderEventList()` のようなロード→レンダリングの流れ
@@ -266,7 +266,7 @@ tbody.replaceChildren(...items.map(createExpRow));
 全ファイルを一度にリファクタリングする必要はない。以下の優先度で進める:
 
 1. **高優先**: ユーザー入力値を含む innerHTML（XSSリスクが最も高い箇所）
-   - `script.js` のイベントタイトル表示、ファイルURL表示
+   - `events.js` のイベントタイトル表示、ファイルURL表示
    - `members.js` の名前・メールアドレス表示
 2. **中優先**: テーブル行の生成（experiments.js, members.js の `tbody.innerHTML = ...map()`)
 3. **低優先**: 静的なUIパーツ（app.js のヘッダー生成、モーダルテンプレート）
