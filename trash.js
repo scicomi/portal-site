@@ -9,6 +9,7 @@
 
 let trashItems = [];
 let trashFilter = '';
+let trashKeyword = '';
 
 const TRASH_RESOURCE_LABELS = { events: 'イベント', members: 'メンバー', experiments: '実験ネタ', passwords: 'パスワード' };
 const TRASH_FIELD_LABELS = {
@@ -68,6 +69,18 @@ function setTrashFilter(kind) {
     renderTrash();
 }
 
+// 名前・元の記録の名前・種類のどれかに、空白で区切ったすべての語を含むものを残す(大文字・小文字は区別しない)
+function onTrashSearch(value) {
+    trashKeyword = String(value || '').trim().toLowerCase();
+    renderTrash();
+}
+
+function trashMatchesKeyword(t) {
+    if (!trashKeyword) return true;
+    const hay = [t.label, t.recordLabel, trashKindLabel(t)].join(' ').toLowerCase();
+    return trashKeyword.split(/\s+/).every(w => hay.includes(w));
+}
+
 function trashKindLabel(t) {
     if (t.kind === 'record') return TRASH_RESOURCE_LABELS[t.resource] || t.resource;
     return TRASH_FIELD_LABELS[t.field] || t.field;
@@ -92,24 +105,33 @@ function trashRemainingLabel(iso) {
 
 function renderTrash() {
     const tbody = document.getElementById('trash-tbody');
-    const items = trashItems.filter(t => !trashFilter || t.kind === trashFilter);
+    const items = trashItems.filter(t => (!trashFilter || t.kind === trashFilter) && trashMatchesKeyword(t));
     if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="loading-text">ゴミ箱は空です</td></tr>';
+        const msg = trashItems.length && trashKeyword ? '検索に一致するものはありません' : 'ゴミ箱は空です';
+        tbody.innerHTML = `<tr><td colspan="5" class="loading-text">${msg}</td></tr>`;
         return;
     }
     tbody.innerHTML = items.map(t => {
         const parent = t.kind === 'item' && t.recordLabel
             ? `<div class="text-muted" style="font-size:0.78rem;">「${escapeHtml(t.recordLabel)}」（${escapeHtml(TRASH_RESOURCE_LABELS[t.resource] || '')}）から外した</div>` : '';
+        const name = t.label || '(名前なし)';
+        const buttons = `
+                        <button class="inline-action-btn" data-action="trash-restore" data-id="${escapeAttr(t.id)}" aria-label="「${escapeAttr(name)}」を復元" title="元の場所に戻す">復元</button>
+                        <button class="inline-action-btn danger" data-action="trash-purge" data-id="${escapeAttr(t.id)}" aria-label="「${escapeAttr(name)}」を完全に削除" title="完全に削除する（元に戻せません）">完全に削除</button>`;
+        // 狭い画面(768px 以下)は操作の列(data-action-cell)が隠れ、行のタップにも処理がないので、
+        // 種類と操作ボタンを名前の欄の中に出す(.trash-sm は狭い画面だけ表示)
         return `
             <tr data-id="${escapeAttr(t.id)}">
-                <td>${escapeHtml(trashKindLabel(t))}</td>
-                <td>${escapeHtml(t.label || '(名前なし)')}${parent}</td>
+                <td class="hide-mobile">${escapeHtml(trashKindLabel(t))}</td>
+                <td>
+                    <div class="trash-sm trash-kind-sm">${escapeHtml(trashKindLabel(t))}</div>
+                    ${escapeHtml(name)}${parent}
+                    <div class="trash-sm trash-actions-sm">${buttons}</div>
+                </td>
                 <td class="hide-mobile">${escapeHtml(trashDateLabel(t.deletedAt))}</td>
-                <td>${escapeHtml(trashRemainingLabel(t.expiresAt))}</td>
+                <td class="trash-remaining">${escapeHtml(trashRemainingLabel(t.expiresAt))}</td>
                 <td data-action-cell>
-                    <div class="inline-actions">
-                        <button class="inline-action-btn" data-action="trash-restore" data-id="${escapeAttr(t.id)}" aria-label="「${escapeAttr(t.label || '(名前なし)')}」を復元" title="元の場所に戻す">復元</button>
-                        <button class="inline-action-btn danger" data-action="trash-purge" data-id="${escapeAttr(t.id)}" aria-label="「${escapeAttr(t.label || '(名前なし)')}」を完全に削除" title="完全に削除する（元に戻せません）">完全に削除</button>
+                    <div class="inline-actions">${buttons}
                     </div>
                 </td>
             </tr>`;

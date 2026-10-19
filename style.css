@@ -192,6 +192,15 @@ body {
 .account-menu-edit { width: 14px; height: 14px; flex: none; color: light-dark(#888, #9a9aa4); }
 .account-menu-name.is-unset .account-menu-edit { display: none; }
 .account-menu-sep { height: 1px; background: light-dark(#e5e7eb, #3a3b42); margin: 4px 6px; }
+/* ナビの「管理」の中身(ゴミ箱など)。スマホだけアカウントメニューに出す(app.js の renderHeader) */
+.account-menu-nav { display: none; }
+.account-menu-navlink { text-decoration: none; }
+.account-menu-navlink[aria-current="page"] { font-weight: 700; }
+@media (max-width: 600px) {
+    .account-menu-nav { display: flex; flex-direction: column; }
+    .app-nav .nav-group,
+    .app-nav .nav-separator { display: none; }
+}
 
 .app-nav {
     max-width: 1200px;
@@ -429,6 +438,12 @@ main:focus { outline: none; }
     font-size: 0.82rem;
     color: var(--text-tertiary);
 }
+/* 見出しの右の「保存」(途中のステップから保存する) */
+.wizard-save-now { float: right; margin-left: 12px; min-height: 36px; padding: 0.35rem 1rem; }
+@media (pointer: coarse) { .wizard-save-now { min-height: var(--touch-min); } }
+/* 入力欄の下に出すエラー(showWizardFieldError) */
+.field-error { flex-basis: 100%; margin-top: 6px; font-size: 0.85rem; font-weight: 600; color: var(--danger-text); }
+select.input-invalid, input.input-invalid { border-color: var(--danger-color); }
 
 /* Step progress bar */
 .wizard-progress {
@@ -632,6 +647,8 @@ tr:focus-within > td .inline-actions {
 
 @media (max-width: 768px) {
     .fab { display: inline-flex; bottom: 16px; right: 16px; }
+    /* FAB(下端から約 72px)が一覧の最終行(右端の出欠欄など)に重ならないよう、本文の下に余白を足す */
+    body:has(.fab) main { padding-bottom: 72px; }
     /* モバイルは FAB があるためページ上部の作成ボタンは隠す（重複を避ける） */
     .page-new-btn { display: none; }
     .wizard-panel { height: min(92vh, 680px); width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
@@ -674,6 +691,16 @@ tr:focus-within > td .inline-actions {
     border-color: var(--primary-color);
     background: var(--surface);
     box-shadow: 0 0 0 3px rgba(70, 71, 117, 0.1);
+}
+/* 薄い影だけではダークで位置を見失うので、他の部品と同じ輪郭も出す
+   (テキスト欄はクリックでも :focus-visible になるので、入力中の欄がはっきり分かる)。
+   後ろにある各部品の `:focus { outline: none }`(guide.css を含む)に負けないよう :root を付けて詳細度を上げる */
+:root .e1-input:focus-visible,
+:root .search-input:focus-visible,
+:root .gd-home-search:focus-visible,
+:root .expd-fy-select:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
 }
 
 textarea {
@@ -1056,7 +1083,10 @@ textarea:focus {
     margin-top: 1.5rem;
 }
 
+/* 種類ボタンの下の 1 行説明(地のパステル色の上でも読めるよう、文字色はボタンと同じ濃い色のまま) */
+.btn-category-desc { display: block; margin-top: 4px; font-size: 0.78rem; font-weight: 400; line-height: 1.4; }
 .btn-category {
+    flex-direction: column;   /* 説明を名前の下に並べる(.btn は横並びの flex) */
     padding: 1rem;
     font-size: 1.1rem;
     border: 1px solid var(--border-color);
@@ -1323,7 +1353,7 @@ textarea:focus {
     .home-calendar-card { padding: var(--space-sm); }
     .home-calendar .fc { font-size: 0.7rem; }
     .home-calendar .fc-toolbar-title { font-size: 1rem; padding: 6px; }
-    .home-calendar .fc-button { min-width: 44px; min-height: 44px; padding: 4px 8px; font-size: 0.9rem; }
+    .home-calendar .fc-button { min-width: 44px; min-height: 44px; padding: 4px 8px; font-size: 0.9rem; white-space: nowrap; }   /* 「今日」が「今/日」と縦に折り返さないように */
     .home-calendar .fc-daygrid-day-frame { min-height: 32px; }
     .home-calendar .fc-daygrid-event { font-size: 0.58rem; }
 }
@@ -1674,6 +1704,16 @@ textarea:focus {
     box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     background: var(--surface);
 }
+/* 件数の多い表: 見出し行をアプリのヘッダーの下に固定する。横スクロールの枠(overflow)があると固定が効かないので外す。
+   狭い画面でも列が収まる表にだけ付ける */
+.table-wrapper.table-sticky-head { overflow: visible; }
+.table-sticky-head .data-table thead th {
+    position: sticky;
+    top: var(--header-h, 0px);
+    z-index: 1;
+    background: var(--bg-subtle);
+    box-shadow: inset 0 -2px 0 var(--border-color);
+}
 .data-table {
     width: 100%;
     border-collapse: collapse;
@@ -1708,7 +1748,16 @@ textarea:focus {
 .cell-name { font-weight: 600; white-space: nowrap; color: var(--text-color); }
 /* 予定表のタイトル列: 空白のない長いタイトルで表が横に伸び、右の操作ボタンが画面外に消えないよう、長さを抑えて省略する */
 .ev-title-cell { white-space: nowrap; max-width: min(32em, 55vw); overflow: hidden; text-overflow: ellipsis; }
+/* 予定表の参加者数: 768px 以下は列(hide-mobile)の代わりにタイトルの下へ出す */
+.ev-count-sm { display: none; font-size: 0.75rem; font-weight: 400; color: var(--text-muted); }
+@media (max-width: 768px) { .ev-count-sm { display: block; } }
 .cell-role { white-space: nowrap; }
+/* 長い役職名は「…」で省略する(学籍番号・名前は必ず全部見せ、残りの幅に役職を収める) */
+.cell-role .cat-badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; box-sizing: border-box; }
+@media (max-width: 768px) {
+    #members-table td:not(.cell-role):not([colspan]) { white-space: nowrap; }
+    #members-table td.cell-role { max-width: 30vw; overflow: hidden; }
+}
 .cell-snippet {
     max-width: 200px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1770,6 +1819,7 @@ textarea:focus {
         width: 100%;
     }
     .page-section-actions .page-title { text-align: left; }
+    .page-section-actions.page-title-row { flex-direction: row; align-items: center; }
 
     /* カテゴリ/期間フィルタは横スクロールで省スペース */
     .page-section-actions:has(.filter-chip) {
@@ -1819,6 +1869,12 @@ textarea:focus {
 
     /* タッチターゲットを大きく */
     .nav-link { padding: 12px 14px; }
+}
+/* スマホはナビの 5 項目(ホーム〜ガイド)を 1 行に収める。「管理」はアカウントメニューへ移している。
+   高さ(44px 以上)は保ったまま、左右の余白だけ詰めて均等に並べる */
+@media (max-width: 600px) {
+    .app-nav { padding: 0 8px; gap: 0; justify-content: space-between; }
+    .app-nav .nav-link { padding: 12px 8px; }
 }
 
 /* さらに狭い端末（480px以下） */
@@ -2206,6 +2262,8 @@ textarea:focus {
     flex-direction: row;
 }
 .expd-info-section-header h3 { flex: 1; order: 1; }
+/* ✎ はイベント詳細と同じく見出しの右端に置く */
+.expd-info-section-header .expd-section-edit-btn { order: 2; }
 .expd-section-edit-btn {
     order: 0;
     background: none; border: none; cursor: pointer;
@@ -3654,6 +3712,14 @@ a.vote-count-badge:hover { color: var(--primary-color); text-decoration: underli
 }
 .empty-cell:hover { color: var(--primary-color); background: var(--primary-subtle); }
 .empty-cell:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
+/* 未入力の項目をまとめた行(event-detail.js の foldEmptyDetailRows)。項目名のボタンで編集の該当欄へ */
+.detail-empty-row td { font-size: 0.85rem; }
+.detail-empty-lead { color: var(--text-muted); margin-right: 6px; }
+.empty-cell.empty-chip {
+    margin: 2px 6px 2px 0; padding: 2px 10px;
+    border: 1px dashed var(--border-input); border-radius: var(--radius-full);
+    font-size: 0.82rem;
+}
 
 /* --- 詳細タブ: 表のグループ見出し行（グループごとに色を変える）・人名チップ --- */
 .series-detail-table tr.series-detail-group th {
@@ -3699,10 +3765,12 @@ button.person-chip.is-link:focus-visible { outline: 2px solid var(--primary-colo
 .attendance-table th:nth-child(3) { width: 22%; }
 .attendance-table th:nth-child(4) { width: 30%; }
 .attendance-table td { overflow-wrap: anywhere; }
-/* スマホでは窮屈になるので、表の最小幅を確保して横スクロールさせる */
+/* スマホでは役職(3 列目)を出さず、学籍番号・名前・メモを横スクロールなしで収める。
+   学籍番号と名前は折り返さず、メモだけ折り返す */
 @media (max-width: 600px) {
-    .attendance-table { table-layout: auto; min-width: 560px; }
-    .attendance-table th, .attendance-table td { white-space: nowrap; overflow-wrap: normal; }
+    .attendance-table { table-layout: auto; }
+    .attendance-table th:nth-child(3), .attendance-table td:nth-child(3):not([colspan]) { display: none; }
+    .attendance-table th:nth-child(-n+2), .attendance-table td:nth-child(-n+2):not([colspan]) { white-space: nowrap; overflow-wrap: normal; }
 }
 /* 詳細タブ: 実験の縦並びリストと、イベント後に対応の入れ子（親＞子＞孫） */
 .detail-exp-list { list-style: disc; margin: 0; padding-left: 1.3em; }
@@ -3817,9 +3885,11 @@ button.person-chip.is-link:focus-visible { outline: 2px solid var(--primary-colo
     padding: 0;
     cursor: pointer;
     font: inherit;
+    color: inherit;
     text-align: left;
 }
-.detail-toggle-header:hover .detail-section-title { text-decoration: underline; }
+.detail-toggle-header:hover .detail-section-title,
+.detail-toggle-header:hover .detail-toggle-label { text-decoration: underline; }
 
 /* 実在しない実験名など、修正しないと先へ進めない入力欄の強調 */
 .e1-input.input-invalid {
@@ -4257,6 +4327,16 @@ mark.search-hit {
     }
 }
 
+/* ========== ゴミ箱(trash.html) ========== */
+/* 狭い画面だけ、種類を名前の上に、復元・完全に削除を名前の下に出す(操作の列は 768px 以下で隠れるため) */
+.trash-sm { display: none; }
+.trash-remaining { white-space: nowrap; }
+@media (max-width: 768px) {
+    .trash-kind-sm { display: block; font-size: 0.75rem; color: var(--text-muted); }
+    .trash-actions-sm { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .trash-actions-sm .inline-action-btn { min-height: var(--touch-min); padding: 0 14px; }
+}
+
 /* ========== タッチ端末(アクセシビリティ) ========== */
 /* ホバーのないタブレット(769px 以上)では、行にカーソルを乗せられず、行内の編集・削除が出せないので、常に表示する */
 @media (hover: none) {
@@ -4282,6 +4362,17 @@ mark.search-hit {
     .vote-count-badge { justify-content: center; min-width: var(--touch-min); }
     .empty-cell,
     .expd-section-edit-btn { min-width: var(--touch-min); min-height: var(--touch-min); }
+    /* 検索欄・ページ内のタブ・行内の選択欄(画面ごとに個別の高さで作られていた部品) */
+    .search-input,
+    .gd-home-search,
+    .gd-new-btn,
+    .pw-cat-tab,
+    .expd-tab,
+    .expd-fy-select,
+    .ev-vote-member-bar select,
+    #fiscal-year-select,
+    .report-status-select,
+    .post-event-input { min-height: var(--touch-min); }
 }
 
 /* ========== 動きを減らす設定(OS の「視覚効果を減らす」)への対応 ========== */

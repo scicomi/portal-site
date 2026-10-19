@@ -38,7 +38,6 @@ async function init() {
     });
     renderWelcome();
     renderSiteLinks();
-    loadStorageUsage();
 
     updateSyncStatus(cachedEv ? 'cached' : 'initial-loading', cachedEv ? cachedEv.timestamp : null);
 
@@ -662,6 +661,19 @@ function storageLimitNote(u) {
     return `<p class="storage-note storage-limit-note storage-limit-${escapeAttr(u.limitSource)}">${escapeHtml(text)}</p>`;
 }
 
+// ホームのストレージ欄の開閉。閉じた状態で始まり、初めて開いたときに使用量を読み込む
+let storageLoaded = false;
+function toggleStorageSection(btn) {
+    const body = document.getElementById(btn.getAttribute('aria-controls'));
+    if (!body) return;
+    const open = body.classList.toggle('hidden') === false;
+    btn.setAttribute('aria-expanded', String(open));
+    if (open && !storageLoaded) {
+        storageLoaded = true;
+        loadStorageUsage();
+    }
+}
+
 async function loadStorageUsage() {
     const box = document.getElementById('storage-charts');
     if (!box) return;
@@ -677,6 +689,7 @@ async function loadStorageUsage() {
     } catch (e) {
         // 付け足しの表示なので、取れなくても他の画面は使える
         console.warn('ストレージの使用量を読み込めませんでした:', e);
+        storageLoaded = false;   // 閉じて開き直せば、もう一度読み込む
         box.innerHTML = '<p class="empty-state" style="padding:10px 0;">読み込めませんでした</p>';
     }
 }

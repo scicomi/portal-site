@@ -323,8 +323,8 @@ function renderMembers() {
 
     if (thead) {
         thead.innerHTML = isStaffTab
-            ? `<tr><th>教職員番号</th><th>名前</th><th>役職</th><th>メールアドレス</th><th style="width:1px;"><span class="sr-only">操作</span></th></tr>`
-            : `<tr><th>学籍番号</th><th>名前</th><th>役職</th><th style="width:1px;"><span class="sr-only">操作</span></th></tr>`;
+            ? `<tr><th>教職員番号</th><th>名前</th><th>役職</th><th>メールアドレス</th><th class="hide-mobile" style="width:1px;"><span class="sr-only">操作</span></th></tr>`
+            : `<tr><th>学籍番号</th><th>名前</th><th>役職</th><th class="hide-mobile" style="width:1px;"><span class="sr-only">操作</span></th></tr>`;
     }
 
     if (sorted.length === 0) {

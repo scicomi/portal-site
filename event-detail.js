@@ -498,11 +498,20 @@ function openOccurrence(id) {
 // 投票は listAll で先読み済みの時だけ数える（バッジのために通信を増やさない）。
 function updateScopeBadges() {
     const ev = currentEvent();
+    // 数字だけでは意味が分からないので、title(マウス)とタブの名前(読み上げ)に「何の数か」を添える
+    const BADGE_DESC = { 'scope-badge-summary': n => `未提出の書類 ${n} 件`, 'scope-badge-attendance': n => `未回答 ${n} 人` };
     const set = (id, n) => {
         const el = document.getElementById(id);
         if (!el) return;
         el.textContent = n || '';
         el.classList.toggle('hidden', !n);
+        const desc = n ? BADGE_DESC[id](n) : '';
+        el.title = desc;
+        const tab = el.closest('[role="tab"]');
+        if (!tab) return;
+        if (!tab.dataset.baseLabel) tab.dataset.baseLabel = tab.firstChild ? tab.firstChild.textContent.trim() : '';
+        if (desc) tab.setAttribute('aria-label', `${tab.dataset.baseLabel}(${desc})`);
+        else tab.removeAttribute('aria-label');
     };
     if (!ev) { set('scope-badge-summary', 0); set('scope-badge-attendance', 0); return; }
 
@@ -778,6 +787,51 @@ function removeDetailFile(field, index) {
     });
 }
 
+// 未入力の行(中身が「—」のボタンだけの行)を、グループの末尾の 1 行「未入力: 企画名 運転者 …」にまとめる。
+// 未入力が多いと、スマホで必要な情報までのスクロールが長くなるため。項目名のボタンを押すと、これまでどおり編集の該当欄へ移る
+function foldEmptyDetailRows(table) {
+    if (!table) return;
+    let group = null;
+    const groups = [];
+    [...table.rows].forEach(row => {
+        if (row.classList.contains('series-detail-group')) {
+            group = { head: row, last: row, empties: [] };
+            groups.push(group);
+            return;
+        }
+        if (!group) return;
+        group.last = row;
+        const td = row.querySelector('td');
+        const only = td && td.children.length === 1 && td.textContent.trim() === td.firstElementChild.textContent.trim()
+            ? td.querySelector(':scope > .empty-cell') : null;
+        if (!only) return;
+        const th = row.querySelector('th');
+        const label = th ? th.textContent.trim() : (group.head.querySelector('.series-group-head > span') || group.head).textContent.trim();
+        group.empties.push({ row, btn: only, label });
+    });
+    groups.forEach(g => {
+        if (!g.empties.length) return;
+        const chips = g.empties.map(({ btn, label }) => {
+            const b = btn.cloneNode(false);
+            b.classList.add('empty-chip');
+            b.textContent = label;
+            b.setAttribute('aria-label', `${label}(未入力)を編集して入力`);
+            return b;
+        });
+        g.empties.forEach(({ row }) => { if (g.last === row) g.last = row.previousElementSibling || g.head; row.remove(); });
+        const tr = document.createElement('tr');
+        tr.className = 'detail-empty-row';
+        const td = document.createElement('td');
+        td.colSpan = 2;
+        const lead = document.createElement('span');
+        lead.className = 'detail-empty-lead';
+        lead.textContent = '未入力:';
+        td.append(lead, ...chips);
+        tr.appendChild(td);
+        g.last.after(tr);
+    });
+}
+
 function renderDetail() {
     const box = document.getElementById('series-detail');
     if (!box) return;
@@ -900,6 +954,7 @@ function renderDetail() {
             ${prRowsHtml(ev)}` : ''}
         </table>
     `;
+    foldEmptyDetailRows(box.querySelector('.series-detail-table'));
 
     // 書類ステータスの変更を保存
     box.querySelectorAll('.report-status-select[data-doc]').forEach(sel => {
@@ -1029,10 +1084,12 @@ async function renderAttendanceTab() {
     // 参加投票はスッキリさせるため折りたたみ（デフォルト非表示）。開いた時に初めて描画する。
     box.innerHTML = `
         <div class="detail-section-card" id="series-detail-votes">
-            <button type="button" class="detail-toggle-header" aria-expanded="false" onclick="toggleSeriesVoteWidget(this)">
-                <h3 class="detail-section-title" style="margin:0;">出欠を回答する</h3>
-                <span class="detail-toggle-icon" aria-hidden="true">&#9654;</span>
-            </button>
+            <h3 class="detail-section-title" style="margin:0;">
+                <button type="button" class="detail-toggle-header" aria-expanded="false" onclick="toggleSeriesVoteWidget(this)">
+                    <span class="detail-toggle-label">出欠を回答する</span>
+                    <span class="detail-toggle-icon" aria-hidden="true">&#9654;</span>
+                </button>
+            </h3>
             <div id="series-vote-widget" class="hidden" style="margin-top:12px;"></div>
         </div>
         <div class="detail-section-card">
@@ -1042,6 +1099,21 @@ async function renderAttendanceTab() {
     `;
 
     await renderAttendanceList(ev);
+
+    // 締切前の予定で、この端末の「あなたの名前」がまだ回答していなければ、回答欄を開いた状態で出す(回答は最も多い操作のため)
+    if (currentEventId === ev.ID && shouldOpenVoteWidget(ev)) {
+        const btn = box.querySelector('#series-detail-votes .detail-toggle-header');
+        if (btn && btn.getAttribute('aria-expanded') !== 'true') toggleSeriesVoteWidget(btn);
+    }
+}
+
+function shouldOpenVoteWidget(ev) {
+    if (ev.Category === 'admin') return false;
+    if ((ev.DateEnd || ev.Date || '') < todayISO()) return false;
+    if (voteDeadlinePassed(ev)) return false;
+    const me = getSavedVoteMemberId();
+    if (!me) return true;   // 名前が未設定でも、回答欄の中で名前を選べる
+    return !(votesCache[ev.ID] || []).some(v => v.memberId === me && v.status);
 }
 
 // 実験フィードバックカードの開閉トグル

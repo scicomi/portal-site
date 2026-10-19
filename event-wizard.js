@@ -67,6 +67,8 @@ function _wzHost() {
 // ---- ウィザード定義 ----
 let evWizardStep = 0;
 let editingEventId = null;
+// 新規では日付の初期値が今日なので、日程のステップを一度も開かずに保存しないよう、開いたかを覚える(見出しの「保存」の表示に使う)
+let evWizardScheduleSeen = false;
 let evWizardCategory = 'normal';
 
 // 詳細ページの表のグループ（イベント / 日程 / 荷物運搬 / 内容・メンバー / 備考・書類）と同じ並び・同じ区切りにする
@@ -786,6 +788,7 @@ function openEventWizard(editId, template, focusId, restored, blankCategory) {
     const isNew = !isEdit;
     editingEventId = editId || null;
     evWizardStep = 0;
+    evWizardScheduleSeen = false;
     evWizardCategory = e.Category || 'normal';
 
     tempNewEvent = e;
@@ -803,6 +806,8 @@ function openEventWizard(editId, template, focusId, restored, blankCategory) {
     overlay.innerHTML = `
         <div class="wizard-panel" role="dialog" aria-modal="true" style="max-width:560px;">
             <div class="wizard-header">
+                <!-- 最後のステップまで進まなくても保存できる(1 項目だけ直すときなど)。最後のステップでは下の「保存」と重なるので隠す -->
+                <button type="button" id="wz-ev-save-now" class="btn btn-secondary btn-sm wizard-save-now${isEdit ? '' : ' hidden'}" onclick="saveEventFromWizard()">保存</button>
                 <h2 class="wizard-title">${isEdit ? 'イベントを編集' : template ? 'イベントを複製して追加' : 'イベントを追加'}</h2>
                 <p class="wizard-subtitle">${isEdit ? escapeHtml(e.Title || '') : template ? `「${escapeHtml(template.Title || '(無題)')}」の内容を引き継いで作成します` : '内容を入力して、最後に保存してください'}</p>
             </div>
@@ -930,6 +935,9 @@ function updateEvWizardUI() {
     const nextBtn = document.getElementById('wz-ev-next');
     if (prevBtn) prevBtn.style.display = evWizardStep > 0 ? '' : 'none';
     if (nextBtn) nextBtn.textContent = isLast ? '保存' : '次へ';
+    if (evWizardStep >= EV_STEP_SCHEDULE) evWizardScheduleSeen = true;
+    const saveNowBtn = document.getElementById('wz-ev-save-now');
+    if (saveNowBtn) saveNowBtn.classList.toggle('hidden', isLast || !(editingEventId || evWizardScheduleSeen));
 }
 
 function evWizardPrev() {
@@ -953,8 +961,7 @@ function evWizardNext() {
     if (evWizardStep === 0 && !isMeeting) {
         const title = document.getElementById('wz-ev-title').value.trim();
         if (!title) {
-            toast('イベント名を入力してください', 'error');
-            document.getElementById('wz-ev-title').focus();
+            showWizardFieldError('wz-ev-title', 'イベント名を入力してください');
             return;
         }
     }
@@ -1137,20 +1144,53 @@ function askSeriesOnRename(item, rename, onChoose) {
     setTimeout(() => ov.querySelector('[data-keep]').focus(), 30);
 }
 
+// 入力欄の下にエラーを出す(トーストは消えるうえ、どの欄の話か離れて見えるため)。欄を直し始めたら消す。
+// role="alert" で読み上げにも伝わる。欄が見つからなければトーストで知らせる
+function showWizardFieldError(inputId, message) {
+    const input = document.getElementById(inputId);
+    if (!input) { toast(message, 'error'); return; }
+    clearWizardFieldError(inputId);
+    const errId = inputId + '-error';
+    const err = document.createElement('div');
+    err.className = 'field-error';
+    err.id = errId;
+    err.setAttribute('role', 'alert');
+    err.textContent = message;
+    (input.closest('.e1-group') || input.parentElement).appendChild(err);
+    input.classList.add('input-invalid');
+    input.setAttribute('aria-invalid', 'true');
+    input.setAttribute('aria-describedby', [input.getAttribute('aria-describedby'), errId].filter(Boolean).join(' '));
+    const clear = () => clearWizardFieldError(inputId);
+    ['input', 'change', 'click'].forEach(type => input.addEventListener(type, clear, { once: true }));
+    setTimeout(() => input.focus(), 50);
+}
+
+function clearWizardFieldError(inputId) {
+    const input = document.getElementById(inputId);
+    const errId = inputId + '-error';
+    document.getElementById(errId)?.remove();
+    if (!input) return;
+    input.classList.remove('input-invalid');
+    input.removeAttribute('aria-invalid');
+    const rest = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(id => id && id !== errId);
+    if (rest.length) input.setAttribute('aria-describedby', rest.join(' '));
+    else input.removeAttribute('aria-describedby');
+}
+
 // 入力を検証する。問題があれば該当ステップへ移ってエラーを表示し、null を返す。
 // ドットで直接最終ステップへ来られるため、各ステップの必須チェックを保存時にもやり直す。
 function validateEventWizard() {
     const isMeeting = isMeetingCategory(evWizardCategory);
     const title = (document.getElementById('wz-ev-title')?.value || '').trim();
     if (!title) {
-        toast(isMeeting ? 'ミーティング名を入力してください' : 'イベント名を入力してください', 'error');
         evWizardGoto(0);
+        showWizardFieldError('wz-ev-title', isMeeting ? 'ミーティング名を入力してください' : 'イベント名を入力してください');
         return null;
     }
     // 日付が空のイベントは一覧にもシリーズ詳細にも出ず、画面から直せなくなる
     if (!(document.getElementById('wz-ev-date')?.value || '')) {
-        toast('日付を選んでください', 'error');
         evWizardGoto(EV_STEP_SCHEDULE);
+        showWizardFieldError('wz-ev-date-display', '日付を選んでください');
         return null;
     }
     const time = readTimeRange('wz-ev-time-start', 'wz-ev-time-end');
@@ -1437,11 +1477,11 @@ function readTimeRange(startId, endId) {
     const ts = document.getElementById(startId)?.value || '';
     const te = document.getElementById(endId)?.value || '';
     if ((ts && !te) || (!ts && te)) {
-        toast('時間は開始と終了の両方を選択してください（未定なら両方空欄）', 'error');
+        showWizardFieldError(ts ? endId : startId, '時間は開始と終了の両方を選択してください（未定なら両方空欄）');
         return null;
     }
     if (ts && te && te <= ts) {
-        toast('終了時刻は開始時刻より後にしてください', 'error');
+        showWizardFieldError(endId, '終了時刻は開始時刻より後にしてください');
         return null;
     }
     return { start: ts, end: te };

@@ -266,4 +266,11 @@
 .cdx-search-field, .cdx-search-field__input { background: var(--bg-muted); color: var(--text-color); border-color: var(--border-color); }
 .cdx-settings-button:hover, .cdx-button { color: var(--text-color); }
 .tc-table, .tc-row, .tc-cell { border-color: var(--border-color); }
+/* 表のプラグインは .tc-wrap に固定の明るい色(見出し行の背景 #f9f9fb など)を持つ。ダークでは見出し行が
+   白地に白に近い文字になり読めないので、サイトの色に置き換える(プラグインは後から <style> を差し込むので :root で詳細度を上げる) */
+:root .tc-wrap {
+    --color-background: var(--bg-muted);
+    --color-text-secondary: var(--text-tertiary);
+    --color-border: var(--border-color);
+}
 .ce-delimiter::before { color: var(--text-secondary); }

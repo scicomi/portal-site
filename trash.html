@@ -29,21 +29,25 @@
             「復元」で元の場所に戻せます。「完全に削除」するとファイルも消え、元に戻せません（誤ってアップロードした個人情報などは、ここで今すぐ完全に削除できます）。
         </p>
 
+        <div class="page-section-actions">
+            <input id="trash-search" class="search-input" type="search" placeholder="名前で検索" aria-label="ゴミ箱を検索" autocomplete="off" oninput="onTrashSearch(this.value)">
+        </div>
         <div class="page-section-actions" style="flex-wrap:wrap;">
             <button class="filter-chip active" data-kind="" aria-pressed="true" onclick="setTrashFilter('')">すべて</button>
             <button class="filter-chip" data-kind="record" aria-pressed="false" onclick="setTrashFilter('record')">削除した記録</button>
             <button class="filter-chip" data-kind="item" aria-pressed="false" onclick="setTrashFilter('item')">外したファイル・項目</button>
         </div>
 
-        <div class="table-wrapper">
+        <!-- 件数が多くなるので見出し行をヘッダーの下に固定する(table-sticky-head)。列は狭い画面でも収まるので横スクロールにしない -->
+        <div class="table-wrapper table-sticky-head">
             <table class="data-table" id="trash-table">
                 <thead>
                     <tr>
-                        <th>種類</th>
+                        <th class="hide-mobile">種類</th>
                         <th>名前</th>
                         <th class="hide-mobile">削除した日時</th>
                         <th>残り</th>
-                        <th><span class="sr-only">操作</span></th>
+                        <th class="hide-mobile"><span class="sr-only">操作</span></th>
                     </tr>
                 </thead>
                 <tbody id="trash-tbody"><tr><td colspan="5" class="loading-text">読み込み中</td></tr></tbody>

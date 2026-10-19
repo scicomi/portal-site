@@ -584,10 +584,15 @@ function renderEvents() {
         }
         const vc = votesByEvent[ev.ID] || { attend: 0, absent: 0, undecided: 0 };
         const isUpcoming = (ev.DateEnd || ev.Date) >= today;
+        // 今後の予定は月日だけ出すが、今年以外の予定(年明けの予定など)は年がないと並び順が乱れて見えるので年を付ける
+        const showYear = !isUpcoming || String(ev.Date || '').slice(0, 4) !== today.slice(0, 4);
         let voteBadge = '';
+        let voteCountSm = '';
         if (isUpcoming && allVotesData !== null && ev.Category !== 'admin') {
             const eligibleCount = membersData.length > 0 ? voteEligibleMembers(membersData, ev).length : 0;
             const label = eligibleCount > 0 ? `${vc.attend} / ${eligibleCount}` : `${vc.attend}`;
+            // 狭い画面は「参加者数」の列を隠すので、タイトルの下に小さく出す
+            voteCountSm = `<div class="ev-count-sm">参加 ${label}</div>`;
             const noanswer = Math.max(0, eligibleCount - (vc.attend + vc.absent + vc.undecided));
             voteBadge = `<a class="vote-count-badge" href="events.html?event=${encodeURIComponent(ev.ID)}&vote=1" data-action="vote" aria-label="「${escapeAttr(displayTitle)}」の出欠状況: 参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}${eligibleCount > 0 ? `・未回答${noanswer}` : ''}" title="参加${vc.attend}・不参加${vc.absent}・未定${vc.undecided}${eligibleCount > 0 ? `・未回答${noanswer}` : ''} — タップで出欠を回答">${label}</a>`;
         }
@@ -611,14 +616,14 @@ function renderEvents() {
         return `
             <tr class="clickable-row" data-id="${escapeAttr(ev.ID)}" title="タップで詳細ページへ">
                 <td class="cell-name ev-date-cell" style="white-space:nowrap;">
-                    ${eventDateCellHtml(ev, !isUpcoming)}
+                    ${eventDateCellHtml(ev, showYear)}
                 </td>
                 <td class="ev-title-cell">
                     <span class="cat-dot" style="color:${cat.bg};" role="img" aria-label="${cat.short}" title="${cat.short}">&#9679;</span>
-                    <a href="events.html?event=${encodeURIComponent(ev.ID)}" data-action="open" style="font-weight:600;color:inherit;text-decoration:none;">${titleHtml}</a>${matchBadge}
+                    <a href="events.html?event=${encodeURIComponent(ev.ID)}" data-action="open" style="font-weight:600;color:inherit;text-decoration:none;">${titleHtml}</a>${matchBadge}${voteCountSm}
                 </td>
                 <td class="ev-vote-cell" data-action="stoprow">${voteCell}</td>
-                <td>${voteBadge}</td>
+                <td class="hide-mobile">${voteBadge}</td>
                 <td data-action-cell>
                     <div class="inline-actions">
                         <button class="inline-action-btn" data-action="duplicate" aria-label="「${escapeAttr(displayTitle)}」を複製" title="このイベントを複製して新規作成">複製</button>
@@ -644,10 +649,10 @@ function startNewEventBlank() {
         <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="cat-modal-title">
             <h2 id="cat-modal-title">イベントの種類を選択</h2>
             <div class="category-buttons">
-                <button class="btn btn-category cat-normal-btn" data-cat="normal">新規イベント</button>
-                <button class="btn btn-category cat-normal-btn" data-existing="1">既存イベント</button>
-                <button class="btn btn-category cat-other-btn" data-cat="other">その他</button>
-                <button class="btn btn-category cat-meeting-btn" data-cat="meeting">ミーティング</button>
+                <button class="btn btn-category cat-normal-btn" data-cat="normal">新規イベント<span class="btn-category-desc">初めて行うイベントを、空の状態から作る</span></button>
+                <button class="btn btn-category cat-normal-btn" data-existing="1">既存イベント<span class="btn-category-desc">前に行ったイベントを選び、内容を引き継いで作る</span></button>
+                <button class="btn btn-category cat-other-btn" data-cat="other">その他<span class="btn-category-desc">イベント・ミーティング以外の予定</span></button>
+                <button class="btn btn-category cat-meeting-btn" data-cat="meeting">ミーティング<span class="btn-category-desc">全体・幹部のミーティング</span></button>
             </div>
             <button class="btn btn-text mt-2" data-close>キャンセル</button>
         </div>`;

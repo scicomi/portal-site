@@ -687,6 +687,8 @@ function renderHeader(activePage) {
   const groups = CONFIG.NAV_GROUPS || {};
   const doneGroups = {};
   let navHtml = '';
+  // スマホ(600px 以下)ではナビのドロップダウン(管理)を隠し、同じリンクをアカウントメニューに出す(ナビを 1 行に収めるため)
+  let menuNavHtml = '';
   navItems.forEach(item => {
     if (!item.group || !groups[item.group]) {
       navHtml += link(item, 'nav-link');
@@ -701,6 +703,8 @@ function renderHeader(activePage) {
         <button type="button" class="nav-link nav-group-btn ${members.some(i => i.page === activePage) ? 'active' : ''}" aria-haspopup="true" aria-expanded="false">${escapeHtml(groups[item.group].label)} <span class="nav-caret" aria-hidden="true">&#9662;</span></button>
         <div class="nav-menu hidden">${members.map(i => link(i, 'nav-menu-item')).join('')}</div>
       </div>`;
+    menuNavHtml += members.map(i =>
+      `<a href="${i.href}" class="account-menu-item account-menu-navlink" role="menuitem"${i.page === activePage ? ' aria-current="page"' : ''}>${escapeHtml(i.label)}</a>`).join('');
   });
 
   header.innerHTML = `
@@ -729,6 +733,7 @@ function renderHeader(activePage) {
               </svg>
             </button>
             <div class="account-menu-sep" role="separator"></div>
+            ${menuNavHtml ? `<div class="account-menu-nav">${menuNavHtml}<div class="account-menu-sep" role="separator"></div></div>` : ''}
             ${isAdmin
               ? `<button type="button" class="account-menu-item" role="menuitem" data-account="admin-off">管理者モードを解除</button>`
               : `<button type="button" class="account-menu-item" role="menuitem" data-account="admin-on">管理者モードにする</button>`
