@@ -637,8 +637,8 @@ function storageCard(title, parts, used, limit, note, fmt = formatBytes) {
 // Workers のリクエスト数・D1 の読み書き行数(無料プランは今日の分、Paid は今月の分)。取得できないときは出さない
 function activityCards(a) {
     if (!a) return '';
-    const when = a.period === 'month' ? '今月' : '今日';
-    const note = a.period === 'month' ? 'Workers Paid に含まれる量に対する、今月の合計' : '無料枠の 1 日の上限に対する、今日の合計（日本時間の 9 時にリセット）';
+    const when = a.period === 'month' ? '今月' : '本日';
+    const note = a.period === 'month' ? 'Workers Paid に含まれる量に対する、今月の合計' : '無料枠の 1 日の上限に対する、本日の合計（日本時間の 9 時にリセット）';
     const one = (title, x) => storageCard(`${title}（${when}）`, [{ name: when + 'の合計', value: x.used, cls: 'storage-used' }], x.used, x.limit, note, formatCount);
     return one('Workers のリクエスト', a.requests) + one('D1 の読み取り行数', a.rowsRead) + one('D1 の書き込み行数', a.rowsWritten);
 }
@@ -649,7 +649,7 @@ function geminiCard(g) {
     const note = g.enabled
         ? '振り返りの要約で使った回数（日本時間の 0 時にリセット）'
         : '現在は停止中です（振り返りの要約は使えません）';
-    return storageCard('Gemini API（今日）', [{ name: '今日の呼び出し', value: g.used, cls: 'storage-used' }], g.used, g.limit, note, formatCount);
+    return storageCard('Gemini API（本日）', [{ name: '本日の呼び出し', value: g.used, cls: 'storage-used' }], g.used, g.limit, note, formatCount);
 }
 
 // 上限の決まり方の説明(自動・手動・取得できず無料プランの上限)
