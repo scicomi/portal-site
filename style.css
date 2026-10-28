@@ -725,8 +725,9 @@ textarea {
     gap: 10px;
 }
 
-.time-select-group select {
-    width: 100px;
+.time-select-group select,
+.time-select-group input[type="time"] {
+    width: 120px;
     cursor: pointer;
 }
 
@@ -1851,7 +1852,8 @@ textarea:focus {
 
     /* 時刻ドロップダウンを縦に */
     .time-select-group { flex-wrap: wrap; }
-    .time-select-group select { width: calc(50% - 20px); }
+    .time-select-group select,
+    .time-select-group input[type="time"] { width: calc(50% - 20px); }
 
     /* テーブルの補助列を隠す */
     .hide-mobile { display: none; }

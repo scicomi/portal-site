@@ -498,16 +498,9 @@ function removeExperimentRow(btn) {
     }
 }
 
-function genTimeOpts(startH, endH, withEmpty) {
-    let html = withEmpty ? '<option value="">--</option>' : '';
-    for (let h = startH; h <= endH; h++) {
-        for (let m = 0; m < 60; m += 30) {
-            if (h === endH && m > 0) break;
-            const v = formatTimeHM(h, m);
-            html += `<option value="${v}">${v}</option>`;
-        }
-    }
-    return html;
+// 分刻みで入力できる時刻欄。値は常に 24 時間表記の HH:MM（表示は端末の設定による）。空欄は未定。
+function timeInputHtml(id, label) {
+    return `<input class="e1-input" type="time" id="${id}"${label ? ` aria-label="${label}"` : ''}>`;
 }
 
 // ---- ウィザードの入力部品（HTML） ----
@@ -528,9 +521,9 @@ function dateRangePickerHtml(date, dateEnd, idPrefix) {
 function timeRangeSelectHtml(startId, endId) {
     return `
                     <div class="time-select-group">
-                        <select class="e1-input" id="${startId}" aria-label="開始時間">${genTimeOpts(7, 21, true)}</select>
+                        ${timeInputHtml(startId, '開始時間')}
                         <span>〜</span>
-                        <select class="e1-input" id="${endId}" aria-label="終了時間">${genTimeOpts(7, 21, true)}</select>
+                        ${timeInputHtml(endId, '終了時間')}
                     </div>`;
 }
 
@@ -662,11 +655,11 @@ function eventWizardStepsHtml(e, steps, catInfo) {
                 <div class="flex-row">
                     <div class="e1-group" style="flex:1;">
                         <label class="e1-label">集合時間</label>
-                        <select class="e1-input" id="wz-ev-gather">${genTimeOpts(7, 21, true)}</select>
+                        ${timeInputHtml('wz-ev-gather')}
                     </div>
                     <div class="e1-group" style="flex:1;">
                         <label class="e1-label">解散時間</label>
-                        <select class="e1-input" id="wz-ev-dismiss">${genTimeOpts(7, 21, true)}</select>
+                        ${timeInputHtml('wz-ev-dismiss')}
                     </div>
                 </div>${voteDeadlineInputHtml(e.VoteDeadline)}`)
         + wizardStepHtml(2, steps, `
@@ -1198,6 +1191,10 @@ function validateEventWizard() {
         evWizardGoto(EV_STEP_SCHEDULE);
         return null;
     }
+    if (!isMeeting && ['wz-ev-gather', 'wz-ev-dismiss'].some(timeInputIncomplete)) {
+        evWizardGoto(EV_STEP_SCHEDULE);
+        return null;
+    }
     if (!isMeeting) {
         const badExps = invalidExperimentNames();
         if (badExps.length > 0) {
@@ -1473,7 +1470,15 @@ function updateDeadlines(dateInput) {
 }
 
 // 時間セレクトの開始・終了を読む（未定なら両方空欄）。片方だけ・終了が開始以前ならエラーを表示して null を返す。
+// 時だけ・分だけ入力した状態は value が空になり、「未定」として黙って保存されてしまうので止める
+function timeInputIncomplete(id) {
+    if (!document.getElementById(id)?.validity.badInput) return false;
+    showWizardFieldError(id, '時刻を最後まで入力してください（未定なら空欄）');
+    return true;
+}
+
 function readTimeRange(startId, endId) {
+    if (timeInputIncomplete(startId) || timeInputIncomplete(endId)) return null;
     const ts = document.getElementById(startId)?.value || '';
     const te = document.getElementById(endId)?.value || '';
     if ((ts && !te) || (!ts && te)) {
