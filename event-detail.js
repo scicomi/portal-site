@@ -207,6 +207,8 @@ function renderAll() {
     renderScopeContext();
     renderDetail();
     updateScopeBadges();
+    // 出欠タブを開いたまま別のシリーズへ移ったとき(前後の矢印)も、移動先の回答欄・一覧に描き直す
+    if (document.querySelector('.scope-tab.active')?.dataset.tab === 'attendance') renderAttendanceTab();
     if (!isMtg) {
         renderFeedbackTimeline();
         // 振り返りタブを開いたまま最新が届いたとき（キャッシュ表示のあとの再描画・競合後の再読み込み）も、記入欄と表示を最新にする。書きかけは保たれる
