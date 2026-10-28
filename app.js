@@ -397,6 +397,38 @@ function isGradStudent(m) {
   return id.length >= 5 && (id[4] === 'm' || id[4] === 'M');
 }
 
+// 学籍番号の先頭1桁は入学年度の下1桁で、年度ごとに 0→9 でサイクルする。
+// 指定年度の下1桁が「最新の入学年」なので、その翌数字（=最も古い在籍学年）から
+// 昇順に並ぶキーを返す。例) 2022年度に 8,9,0,1,2 がいる場合はこの順になる。
+function studentCycleKey(ch, fiscalYear) {
+  const d = parseInt(ch, 10);
+  if (isNaN(d)) return 10; // 数字で始まらない・空の番号は学年グループの最後へ
+  const newest = fiscalYear % 10;
+  return ((d - newest - 1) % 10 + 10) % 10;
+}
+
+// メンバー（学生）の並び順。メンバーページと出欠一覧で共通:
+//   1) 院生は必ず一番下（役職の有無より優先）
+//   2) 役職もちは一番上（CONFIG.MEMBER_ROLES の順 → その他の役職）
+//   3) 学籍番号先頭数字の年度サイクル順（上級生 → 新入生）
+//   4) 名前順
+function sortStudentMembers(list, fiscalYear) {
+  const roleOrder = {};
+  CONFIG.MEMBER_ROLES.forEach((r, i) => { roleOrder[r.value] = i; });
+  return list.slice().sort((a, b) => {
+    const ga = isGradStudent(a) ? 1 : 0, gb = isGradStudent(b) ? 1 : 0;
+    if (ga !== gb) return ga - gb;
+    const ra = memberRoleOf(a), rb = memberRoleOf(b);
+    const oa = ra ? (roleOrder[ra] ?? 10) : 99;
+    const ob = rb ? (roleOrder[rb] ?? 10) : 99;
+    if (oa !== ob) return oa - ob;
+    const da = studentCycleKey(((a.StudentID || '').trim())[0], fiscalYear);
+    const db = studentCycleKey(((b.StudentID || '').trim())[0], fiscalYear);
+    if (da !== db) return da - db;
+    return (a.Name || '').localeCompare(b.Name || '', 'ja');
+  });
+}
+
 // メンバーを学年グループ（1A生・2C生…）ごとにまとめる。出欠・発表者・書類担当などの
 // メンバー選択UIで候補を探しやすくするための共通ヘルパー。院生・学籍番号なしは末尾にまとめる。
 function groupMembersByGrade(members) {

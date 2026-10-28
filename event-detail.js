@@ -1223,8 +1223,13 @@ function renderAttendanceListBody() {
     const memberOf = (id) => membersCache.find(x => x.ID === id);
     const nameOf = (id) => { const m = memberOf(id); return m ? m.Name : id; };
 
+    // メンバーページと同じ並び順（院生は下・役職もち上・学籍番号の年度サイクル順・名前順）。年度はイベントの年度
+    const fy = getFiscalYear((currentEvent() || {}).Date) || currentFiscalYear();
+    const rank = new Map(sortStudentMembers(membersCache, fy).map((m, i) => [m.ID, i]));
+    const rankOf = (id) => rank.has(id) ? rank.get(id) : Infinity; // メンバー情報が無い行は末尾
     const items = attendanceData[attendanceFilter].map(v => ({ ...v }))
-        .sort((a, b) => nameOf(a.memberId).localeCompare(nameOf(b.memberId), 'ja'));
+        .sort((a, b) => rankOf(a.memberId) - rankOf(b.memberId)
+            || nameOf(a.memberId).localeCompare(nameOf(b.memberId), 'ja'));
 
     const rowsHtml = items.length === 0
         ? '<tr><td colspan="4" class="empty-state">該当者はいません</td></tr>'
