@@ -153,18 +153,21 @@
 .gd-editor-holder .ce-popover-item__title { font-size: 14px; }
 .gd-editor-holder .ce-toolbar__plus, .gd-editor-holder .ce-toolbar__settings-btn { width: 26px; height: 26px; position: static; box-shadow: none; border: none; background: none; }
 
-/* トグル（見出しだけ。中身は下のインデントされたブロック） */
-.gd-tg { display: flex; align-items: flex-start; gap: 4px; margin: 4px 0; }
+/* トグル（見出し＋中身の入れ子エディタ。閉じると中身ごと隠れる） */
+.gd-tg { margin: 4px 0; }
+.gd-tg-head { display: flex; align-items: flex-start; gap: 4px; }
 .gd-tg-caret { border: none; background: none; cursor: pointer; width: 26px; height: 30px; color: var(--text-secondary); transition: transform 0.15s; flex: none; }
-.gd-tg.open > .gd-tg-caret { transform: rotate(90deg); }
+.gd-tg.open > .gd-tg-head > .gd-tg-caret { transform: rotate(90deg); }
 .gd-tg-title { flex: 1; min-width: 0; font-weight: 600; outline: none; padding-top: 2px; }
+.gd-tg-body { margin-left: 30px; }
+.gd-tg:not(.open) > .gd-tg-body { display: none; }
+.gd-editor-holder .gd-tg-body .codex-editor__redactor { padding-bottom: 0 !important; }
 
-/* インデント（入れ子）と、たたまれて隠れたブロック */
+/* インデント（本文の直下のブロックを右に下げる） */
 .gd-indent { transition: margin-left 0.1s; }
 .gd-indent[data-level="1"] { margin-left: 28px; }
 .gd-indent[data-level="2"] { margin-left: 56px; }
 .gd-indent[data-level="3"] { margin-left: 84px; }
-.ce-block.gd-folded { display: none; }
 
 /* ファイル */
 .gd-file {

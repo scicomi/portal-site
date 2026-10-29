@@ -1,12 +1,12 @@
 /**
  * ガイド用の自作ブロック（Editor.js のブロックツールの規約に沿ったもの）。
  *   Callout   … 絵文字つきの囲み（補足・注意・禁止など）。アイコンをクリックすると切り替わる
- *   Toggle    … クリックで開閉するブロック（見出し＋本文）
+ *   Toggle    … クリックで開閉するブロック（見出し＋中身の入れ子エディタ）
  *   PageLink  … 別のガイドページへのカード型リンク
  *   FileBlock … 添付ファイル（資料・テンプレートなど）
  *
  * どれも Editor.js 本体(vendor/editorjs/)とは独立した、このリポジトリ自前のコード。
- * 設定は tools[名前].config で受け取る（getPages: () => ページ一覧 / upload: file => {url, name}）。
+ * 設定は tools[名前].config で受け取る（getPages: () => ページ一覧 / upload: file => {url, name} / createEditor: トグルの中身の入れ子エディタを作る関数）。
  */
 (function (root) {
   'use strict';
@@ -79,39 +79,75 @@
   }
 
   // ---------- Toggle ----------
-  // トグルは「見出し」だけのブロック。トグルの中身は、その下にあって、トグルよりインデント（右に下げた）されているブロック。
-  // たたむと、中身のブロックがまとめて隠れる（隠す処理は guide.js の gdApplyFold）。
-  // 中身は普通のブロックなので、画像・番号付きリスト・表などもそのまま入れられる。
+  // トグルは「見出し」と「中身のブロック」を 1 つのデータ { title, blocks } として持つ。
+  // 中身は、トグルの中に入れ子で置いた Editor.js（config.createEditor が作る）で編集する。
+  // 閉じると中身の入れ子エディタごと隠れるので、隠れたブロックにカーソルが入ったり、
+  // 移動・削除で中身だけが取り残されたりしない。中身にも画像・リスト・表・トグルなどを入れられる。
   class Toggle {
     static get toolbox() { return { title: 'トグル（開閉）', icon: '<svg width="20" height="20" viewBox="0 0 20 20"><path d="M7 5l6 5-6 5z" fill="currentColor"/></svg>' }; }
     static get isReadOnlySupported() { return true; }
     static get enableLineBreaks() { return false; }
-    static get sanitize() { return { title: INLINE }; }
-    constructor({ data, readOnly }) {
-      this.data = { title: (data && data.title) || '' };
+    static get sanitize() { return { title: INLINE, blocks: false }; }   // blocks は入れ子エディタが保存時に整える
+    constructor({ data, readOnly, config, block }) {
+      this.data = { title: (data && data.title) || '', blocks: Array.isArray(data && data.blocks) ? data.blocks : [] };
       this.readOnly = readOnly;
+      this.config = config || {};
+      this.block = block;
+      this.sub = null;
     }
     render() {
       const open = !this.readOnly;     // 閲覧時は閉じておく。編集時は開いておく
       this.wrap = el('div', 'gd-tg' + (open ? ' open' : ''));
+      const head = el('div', 'gd-tg-head');
       this.caret = el('button', 'gd-tg-caret', '▸');
       this.caret.type = 'button';
       this.caret.setAttribute('aria-expanded', String(open));
+      this.caret.setAttribute('aria-label', 'トグルを開閉');
       this.titleEl = el('div', 'gd-tg-title', this.data.title);
       this.titleEl.contentEditable = this.readOnly ? 'false' : 'true';
-      this.titleEl.dataset.placeholder = 'トグルの見出し（中に入れたいブロックは、下に作って Tab で右へ）';
+      this.titleEl.dataset.placeholder = 'トグルの見出し';
       const toggle = () => {
         const now = this.wrap.classList.toggle('open');
         this.caret.setAttribute('aria-expanded', String(now));
-        this.wrap.dispatchEvent(new CustomEvent('gd-fold', { bubbles: true }));
       };
       this.caret.addEventListener('click', toggle);
       if (this.readOnly) this.titleEl.addEventListener('click', toggle);
-      this.wrap.append(this.caret, this.titleEl);
+      else {
+        // 開いているトグルの見出しで Enter → 中身の先頭へ。閉じているときは、普通に下に新しいブロックを作る
+        this.titleEl.addEventListener('keydown', e => {
+          if (e.key !== 'Enter' || e.shiftKey || e.isComposing || !this.sub || !this.wrap.classList.contains('open')) return;
+          e.preventDefault();
+          e.stopPropagation();
+          this.sub.isReady.then(() => this.sub.caret.setToFirstBlock('start')).catch(() => {});
+        });
+      }
+      head.append(this.caret, this.titleEl);
+      this.body = el('div', 'gd-tg-body');
+      this.holder = el('div', 'gd-tg-holder');
+      this.body.append(this.holder);
+      this.wrap.append(head, this.body);
       return this.wrap;
     }
-    save() { return { title: this.titleEl.innerHTML }; }
-    validate(d) { return !!(d.title && d.title.replace(/<br\s*\/?>|&nbsp;|\s/g, '')); }
+    // ブロックが DOM に入ってから、中身の入れ子エディタを作る
+    rendered() {
+      if (this.sub || !this.config.createEditor) return;
+      this.sub = this.config.createEditor({
+        holder: this.holder, blocks: this.data.blocks, readOnly: this.readOnly,
+        onChange: () => { if (this.block && this.block.dispatchChange) this.block.dispatchChange(); },
+      });
+    }
+    async save() {
+      let blocks = this.data.blocks;
+      if (this.sub) {
+        try { await this.sub.isReady; blocks = (await this.sub.save()).blocks || []; }
+        catch (e) { console.error('toggle body save failed', e); }   // 失敗しても、読み込んだ中身を残す（トグルごと消えないように）
+      }
+      return { title: this.titleEl.innerHTML, blocks };
+    }
+    destroy() {
+      if (this.sub) { try { this.sub.destroy(); } catch (_) {} this.sub = null; }
+    }
+    validate(d) { return !!((d.title && d.title.replace(/<br\s*\/?>|&nbsp;|\s/g, '')) || (d.blocks && d.blocks.length)); }
   }
 
   // ---------- IndentTune（すべてのブロックに付く「インデント」） ----------
@@ -137,7 +173,6 @@
       this.level = n;
       this.wrapper.dataset.level = String(n);
       if (this.block && this.block.dispatchChange) this.block.dispatchChange();
-      this.wrapper.dispatchEvent(new CustomEvent('gd-fold', { bubbles: true }));
     }
     render() {
       const arrow = d => '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>';

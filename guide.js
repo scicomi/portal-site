@@ -21,6 +21,7 @@ let gdConflict = false;    // 他の人が先に更新した（自動保存を�
 let gdSearchKw = '';
 let gdEditor = null;       // 表示中の Editor.js
 let gdMountSeq = 0;
+const gdNested = { pending: 0 };   // 用意の終わっていない、トグルの中身の入れ子エディタの数
 let gdLoaded = false;      // 一覧を一度でも読み込めたか(まだなら、読み込みは「初回」扱い)
 let gdOrderChain = Promise.resolve();   // 並べ替えの保存は、1 件ずつ順番に実行する
 const GD_OPEN_KEY = 'scicomi_guide_open';
@@ -33,12 +34,33 @@ function gdParseBody(body) {
   if (!s) return [];
   try {
     const d = JSON.parse(s);
-    if (d && Array.isArray(d.blocks)) return gdSanitizeBlocks(d.blocks);
+    if (d && Array.isArray(d.blocks)) return gdSanitizeBlocks(gdNestLegacyToggles(d.blocks));
   } catch (_) {}
   // 読めない本文は空として扱う。管理者が編集して保存すると上書きされるので、原因が分かるよう記録しておく
   // （消えた場合は、毎日のバックアップ(R2 の backups/)の guides.Body から戻せる）
   console.error('ガイドの本文を読めませんでした（Editor.js の JSON ではありません）');
   return [];
+}
+
+// 以前のトグルは「見出しだけ」で、中身は直後のインデントされたブロックだった。読み込むときに、中身をトグルの data.blocks に取り込む
+// （次に保存すると新しい形になる。トグルの外にあるインデントは、そのまま残す）
+function gdNestLegacyToggles(blocks) {
+  const lvl = b => parseInt(b && b.tunes && b.tunes.indentTune && b.tunes.indentTune.level, 10) || 0;
+  const lower = (b, n) => Object.assign({}, b, { tunes: Object.assign({}, b.tunes, { indentTune: { level: Math.max(0, lvl(b) - n) } }) });
+  const out = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (!b || typeof b !== 'object') continue;
+    if (b.type === 'toggle' && !(b.data && Array.isArray(b.data.blocks))) {
+      const L = lvl(b);
+      const kids = [];
+      while (i + 1 < blocks.length && lvl(blocks[i + 1]) > L) kids.push(lower(blocks[++i], L + 1));
+      out.push(Object.assign({}, b, { data: Object.assign({}, b.data, { blocks: gdNestLegacyToggles(kids) }) }));
+    } else {
+      out.push(b);
+    }
+  }
+  return out;
 }
 
 // ガイドで使うインライン書式（guide-blocks.js の INLINE と、太字・斜体・下線・マーカー・インラインコード・リンク）
@@ -64,7 +86,7 @@ function gdSanitizeBlocks(blocks) {
     switch (b.type) {
       case 'paragraph': case 'header': case 'callout': d.text = clean(d.text); break;
       case 'quote': d.text = clean(d.text); d.caption = clean(d.caption); break;
-      case 'toggle': d.title = clean(d.title); break;
+      case 'toggle': d.title = clean(d.title); d.blocks = gdSanitizeBlocks(Array.isArray(d.blocks) ? d.blocks : []); break;
       case 'list': d.items = listItems(d.items); break;
       case 'table': d.content = (Array.isArray(d.content) ? d.content : []).map(r => (Array.isArray(r) ? r : []).map(clean)); break;
       case 'image':
@@ -90,7 +112,7 @@ function gdBlocksText(blocks) {
     switch (b.type) {
       case 'paragraph': case 'header': case 'quote': out.push(gdPlain(d.text)); break;
       case 'callout': out.push(gdPlain(d.text)); break;
-      case 'toggle': out.push(gdPlain(d.title)); break;
+      case 'toggle': out.push(gdPlain(d.title), gdBlocksText(Array.isArray(d.blocks) ? d.blocks : [])); break;
       case 'list': items(d.items); break;
       case 'table': (d.content || []).forEach(r => r.forEach(c => out.push(gdPlain(c)))); break;
       case 'code': out.push(String(d.code || '')); break;
@@ -323,6 +345,7 @@ function gdCloseSide() {
 
 function gdUnmount() {
   gdMountSeq++;
+  gdNested.pending = 0;
   if (gdEditor) { try { gdEditor.destroy(); } catch (_) {} gdEditor = null; }
 }
 
@@ -371,9 +394,33 @@ const GD_I18N = {
   }
 };
 
-function gdEditorTools() {
+const GD_MAX_NEST = 4;   // トグルの中のトグルは、この深さまで
+
+// トグルの中身の入れ子エディタを作る。depth = このトグルがあるエディタの深さ（本文 = 0）
+function gdCreateNestedEditor(depth, { holder, blocks, readOnly, onChange }) {
+  const gen = gdMountSeq;
+  gdNested.pending++;
+  let armed = false;
+  const ed = new EditorJS({
+    holder, readOnly: !!readOnly, data: { blocks }, tools: gdEditorTools(depth + 1), i18n: GD_I18N,
+    placeholder: '', minHeight: 0,
+    onChange: () => { if (armed) onChange(); },
+  });
+  ed.isReady.then(() => { setTimeout(() => { armed = true; }, 300); })
+    .catch(e => console.error('nested editor init failed', e))
+    .finally(() => { if (gen === gdMountSeq) gdNested.pending--; });
+  return ed;
+}
+
+// 入れ子エディタの用意が終わるまで待つ（描画の途中の変更を、利用者の編集と取り違えないため）
+async function gdNestedIdle() {
+  do { await new Promise(r => setTimeout(r, 60)); } while (gdNested.pending > 0);
+}
+
+function gdEditorTools(depth) {
+  depth = depth || 0;
   const B = window.GuideBlocks;
-  return {
+  const tools = {
     header: {
       class: Header, inlineToolbar: true, config: { levels: [1, 2, 3], defaultLevel: 2, placeholder: '見出し' },
       // 「/」のメニューに見出し1〜3を別々に出す（Notion と同じ）
@@ -399,7 +446,7 @@ function gdEditorTools() {
       }
     },
     callout: { class: B.Callout },
-    toggle: { class: B.Toggle },
+    toggle: { class: B.Toggle, config: { createEditor: opts => gdCreateNestedEditor(depth, opts) } },
     indentTune: { class: B.IndentTune },
     pageLink: { class: B.PageLink, config: { getPages: () => gdPages } },
     file: {
@@ -410,6 +457,9 @@ function gdEditorTools() {
     inlineCode: InlineCode,
     underline: Underline,
   };
+  if (depth > 0) delete tools.indentTune;                 // インデントは本文の直下だけ（トグルの中身は入れ子で表す）
+  if (depth >= GD_MAX_NEST) delete tools.toggle;
+  return tools;
 }
 
 function gdMount(blocks, autofocus, readOnly) {
@@ -422,47 +472,29 @@ function gdMount(blocks, autofocus, readOnly) {
     holder,
     readOnly: !!readOnly,
     data: { blocks },
-    tools: gdEditorTools(),
+    tools: gdEditorTools(0),
     i18n: GD_I18N,
     placeholder: '文章を書きます。「/」を入力すると、見出し・リスト・表などを選べます',
     minHeight: readOnly ? 0 : 120,
     autofocus: !!autofocus,
     tunes: ['indentTune'],
     onChange: () => {
-      gdApplyFold();   // ブロックの追加・削除・移動の後も、折りたたみの範囲を取り直す
       if (armed && !gdHist.busy) { gdMarkDirty(); gdHistSchedule(); }
     },
   });
   gdEditor = ed;
   gdHistReset();
-  holder.addEventListener('gd-fold', gdApplyFold);
-  ed.isReady.then(() => {
+  ed.isReady.then(async () => {
     if (seq !== gdMountSeq) return;
-    gdApplyFold();
-    setTimeout(() => { armed = true; gdHistSnapshot(); }, 300);   // 初回の描画で onChange が来ても、変更扱いにしない
+    await gdNestedIdle();
+    if (seq !== gdMountSeq) return;
+    setTimeout(() => { if (seq !== gdMountSeq) return; armed = true; gdHistSnapshot(); }, 400);   // 初回の描画で onChange が来ても、変更扱いにしない
   }).catch(e => console.error('editor init failed', e));
 }
 
-// ---------- トグルの折りたたみ（インデントで入れ子を表す） ----------
-// 閉じているトグルの下にある、トグルよりインデントが深い連続したブロックを隠す。
-function gdApplyFold() {
-  const holder = document.getElementById('gd-editor');
-  if (!holder) return;
-  let hideLevel = null;
-  holder.querySelectorAll('.ce-block').forEach(b => {
-    const ind = b.querySelector('.gd-indent');
-    const lv = ind ? parseInt(ind.dataset.level, 10) || 0 : 0;
-    if (hideLevel !== null) {
-      if (lv > hideLevel) { b.classList.add('gd-folded'); return; }
-      hideLevel = null;
-    }
-    b.classList.remove('gd-folded');
-    const tg = b.querySelector('.gd-tg');
-    if (tg && !tg.classList.contains('open')) hideLevel = lv;
-  });
-}
-
-// Tab / Shift+Tab でブロックを入れ子にする（リスト・表・コードの中は、それぞれの Tab の動きを優先）
+// ---------- ブロックのインデント ----------
+// （トグルの中身は入れ子のエディタで表す。ここは、本文の直下のブロックを右に下げるだけ）
+// Tab / Shift+Tab でブロックを右に下げる（リスト・表・コードの中は、それぞれの Tab の動きを優先）
 document.addEventListener('keydown', e => {
   if (e.key !== 'Tab' || !gdEditor || !gdCanEdit() || e.isComposing) return;
   const t = e.target;
@@ -476,29 +508,6 @@ document.addEventListener('keydown', e => {
   ind.dispatchEvent(new CustomEvent('gd-indent', { detail: e.shiftKey ? -1 : 1 }));
 }, true);
 
-// Enter で新しいブロックができたら、インデントを引き継ぐ。トグルの見出しからなら、中身（1 段深い）として作る。
-document.addEventListener('keydown', e => {
-  if (e.key !== 'Enter' || e.shiftKey || e.isComposing || !gdEditor || !gdCanEdit()) return;
-  const t = e.target;
-  if (!t.closest || !t.closest('#gd-editor')) return;
-  if (t.closest('.cdx-list, .tc-table, .ce-code, textarea, input, select')) return;
-  if (document.querySelector('#gd-editor .ce-popover--opened')) return;
-  const cur = t.closest('.ce-block');
-  const ind = cur && cur.querySelector('.gd-indent');
-  if (!ind) return;
-  const lv = parseInt(ind.dataset.level, 10) || 0;
-  const want = cur.querySelector('.gd-tg') ? lv + 1 : lv;
-  if (want === 0) return;
-  const before = gdEditor.blocks.getBlocksCount();
-  const idx = gdEditor.blocks.getCurrentBlockIndex();
-  setTimeout(() => {
-    if (!gdEditor || gdEditor.blocks.getBlocksCount() !== before + 1) return;
-    const nb = document.querySelectorAll('#gd-editor .ce-block')[idx + 1];
-    const nind = nb && nb.querySelector('.gd-indent');
-    if (nind) nind.dispatchEvent(new CustomEvent('gd-indent', { detail: want - (parseInt(nind.dataset.level, 10) || 0) }));
-  }, 0);
-}, true);
-
 // ---------- 元に戻す（Ctrl+Z）・やり直し（Ctrl+Shift+Z / Ctrl+Y） ----------
 // Editor.js には元に戻す機能が無いため、本文の状態（ブロックの JSON）を少し待つたびに記録しておき、Ctrl+Z でその 1 つ前に戻す。
 // タイトルの入力欄は、ブラウザ標準の元に戻すに任せる。
@@ -508,7 +517,13 @@ const GD_HIST_MAX = 100;
 function gdHistReset() { clearTimeout(gdHist.timer); gdHist.stack = []; gdHist.idx = -1; gdHist.busy = false; gdHist.queued = 0; }
 
 // 比較用の文字列。ブロックの id は描画のたびに変わり得るので除く
-const gdHistKey = blocks => JSON.stringify((blocks || []).map(b => { const c = Object.assign({}, b); delete c.id; return c; }));
+const gdHistStrip = blocks => (blocks || []).map(b => {
+  const c = Object.assign({}, b);
+  delete c.id;
+  if (c.data && Array.isArray(c.data.blocks)) c.data = Object.assign({}, c.data, { blocks: gdHistStrip(c.data.blocks) });
+  return c;
+});
+const gdHistKey = blocks => JSON.stringify(gdHistStrip(blocks));
 
 async function gdHistSnapshot() {
   if (!gdEditor) return;
@@ -536,7 +551,7 @@ async function gdUndoRedo(dir) {
     const target = JSON.parse(gdHist.stack[to]);
     await gdEditor.blocks.render({ blocks: target });
     gdHist.idx = to;
-    gdApplyFold();
+    await gdNestedIdle();
     await new Promise(r => setTimeout(r, 350));                       // 描画直後の onChange を待つ
     try { gdHist.stack[to] = gdHistKey((await gdEditor.save()).blocks); } catch (_) {}   // 実際に描画された形で履歴を揃える
     let at = 0;                                 // 変わった最初のブロックにカーソルを置く
