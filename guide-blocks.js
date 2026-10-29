@@ -56,6 +56,12 @@
       this.textEl.contentEditable = this.readOnly ? 'false' : 'true';
       this.textEl.dataset.placeholder = '内容を入力';
       if (!this.readOnly) {
+        // 既定の Enter は <div> を作る。保存時に <div> は外されて改行が消えるので、<br> の改行にそろえる
+        this.textEl.addEventListener('keydown', e => {
+          if (e.key !== 'Enter' || e.isComposing) return;
+          e.preventDefault();
+          document.execCommand('insertLineBreak');
+        });
         this.dotEl.addEventListener('click', () => {
           const i = CALLOUT_COLORS.findIndex(k => k.color === this.data.color);
           this.setColor(CALLOUT_COLORS[(i + 1) % CALLOUT_COLORS.length].color);
@@ -87,7 +93,8 @@
     static get toolbox() { return { title: 'トグル（開閉）', icon: '<svg width="20" height="20" viewBox="0 0 20 20"><path d="M7 5l6 5-6 5z" fill="currentColor"/></svg>' }; }
     static get isReadOnlySupported() { return true; }
     static get enableLineBreaks() { return false; }
-    static get sanitize() { return { title: INLINE, blocks: false }; }   // blocks は入れ子エディタが保存時に整える
+    // blocks は入れ子エディタが保存時に整え済み。ここを false にすると、外側の保存で中身の文字から <br>（改行）・太字・リンクが全部消える
+    static get sanitize() { return { title: INLINE, blocks: true }; }
     constructor({ data, readOnly, config, block }) {
       this.data = { title: (data && data.title) || '', blocks: Array.isArray(data && data.blocks) ? data.blocks : [] };
       this.readOnly = readOnly;

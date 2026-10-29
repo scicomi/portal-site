@@ -277,3 +277,18 @@
     --color-border: var(--border-color);
 }
 .ce-delimiter::before { color: var(--text-secondary); }
+
+/* ---- 文字を選んだときに出るツールバー（太字・リンクなど）: 指でも押しやすい大きさにする ---- */
+.gd-editor-holder .ce-popover--inline { --height: 52px; --height-mobile: 52px; --container-padding: 5px; }
+.gd-editor-holder .ce-popover--inline .ce-popover-item { width: 42px; height: 42px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 6px; }
+.gd-editor-holder .ce-popover--inline .ce-popover-item__icon { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px; }
+.gd-editor-holder .ce-popover--inline .ce-popover-item__icon svg { width: 24px; height: 24px; }
+.gd-editor-holder .ce-popover--inline .ce-popover-item__title { font-size: 14px; }
+.gd-editor-holder .ce-popover--inline .ce-popover-item-separator { padding: 0 6px; }
+.gd-editor-holder .ce-inline-tool-input { font-size: 16px; padding: 10px 12px; min-width: 240px; }
+/* 上の「/」メニュー用の幅 240px が、このツールバーにも掛かって横スクロールになるので、中身の幅に合わせる */
+.gd-editor-holder .ce-popover--inline .ce-popover__container { width: max-content; min-width: max-content; max-width: calc(100vw - 16px); height: var(--height); overflow: visible; }
+.gd-editor-holder .ce-popover--inline .ce-popover__items { overflow: visible; }
+.gd-editor-holder .ce-popover--inline .ce-popover-item { width: 44px; }
+.gd-editor-holder .ce-popover--inline .ce-popover-item-html, .gd-editor-holder .ce-popover--inline .ce-inline-tool { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+.gd-editor-holder .ce-popover--inline .ce-inline-tool svg { width: 26px; height: 26px; }
