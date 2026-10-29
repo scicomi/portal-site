@@ -440,7 +440,7 @@ main:focus { outline: none; }
 }
 /* 見出しの右の「保存」(途中のステップから保存する) */
 .wizard-save-now { float: right; margin-left: 12px; min-height: 36px; padding: 0.35rem 1rem; }
-@media (pointer: coarse) { .wizard-save-now { min-height: var(--touch-min); } }
+@media (hover: none) and (pointer: coarse) { .wizard-save-now { min-height: var(--touch-min); } }
 /* 入力欄の下に出すエラー(showWizardFieldError) */
 .field-error { flex-basis: 100%; margin-top: 6px; font-size: 0.85rem; font-weight: 600; color: var(--danger-text); }
 select.input-invalid, input.input-invalid { border-color: var(--danger-color); }
@@ -2947,7 +2947,7 @@ td.slide-col-date { color: var(--text-muted); font-size: 0.85rem; }
 .slide-progress { width: 120px; height: 8px; accent-color: var(--primary-color); }
 #slide-uploading:not(:empty) { margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
 .slide-name-hint { margin: 4px 0 0; word-break: break-all; }
-@media (hover: none) {
+@media (hover: none) and (pointer: coarse) {
     .slide-edit { width: var(--touch-min); height: var(--touch-min); }
     .slide-th-sort { min-height: var(--touch-min); }
 }
@@ -3011,7 +3011,7 @@ td.slide-col-date { color: var(--text-muted); font-size: 0.85rem; }
     display: flex;
 }
 /* ホバーのないタッチ端末では、✕ が出せないので常に表示する */
-@media (hover: none) {
+@media (hover: none) and (pointer: coarse) {
     .photo-delete { display: flex; }
 }
 
@@ -3120,7 +3120,7 @@ td.slide-col-date { color: var(--text-muted); font-size: 0.85rem; }
     align-items: center; justify-content: center;
 }
 .video-item:hover .video-delete { display: flex; }
-@media (hover: none) {
+@media (hover: none) and (pointer: coarse) {
     .video-delete { display: flex; }
 }
 
@@ -3227,7 +3227,7 @@ td.slide-col-date { color: var(--text-muted); font-size: 0.85rem; }
     font-size: 0.85rem;
 }
 .sfb-line-btn:hover { color: var(--primary-color); background: var(--border-subtle); }
-@media (hover: none) { .sfb-line-btn { min-width: var(--touch-min); min-height: var(--touch-min); } }
+@media (hover: none) and (pointer: coarse) { .sfb-line-btn { min-width: var(--touch-min); min-height: var(--touch-min); } }
 
 .fb-author-row, .exp-fb-row.fb-author-row { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; text-align: left; gap: 8px; margin-top: 12px; }
 .exp-fb-row.fb-author-row label { width: auto; padding-top: 0; }
@@ -3243,7 +3243,7 @@ td.slide-col-date { color: var(--text-muted); font-size: 0.85rem; }
     text-decoration: underline;
     font-size: 0.8rem;
 }
-@media (hover: none) { .fb-author-row .btn-link { min-height: var(--touch-min); } }
+@media (hover: none) and (pointer: coarse) { .fb-author-row .btn-link { min-height: var(--touch-min); } }
 
 .sfb-event-link {
     margin-left: auto;
@@ -4341,11 +4341,11 @@ mark.search-hit {
 
 /* ========== タッチ端末(アクセシビリティ) ========== */
 /* ホバーのないタブレット(769px 以上)では、行にカーソルを乗せられず、行内の編集・削除が出せないので、常に表示する */
-@media (hover: none) {
+@media (hover: none) and (pointer: coarse) {
     .inline-actions { opacity: 1; pointer-events: auto; }
 }
 /* 指で押す端末では、操作部品を 44px(--touch-min)以上にする。小さい部品は隣の部品と押し間違えやすい */
-@media (pointer: coarse) {
+@media (hover: none) and (pointer: coarse) {
     .inline-action-btn,
     .ev-vote-select,
     .empty-cell,
