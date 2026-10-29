@@ -937,13 +937,14 @@ function renderDetail() {
             ${!isMeeting ? `
             ${groupRow('transport', '荷物運搬', 'wz-ev-transport')}
             <tr><th>運搬方法</th><td>${ev.TransportMethod ? escapeHtml(ev.TransportMethod) : emptyCell('wz-ev-transport')}</td></tr>
+            ${TRANSPORT_WITH_CAR.includes(ev.TransportMethod) ? `
             <tr><th>運転者</th><td>${personChipsHtml(ev.TransportDriver) || emptyCell('wz-ev-driver')}</td></tr>
-            <tr><th>同乗者</th><td>${personChipsHtml(ev.TransportPassengers) || emptyCell('wz-ev-passenger')}</td></tr>` : ''}
+            <tr><th>同乗者</th><td>${personChipsHtml(ev.TransportPassengers) || emptyCell('wz-ev-passenger')}</td></tr>` : ''}` : ''}
             ${!isMeeting ? `
             ${groupRow('content', '実験内容・発表者', 'wz-ev-exp-container')}
             <tr><td colspan="2">${expHtml}</td></tr>` : ''}
             ${groupRow('notes', isMeeting ? '議題・資料' : '備考', 'wz-ev-remarks')}
-            <tr><td colspan="2">${notesHtml || emptyCell('wz-ev-remarks')}</td></tr>
+            ${notesHtml || isMeeting ? `<tr><td colspan="2">${notesHtml || emptyCell('wz-ev-remarks')}</td></tr>` : ''}
             ${isMeeting ? `<tr><th>関連資料</th><td>${detailFilesHtml(ev, 'MeetingDocs', true)}</td></tr>
             <tr><th>議事録</th><td>${detailFilesHtml(ev, 'Minutes', false)}</td></tr>` : ''}
             ${!isMeeting ? `${groupRow('docs', '書類', 'wz-ev-admin-kyoka')}
