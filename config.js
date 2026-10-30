@@ -97,18 +97,13 @@ const CONFIG = {
     { href: 'events.html',       label: 'イベント',       page: 'events' },
     { href: 'members.html',      label: 'メンバー',     page: 'members' },
     { href: 'experiments.html', label: '実験ネタ',   page: 'experiments' },
-    // group を持つ項目は、NAV_GROUPS の見出しのドロップダウンにまとまる（位置は最初の項目の場所）
     { href: 'guide.html',       label: 'ガイド',     page: 'guide' },
-    // 「管理」ドロップダウン。メンバーにはゴミ箱だけ、管理者ログイン時はパスワード・設定も出る
-    { href: 'trash.html',       label: 'ゴミ箱',     page: 'trash', group: 'admin' },
-    { href: 'passwords.html',   label: 'パスワード', page: 'passwords', adminOnly: true, group: 'admin' },
-    { href: 'settings.html',    label: '設定',       page: 'settings',  adminOnly: true, group: 'admin' }
+    // 全項目をそのまま並べる(入りきらない幅は横スクロール)。メンバーにはゴミ箱まで、管理者ログイン時はパスワード・設定も出る。
+    // 最初の adminOnly 項目の手前に区切り線が入る
+    { href: 'trash.html',       label: 'ゴミ箱',     page: 'trash' },
+    { href: 'passwords.html',   label: 'パスワード', page: 'passwords', adminOnly: true },
+    { href: 'settings.html',    label: '設定',       page: 'settings',  adminOnly: true }
   ],
-
-  // ナビのドロップダウン見出し。adminFirst は手前に区切り線を入れる
-  NAV_GROUPS: {
-    admin: { label: '管理' }
-  },
 
   // ===== イベントカテゴリ =====
   EVENT_CATEGORIES: {

@@ -192,16 +192,6 @@ body {
 .account-menu-edit { width: 14px; height: 14px; flex: none; color: light-dark(#888, #9a9aa4); }
 .account-menu-name.is-unset .account-menu-edit { display: none; }
 .account-menu-sep { height: 1px; background: light-dark(#e5e7eb, #3a3b42); margin: 4px 6px; }
-/* ナビの「管理」の中身(ゴミ箱など)。スマホだけアカウントメニューに出す(app.js の renderHeader) */
-.account-menu-nav { display: none; }
-.account-menu-navlink { text-decoration: none; }
-.account-menu-navlink[aria-current="page"] { font-weight: 700; }
-@media (max-width: 600px) {
-    .account-menu-nav { display: flex; flex-direction: column; }
-    .app-nav .nav-group,
-    .app-nav .nav-separator { display: none; }
-}
-
 .app-nav {
     max-width: 1200px;
     margin: 0 auto;
@@ -209,6 +199,23 @@ body {
     display: flex;
     gap: 4px;
     overflow-x: auto;
+    scrollbar-width: none;          /* バーは出さない(続きがあることは、端を薄くして知らせる) */
+}
+.app-nav::-webkit-scrollbar { display: none; }
+/* 続きがある側の端を薄くする。app.js の bindNavScroll が data-more-left / data-more-right を付け外しする */
+.app-nav[data-more-left] { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 40px); mask-image: linear-gradient(to right, transparent 0, #000 40px); }
+.app-nav[data-more-right] { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 40px); mask-image: linear-gradient(to left, transparent 0, #000 40px); }
+.app-nav[data-more-left][data-more-right] {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 40px, #000 calc(100% - 40px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 40px, #000 calc(100% - 40px), transparent 100%);
+}
+/* タブレットは余白を詰めて、全項目が収まるようにする。スマホはさらに詰め、入りきらない分は横スクロール */
+@media (max-width: 900px) {
+    .app-nav { padding: 0 0.75rem; }
+    .nav-link { padding: 10px 10px; }
+}
+@media (max-width: 600px) {
+    .nav-link { font-size: 0.85rem; }
 }
 
 .nav-link {
@@ -226,14 +233,6 @@ body {
 .nav-link:hover { color: white; background: rgba(255,255,255,0.08); border-radius: 6px 6px 0 0; }
 .nav-link.active { color: white; border-bottom-color: #ffe37d; font-weight: 600; }
 
-/* ドロップダウン（その他 / 管理） */
-.nav-group-btn {
-    background: none;
-    border: 0;
-    border-bottom: 3px solid transparent;
-    font-family: inherit;
-    cursor: pointer;
-}
 .nav-caret { font-size: 0.7em; }
 
 /* スキップリンク(app.js の ensureSkipLink)。普段は画面の外に置き、キーボードのフォーカスが来たときだけ見せる */
@@ -251,28 +250,6 @@ body {
 }
 .skip-link:focus { top: 8px; }
 main:focus { outline: none; }
-.nav-menu {
-    position: fixed;
-    z-index: 1000;
-    min-width: 140px;
-    background: var(--surface);
-    border-radius: 8px;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.25);
-    padding: 4px;
-    display: flex;
-    flex-direction: column;
-}
-.nav-menu.hidden { display: none; }
-.nav-menu-item {
-    padding: 10px 14px;
-    color: light-dark(#333, #e4e4e8);
-    text-decoration: none;
-    font-size: 0.9rem;
-    border-radius: 6px;
-    white-space: nowrap;
-}
-.nav-menu-item:hover { background: light-dark(#f0f2f5, #2d2f36); }
-.nav-menu-item.active { font-weight: 700; background: light-dark(#eef2ff, #262a4a); }
 
 /* Admin menu separator */
 .nav-separator {

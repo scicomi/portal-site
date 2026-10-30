@@ -49,13 +49,8 @@
     var file = (location.pathname.split('/').pop() || 'index.html');
     var links = header.querySelectorAll('.app-nav a[href]');
     for (var i = 0; i < links.length; i++) links[i].classList.remove('active');
-    var btns = header.querySelectorAll('.nav-group-btn');
-    for (var j = 0; j < btns.length; j++) btns[j].classList.remove('active');
     for (var k = 0; k < links.length; k++) {
-      if (links[k].getAttribute('href').split(/[?#]/)[0] !== file) continue;
-      links[k].classList.add('active');
-      var group = links[k].closest('.nav-group');
-      if (group) group.querySelector('.nav-group-btn').classList.add('active');
+      if (links[k].getAttribute('href').split(/[?#]/)[0] === file) links[k].classList.add('active');
     }
     var who = header.querySelector('#account-who-name');
     if (who) who.textContent = '…';

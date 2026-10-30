@@ -716,27 +716,15 @@ function renderHeader(activePage) {
     (!item.adminOnly || isAdmin) && (!item.feature || (CONFIG.FEATURES && CONFIG.FEATURES[item.feature])));
   const link = (item, cls) =>
     `<a href="${item.href}" class="${cls} ${item.page === activePage ? 'active' : ''}">${item.label}</a>`;
-  const groups = CONFIG.NAV_GROUPS || {};
-  const doneGroups = {};
+  // 全項目をそのまま並べる。幅が足りなければ .app-nav が横スクロールし、端に続きがあれば薄くして知らせる
   let navHtml = '';
-  // スマホ(600px 以下)ではナビのドロップダウン(管理)を隠し、同じリンクをアカウントメニューに出す(ナビを 1 行に収めるため)
-  let menuNavHtml = '';
+  let separated = false;
   navItems.forEach(item => {
-    if (!item.group || !groups[item.group]) {
-      navHtml += link(item, 'nav-link');
-      return;
+    if (item.adminOnly && !separated) {
+      separated = true;
+      navHtml += '<span class="nav-separator"></span>';
     }
-    if (doneGroups[item.group]) return;
-    doneGroups[item.group] = true;
-    const members = navItems.filter(i => i.group === item.group);
-    if (groups[item.group].adminFirst) navHtml += '<span class="nav-separator"></span>';
-    navHtml += `
-      <div class="nav-group">
-        <button type="button" class="nav-link nav-group-btn ${members.some(i => i.page === activePage) ? 'active' : ''}" aria-haspopup="true" aria-expanded="false">${escapeHtml(groups[item.group].label)} <span class="nav-caret" aria-hidden="true">&#9662;</span></button>
-        <div class="nav-menu hidden">${members.map(i => link(i, 'nav-menu-item')).join('')}</div>
-      </div>`;
-    menuNavHtml += members.map(i =>
-      `<a href="${i.href}" class="account-menu-item account-menu-navlink" role="menuitem"${i.page === activePage ? ' aria-current="page"' : ''}>${escapeHtml(i.label)}</a>`).join('');
+    navHtml += link(item, 'nav-link');
   });
 
   header.innerHTML = `
@@ -765,7 +753,6 @@ function renderHeader(activePage) {
               </svg>
             </button>
             <div class="account-menu-sep" role="separator"></div>
-            ${menuNavHtml ? `<div class="account-menu-nav">${menuNavHtml}<div class="account-menu-sep" role="separator"></div></div>` : ''}
             ${isAdmin
               ? `<button type="button" class="account-menu-item" role="menuitem" data-account="admin-off">管理者モードを解除</button>`
               : `<button type="button" class="account-menu-item" role="menuitem" data-account="admin-on">管理者モードにする</button>`
@@ -784,8 +771,32 @@ function renderHeader(activePage) {
   header.removeAttribute('data-prerendered');
   if (window.SciHeaderCache) SciHeaderCache.save(isAdmin, header.innerHTML);   // theme-init.js: 次のページ移動で先に描く
   syncHeaderHeightVar();
-  bindNavGroups(header);
+  bindNavScroll(header);
   bindAccountMenu(header);
+}
+
+// ナビの両端に続きがあるときだけ、その側を薄くする(style.css の .app-nav[data-more-*])。
+// 今のページのリンクは、隠れていれば見える位置まで送る。
+function bindNavScroll(header) {
+  const nav = header.querySelector('.app-nav');
+  if (!nav) return;
+  const update = () => {
+    const max = nav.scrollWidth - nav.clientWidth;
+    nav.toggleAttribute('data-more-left', nav.scrollLeft > 2);
+    nav.toggleAttribute('data-more-right', nav.scrollLeft < max - 2);
+  };
+  nav.addEventListener('scroll', update, { passive: true });
+  if (!header._navResizeBound) {
+    header._navResizeBound = true;
+    window.addEventListener('resize', () => { const n = header.querySelector('.app-nav'); if (n && n._navUpdate) n._navUpdate(); });
+  }
+  nav._navUpdate = update;
+  const active = nav.querySelector('.nav-link.active');
+  if (active) {
+    const left = active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2;
+    nav.scrollLeft = Math.max(0, left);
+  }
+  update();
 }
 
 // 右上のアカウントメニュー（管理者モードの切替 / ログアウト）。
@@ -978,57 +989,6 @@ function handleAdminRelease() {
   location.reload();
 }
 
-// ナビのドロップダウン。.app-nav は横スクロール(overflow)のため、メニューは fixed で
-// ボタンの真下に置く（absolute だと切り取られる）。外側クリック・Esc・スクロールで閉じる。
-function bindNavGroups(header) {
-  // 開いていたメニューのボタンを返す(Esc で閉じたとき、フォーカスをそのボタンに戻すため)
-  const closeAll = () => {
-    let opened = null;
-    header.querySelectorAll('.nav-group').forEach(g => {
-      const menu = g.querySelector('.nav-menu');
-      if (!menu.classList.contains('hidden')) opened = g.querySelector('.nav-group-btn');
-      menu.classList.add('hidden');
-      g.querySelector('.nav-group-btn').setAttribute('aria-expanded', 'false');
-    });
-    return opened;
-  };
-  const hoverable = window.matchMedia('(hover: hover) and (pointer: fine)');
-  header.querySelectorAll('.nav-group').forEach(g => {
-    const btn = g.querySelector('.nav-group-btn');
-    const menu = g.querySelector('.nav-menu');
-    const openMenu = () => {
-      closeAll();
-      const r = btn.getBoundingClientRect();
-      menu.classList.remove('hidden');
-      menu.style.top = r.bottom + 'px';
-      menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
-      btn.setAttribute('aria-expanded', 'true');
-    };
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      if (menu.classList.contains('hidden')) openMenu(); else closeAll();
-    });
-    // PC(マウス)では、乗せるだけで開き、離れると少し待ってから閉じる。メニューは .nav-group の子なので、ボタンからメニューへ動かしても閉じない
-    let closeTimer = null;
-    g.addEventListener('mouseenter', () => {
-      if (!hoverable.matches) return;
-      clearTimeout(closeTimer);
-      if (menu.classList.contains('hidden')) openMenu();
-    });
-    g.addEventListener('mouseleave', () => {
-      if (!hoverable.matches) return;
-      clearTimeout(closeTimer);
-      closeTimer = setTimeout(closeAll, 200);
-    });
-  });
-  if (!header._navCloseBound) {
-    header._navCloseBound = true;
-    document.addEventListener('click', closeAll);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') { const b = closeAll(); if (b) b.focus(); } });
-    window.addEventListener('resize', closeAll);
-  }
-  header.querySelector('.app-nav').addEventListener('scroll', closeAll);
-}
 
 // ヘッダーは折り返しや管理者バッジの有無で実際の高さが変わる。ヘッダーの下に固定する要素（ガイドの目次など）が
 // ずれないよう、固定px値ではなく実測値を --header-h に反映する。
