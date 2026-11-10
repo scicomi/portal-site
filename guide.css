@@ -270,7 +270,10 @@
 .ce-popover-item:hover, .ce-popover-item--focused, .ce-inline-tool:hover, .ce-toolbar__plus:hover, .ce-toolbar__settings-btn:hover { background: var(--hover-bg) !important; }
 .ce-popover-item__icon { background: var(--bg-muted); box-shadow: none; }
 .cdx-search-field, .cdx-search-field__input { background: var(--bg-muted); color: var(--text-color); border-color: var(--border-color); }
-.cdx-settings-button:hover, .cdx-button { color: var(--text-color); }
+.cdx-settings-button:hover { color: var(--text-color); }
+/* 画像ブロックの「画像を選ぶ」ボタン。Editor.js 既定の白い地に、ダークの明るい文字が重なって読めなくなる */
+.cdx-button { background: var(--bg-muted); color: var(--text-color); border-color: var(--border-color); }
+.cdx-button:hover { background: var(--hover-bg); }
 .tc-table, .tc-row, .tc-cell { border-color: var(--border-color); }
 /* 表のプラグインは .tc-wrap に固定の明るい色(見出し行の背景 #f9f9fb など)を持つ。ダークでは見出し行が
    白地に白に近い文字になり読めないので、サイトの色に置き換える(プラグインは後から <style> を差し込むので :root で詳細度を上げる) */
