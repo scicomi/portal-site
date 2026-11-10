@@ -132,6 +132,11 @@
 .gd-callout { display: flex; gap: 12px; padding: 14px 16px; border-radius: 8px; border: 1px solid transparent; margin: 4px 0; }
 .gd-callout-dot { flex: none; width: 12px; height: 12px; margin-top: 9px; border: none; padding: 0; border-radius: 50%; cursor: pointer; box-shadow: 0 0 0 4px rgba(255,255,255,0.6); }
 .gd-callout-dot:disabled { cursor: default; }
+/* 指で押す端末では、12px の丸ポチでは押しにくいので、見た目はそのままで押せる範囲だけを 44px 以上に広げる */
+@media (hover: none) and (pointer: coarse) {
+    .gd-callout-dot { position: relative; }
+    .gd-callout-dot:not(:disabled)::after { content: ''; position: absolute; top: -16px; bottom: -16px; left: -20px; right: -12px; }
+}
 .gd-callout-text { flex: 1; min-width: 0; outline: none; line-height: 1.7; padding-top: 3px; }
 .gd-callout-text:empty::before,
 .gd-tg-title:empty::before { content: attr(data-placeholder); color: var(--text-hint); }
