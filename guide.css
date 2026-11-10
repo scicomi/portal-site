@@ -117,6 +117,9 @@
 .gd-editor-holder h2.ce-header { font-size: 1.45rem; }
 .gd-editor-holder h3.ce-header { font-size: 1.15rem; }
 .gd-editor-holder .ce-paragraph { line-height: 1.8; }
+/* 選択した文字・ブロックの背景。Editor.js 既定の薄い水色のままだと、ダークの明るい文字が読めなくなる */
+.gd-editor-holder .codex-editor ::selection { background-color: light-dark(#d4ecff, #3a5a8c); }
+.gd-editor-holder .ce-block--selected .ce-block__content { background: light-dark(#e1f2ff, #2c4366); }
 .gd-editor-holder .cdx-quote__text { min-height: 0; }
 .gd-editor-holder .tc-table { font-size: 0.92rem; }
 .gd-editor-holder .ce-code__textarea { font-size: 0.86rem; background: #2b2b3a; color: #f4f4f8; border-radius: 8px; min-height: 80px; }
