@@ -417,6 +417,12 @@ async function gdNestedIdle() {
   do { await new Promise(r => setTimeout(r, 60)); } while (gdNested.pending > 0);
 }
 
+// 表のセルで Shift+Enter を押すと <br>（セル内の改行）が入るが、配布版の表には sanitize の指定がなく、保存時に <br> が消えて改行が失われる。
+// <br> を残す指定をつけた表(vendor/ は直接編集しない)
+class GdTable extends Table {
+  static get sanitize() { return { content: { br: true } }; }
+}
+
 function gdEditorTools(depth) {
   depth = depth || 0;
   const B = window.GuideBlocks;
@@ -428,7 +434,7 @@ function gdEditorTools(depth) {
     },
     list: { class: EditorjsList, inlineToolbar: true, config: { defaultStyle: 'unordered' } },
     quote: { class: Quote, inlineToolbar: true, config: { quotePlaceholder: '引用', captionPlaceholder: '出典（任意）' } },
-    table: { class: Table, inlineToolbar: true, config: { rows: 2, cols: 3, withHeadings: true } },
+    table: { class: GdTable, inlineToolbar: true, config: { rows: 2, cols: 3, withHeadings: true } },
     delimiter: Delimiter,
     code: { class: CodeTool, config: { placeholder: 'コードや、そのままコピーしたい文面' } },
     image: {
