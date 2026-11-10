@@ -282,6 +282,13 @@
     --color-text-secondary: var(--text-tertiary);
     --color-border: var(--border-color);
 }
+/* 表の行・列のメニュー（行を追加・削除など）も、プラグインが白い地を固定で持つので置き換える */
+:root .tc-popover {
+    --color-border: var(--border-color);
+    --color-background: var(--surface);
+    --color-background-hover: var(--hover-bg);
+    color: var(--text-color);
+}
 .ce-delimiter::before { color: var(--text-secondary); }
 
 /* ---- 文字を選んだときに出るツールバー（太字・リンクなど）: 指でも押しやすい大きさにする ---- */
