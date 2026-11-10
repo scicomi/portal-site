@@ -343,7 +343,8 @@ test('終了後の通知: 前日に終わったイベントを、翌朝 9 時か
     assert.equal(sentBodies[0].kind, 'after');
     assert.equal(sentBodies[0].eventKey, 'ev_abc');
     assert.ok(a.calls.some(c => c.sql.includes("INSERT INTO teams_after")), '送る前に行を作って確保する');
-    assert.ok(a.calls.some(c => c.sql.includes("State = 'sent'")));
+    assert.ok(a.calls.some(c => c.sql.startsWith("UPDATE teams_after SET State = 'sent'")));
+    assert.ok(a.calls[0].sql.includes("JOIN teams_notify n ON n.EventID = e.ID AND n.State = 'sent'"), '事前に Teams へ通知したイベントだけが対象');
     // 朝 9 時より前は送らない。送信先が未設定でも送らない
     assert.equal(await drainTeamsAfter(mk([{ ID: 'ev_abc' }], ev), 3, jst('2026-11-04T08:59:00')), 0);
     assert.equal(await drainTeamsAfter({ DB: a.DB }, 3, jst('2026-11-04T10:00:00')), 0);
@@ -353,7 +354,7 @@ test('終了後の通知: 前日に終わったイベントを、翌朝 9 時か
     const f = mk([{ ID: 'ev_abc', Attempts: 0, Has: 'ev_abc' }], Object.assign({}, ev));
     assert.equal(await drainTeamsAfter(f, 3, jst('2026-11-04T09:00:00')), 0);
     assert.ok(f.calls.some(c => c.sql.startsWith('UPDATE teams_after SET DueAt = ?, Attempts = ?')));
-    assert.ok(!f.calls.some(c => c.sql.includes("State = 'sent'")));
+    assert.ok(!f.calls.some(c => c.sql.startsWith("UPDATE teams_after SET State = 'sent'")));
     const last = mk([{ ID: 'ev_abc', Attempts: 3, Has: 'ev_abc' }], Object.assign({}, ev));
     await drainTeamsAfter(last, 3, jst('2026-11-04T09:00:00'));
     assert.ok(last.calls.some(c => c.sql.includes("State = 'failed'")));
