@@ -330,7 +330,12 @@ function attachGuideSearch() {
   let timer = null;
   input.addEventListener('input', () => {
     clearTimeout(timer);
-    timer = setTimeout(() => { gdSearchKw = input.value.trim(); gdRenderTree(); }, 150);
+    timer = setTimeout(() => {
+      gdSearchKw = input.value.trim();
+      const home = document.getElementById('gd-home-search');   // ホームの検索欄と、同じ言葉にそろえる
+      if (home && home.value !== input.value) home.value = input.value;
+      gdRenderTree();
+    }, 150);
   });
 }
 
@@ -684,7 +689,13 @@ function gdRenderHome(el) {
   let timer = null;
   input.addEventListener('input', () => {
     clearTimeout(timer);
-    timer = setTimeout(() => { gdSearchKw = input.value.trim(); gdRenderHomeList(); }, 150);
+    timer = setTimeout(() => {
+      gdSearchKw = input.value.trim();
+      const side = document.getElementById('gd-search');        // 左の検索欄と、同じ言葉にそろえる(そろえないと、左のツリーだけ検索結果のまま戻せない)
+      if (side && side.value !== input.value) side.value = input.value;
+      gdRenderTree();
+      gdRenderHomeList();
+    }, 150);
   });
   gdRenderHomeList();
 }
