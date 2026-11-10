@@ -265,7 +265,7 @@ const HDR_ICON = {
     send: '<svg class="hdr-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l16-8-6 16-3-6-7-2z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg>'
 };
 
-// ---- Teams への通知（新規は自動。変更は、このボタンで前回からの差分を元の投稿への返信として送る） ----
+// ---- Teams への通知（新規も変更も、このボタンで送る。変更は前回からの差分を元の投稿への返信として送る。終了後の振り返りのお願いだけ、通知済みのイベントに自動） ----
 // 送信先が未設定なら、ボタンは出さない。状態は開催回ごとにサーバーから取る
 let teamsInfo = null;   // { id, state, sentAt, changed }
 
@@ -305,8 +305,9 @@ function renderTeamsChip(wrap) {
             <ul class="teams-pop-list">${t.changed.map(c => `<li>${escapeHtml(c)}</li>`).join('')}</ul>
             <p class="teams-pop-note">元の投稿への返信として送ります。${time ? `前回の通知: ${escapeHtml(time)}` : ''}</p>`;
     } else {
-        const note = t.state === 'pending' ? '登録の約3分後に自動でも通知されます。'
-            : t.state === 'failed' ? '自動の通知に失敗したため、もう一度送ります。' : '';
+        const cur = currentEvent();
+        const afterNote = cur && !isMeetingCategory(cur.Category) ? 'このあと、終了の翌朝に、振り返りの記入のお願いが、この投稿への返信として自動で届きます。' : '';
+        const note = (t.state === 'failed' ? '自動の通知に失敗したため、もう一度送ります。' : '') + afterNote;
         body = `<h3 class="teams-pop-title">Teams に投稿します</h3>
             <p class="teams-pop-note">このイベントの内容を Teams のチャンネルに投稿します。${note}</p>`;
     }

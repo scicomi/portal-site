@@ -1,4 +1,4 @@
-// Teams への通知: 新規は自動(保存の約 3 分後)、変更は画面のボタン。設計は docs/12_teams_notify_plan.md。
+// Teams への通知: 新規も変更も画面のボタンで送る(保存しても自動では送らない。2026-11-10 に新規の自動送信をやめた。終了後の通知だけ自動)。設計は docs/12_teams_notify_plan.md。
 //
 // 送り先は Power Automate の「Teams Webhook 要求を受信したとき」で作ったフローの URL(Secret の TEAMS_WEBHOOK_URL)。
 // フローは本文の attachments のカードを Teams に投稿する。変更(kind: 'update')のときは、カードに入れた目印
@@ -398,7 +398,9 @@ export async function drainTeamsAfter(env, limit, now = new Date()) {
   const t = Math.floor(now.getTime() / 1000);
   // 終了日 = DateEnd があればそれ、なければ Date。ミーティングは対象外(振り返りがない)
   const rows = (await env.DB.prepare(
-    "SELECT e.ID AS ID, a.Attempts AS Attempts, a.EventID AS Has FROM events e LEFT JOIN teams_after a ON a.EventID = e.ID "
+    "SELECT e.ID AS ID, a.Attempts AS Attempts, a.EventID AS Has FROM events e "
+    + "JOIN teams_notify n ON n.EventID = e.ID AND n.State = 'sent' "   // 事前に Teams へ通知したイベントだけ(通知していないものには送らない)
+    + "LEFT JOIN teams_after a ON a.EventID = e.ID "
     + "WHERE e.Category NOT IN ('general', 'admin') "
     + "AND substr(CASE WHEN e.DateEnd <> '' AND e.DateEnd > e.Date THEN e.DateEnd ELSE e.Date END, 1, 10) = ? "
     + "AND (a.EventID IS NULL OR (a.State = 'retry' AND a.DueAt <= ?)) LIMIT ?"

@@ -1,4 +1,4 @@
-// 結合テスト: Teams への通知(新規は定期実行が自動で送り、変更は画面のボタンで差分だけを送る)。
+// 結合テスト: Teams への通知(新規も変更も自動では送らず、画面のボタンで送る。変更は差分だけを送る)。
 //
 // 送信先(Power Automate のフロー)の代わりに、テストの中で 127.0.0.1 に受け口を立てる。Worker を、受け口の場所を向けて起動する
 // (本物の Teams には送らない。.dev.vars の中身は触らず、--var で渡す):
@@ -21,7 +21,7 @@ async function post(payload) {
   return res.json();
 }
 
-test('Teams への通知: 新規は自動、変更はボタンで差分だけ(失敗・復元・ミーティング・連続送信)', async t => {
+test('Teams への通知: 新規も変更もボタンで送る(変更は差分だけ。失敗・復元・ミーティング・連続送信)', async t => {
   const port = parseInt(process.env.TEAMS_TEST_PORT, 10);
   if (!port) { t.skip('TEAMS_TEST_PORT が無い(このファイルの先頭のコメント)'); return; }
   const login = await post({ action: 'login', password: MEMBER_PW });
@@ -83,12 +83,15 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     assert.equal((await post({ action: 'teamsNotify', token: member, eventId: 'a b' })).error, 'invalid_id');
     assert.equal((await notify('ev_not_exist')).error, 'not_found');
 
-    // 新規: 保存すると、定期実行が 1 件だけ送る(まだ送っていない間の保存し直しは 1 件にまとまる)
+    // 新規: 保存しただけでは送らない(自動では送らない)。ボタンで送ったときだけ、新規として 1 件送る
     assert.equal((await post({ action: 'save', resource: 'members', token: member, item: { ID: mbId, Name: LEADER, StudentID: '9ZZT0001' } })).success, true);
     await save({ ID: id, Title: 'Teams 通知テスト', Category: 'normal', Date: '2099-11-03', DateEnd: '', TimeStart: '10:00', TimeEnd: '15:00', Location: '体育館', PlanLeader: LEADER });
     await save({ Remarks: '保存し直し' });
-    const first = await drain();
-    assert.equal(first.length, 1, JSON.stringify(first.map(b => b.kind)));
+    assert.equal((await drain()).length, 0, '保存しただけでは送らない');
+    assert.equal((await status(id)).state, 'none');
+    const sentNew = await notify(id);
+    assert.deepEqual([sentNew.success, sentNew.sent, sentNew.kind], [true, true, 'new']);
+    const first = [received[received.length - 1].body];
     assert.equal(first[0].kind, 'new');
     assert.equal(first[0].eventKey, id);
     assert.equal(first[0].type, 'message');
@@ -159,7 +162,7 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
     // ミーティング: 4 項目のカード。未送信のものをボタンで今すぐ送ると、新規として送る
     ev = null;
     await save({ ID: mid, Title: '全体会', Category: 'general', MeetingNumber: '4', Date: '2099-11-05', TimeStart: '18:00', TimeEnd: '19:30', Location: '大教室', Remarks: '議題1、議題2' });
-    assert.equal((await status(mid)).state, 'pending');
+    assert.equal((await status(mid)).state, 'none');
     r = await notify(mid);
     assert.deepEqual([r.success, r.sent, r.kind], [true, true, 'new']);
     const mtg = received[received.length - 1].body;
@@ -175,8 +178,15 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
       const yesterday = new Date(Date.now() + 9 * 3600 * 1000 - 24 * 3600 * 1000).toISOString().slice(0, 10);
       const aid = 'ev_teams_a_' + Date.now();
       ev = null;
+      // 事前に Teams へ通知していないイベントには、終了後の通知も送らない
+      const skipId = 'ev_teams_s_' + Date.now();
+      await save({ ID: skipId, Title: '通知していないイベント', Category: 'normal', Date: yesterday });
+      ev = null;
       await save({ ID: aid, Title: '終了後の通知テスト', Category: 'normal', Date: yesterday, PrAssignments: { HP: LEADER } });
-      const afters = (await drain()).filter(b => b.kind === 'after' && b.eventKey === aid);
+      assert.equal((await notify(aid)).sent, true);   // 事前の通知(これを送ったイベントだけが対象)
+      const all = await drain();
+      assert.equal(all.filter(b => b.kind === 'after' && b.eventKey === skipId).length, 0, '通知していないイベントには送らない');
+      const afters = all.filter(b => b.kind === 'after' && b.eventKey === aid);
       assert.equal(afters.length, 1);
       const acard = afters[0].attachments[0].content;
       assert.equal(acard.body[0].items[0].text, '振り返りを記入してください');
@@ -184,6 +194,7 @@ test('Teams への通知: 新規は自動、変更はボタンで差分だけ(�
       assert.equal(rows(afters[0])['Twitterの投稿担当'], ' ');   // 決まっていない担当は空欄
       assert.equal((await drain()).filter(b => b.kind === 'after' && b.eventKey === aid).length, 0, '2 回は送らない');
       await post({ action: 'delete', resource: 'events', token: member, id: aid });
+      await post({ action: 'delete', resource: 'events', token: member, id: skipId });
     }
   } finally {
     await post({ action: 'delete', resource: 'events', token: member, id });

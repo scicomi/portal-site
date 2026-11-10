@@ -20,8 +20,7 @@ import {
   pushEnabled, subscribePush, unsubscribePush, resubscribePush, pushStats, sendTestPush, drainPushOutboxSafe, batchSize
 } from './push.js';
 import { loadEventBefore, notifyEventSaved } from './eventNotify.js';
-import { enqueueTeamsNew, teamsNewDelaySec, drainTeamsSafe, drainTeamsAfterSafe, teamsStatus, notifyTeamsNow } from './teams.js';
-import { teamsConfigured } from './config.js';
+import { drainTeamsSafe, drainTeamsAfterSafe, teamsStatus, notifyTeamsNow } from './teams.js';
 import { SUMMARY_TARGETS, markSummaryDirty, drainSummariesSafe, getReflectionSummary, regenerateReflectionSummary } from './reflectionSummary.js';
 import { getStorageUsage } from './storage.js';
 import { moveRecordToTrash, listTrash, restoreTrash, purgeTrash, purgeExpiredTrash, getTrashRow, TRASH_ADMIN_ONLY } from './trash.js';
@@ -209,13 +208,8 @@ async function handlePost(env, ctx, request, body) {
           await appendAuditLog(env, 'push_fail', 'event ' + saved.item.ID + ': ' + String((e && e.message) || e).slice(0, 200), '', 'system');
         }));
       }
-      // Teams への新規の通知は、イベントの追加だけ送信待ちに積む(送るのは定期実行。変更はボタン)
-      if (resource === 'events' && saved.created && !isRestore && teamsConfigured(env)) {
-        ctx.waitUntil(enqueueTeamsNew(env, saved.item.ID, teamsNewDelaySec(env)).catch(async e => {
-          console.error('teams enqueue failed: ' + (e && e.stack || e));
-          await appendAuditLog(env, 'teams_fail', 'enqueue ' + saved.item.ID + ': ' + String((e && e.message) || e).slice(0, 100), '', 'system');
-        }));
-      }
+      // Teams への通知は、新規も変更も自動では送らない(イベント詳細ページのボタンで送る)。
+      // 依頼のタイミングがばらばらで、ずっと先のイベントが自動で流れても困るため(2026-11-10 に自動送信をやめた)
       // 振り返りの要約に、自動更新の判定の目印を付ける(作るかどうかは定期実行が決める)
       if ((resource === 'events' || resource === 'experiments') && !isRestore) {
         ctx.waitUntil(markSummaryDirty(env, resource, saved.item.ID).catch(e => {
