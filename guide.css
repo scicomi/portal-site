@@ -117,10 +117,13 @@
 .gd-editor-holder h2.ce-header { font-size: 1.45rem; }
 .gd-editor-holder h3.ce-header { font-size: 1.15rem; }
 .gd-editor-holder .ce-paragraph { line-height: 1.8; }
+/* 選択した文字・ブロックの背景。Editor.js 既定の薄い水色のままだと、ダークの明るい文字が読めなくなる */
+.gd-editor-holder .codex-editor ::selection { background-color: light-dark(#d4ecff, #3a5a8c); }
+.gd-editor-holder .ce-block--selected .ce-block__content { background: light-dark(#e1f2ff, #2c4366); }
 .gd-editor-holder .cdx-quote__text { min-height: 0; }
 .gd-editor-holder .tc-table { font-size: 0.92rem; }
 .gd-editor-holder .ce-code__textarea { font-size: 0.86rem; background: #2b2b3a; color: #f4f4f8; border-radius: 8px; min-height: 80px; }
-.gd-editor-holder .cdx-marker { background: rgba(255, 224, 102, 0.55); padding: 1px 0; }
+.gd-editor-holder .cdx-marker { background: light-dark(rgba(255, 224, 102, 0.55), rgba(255, 224, 102, 0.3)); color: inherit; padding: 1px 0; }   /* ダークは、明るい文字が読める濃さにする */
 .gd-editor-holder .inline-code { background: var(--bg-muted); padding: 1px 6px; border-radius: 4px; font-size: 0.88em; color: light-dark(#c7254e, #ff8fb0); }
 .gd-editor-holder img { max-width: 100%; border-radius: 6px; }
 .gd-editor-holder a { color: var(--primary-light); }
@@ -129,6 +132,11 @@
 .gd-callout { display: flex; gap: 12px; padding: 14px 16px; border-radius: 8px; border: 1px solid transparent; margin: 4px 0; }
 .gd-callout-dot { flex: none; width: 12px; height: 12px; margin-top: 9px; border: none; padding: 0; border-radius: 50%; cursor: pointer; box-shadow: 0 0 0 4px rgba(255,255,255,0.6); }
 .gd-callout-dot:disabled { cursor: default; }
+/* 指で押す端末では、12px の丸ポチでは押しにくいので、見た目はそのままで押せる範囲だけを 44px 以上に広げる */
+@media (hover: none) and (pointer: coarse) {
+    .gd-callout-dot { position: relative; }
+    .gd-callout-dot:not(:disabled)::after { content: ''; position: absolute; top: -16px; bottom: -16px; left: -20px; right: -12px; }
+}
 .gd-callout-text { flex: 1; min-width: 0; outline: none; line-height: 1.7; padding-top: 3px; }
 .gd-callout-text:empty::before,
 .gd-tg-title:empty::before { content: attr(data-placeholder); color: var(--text-hint); }
@@ -267,7 +275,10 @@
 .ce-popover-item:hover, .ce-popover-item--focused, .ce-inline-tool:hover, .ce-toolbar__plus:hover, .ce-toolbar__settings-btn:hover { background: var(--hover-bg) !important; }
 .ce-popover-item__icon { background: var(--bg-muted); box-shadow: none; }
 .cdx-search-field, .cdx-search-field__input { background: var(--bg-muted); color: var(--text-color); border-color: var(--border-color); }
-.cdx-settings-button:hover, .cdx-button { color: var(--text-color); }
+.cdx-settings-button:hover { color: var(--text-color); }
+/* 画像ブロックの「画像を選ぶ」ボタン。Editor.js 既定の白い地に、ダークの明るい文字が重なって読めなくなる */
+.cdx-button { background: var(--bg-muted); color: var(--text-color); border-color: var(--border-color); }
+.cdx-button:hover { background: var(--hover-bg); }
 .tc-table, .tc-row, .tc-cell { border-color: var(--border-color); }
 /* 表のプラグインは .tc-wrap に固定の明るい色(見出し行の背景 #f9f9fb など)を持つ。ダークでは見出し行が
    白地に白に近い文字になり読めないので、サイトの色に置き換える(プラグインは後から <style> を差し込むので :root で詳細度を上げる) */
@@ -275,6 +286,13 @@
     --color-background: var(--bg-muted);
     --color-text-secondary: var(--text-tertiary);
     --color-border: var(--border-color);
+}
+/* 表の行・列のメニュー（行を追加・削除など）も、プラグインが白い地を固定で持つので置き換える */
+:root .tc-popover {
+    --color-border: var(--border-color);
+    --color-background: var(--surface);
+    --color-background-hover: var(--hover-bg);
+    color: var(--text-color);
 }
 .ce-delimiter::before { color: var(--text-secondary); }
 
@@ -286,6 +304,8 @@
 .gd-editor-holder .ce-popover--inline .ce-popover-item__title { font-size: 14px; }
 .gd-editor-holder .ce-popover--inline .ce-popover-item-separator { padding: 0 6px; }
 .gd-editor-holder .ce-inline-tool-input { font-size: 16px; padding: 10px 12px; min-width: 240px; }
+/* リンクの URL 入力欄。Editor.js 既定の明るい地(#f8f8f8)に、ダークの白い文字が重なって入力した URL が読めなくなる */
+.gd-editor-holder .ce-inline-tool-input { background: var(--bg-muted); color: var(--text-color); border: 1px solid var(--border-color); }
 /* 上の「/」メニュー用の幅 240px が、このツールバーにも掛かって横スクロールになるので、中身の幅に合わせる */
 .gd-editor-holder .ce-popover--inline .ce-popover__container { width: max-content; min-width: max-content; max-width: calc(100vw - 16px); height: var(--height); overflow: visible; }
 .gd-editor-holder .ce-popover--inline .ce-popover__items { overflow: visible; }

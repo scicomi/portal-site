@@ -95,12 +95,23 @@
     static get enableLineBreaks() { return false; }
     // blocks は入れ子エディタが保存時に整え済み。ここを false にすると、外側の保存で中身の文字から <br>（改行）・太字・リンクが全部消える
     static get sanitize() { return { title: INLINE, blocks: true }; }
-    constructor({ data, readOnly, config, block }) {
+    constructor({ data, readOnly, config, block, api }) {
       this.data = { title: (data && data.title) || '', blocks: Array.isArray(data && data.blocks) ? data.blocks : [] };
       this.readOnly = readOnly;
       this.config = config || {};
       this.block = block;
+      this.api = api;
       this.sub = null;
+    }
+    // 見出しも中身も空か（中身は、空の段落が 1 つだけ）。空のトグルを Backspace で消せるようにするための判定
+    isBlank() {
+      if (this.titleEl.textContent.trim()) return false;
+      if (!this.sub) return !this.data.blocks.length;
+      try {
+        if (this.sub.blocks.getBlocksCount() > 1) return false;
+        const first = this.sub.blocks.getBlockByIndex(0);
+        return !first || (first.name === 'paragraph' && !first.holder.textContent.trim());
+      } catch (_) { return false; }
     }
     render() {
       const open = !this.readOnly;     // 閲覧時は閉じておく。編集時は開いておく
@@ -121,6 +132,15 @@
       if (this.readOnly) this.titleEl.addEventListener('click', toggle);
       else {
         // 開いているトグルの見出しで Enter → 中身の先頭へ。閉じているときは、普通に下に新しいブロックを作る
+        // 見出しも中身も空のトグルで Backspace → トグルごと消す（Editor.js 既定では、入れ子エディタの部品の文字で「空でない」と判断され消えない）
+        this.titleEl.addEventListener('keydown', e => {
+          if (e.key !== 'Backspace' || e.isComposing || !this.api || !this.isBlank()) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const i = this.api.blocks.getCurrentBlockIndex();
+          this.api.blocks.delete(i);
+          if (i > 0) { try { this.api.caret.setToBlock(i - 1, 'end'); } catch (_) {} }
+        });
         this.titleEl.addEventListener('keydown', e => {
           if (e.key !== 'Enter' || e.shiftKey || e.isComposing || !this.sub || !this.wrap.classList.contains('open')) return;
           e.preventDefault();

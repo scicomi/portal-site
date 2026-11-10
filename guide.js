@@ -330,7 +330,12 @@ function attachGuideSearch() {
   let timer = null;
   input.addEventListener('input', () => {
     clearTimeout(timer);
-    timer = setTimeout(() => { gdSearchKw = input.value.trim(); gdRenderTree(); }, 150);
+    timer = setTimeout(() => {
+      gdSearchKw = input.value.trim();
+      const home = document.getElementById('gd-home-search');   // ホームの検索欄と、同じ言葉にそろえる
+      if (home && home.value !== input.value) home.value = input.value;
+      gdRenderTree();
+    }, 150);
   });
 }
 
@@ -417,6 +422,12 @@ async function gdNestedIdle() {
   do { await new Promise(r => setTimeout(r, 60)); } while (gdNested.pending > 0);
 }
 
+// 表のセルで Shift+Enter を押すと <br>（セル内の改行）が入るが、配布版の表には sanitize の指定がなく、保存時に <br> が消えて改行が失われる。
+// <br> を残す指定をつけた表(vendor/ は直接編集しない)
+class GdTable extends Table {
+  static get sanitize() { return { content: { br: true } }; }
+}
+
 function gdEditorTools(depth) {
   depth = depth || 0;
   const B = window.GuideBlocks;
@@ -428,7 +439,7 @@ function gdEditorTools(depth) {
     },
     list: { class: EditorjsList, inlineToolbar: true, config: { defaultStyle: 'unordered' } },
     quote: { class: Quote, inlineToolbar: true, config: { quotePlaceholder: '引用', captionPlaceholder: '出典（任意）' } },
-    table: { class: Table, inlineToolbar: true, config: { rows: 2, cols: 3, withHeadings: true } },
+    table: { class: GdTable, inlineToolbar: true, config: { rows: 2, cols: 3, withHeadings: true } },
     delimiter: Delimiter,
     code: { class: CodeTool, config: { placeholder: 'コードや、そのままコピーしたい文面' } },
     image: {
@@ -644,7 +655,12 @@ function gdRenderCurrent() {
   const title = document.getElementById('gd-title');
   if (canEdit) title.addEventListener('input', () => gdMarkDirty());
   title.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); if (gdEditor) gdEditor.caret.setToFirstBlock('start'); }
+    if (e.key === 'Enter' && !e.isComposing) {
+      e.preventDefault();
+      // 開いた直後は本文の準備が終わっていないことがある(準備前は caret が使えず、Enter が無視される)。終わるのを待ってから移る
+      const ed = gdEditor;
+      if (ed) ed.isReady.then(() => { if (ed === gdEditor) ed.caret.setToFirstBlock('start'); }).catch(() => {});
+    }
   });
   title.addEventListener('paste', e => {          // 書式つきの貼り付けは文字だけにする
     e.preventDefault();
@@ -678,7 +694,13 @@ function gdRenderHome(el) {
   let timer = null;
   input.addEventListener('input', () => {
     clearTimeout(timer);
-    timer = setTimeout(() => { gdSearchKw = input.value.trim(); gdRenderHomeList(); }, 150);
+    timer = setTimeout(() => {
+      gdSearchKw = input.value.trim();
+      const side = document.getElementById('gd-search');        // 左の検索欄と、同じ言葉にそろえる(そろえないと、左のツリーだけ検索結果のまま戻せない)
+      if (side && side.value !== input.value) side.value = input.value;
+      gdRenderTree();
+      gdRenderHomeList();
+    }, 150);
   });
   gdRenderHomeList();
 }
