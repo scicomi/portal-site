@@ -655,7 +655,12 @@ function gdRenderCurrent() {
   const title = document.getElementById('gd-title');
   if (canEdit) title.addEventListener('input', () => gdMarkDirty());
   title.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); if (gdEditor) gdEditor.caret.setToFirstBlock('start'); }
+    if (e.key === 'Enter' && !e.isComposing) {
+      e.preventDefault();
+      // 開いた直後は本文の準備が終わっていないことがある(準備前は caret が使えず、Enter が無視される)。終わるのを待ってから移る
+      const ed = gdEditor;
+      if (ed) ed.isReady.then(() => { if (ed === gdEditor) ed.caret.setToFirstBlock('start'); }).catch(() => {});
+    }
   });
   title.addEventListener('paste', e => {          // 書式つきの貼り付けは文字だけにする
     e.preventDefault();
