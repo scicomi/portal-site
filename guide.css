@@ -289,6 +289,8 @@
 .gd-editor-holder .ce-popover--inline .ce-popover-item__title { font-size: 14px; }
 .gd-editor-holder .ce-popover--inline .ce-popover-item-separator { padding: 0 6px; }
 .gd-editor-holder .ce-inline-tool-input { font-size: 16px; padding: 10px 12px; min-width: 240px; }
+/* リンクの URL 入力欄。Editor.js 既定の明るい地(#f8f8f8)に、ダークの白い文字が重なって入力した URL が読めなくなる */
+.gd-editor-holder .ce-inline-tool-input { background: var(--bg-muted); color: var(--text-color); border: 1px solid var(--border-color); }
 /* 上の「/」メニュー用の幅 240px が、このツールバーにも掛かって横スクロールになるので、中身の幅に合わせる */
 .gd-editor-holder .ce-popover--inline .ce-popover__container { width: max-content; min-width: max-content; max-width: calc(100vw - 16px); height: var(--height); overflow: visible; }
 .gd-editor-holder .ce-popover--inline .ce-popover__items { overflow: visible; }
